@@ -1,8 +1,8 @@
-import { ChevronRight, Command, Moon, Sun, Monitor } from 'lucide-react';
+import { ChevronRight, Zap, Moon, Sun, Clock } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/utils/cn';
-import { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const pathToTitle: Record<string, string> = {
   '/': 'Dashboard',
@@ -35,7 +35,25 @@ const pathDescriptions: Record<string, string> = {
 export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
   const { theme, setTheme } = useTheme();
   const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
 
   const getBreadcrumbs = () => {
     const paths = location.pathname.split('/').filter(Boolean);
@@ -70,33 +88,47 @@ export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
             {breadcrumbs.map((crumb, index) => (
               <div key={crumb.path} className="flex items-center gap-2">
                 {index > 0 && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                <span
+                <button
+                  onClick={() => index < breadcrumbs.length - 1 && navigate(crumb.path)}
                   className={cn(
-                    'text-base font-semibold',
-                    index === breadcrumbs.length - 1 ? 'text-foreground' : 'text-muted-foreground'
+                    'text-base font-semibold transition-colors',
+                    index === breadcrumbs.length - 1
+                      ? 'text-foreground cursor-default'
+                      : 'text-muted-foreground hover:text-foreground cursor-pointer'
                   )}
+                  disabled={index === breadcrumbs.length - 1}
                 >
                   {crumb.label}
-                </span>
+                </button>
               </div>
             ))}
           </div>
           {description && <p className="text-sm text-muted-foreground">{description}</p>}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 text-sm text-muted-foreground">
+            <Clock className="w-4 h-4" />
+            <span className="font-mono">{formatTime(currentTime)}</span>
+          </div>
+
+          <div className="w-px h-6 bg-border" />
+
           <button
             onClick={onCommandPalette}
             className={cn(
-              'flex items-center gap-2 px-3 py-1.5 rounded-md',
-              'bg-muted text-muted-foreground text-sm',
+              'p-2 rounded-md',
               'hover:bg-accent hover:text-accent-foreground transition-colors',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'group relative'
             )}
+            aria-label="Quick actions (Ctrl+K)"
+            title="Quick actions (Ctrl+K)"
           >
-            <Command className="w-3 h-3" />
-            <span>Command</span>
-            <kbd className="px-1 py-0.5 text-xs bg-background border border-border rounded">K</kbd>
+            <Zap className="w-4 h-4" />
+            <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-popover text-popover-foreground rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              Ctrl+K to quickly access this menu
+            </span>
           </button>
 
           <div className="relative">
@@ -111,7 +143,6 @@ export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
             >
               {theme === 'light' && <Sun className="w-4 h-4" />}
               {theme === 'dark' && <Moon className="w-4 h-4" />}
-              {theme === 'system' && <Monitor className="w-4 h-4" />}
             </button>
 
             {showThemeMenu && (
@@ -121,7 +152,6 @@ export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
                   {[
                     { value: 'light' as const, icon: Sun, label: 'Light' },
                     { value: 'dark' as const, icon: Moon, label: 'Dark' },
-                    { value: 'system' as const, icon: Monitor, label: 'System' },
                   ].map(({ value, icon: Icon, label }) => (
                     <button
                       key={value}

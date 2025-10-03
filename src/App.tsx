@@ -1,6 +1,7 @@
-import { createBrowserRouter, RouterProvider, Routes, Route, Outlet } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { SessionProvider } from '@/contexts/SessionContext';
+import { UserSettingsProvider } from '@/contexts/UserSettingsContext';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
@@ -84,9 +85,11 @@ const router = createBrowserRouter(
 function App() {
   return (
     <ThemeProvider>
-      <SessionProvider>
-        <RouterProvider router={router} />
-      </SessionProvider>
+      <UserSettingsProvider>
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>
+      </UserSettingsProvider>
     </ThemeProvider>
   );
 }

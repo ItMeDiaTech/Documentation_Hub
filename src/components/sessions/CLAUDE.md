@@ -66,6 +66,23 @@ This directory contains all session-related components for the Documentation Hub
   - `sessionId`: Current session identifier
   - `onStylesChange`: Callback with updated styles array
 
+### TrackedChanges.tsx
+- **Purpose**: Display diff view of all document changes after processing
+- **Features**:
+  - Expandable document list showing change counts
+  - Color-coded change types (additions, modifications, deletions)
+  - Side-by-side diff view with original and new text
+  - Line number references for each change
+  - Animated expand/collapse for document sections
+  - Visual indicators for change types
+  - Empty state when no changes tracked
+- **Change Types**:
+  - **Additions** (green): New content added to document
+  - **Modifications** (blue): Existing content that was changed
+  - **Deletions** (red): Content removed from document
+- **Props**:
+  - `sessionId`: Current session identifier for tracking changes
+
 ### ReplacementsTab.tsx
 - **Purpose**: Configure text and hyperlink replacement rules
 - **Features**:
@@ -86,10 +103,11 @@ This directory contains all session-related components for the Documentation Hub
 
 These components are integrated into the CurrentSession page via the TabContainer:
 
-1. **Session Tab**: Main document management interface
+1. **Session Tab**: Main document management interface with "Process Documents" button
 2. **Processing Options Tab**: Configure automated document processing
-3. **Styles Tab**: Define document styling rules with live preview
-4. **Replacements Tab**: Set up text/hyperlink replacements
+3. **Styles Tab**: Define document styling rules with live preview and Save button
+4. **Replacements Tab**: Set up text/hyperlink replacements with lighter input fields
+5. **Tracked Changes Tab**: Review all document modifications with diff view
 
 The session components work seamlessly with:
 - **SessionContext**: Global session state management

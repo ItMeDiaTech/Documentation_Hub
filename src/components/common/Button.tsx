@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, useState, useEffect } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/utils/cn';
 import { motion } from 'framer-motion';
@@ -37,23 +37,66 @@ export interface ButtonProps
   asChild?: boolean;
   loading?: boolean;
   icon?: React.ReactNode;
+  showSuccess?: boolean;
+  onSuccess?: () => void;
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, loading, icon, children, disabled, ...props }, ref) => {
+  ({ className, variant, size, loading, icon, children, disabled, showSuccess, onSuccess, ...props }, ref) => {
     const { asChild, ...buttonProps } = props as any;
+    const [isSuccess, setIsSuccess] = useState(false);
+
+    useEffect(() => {
+      if (showSuccess) {
+        setIsSuccess(true);
+        const timer = setTimeout(() => {
+          setIsSuccess(false);
+          onSuccess?.();
+        }, 2000);
+        return () => clearTimeout(timer);
+      }
+    }, [showSuccess, onSuccess]);
 
     return (
       <motion.button
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(
+          buttonVariants({ variant, size, className }),
+          isSuccess && 'bg-green-500 hover:bg-green-500 text-white'
+        )}
         ref={ref}
-        disabled={disabled || loading}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+        disabled={disabled || loading || isSuccess}
+        whileHover={{ scale: disabled || loading || isSuccess ? 1 : 1.02 }}
+        whileTap={{ scale: disabled || loading || isSuccess ? 1 : 0.98 }}
+        animate={isSuccess ? { scale: [1, 1.05, 1] } : {}}
         transition={{ duration: 0.2 }}
         {...buttonProps}
       >
-        {loading ? (
+        {isSuccess ? (
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="flex items-center gap-2"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <motion.path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 0.3 }}
+              />
+            </svg>
+            Saved!
+          </motion.div>
+        ) : loading ? (
           <>
             <svg
               className="mr-2 h-4 w-4 animate-spin"

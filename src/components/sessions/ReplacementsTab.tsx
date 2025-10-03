@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Plus, Trash2, Check } from 'lucide-react';
 import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
 import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -20,11 +19,10 @@ interface TextRule {
 }
 
 interface ReplacementsTabProps {
-  sessionId: string;
   onRulesChange?: (hyperlinkRules: HyperlinkRule[], textRules: TextRule[]) => void;
 }
 
-export function ReplacementsTab({ sessionId, onRulesChange }: ReplacementsTabProps) {
+export function ReplacementsTab({ onRulesChange }: ReplacementsTabProps) {
   const [replaceHyperlinksEnabled, setReplaceHyperlinksEnabled] = useState(false);
   const [replaceTextEnabled, setReplaceTextEnabled] = useState(false);
   const [hyperlinkRules, setHyperlinkRules] = useState<HyperlinkRule[]>([]);
@@ -130,7 +128,7 @@ export function ReplacementsTab({ sessionId, onRulesChange }: ReplacementsTabPro
               </thead>
               <tbody>
                 <AnimatePresence>
-                  {hyperlinkRules.map((rule, index) => (
+                  {hyperlinkRules.map((rule) => (
                     <motion.tr
                       key={rule.id}
                       initial={{ opacity: 0, y: -10 }}
@@ -171,7 +169,7 @@ export function ReplacementsTab({ sessionId, onRulesChange }: ReplacementsTabPro
                           onChange={(e) => updateHyperlinkRule(rule.id, { oldHyperlink: e.target.value })}
                           disabled={!replaceHyperlinksEnabled}
                           placeholder="Enter old hyperlink text"
-                          className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background disabled:opacity-50"
+                          className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50"
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -181,7 +179,7 @@ export function ReplacementsTab({ sessionId, onRulesChange }: ReplacementsTabPro
                           onChange={(e) => updateHyperlinkRule(rule.id, { newContentId: e.target.value })}
                           disabled={!replaceHyperlinksEnabled}
                           placeholder="Enter new content ID"
-                          className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background disabled:opacity-50"
+                          className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50"
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -248,7 +246,7 @@ export function ReplacementsTab({ sessionId, onRulesChange }: ReplacementsTabPro
               </thead>
               <tbody>
                 <AnimatePresence>
-                  {textRules.map((rule, index) => (
+                  {textRules.map((rule) => (
                     <motion.tr
                       key={rule.id}
                       initial={{ opacity: 0, y: -10 }}
@@ -289,7 +287,7 @@ export function ReplacementsTab({ sessionId, onRulesChange }: ReplacementsTabPro
                           onChange={(e) => updateTextRule(rule.id, { oldText: e.target.value })}
                           disabled={!replaceTextEnabled}
                           placeholder="Enter old text"
-                          className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background disabled:opacity-50"
+                          className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50"
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -299,7 +297,7 @@ export function ReplacementsTab({ sessionId, onRulesChange }: ReplacementsTabPro
                           onChange={(e) => updateTextRule(rule.id, { newText: e.target.value })}
                           disabled={!replaceTextEnabled}
                           placeholder="Enter new text"
-                          className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background disabled:opacity-50"
+                          className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50"
                         />
                       </td>
                       <td className="px-4 py-3">
