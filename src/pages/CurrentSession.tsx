@@ -30,7 +30,7 @@ import { useSession } from '@/contexts/SessionContext';
 import { Session } from '@/types/session';
 import { Document } from '@/types/session';
 import { TabContainer } from '@/components/sessions/TabContainer';
-import { ProcessingOptions } from '@/components/sessions/ProcessingOptions';
+import { ProcessingOptions, ProcessingOption, defaultOptions } from '@/components/sessions/ProcessingOptions';
 import { StylesEditor } from '@/components/sessions/StylesEditor';
 import { ReplacementsTab } from '@/components/sessions/ReplacementsTab';
 import { TrackedChanges } from '@/components/sessions/TrackedChanges';
@@ -183,6 +183,15 @@ export function CurrentSession() {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  // Convert session processing options to ProcessingOption[] format for initializing the component
+  const getInitialProcessingOptions = (): ProcessingOption[] => {
+    const enabledOps = session.processingOptions?.enabledOperations || [];
+    return defaultOptions.map(opt => ({
+      ...opt,
+      enabled: enabledOps.includes(opt.id)
+    }));
   };
 
   // Create session content for the Session tab
@@ -400,7 +409,13 @@ export function CurrentSession() {
     {
       id: 'processing',
       label: 'Processing Options',
-      content: <ProcessingOptions sessionId={session.id} onOptionsChange={handleProcessingOptionsChange} />,
+      content: (
+        <ProcessingOptions
+          sessionId={session.id}
+          initialOptions={getInitialProcessingOptions()}
+          onOptionsChange={handleProcessingOptionsChange}
+        />
+      ),
     },
     {
       id: 'styles',
