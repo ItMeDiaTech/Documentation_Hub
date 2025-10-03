@@ -45,25 +45,32 @@ export class WordDocumentProcessor {
   private readonly MAX_FILE_SIZE_MB = 100;
 
   constructor() {
-    // Initialize XML parser with optimized settings
+    // Initialize XML parser with settings optimized for Office Open XML
+    // CRITICAL: preserveOrder MUST be true to prevent document corruption
     this.xmlParser = new XMLParser({
       ignoreAttributes: false,
-      parseAttributeValue: true,
-      trimValues: true,
-      processEntities: false,
+      parseAttributeValue: false, // Prevent converting "true" to boolean
+      trimValues: false, // Preserve whitespace for Office XML
+      processEntities: true, // Handle &, <, >, etc. correctly
       parseTagValue: false,
-      preserveOrder: false,
+      preserveOrder: true, // REQUIRED for Office Open XML
       attributeNamePrefix: '@_',
-      textNodeName: '#text'
+      textNodeName: '#text',
+      cdataPropName: '__cdata', // Handle CDATA sections
+      commentPropName: '__comment'
     });
 
     this.xmlBuilder = new XMLBuilder({
       ignoreAttributes: false,
-      format: false,
+      format: false, // No formatting to preserve exact structure
       suppressEmptyNode: false,
-      preserveOrder: false,
+      preserveOrder: true, // MUST match parser setting
       attributeNamePrefix: '@_',
-      textNodeName: '#text'
+      textNodeName: '#text',
+      cdataPropName: '__cdata',
+      commentPropName: '__comment',
+      suppressBooleanAttributes: false,
+      suppressUnpairedNode: false
     });
 
     this.hyperlinkCache = new Map();
@@ -76,6 +83,12 @@ export class WordDocumentProcessor {
     filePath: string,
     options: WordProcessingOptions = {}
   ): Promise<WordProcessingResult> {
+    console.log('\n╔═══════════════════════════════════════════════════════════╗');
+    console.log('║  WORD DOCUMENT PROCESSOR - STARTING                      ║');
+    console.log('╚═══════════════════════════════════════════════════════════╝\n');
+    console.log('File:', filePath);
+    console.log('Options:', JSON.stringify(options, null, 2));
+
     const startTime = performance.now();
     const result: WordProcessingResult = {
       success: false,
@@ -93,21 +106,29 @@ export class WordDocumentProcessor {
       duration: 0,
     };
 
+    let backupCreated = false;
+
     try {
       // Validate file exists and size
+      console.log('\n=== FILE VALIDATION ===');
       const stats = await fs.stat(filePath);
       const fileSizeMB = stats.size / (1024 * 1024);
       result.documentSize = stats.size;
 
+      console.log(`File size: ${fileSizeMB.toFixed(2)}MB`);
+      console.log(`File modified: ${stats.mtime}`);
+
       if (fileSizeMB > (options.maxFileSizeMB || this.MAX_FILE_SIZE_MB)) {
-        throw new Error(`File too large: ${fileSizeMB.toFixed(2)}MB exceeds limit`);
+        throw new Error(`File too large: ${fileSizeMB.toFixed(2)}MB exceeds limit of ${options.maxFileSizeMB || this.MAX_FILE_SIZE_MB}MB`);
       }
 
-      // Create backup if requested
-      if (options.createBackup) {
-        const backupPath = await this.createBackup(filePath);
-        result.backupPath = backupPath;
-      }
+      // ALWAYS create backup for safety (override user option)
+      console.log('\n=== BACKUP CREATION ===');
+      console.log('Creating backup (MANDATORY for safety)...');
+      const backupPath = await this.createBackup(filePath);
+      result.backupPath = backupPath;
+      backupCreated = true;
+      console.log(`✓ Backup created: ${backupPath}`);
 
       // Load the document
       const zip = await this.loadDocument(filePath);
@@ -134,16 +155,67 @@ export class WordDocumentProcessor {
 
       // Save the modified document
       if (processedData.modifiedCount > 0) {
+        console.log('\n=== SAVING DOCUMENT ===');
+        console.log(`Saving ${processedData.modifiedCount} modifications...`);
+
         await this.saveDocument(zip, filePath);
+
+        // Verify the saved file is valid
+        console.log('\n=== FILE INTEGRITY CHECK ===');
+        const newStats = await fs.stat(filePath);
+        const newSizeMB = newStats.size / (1024 * 1024);
+        console.log(`New file size: ${newSizeMB.toFixed(2)}MB`);
+        console.log(`Original size: ${fileSizeMB.toFixed(2)}MB`);
+
+        // Check if file size changed drastically (possible corruption)
+        const sizeChange = Math.abs(newSizeMB - fileSizeMB) / fileSizeMB;
+        if (sizeChange > 0.5) { // More than 50% change
+          console.error(`⚠️  WARNING: File size changed by ${(sizeChange * 100).toFixed(1)}%`);
+          console.error('This may indicate corruption!');
+        }
+
+        // Try to load the saved file to verify it's not corrupted
+        try {
+          console.log('Verifying saved document can be loaded...');
+          const verifyZip = await this.loadDocument(filePath);
+          const testFile = verifyZip.file('word/document.xml');
+          if (!testFile) {
+            throw new Error('Document structure corrupted - missing word/document.xml');
+          }
+          console.log('✓ File integrity verified - document structure intact');
+        } catch (verifyError) {
+          console.error('✗ CORRUPTION DETECTED:', verifyError);
+          console.error('Restoring from backup...');
+
+          if (backupCreated && result.backupPath) {
+            await fs.copyFile(result.backupPath, filePath);
+            console.log('✓ File restored from backup');
+          }
+
+          throw new Error(`Document corruption detected after save: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`);
+        }
+      } else {
+        console.log('\n=== NO CHANGES NEEDED ===');
+        console.log('No modifications were made to the document.');
       }
 
       result.success = true;
+      console.log('\n✓✓✓ PROCESSING COMPLETED SUCCESSFULLY ✓✓✓\n');
+
     } catch (error) {
+      console.error('\n✗✗✗ PROCESSING FAILED ✗✗✗');
+      console.error('Error:', error);
       result.errorMessages.push(error instanceof Error ? error.message : 'Unknown error');
       result.errorCount++;
+
+      // If backup exists and error occurred, inform user
+      if (backupCreated && result.backupPath) {
+        console.log(`\nℹ️  Backup available at: ${result.backupPath}`);
+      }
     } finally {
       result.duration = performance.now() - startTime;
       result.processingTimeMs = result.duration;
+      console.log(`\nTotal processing time: ${(result.duration / 1000).toFixed(2)}s\n`);
     }
 
     return result;
@@ -350,32 +422,67 @@ export class WordDocumentProcessor {
     const processedLinks: any[] = [];
 
     // Phase 1: Extract all IDs from hyperlinks
+    console.log('=== PHASE 1: ID EXTRACTION ===');
+    console.log(`Total hyperlinks found: ${hyperlinks.length}`);
+
     const lookupIds: string[] = [];
     const uniqueIds = new Set<string>();
 
     for (const hyperlink of hyperlinks) {
+      console.log(`Examining hyperlink: ${hyperlink.target.substring(0, 100)}...`);
+
       const contentId = this.extractContentId(hyperlink.target);
-      if (contentId && !uniqueIds.has(contentId)) {
-        lookupIds.push(contentId);
-        uniqueIds.add(contentId);
+      if (contentId) {
+        console.log(`  - Found Content_ID: ${contentId}`);
+        if (!uniqueIds.has(contentId)) {
+          lookupIds.push(contentId);
+          uniqueIds.add(contentId);
+        }
       }
 
       const documentId = this.extractDocumentId(hyperlink.target);
-      if (documentId && !uniqueIds.has(documentId)) {
-        lookupIds.push(documentId);
-        uniqueIds.add(documentId);
+      if (documentId) {
+        console.log(`  - Found Document_ID: ${documentId}`);
+        if (!uniqueIds.has(documentId)) {
+          lookupIds.push(documentId);
+          uniqueIds.add(documentId);
+        }
+      }
+
+      if (!contentId && !documentId) {
+        console.log(`  - No IDs found in this hyperlink`);
       }
     }
 
+    console.log(`\nTotal unique IDs extracted: ${lookupIds.length}`);
+    console.log('Lookup_IDs:', lookupIds);
+
     // Phase 2: Call PowerAutomate API if configured and IDs found
+    console.log('\n=== PHASE 2: API COMMUNICATION ===');
     let apiResults: Map<string, any> = new Map();
-    if (options.apiEndpoint && lookupIds.length > 0) {
-      console.log(`Calling API with ${lookupIds.length} lookup IDs:`, lookupIds);
+
+    if (!options.apiEndpoint) {
+      console.warn('⚠️  API endpoint not configured - skipping API call');
+      console.warn('   Check Settings > API Settings to configure PowerAutomate URL');
+    } else if (lookupIds.length === 0) {
+      console.warn('⚠️  No IDs found to send to API - skipping API call');
+    } else {
+      console.log(`✓ API endpoint configured: ${options.apiEndpoint}`);
+      console.log(`✓ Calling API with ${lookupIds.length} lookup IDs`);
       const apiResponse = await this.callPowerAutomateApi(options.apiEndpoint, lookupIds);
 
       if (apiResponse?.results) {
+        console.log(`✓ API call successful - received ${apiResponse.results.length} results`);
+
         // Create cache for O(1) lookups
         apiResponse.results.forEach((result: any) => {
+          console.log(`  - Processing result:`, {
+            Document_ID: result.Document_ID,
+            Content_ID: result.Content_ID,
+            Title: result.Title,
+            Status: result.Status
+          });
+
           if (result.Document_ID) {
             apiResults.set(result.Document_ID.trim(), result);
           }
@@ -383,7 +490,10 @@ export class WordDocumentProcessor {
             apiResults.set(result.Content_ID.trim(), result);
           }
         });
-        console.log(`API returned ${apiResponse.results.length} results`);
+
+        console.log(`✓ Cached ${apiResults.size} API results for lookup`);
+      } else {
+        console.error('✗ API call failed or returned no results');
       }
     }
 
@@ -404,13 +514,17 @@ export class WordDocumentProcessor {
       const relsXml = await zip.file(relsPath)?.async('string');
       if (!relsXml) continue;
 
-      let modifiedRelsXml = relsXml;
+      // Parse relationships XML properly (NO string manipulation)
+      const relsData = this.xmlParser.parse(relsXml);
+      let relsModified = false;
+
       const partPath = partName === 'document.xml' ? 'word/document.xml' : `word/${partName}`;
       const partXml = await zip.file(partPath)?.async('string');
       if (!partXml) continue;
 
       // Parse part XML for display text updates
       const partData = this.xmlParser.parse(partXml);
+      let partModified = false;
 
       for (const hyperlink of partHyperlinks) {
         processedCount++;
@@ -421,22 +535,21 @@ export class WordDocumentProcessor {
         const apiResult = this.findApiResult(hyperlink.target, apiResults);
 
         if (apiResult) {
-          // Phase 3: Update URL to Document_ID format
+          // Phase 3: Update URL to Document_ID format using proper XML manipulation
           if (apiResult.Document_ID && options.operations?.fixContentIds) {
             const oldUrl = hyperlink.target;
             const newUrl = `https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=${apiResult.Document_ID.trim()}`;
 
             if (oldUrl !== newUrl) {
-              // Update in relationships file
-              modifiedRelsXml = modifiedRelsXml.replace(
-                new RegExp(`(<Relationship[^>]*Id="${hyperlink.relationshipId}"[^>]*Target=")${this.escapeRegExp(oldUrl)}(")`,'g'),
-                `$1${newUrl}$2`
-              );
-
-              hyperlink.target = newUrl;
-              urlsUpdated++;
-              modified = true;
-              changes.push(`URL: ${oldUrl} → ${newUrl}`);
+              // Update in parsed relationships object (NOT string manipulation)
+              const updated = this.updateRelationshipTarget(relsData, hyperlink.relationshipId, newUrl);
+              if (updated) {
+                relsModified = true;
+                hyperlink.target = newUrl;
+                urlsUpdated++;
+                modified = true;
+                changes.push(`URL: ${oldUrl} → ${newUrl}`);
+              }
             }
           }
 
@@ -468,11 +581,14 @@ export class WordDocumentProcessor {
             }
 
             if (newDisplayText !== oldDisplayText) {
-              this.updateHyperlinkDisplayText(partData, hyperlink.relationshipId, newDisplayText);
-              hyperlink.displayText = newDisplayText;
-              displayTextsUpdated++;
-              modified = true;
-              changes.push(`Display: ${oldDisplayText} → ${newDisplayText}`);
+              const updated = this.updateHyperlinkDisplayText(partData, hyperlink.relationshipId, newDisplayText);
+              if (updated) {
+                partModified = true;
+                hyperlink.displayText = newDisplayText;
+                displayTextsUpdated++;
+                modified = true;
+                changes.push(`Display: ${oldDisplayText} → ${newDisplayText}`);
+              }
             }
           }
         } else if (lookupIds.length > 0 && this.isTheSourceUrl(hyperlink.target)) {
@@ -480,11 +596,14 @@ export class WordDocumentProcessor {
           const oldDisplayText = hyperlink.displayText;
           if (!oldDisplayText.includes(' - Not Found')) {
             const newDisplayText = oldDisplayText + ' - Not Found';
-            this.updateHyperlinkDisplayText(partData, hyperlink.relationshipId, newDisplayText);
-            hyperlink.displayText = newDisplayText;
-            displayTextsUpdated++;
-            modified = true;
-            changes.push(`Display: ${oldDisplayText} → ${newDisplayText}`);
+            const updated = this.updateHyperlinkDisplayText(partData, hyperlink.relationshipId, newDisplayText);
+            if (updated) {
+              partModified = true;
+              hyperlink.displayText = newDisplayText;
+              displayTextsUpdated++;
+              modified = true;
+              changes.push(`Display: ${oldDisplayText} → ${newDisplayText}`);
+            }
           }
         }
 
@@ -505,15 +624,40 @@ export class WordDocumentProcessor {
         });
       }
 
-      // Save modified files back to zip
-      if (modifiedCount > 0) {
-        zip.file(relsPath, modifiedRelsXml);
-        // Rebuild part XML
-        const rebuiltPartXml = this.xmlBuilder.build(partData);
-        const partXmlWithDeclaration = rebuiltPartXml.startsWith('<?xml')
-          ? rebuiltPartXml
-          : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltPartXml;
-        zip.file(partPath, partXmlWithDeclaration);
+      // Save modified files back to zip - ONLY rebuild if modified
+      try {
+        if (relsModified) {
+          const rebuiltRelsXml = this.xmlBuilder.build(relsData);
+          const relsXmlWithDeclaration = rebuiltRelsXml.startsWith('<?xml')
+            ? rebuiltRelsXml
+            : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltRelsXml;
+
+          // Validate before saving
+          if (this.validateXml(relsXmlWithDeclaration)) {
+            zip.file(relsPath, relsXmlWithDeclaration);
+            console.log(`Updated relationships file: ${relsPath}`);
+          } else {
+            console.error(`XML validation failed for ${relsPath} - skipping update`);
+          }
+        }
+
+        if (partModified) {
+          const rebuiltPartXml = this.xmlBuilder.build(partData);
+          const partXmlWithDeclaration = rebuiltPartXml.startsWith('<?xml')
+            ? rebuiltPartXml
+            : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltPartXml;
+
+          // Validate before saving
+          if (this.validateXml(partXmlWithDeclaration)) {
+            zip.file(partPath, partXmlWithDeclaration);
+            console.log(`Updated document part: ${partPath}`);
+          } else {
+            console.error(`XML validation failed for ${partPath} - skipping update`);
+          }
+        }
+      } catch (error) {
+        console.error(`Error rebuilding XML for ${partName}:`, error);
+        throw new Error(`XML rebuild failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
@@ -531,20 +675,31 @@ export class WordDocumentProcessor {
    * Call PowerAutomate API with Lookup_IDs
    */
   private async callPowerAutomateApi(apiUrl: string, lookupIds: string[]): Promise<any> {
+    console.log('\n--- PowerAutomate API Call Details ---');
+    console.log('URL:', apiUrl);
+    console.log('Lookup_IDs count:', lookupIds.length);
+    console.log('Lookup_IDs:', JSON.stringify(lookupIds, null, 2));
+
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
 
       const request = { Lookup_ID: lookupIds };
+      console.log('Request payload:', JSON.stringify(request, null, 2));
 
       // Retry logic with exponential backoff
       let lastError: Error | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           if (attempt > 0) {
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+            const delay = Math.pow(2, attempt) * 1000;
+            console.log(`Retry attempt ${attempt + 1}/3 after ${delay}ms delay...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            console.log('Sending HTTP POST request...');
           }
 
+          const startTime = Date.now();
           const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -553,15 +708,27 @@ export class WordDocumentProcessor {
           });
 
           clearTimeout(timeout);
+          const elapsed = Date.now() - startTime;
+
+          console.log(`Response received in ${elapsed}ms`);
+          console.log('Status:', response.status, response.statusText);
+          console.log('Headers:', JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2));
 
           if (!response.ok) {
-            throw new Error(`API returned status ${response.status}`);
+            const errorText = await response.text();
+            console.error('Error response body:', errorText);
+            throw new Error(`API returned status ${response.status}: ${errorText.substring(0, 200)}`);
           }
 
-          const data = await response.json();
+          const responseText = await response.text();
+          console.log('Response body:', responseText.substring(0, 500) + (responseText.length > 500 ? '...' : ''));
+
+          const data = JSON.parse(responseText);
+          console.log('Parsed response:', JSON.stringify(data, null, 2).substring(0, 1000));
 
           // Parse response format: { StatusCode, Body: { Results: [...] } }
           if (data.Body?.Results) {
+            console.log(`✓ API SUCCESS - Found ${data.Body.Results.length} results`);
             return {
               results: data.Body.Results.map((r: any) => ({
                 Document_ID: r.Document_ID?.trim() || '',
@@ -570,24 +737,32 @@ export class WordDocumentProcessor {
                 Status: r.Status?.trim() || 'Active'
               }))
             };
+          } else {
+            console.warn('⚠️  Response does not contain Body.Results structure');
+            console.warn('Expected: { Body: { Results: [...] } }');
+            console.warn('Received:', data);
           }
 
           return null;
 
         } catch (error) {
           lastError = error as Error;
+          console.error(`Attempt ${attempt + 1} failed:`, error);
+
           if (error instanceof Error && error.name === 'AbortError') {
+            console.error('Request aborted (timeout after 30s)');
             break;
           }
         }
       }
 
       clearTimeout(timeout);
-      console.error('API call failed:', lastError);
+      console.error('✗ All API retry attempts failed');
+      console.error('Last error:', lastError);
       return null;
 
     } catch (error) {
-      console.error('API call error:', error);
+      console.error('✗ Unexpected API call error:', error);
       return null;
     }
   }
@@ -634,8 +809,11 @@ export class WordDocumentProcessor {
 
   /**
    * Update hyperlink display text in parsed document data
+   * Returns true if update was successful
    */
-  private updateHyperlinkDisplayText(docData: any, relationshipId: string, newText: string): void {
+  private updateHyperlinkDisplayText(docData: any, relationshipId: string, newText: string): boolean {
+    let updated = false;
+
     this.traverseElement(docData, (element: any) => {
       if (element['w:hyperlink'] && element['w:hyperlink']['@_r:id'] === relationshipId) {
         const hyperlinkElement = element['w:hyperlink'];
@@ -654,6 +832,7 @@ export class WordDocumentProcessor {
                   run['w:t']['#text'] = newText;
                 }
                 firstRun = false;
+                updated = true;
               } else {
                 delete run['w:t'];
               }
@@ -662,6 +841,84 @@ export class WordDocumentProcessor {
         }
       }
     });
+
+    return updated;
+  }
+
+  /**
+   * Update relationship target URL in parsed relationships data
+   * Returns true if update was successful
+   */
+  private updateRelationshipTarget(relsData: any, relationshipId: string, newTarget: string): boolean {
+    let updated = false;
+
+    // With preserveOrder: true, the structure is different
+    if (Array.isArray(relsData)) {
+      for (const item of relsData) {
+        if (item.Relationships) {
+          const result = this.updateRelationshipTarget(item.Relationships, relationshipId, newTarget);
+          if (result) updated = true;
+        } else if (item.Relationship) {
+          const rels = Array.isArray(item.Relationship) ? item.Relationship : [item.Relationship];
+          for (const rel of rels) {
+            if (rel['@_Id'] === relationshipId) {
+              rel['@_Target'] = newTarget;
+              updated = true;
+            }
+          }
+        }
+      }
+    } else if (relsData.Relationships) {
+      return this.updateRelationshipTarget(relsData.Relationships, relationshipId, newTarget);
+    } else if (relsData.Relationship) {
+      const rels = Array.isArray(relsData.Relationship) ? relsData.Relationship : [relsData.Relationship];
+      for (const rel of rels) {
+        if (rel['@_Id'] === relationshipId) {
+          rel['@_Target'] = newTarget;
+          updated = true;
+        }
+      }
+    }
+
+    return updated;
+  }
+
+  /**
+   * Validate XML string
+   * Returns true if valid, false otherwise
+   */
+  private validateXml(xmlString: string): boolean {
+    try {
+      // Basic validation checks
+      if (!xmlString || xmlString.trim().length === 0) {
+        console.error('XML validation failed: Empty string');
+        return false;
+      }
+
+      // Check for XML declaration
+      if (!xmlString.startsWith('<?xml')) {
+        console.error('XML validation failed: Missing XML declaration');
+        return false;
+      }
+
+      // Check for basic XML structure
+      if (!xmlString.includes('<') || !xmlString.includes('>')) {
+        console.error('XML validation failed: Invalid XML structure');
+        return false;
+      }
+
+      // Try to parse it back to verify it's valid
+      const testParse = this.xmlParser.parse(xmlString);
+      if (!testParse) {
+        console.error('XML validation failed: Parser could not parse the XML');
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('XML validation error:', error);
+      return false;
+    }
   }
 
   /**
