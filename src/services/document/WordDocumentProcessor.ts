@@ -260,29 +260,42 @@ export class WordDocumentProcessor {
    * Extract all hyperlinks from the document
    */
   private async extractHyperlinks(zip: JSZip): Promise<HyperlinkData[]> {
+    console.log('\n=== HYPERLINK EXTRACTION ===');
     const hyperlinks: HyperlinkData[] = [];
 
     // Parse main document relationships
     const mainRelsPath = 'word/_rels/document.xml.rels';
     const mainRelsXml = await zip.file(mainRelsPath)?.async('string');
-    if (!mainRelsXml) return hyperlinks;
+    if (!mainRelsXml) {
+      console.error('✗ Main relationships file not found');
+      return hyperlinks;
+    }
 
+    console.log('Parsing main relationships file...');
     const mainRelsData = this.xmlParser.parse(mainRelsXml);
+    console.log('Main relationships data structure:', Object.keys(mainRelsData));
     const mainRelationships = this.extractRelationshipsFromData(mainRelsData);
 
     // Parse document.xml for hyperlink elements
     const documentXml = await zip.file('word/document.xml')?.async('string');
-    if (!documentXml) return hyperlinks;
+    if (!documentXml) {
+      console.error('✗ Main document XML not found');
+      return hyperlinks;
+    }
 
+    console.log('Parsing main document XML...');
     const docData = this.xmlParser.parse(documentXml);
 
     // Extract hyperlinks from main document
     this.extractHyperlinksFromDocument(docData, mainRelationships, 'document.xml', hyperlinks);
 
     // Also check headers and footers
+    console.log('Checking headers and footers...');
     const entries = zip.filter((relativePath, file) => {
       return !!relativePath.match(/word\/(header|footer)\d+\.xml$/);
     });
+
+    console.log(`Found ${entries.length} header/footer files`);
 
     for (const entry of entries) {
       const partName = entry.name.split('/').pop() || '';
@@ -300,28 +313,61 @@ export class WordDocumentProcessor {
       }
     }
 
+    console.log(`\n✓ Total hyperlinks extracted: ${hyperlinks.length}\n`);
     return hyperlinks;
   }
 
   /**
    * Extract relationships from parsed XML data
+   * Handles preserveOrder: true array structure
    */
   private extractRelationshipsFromData(relsData: any): Map<string, string> {
+    console.log('Extracting relationships from parsed data...');
     const relationships = new Map<string, string>();
-    const rels = relsData?.Relationships?.Relationship || [];
-    const relsArray = Array.isArray(rels) ? rels : [rels];
 
-    for (const rel of relsArray) {
-      if (rel['@_Type']?.includes('hyperlink')) {
-        relationships.set(rel['@_Id'], rel['@_Target']);
+    // Helper function to recursively find Relationship elements in preserveOrder structure
+    const findRelationships = (data: any): void => {
+      if (!data) return;
+
+      if (Array.isArray(data)) {
+        // preserveOrder: true creates arrays
+        for (const item of data) {
+          findRelationships(item);
+        }
+      } else if (typeof data === 'object') {
+        // Check if this object has Relationship or Relationships keys
+        if (data.Relationships) {
+          findRelationships(data.Relationships);
+        } else if (data.Relationship) {
+          const relArray = Array.isArray(data.Relationship) ? data.Relationship : [data.Relationship];
+          for (const rel of relArray) {
+            if (rel['@_Type']?.includes('hyperlink')) {
+              const id = rel['@_Id'];
+              const target = rel['@_Target'];
+              if (id && target) {
+                relationships.set(id, target);
+                console.log(`  Found relationship: ${id} -> ${target.substring(0, 60)}...`);
+              }
+            }
+          }
+        } else {
+          // Continue searching in nested objects
+          for (const key in data) {
+            if (key.startsWith('@_')) continue; // Skip attributes
+            findRelationships(data[key]);
+          }
+        }
       }
-    }
+    };
 
+    findRelationships(relsData);
+    console.log(`Total relationships found: ${relationships.size}`);
     return relationships;
   }
 
   /**
    * Extract hyperlinks from document data
+   * Handles preserveOrder: true array structure
    */
   private extractHyperlinksFromDocument(
     docData: any,
@@ -329,15 +375,23 @@ export class WordDocumentProcessor {
     containingPart: string,
     hyperlinks: HyperlinkData[]
   ): void {
+    console.log(`Extracting hyperlinks from ${containingPart}...`);
+    console.log(`Available relationships: ${relationships.size}`);
+
     // Traverse the document tree to find hyperlinks
     this.traverseElement(docData, (element: any) => {
-      if (element['w:hyperlink']) {
-        const hyperlinkElement = element['w:hyperlink'];
+      // Check for w:hyperlink in both direct key and nested structure
+      const hyperlinkElement = element['w:hyperlink'];
+
+      if (hyperlinkElement) {
         const relationshipId = hyperlinkElement['@_r:id'];
+        console.log(`  Found w:hyperlink element with relationshipId: ${relationshipId}`);
 
         if (relationshipId && relationships.has(relationshipId)) {
           const target = relationships.get(relationshipId) || '';
           const displayText = this.extractDisplayText(hyperlinkElement);
+
+          console.log(`  ✓ Hyperlink extracted: "${displayText}" -> ${target.substring(0, 60)}...`);
 
           hyperlinks.push({
             relationshipId,
@@ -349,28 +403,47 @@ export class WordDocumentProcessor {
 
           // Cache for quick lookup
           this.hyperlinkCache.set(relationshipId, hyperlinks[hyperlinks.length - 1]);
+        } else {
+          console.log(`  ✗ No relationship found for ID: ${relationshipId}`);
         }
       }
     });
+
+    console.log(`Total hyperlinks extracted from ${containingPart}: ${hyperlinks.filter(h => h.containingPart === containingPart).length}`);
   }
 
   /**
    * Traverse XML element tree
+   * Handles both preserveOrder: true (array-based) and false (object-based) structures
    */
   private traverseElement(element: any, callback: (el: any) => void): void {
-    if (!element || typeof element !== 'object') return;
+    if (!element) return;
 
-    callback(element);
+    // Handle arrays (preserveOrder: true creates arrays everywhere)
+    if (Array.isArray(element)) {
+      for (const item of element) {
+        this.traverseElement(item, callback);
+      }
+      return;
+    }
 
-    for (const key in element) {
-      if (key.startsWith('@_')) continue; // Skip attributes
+    // Handle objects
+    if (typeof element === 'object') {
+      callback(element);
 
-      if (Array.isArray(element[key])) {
-        for (const item of element[key]) {
-          this.traverseElement(item, callback);
+      // Traverse all properties
+      for (const key in element) {
+        if (key.startsWith('@_') || key === '#text') continue; // Skip attributes and text nodes
+
+        const value = element[key];
+
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            this.traverseElement(item, callback);
+          }
+        } else if (typeof value === 'object' && value !== null) {
+          this.traverseElement(value, callback);
         }
-      } else if (typeof element[key] === 'object') {
-        this.traverseElement(element[key], callback);
       }
     }
   }
