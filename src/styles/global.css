@@ -39,7 +39,7 @@
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
     --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
@@ -63,6 +63,7 @@
 
   [data-accent='purple'].dark {
     --primary: 271.5 81.3% 65.9%;
+    --primary-foreground: 210 40% 98%;
     --ring: 271.5 81.3% 55.9%;
   }
 
@@ -76,6 +77,7 @@
 
   [data-accent='green'].dark {
     --primary: 142.1 70.6% 45.3%;
+    --primary-foreground: 210 40% 98%;
     --ring: 142.1 76.2% 36.3%;
   }
 
@@ -89,6 +91,7 @@
 
   [data-accent='orange'].dark {
     --primary: 20.5 90.2% 48.2%;
+    --primary-foreground: 210 40% 98%;
     --ring: 24.6 95% 53.1%;
   }
 
@@ -102,6 +105,7 @@
 
   [data-accent='pink'].dark {
     --primary: 346.8 77.2% 59.8%;
+    --primary-foreground: 210 40% 98%;
     --ring: 346.8 77.2% 49.8%;
   }
 
@@ -115,6 +119,7 @@
 
   [data-accent='cyan'].dark {
     --primary: 188.7 94.5% 52.7%;
+    --primary-foreground: 210 40% 98%;
     --ring: 188.7 94.5% 42.7%;
   }
 
@@ -128,6 +133,7 @@
 
   [data-accent='indigo'].dark {
     --primary: 243.4 75.4% 58.6%;
+    --primary-foreground: 210 40% 98%;
     --ring: 238.7 83.5% 66.7%;
   }
 
@@ -141,6 +147,7 @@
 
   [data-accent='custom'].dark {
     --primary: var(--custom-accent);
+    --primary-foreground: 210 40% 98%;
     --ring: var(--custom-accent);
   }
 
@@ -198,16 +205,19 @@
   /* Density settings */
   [data-density='minimal'] {
     --spacing-unit: 0.5;
+    --content-max-width: 100%;
     font-size: 13px;
   }
 
   [data-density='compact'] {
     --spacing-unit: 0.75;
+    --content-max-width: 100%;
     font-size: 14px;
   }
 
   [data-density='comfortable'] {
     --spacing-unit: 1;
+    --content-max-width: 100%;
     font-size: 15px;
   }
 
@@ -238,6 +248,41 @@
 
   [data-density] .gap-4 {
     gap: calc(1rem * var(--spacing-unit));
+  }
+
+  /* Fix layout issues in compact/minimal modes */
+  [data-density='compact'] main,
+  [data-density='minimal'] main {
+    max-width: var(--content-max-width);
+    width: 100%;
+    margin: 0;
+  }
+
+  /* Adjust sidebar spacing in density modes */
+  [data-density='minimal'] .sidebar-bg {
+    padding: calc(0.5rem * var(--spacing-unit));
+  }
+
+  [data-density='compact'] .sidebar-bg {
+    padding: calc(0.75rem * var(--spacing-unit));
+  }
+
+  /* Fix header spacing */
+  [data-density='minimal'] .header-bg,
+  [data-density='compact'] .header-bg {
+    padding-left: calc(1.5rem * var(--spacing-unit));
+    padding-right: calc(1.5rem * var(--spacing-unit));
+  }
+
+  /* Ensure proper content alignment */
+  [data-density] .max-w-7xl {
+    max-width: 100%;
+  }
+
+  [data-density='minimal'] .px-6,
+  [data-density='compact'] .px-6 {
+    padding-left: calc(1.5rem * var(--spacing-unit));
+    padding-right: calc(1.5rem * var(--spacing-unit));
   }
 
   /* Disable animations */

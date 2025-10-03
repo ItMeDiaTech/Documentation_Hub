@@ -42,11 +42,11 @@ const groupLabels = {
 };
 
 interface ProcessingOptionsProps {
-  sessionId: string;
+  sessionId?: string;
   onOptionsChange?: (options: ProcessingOption[]) => void;
 }
 
-export function ProcessingOptions({ sessionId, onOptionsChange }: ProcessingOptionsProps) {
+export function ProcessingOptions({ onOptionsChange }: ProcessingOptionsProps) {
   const [options, setOptions] = useState<ProcessingOption[]>(defaultOptions);
   const [masterToggle, setMasterToggle] = useState(false);
 
@@ -103,9 +103,10 @@ export function ProcessingOptions({ sessionId, onOptionsChange }: ProcessingOpti
           )}
         >
           <motion.div
-            className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm"
-            animate={{ x: masterToggle ? 24 : 2 }}
+            className="absolute w-5 h-5 bg-background rounded-full shadow-sm"
+            animate={{ x: masterToggle ? 26 : 1 }}
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            style={{ top: '0.5px' }}
           />
         </button>
       </div>

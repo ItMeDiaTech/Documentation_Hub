@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check } from 'lucide-react';
+import { X, Check, Palette, Pipette } from 'lucide-react';
 import { Button } from './Button';
 import { cn } from '@/utils/cn';
 
@@ -67,11 +67,17 @@ export function ColorPickerDialog({
 
             <div className="p-6 space-y-4">
               <div className="space-y-3">
-                <div className="w-full h-32 rounded-lg border border-border relative overflow-hidden">
+                <div className="w-full h-32 rounded-lg border border-border relative overflow-hidden group cursor-pointer">
                   <div
-                    className="absolute inset-0"
+                    className="absolute inset-0 transition-all"
                     style={{ backgroundColor: tempColor }}
                   />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+                    <div className="bg-white/90 px-3 py-1.5 rounded-full flex items-center gap-2 text-sm font-medium">
+                      <Pipette className="w-4 h-4" />
+                      Click to pick color
+                    </div>
+                  </div>
                   <input
                     type="color"
                     value={tempColor}
@@ -81,34 +87,39 @@ export function ColorPickerDialog({
                 </div>
 
                 <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={tempColor}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (/^#[0-9A-Fa-f]{0,6}$/.test(value)) {
-                        setTempColor(value);
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 text-sm border border-border rounded-md bg-background font-mono"
-                    placeholder="#000000"
-                    maxLength={7}
-                  />
+                  <div className="relative flex-1">
+                    <Palette className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={tempColor}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (/^#[0-9A-Fa-f]{0,6}$/.test(value)) {
+                          setTempColor(value);
+                        }
+                      }}
+                      className="w-full pl-10 pr-3 py-2 text-sm border border-border rounded-md bg-background font-mono focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                      placeholder="#000000"
+                      maxLength={7}
+                    />
+                  </div>
                   <div
-                    className="w-10 h-10 rounded-md border border-border"
+                    className="w-10 h-10 rounded-md border-2 border-border shadow-inner"
                     style={{ backgroundColor: tempColor }}
                   />
                 </div>
 
-                <div className="grid grid-cols-8 gap-2">
-                  {[
-                    '#ef4444', '#f97316', '#f59e0b', '#eab308',
-                    '#84cc16', '#22c55e', '#10b981', '#14b8a6',
-                    '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
-                    '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-                    '#f43f5e', '#64748b', '#475569', '#334155',
-                    '#1e293b', '#0f172a', '#ffffff', '#000000'
-                  ].map((presetColor) => (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Quick Colors</p>
+                  <div className="grid grid-cols-8 gap-2">
+                    {[
+                      '#ef4444', '#f97316', '#f59e0b', '#eab308',
+                      '#84cc16', '#22c55e', '#10b981', '#14b8a6',
+                      '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
+                      '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
+                      '#f43f5e', '#64748b', '#475569', '#334155',
+                      '#1e293b', '#0f172a', '#ffffff', '#000000'
+                    ].map((presetColor) => (
                     <button
                       key={presetColor}
                       onClick={() => setTempColor(presetColor)}
@@ -121,7 +132,8 @@ export function ColorPickerDialog({
                       style={{ backgroundColor: presetColor }}
                       aria-label={`Select ${presetColor}`}
                     />
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

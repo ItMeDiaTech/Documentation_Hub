@@ -7,10 +7,11 @@ import {
   Bold,
   Italic,
   Underline,
-  ChevronDown,
-  Check
+  Check,
+  Save
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { Button } from '@/components/common/Button';
 
 interface StyleDefinition {
   id: string;
@@ -75,12 +76,12 @@ const fontFamilies = ['Verdana', 'Arial', 'Times New Roman', 'Calibri', 'Georgia
 const spacingOptions = Array.from({ length: 25 }, (_, i) => i * 3); // 0pt to 72pt in increments of 3
 
 interface StylesEditorProps {
-  sessionId: string;
   onStylesChange?: (styles: StyleDefinition[]) => void;
 }
 
-export function StylesEditor({ sessionId, onStylesChange }: StylesEditorProps) {
+export function StylesEditor({ onStylesChange }: StylesEditorProps) {
   const [styles, setStyles] = useState<StyleDefinition[]>(defaultStyles);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const updateStyle = (styleId: string, updates: Partial<StyleDefinition>) => {
     const updatedStyles = styles.map(style =>
@@ -310,8 +311,26 @@ export function StylesEditor({ sessionId, onStylesChange }: StylesEditorProps) {
     );
   };
 
+  const handleSaveStyles = () => {
+    // Save styles logic here
+    onStylesChange?.(styles);
+    setShowSuccess(true);
+  };
+
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button
+          variant="default"
+          size="sm"
+          icon={<Save className="w-4 h-4" />}
+          onClick={handleSaveStyles}
+          showSuccess={showSuccess}
+          onSuccess={() => setShowSuccess(false)}
+        >
+          Save Styles
+        </Button>
+      </div>
       {styles.map(style => renderStyleEditor(style))}
     </div>
   );

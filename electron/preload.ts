@@ -1,4 +1,11 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
+import type {
+  HyperlinkProcessingOptions,
+  HyperlinkProcessingResult,
+  BatchProcessingOptions,
+  BatchProcessingResult,
+  BatchProgress
+} from '../src/types/hyperlink';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
@@ -12,6 +19,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File handling
   selectDocuments: () => ipcRenderer.invoke('select-documents'),
   processDocument: (path: string) => ipcRenderer.invoke('process-document', path),
+
+  // Hyperlink processing
+  selectFiles: () => ipcRenderer.invoke('hyperlink:select-files'),
+  processHyperlinkDocument: (filePath: string, options: HyperlinkProcessingOptions) =>
+    ipcRenderer.invoke('hyperlink:process-document', { filePath, options }),
+  batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) =>
+    ipcRenderer.invoke('hyperlink:batch-process', { filePaths, options }),
+  validateApi: (apiUrl: string) =>
+    ipcRenderer.invoke('hyperlink:validate-api', { apiUrl }),
+  cancelOperation: (operationId: string) =>
+    ipcRenderer.invoke('hyperlink:cancel-operation', { operationId }),
+  onBatchProgress: (callback: (progress: BatchProgress) => void) => {
+    const subscription = (_event: IpcRendererEvent, progress: BatchProgress) => callback(progress);
+    ipcRenderer.on('hyperlink:batch-progress', subscription);
+    return () => ipcRenderer.removeListener('hyperlink:batch-progress', subscription);
+  },
 
   onWindowMaximized: (callback: () => void) => {
     const subscription = (_event: IpcRendererEvent) => callback();
@@ -48,6 +71,12 @@ export type ElectronAPI = {
   getPlatform: () => Promise<NodeJS.Platform>;
   selectDocuments: () => Promise<string[] | undefined>;
   processDocument: (path: string) => Promise<unknown>;
+  selectFiles: () => Promise<string[]>;
+  processHyperlinkDocument: (filePath: string, options: HyperlinkProcessingOptions) => Promise<HyperlinkProcessingResult>;
+  batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) => Promise<BatchProcessingResult>;
+  validateApi: (apiUrl: string) => Promise<{ isValid: boolean; message: string; responseTime?: number }>;
+  cancelOperation: (operationId: string) => Promise<{ success: boolean; message?: string }>;
+  onBatchProgress: (callback: (progress: BatchProgress) => void) => () => void;
   onWindowMaximized: (callback: () => void) => () => void;
   onWindowUnmaximized: (callback: () => void) => () => void;
   onWindowFullscreen: (callback: () => void) => () => void;
