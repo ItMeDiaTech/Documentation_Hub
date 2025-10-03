@@ -1,16 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
-interface ProcessingOption {
+export interface ProcessingOption {
   id: string;
   label: string;
   group: 'text' | 'hyperlinks' | 'structure' | 'lists';
   enabled: boolean;
 }
 
-const defaultOptions: ProcessingOption[] = [
+export const defaultOptions: ProcessingOption[] = [
   // Text Formatting Group
   { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'text', enabled: false },
   { id: 'remove-paragraph-lines', label: 'Remove Extra Paragraph Lines', group: 'text', enabled: false },
@@ -43,12 +43,22 @@ const groupLabels = {
 
 interface ProcessingOptionsProps {
   sessionId?: string;
+  initialOptions?: ProcessingOption[];
   onOptionsChange?: (options: ProcessingOption[]) => void;
 }
 
-export function ProcessingOptions({ onOptionsChange }: ProcessingOptionsProps) {
-  const [options, setOptions] = useState<ProcessingOption[]>(defaultOptions);
+export function ProcessingOptions({ initialOptions, onOptionsChange }: ProcessingOptionsProps) {
+  const [options, setOptions] = useState<ProcessingOption[]>(initialOptions ?? defaultOptions);
   const [masterToggle, setMasterToggle] = useState(false);
+
+  // Sync with prop changes (when switching sessions or loading saved options)
+  useEffect(() => {
+    if (initialOptions) {
+      setOptions(initialOptions);
+      // Update master toggle based on whether all options are enabled
+      setMasterToggle(initialOptions.every(opt => opt.enabled));
+    }
+  }, [initialOptions]);
 
   const toggleOption = (optionId: string) => {
     const updatedOptions = options.map(opt =>
