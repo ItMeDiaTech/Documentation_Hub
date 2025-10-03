@@ -46,7 +46,7 @@ const itemVariants = {
 };
 
 export function Dashboard() {
-  const { recentSessions, currentSession, loadSession } = useSession();
+  const { recentSessions, loadSession } = useSession();
   const navigate = useNavigate();
   const [showSessionManager, setShowSessionManager] = useState(false);
   const [sessionManagerMode, setSessionManagerMode] = useState<'new' | 'load'>('new');

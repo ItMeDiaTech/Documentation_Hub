@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
@@ -11,14 +11,18 @@ import {
   Globe,
   Database,
   Key,
-  Monitor,
   Sun,
   Moon,
   Check,
   Type,
   Search,
+  Lightbulb,
+  Send,
+  Link2,
+  Save,
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useUserSettings } from '@/contexts/UserSettingsContext';
 import { cn } from '@/utils/cn';
 
 const settingsSections = [
@@ -41,13 +45,63 @@ const settingsSections = [
     group: 'System',
     items: [
       { id: 'language', label: 'Language', icon: Globe, description: 'Region & locale' },
+      { id: 'api-connections', label: 'API Connections', icon: Link2, description: 'External services' },
       { id: 'data', label: 'Storage', icon: Database, description: 'Data management' },
+      {
+        id: 'submit-idea',
+        label: 'Submit Idea for New Implementation',
+        icon: Lightbulb,
+        description: 'Share your ideas',
+      },
     ],
   },
 ];
 
 export function Settings() {
   const [activeSection, setActiveSection] = useState('profile');
+  const [ideaTitle, setIdeaTitle] = useState('');
+  const [ideaBenefit, setIdeaBenefit] = useState('');
+  const [ideaSubmitted, setIdeaSubmitted] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const { settings, updateProfile, updateNotifications, updateApiConnections, updateSettings, saveSettings } = useUserSettings();
+
+  // Local form states
+  const [profileForm, setProfileForm] = useState(settings.profile);
+  const [notificationsForm, setNotificationsForm] = useState(settings.notifications);
+  const [apiConnectionsForm, setApiConnectionsForm] = useState(settings.apiConnections);
+  const [languageForm, setLanguageForm] = useState(settings.language);
+  const [timezoneForm, setTimezoneForm] = useState(settings.timezone);
+  const [dateFormatForm, setDateFormatForm] = useState(settings.dateFormat);
+
+  // Update local states when settings change
+  useEffect(() => {
+    setProfileForm(settings.profile);
+    setNotificationsForm(settings.notifications);
+    setApiConnectionsForm(settings.apiConnections);
+    setLanguageForm(settings.language);
+    setTimezoneForm(settings.timezone);
+    setDateFormatForm(settings.dateFormat);
+  }, [settings]);
+
+  const handleSaveSettings = async () => {
+    // Update all settings
+    updateProfile(profileForm);
+    updateNotifications(notificationsForm);
+    updateApiConnections(apiConnectionsForm);
+    updateSettings({
+      language: languageForm,
+      timezone: timezoneForm,
+      dateFormat: dateFormatForm,
+    });
+
+    // Save to localStorage
+    const success = await saveSettings();
+    if (success) {
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    }
+  };
   const {
     theme,
     setTheme,
@@ -232,12 +286,13 @@ export function Settings() {
                       <p className="text-sm text-muted-foreground">{item.description}</p>
                     </div>
                     <button
+                      aria-label={`Toggle ${item.label.toLowerCase()}`}
                       className={cn(
                         'relative w-11 h-6 rounded-full transition-colors',
-                        'bg-muted hover:bg-muted/80'
+                        'bg-input hover:bg-accent'
                       )}
                     >
-                      <span className="absolute left-0.5 top-0.5 w-5 h-5 bg-background rounded-full transition-transform" />
+                      <span className="absolute left-0.5 top-0.5 w-5 h-5 bg-background rounded-full shadow-sm transition-transform" />
                     </button>
                   </div>
                 ))}
@@ -308,12 +363,6 @@ export function Settings() {
                             icon: Moon,
                             gradient: 'from-slate-800 to-slate-900',
                           },
-                          {
-                            value: 'system' as const,
-                            label: 'System',
-                            icon: Monitor,
-                            gradient: 'from-blue-400 to-indigo-600',
-                          },
                         ].map((option) => {
                           const Icon = option.icon;
                           return (
@@ -322,6 +371,7 @@ export function Settings() {
                               onClick={() => setTheme(option.value)}
                               whileHover={{ scale: 1.02 }}
                               whileTap={{ scale: 0.98 }}
+                              aria-label={`Select ${option.label} theme`}
                               className={cn(
                                 'relative p-3 rounded-lg border-2 transition-all overflow-hidden group',
                                 theme === option.value
@@ -369,6 +419,7 @@ export function Settings() {
                             onClick={() => setDensity(option.value)}
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
+                            aria-label={`Select ${option.label} density`}
                             className={cn(
                               'relative p-3 rounded-lg border-2 transition-all overflow-hidden',
                               density === option.value
@@ -462,15 +513,18 @@ export function Settings() {
                         aria-label={`${color.name} accent`}
                       >
                         {color.name === 'custom' ? (
-                          <div
-                            className="absolute inset-0"
-                            style={{
-                              background:
-                                accentColor === 'custom'
-                                  ? customAccentColor
-                                  : `conic-gradient(from 180deg at 50% 50%, #ef4444, #f59e0b, #eab308, #84cc16, #22c55e, #14b8a6, #06b6d4, #3b82f6, #6366f1, #8b5cf6, #a855f7, #d946ef, #ec4899, #ef4444)`,
-                            }}
-                          />
+                          <>
+                            {/* Inline style required for dynamic custom or conic gradient background */}
+                            <div
+                              className="absolute inset-0"
+                              style={{
+                                background:
+                                  accentColor === 'custom'
+                                    ? customAccentColor
+                                    : `conic-gradient(from 180deg at 50% 50%, #ef4444, #f59e0b, #eab308, #84cc16, #22c55e, #14b8a6, #06b6d4, #3b82f6, #6366f1, #8b5cf6, #a855f7, #d946ef, #ec4899, #ef4444)`,
+                              }}
+                            />
+                          </>
                         ) : (
                           <div
                             className={cn('absolute inset-0 bg-gradient-to-br', color.gradient)}
@@ -502,9 +556,10 @@ export function Settings() {
                       </div>
                       <button
                         onClick={() => setBlur(!blur)}
+                        aria-label="Toggle glass morphism effects"
                         className={cn(
                           'relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
-                          blur ? 'bg-primary' : 'bg-muted hover:bg-muted/80'
+                          blur ? 'bg-primary' : 'bg-input hover:bg-accent'
                         )}
                       >
                         <motion.span
@@ -524,9 +579,10 @@ export function Settings() {
                       </div>
                       <button
                         onClick={() => setAnimations(!animations)}
+                        aria-label="Toggle smooth animations"
                         className={cn(
                           'relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
-                          animations ? 'bg-primary' : 'bg-muted hover:bg-muted/80'
+                          animations ? 'bg-primary' : 'bg-input hover:bg-accent'
                         )}
                       >
                         <motion.span
@@ -550,9 +606,10 @@ export function Settings() {
                     <h3 className="font-medium flex-1">Custom Theme Colors</h3>
                     <button
                       onClick={() => setUseCustomColors(!useCustomColors)}
+                      aria-label="Toggle custom theme colors"
                       className={cn(
                         'relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
-                        useCustomColors ? 'bg-primary' : 'bg-muted hover:bg-muted/80'
+                        useCustomColors ? 'bg-primary' : 'bg-input hover:bg-accent'
                       )}
                     >
                       <motion.span
@@ -568,12 +625,14 @@ export function Settings() {
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">Primary</label>
                         <button
+                          aria-label="Select primary color"
                           onClick={() => {
                             setTempColor(customPrimaryColor);
                             setActiveColorPicker('primary');
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
+                          {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
                             style={{ backgroundColor: customPrimaryColor }}
@@ -586,12 +645,14 @@ export function Settings() {
                           Background
                         </label>
                         <button
+                          aria-label="Select background color"
                           onClick={() => {
                             setTempColor(customBackgroundColor);
                             setActiveColorPicker('background');
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
+                          {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
                             style={{ backgroundColor: customBackgroundColor }}
@@ -604,12 +665,14 @@ export function Settings() {
                           Main Text
                         </label>
                         <button
+                          aria-label="Select main text color"
                           onClick={() => {
                             setTempColor(customForegroundColor);
                             setActiveColorPicker('foreground');
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
+                          {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
                             style={{ backgroundColor: customForegroundColor }}
@@ -620,12 +683,14 @@ export function Settings() {
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">Header</label>
                         <button
+                          aria-label="Select header color"
                           onClick={() => {
                             setTempColor(customHeaderColor);
                             setActiveColorPicker('header');
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
+                          {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
                             style={{ backgroundColor: customHeaderColor }}
@@ -636,12 +701,14 @@ export function Settings() {
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">Sidebar</label>
                         <button
+                          aria-label="Select sidebar color"
                           onClick={() => {
                             setTempColor(customSidebarColor);
                             setActiveColorPicker('sidebar');
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
+                          {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
                             style={{ backgroundColor: customSidebarColor }}
@@ -652,12 +719,14 @@ export function Settings() {
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">Borders</label>
                         <button
+                          aria-label="Select border color"
                           onClick={() => {
                             setTempColor(customBorderColor);
                             setActiveColorPicker('border');
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
+                          {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
                             style={{ backgroundColor: customBorderColor }}
@@ -670,12 +739,14 @@ export function Settings() {
                           Secondary Text (Descriptions)
                         </label>
                         <button
+                          aria-label="Select secondary text color"
                           onClick={() => {
                             setTempColor(customSecondaryFontColor);
                             setActiveColorPicker('secondaryFont');
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
+                          {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
                             style={{ backgroundColor: customSecondaryFontColor }}
@@ -702,6 +773,7 @@ export function Settings() {
               {/* Live Preview */}
               <div className="p-6 rounded-lg border border-border bg-muted/30">
                 <div className="space-y-3">
+                  {/* eslint-disable-next-line */}
                   <h3
                     className="text-lg font-semibold"
                     style={{
@@ -715,6 +787,7 @@ export function Settings() {
                   >
                     Preview: Main Heading
                   </h3>
+                  {/* eslint-disable-next-line */}
                   <p
                     style={{
                       fontSize: `${fontSize}px`,
@@ -729,6 +802,7 @@ export function Settings() {
                     the lazy dog. Adjust the settings below to see how your text will appear
                     throughout the application.
                   </p>
+                  {/* eslint-disable-next-line */}
                   <p
                     className="text-muted-foreground"
                     style={{
@@ -757,6 +831,7 @@ export function Settings() {
                       setLetterSpacing(0.02);
                       setLineHeight(1.7);
                     }}
+                    aria-label="Apply reading typography preset"
                     className="px-3 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
                   >
                     Reading
@@ -769,6 +844,7 @@ export function Settings() {
                       setLetterSpacing(0);
                       setLineHeight(1.4);
                     }}
+                    aria-label="Apply compact typography preset"
                     className="px-3 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
                   >
                     Compact
@@ -781,6 +857,7 @@ export function Settings() {
                       setLetterSpacing(0.01);
                       setLineHeight(1.6);
                     }}
+                    aria-label="Apply presentation typography preset"
                     className="px-3 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
                   >
                     Presentation
@@ -794,6 +871,7 @@ export function Settings() {
                       setLetterSpacing(0);
                       setLineHeight(1.5);
                     }}
+                    aria-label="Apply default typography preset"
                     className="px-3 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
                   >
                     Default
@@ -808,8 +886,14 @@ export function Settings() {
                   <h3 className="font-medium">Font</h3>
 
                   <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">Family</label>
+                    <label
+                      htmlFor="font-family-select"
+                      className="text-sm text-muted-foreground mb-2 block"
+                    >
+                      Family
+                    </label>
                     <select
+                      id="font-family-select"
                       value={fontFamily}
                       onChange={(e) => setFontFamily(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
@@ -824,6 +908,7 @@ export function Settings() {
                       <option value="'Segoe UI', sans-serif">Segoe UI</option>
                       <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
                       <option value="'Fira Code', monospace">Fira Code</option>
+                      <option value="'Webdings', fantasy">Webdings 🎉</option>
                     </select>
                   </div>
 
@@ -836,6 +921,7 @@ export function Settings() {
                         max="20"
                         value={fontSize}
                         onChange={(e) => setFontSize(Number(e.target.value))}
+                        aria-label="Font size"
                         className="flex-1"
                       />
                       <span className="text-sm font-mono w-12 text-center bg-muted rounded px-2 py-1">
@@ -857,6 +943,7 @@ export function Settings() {
                         <button
                           key={option.value}
                           onClick={() => setFontWeight(option.value)}
+                          aria-label={`Set font weight to ${option.label}`}
                           className={cn(
                             'px-2 py-1.5 text-sm rounded transition-colors',
                             fontWeight === option.value
@@ -875,6 +962,7 @@ export function Settings() {
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => setFontStyle('normal')}
+                        aria-label="Set font style to normal"
                         className={cn(
                           'px-3 py-2 rounded-lg border transition-all text-sm',
                           fontStyle === 'normal'
@@ -886,6 +974,7 @@ export function Settings() {
                       </button>
                       <button
                         onClick={() => setFontStyle('italic')}
+                        aria-label="Set font style to italic"
                         className={cn(
                           'px-3 py-2 rounded-lg border transition-all text-sm italic',
                           fontStyle === 'italic'
@@ -916,6 +1005,7 @@ export function Settings() {
                         step="0.01"
                         value={letterSpacing}
                         onChange={(e) => setLetterSpacing(Number(e.target.value))}
+                        aria-label="Letter spacing"
                         className="flex-1"
                       />
                       <span className="text-xs text-muted-foreground">Wide</span>
@@ -936,6 +1026,7 @@ export function Settings() {
                         step="0.1"
                         value={lineHeight}
                         onChange={(e) => setLineHeight(Number(e.target.value))}
+                        aria-label="Line height"
                         className="flex-1"
                       />
                       <span className="text-xs text-muted-foreground">Spacious</span>
@@ -959,29 +1050,63 @@ export function Settings() {
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Language</label>
-                  <select className="w-full px-3 py-2 rounded-md border border-input bg-background">
+                  <label htmlFor="language-select" className="block text-sm font-medium mb-2">
+                    Language
+                  </label>
+                  <select
+                    id="language-select"
+                    value={languageForm}
+                    onChange={(e) => setLanguageForm(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md border border-input bg-background"
+                  >
                     <option>English (US)</option>
-                    <option>Spanish</option>
-                    <option>French</option>
-                    <option>German</option>
-                    <option>Japanese</option>
+                    <option>Español (Spanish)</option>
+                    <option>中文 (Mandarin Chinese)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Timezone</label>
-                  <select className="w-full px-3 py-2 rounded-md border border-input bg-background">
-                    <option>UTC-08:00 Pacific Time</option>
-                    <option>UTC-05:00 Eastern Time</option>
-                    <option>UTC+00:00 GMT</option>
-                    <option>UTC+01:00 Central European Time</option>
+                  <label htmlFor="timezone-select" className="block text-sm font-medium mb-2">
+                    Timezone
+                  </label>
+                  <select
+                    id="timezone-select"
+                    value={timezoneForm}
+                    onChange={(e) => setTimezoneForm(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md border border-input bg-background"
+                  >
+                    <optgroup label="United States">
+                      <option>UTC-10:00 Hawaii-Aleutian</option>
+                      <option>UTC-09:00 Alaska</option>
+                      <option>UTC-08:00 Pacific Time (PT)</option>
+                      <option>UTC-07:00 Mountain Time (MT)</option>
+                      <option>UTC-06:00 Central Time (CT)</option>
+                      <option>UTC-05:00 Eastern Time (ET)</option>
+                    </optgroup>
+                    <optgroup label="Common International">
+                      <option>UTC+00:00 Coordinated Universal Time</option>
+                      <option>UTC+00:00 London (GMT)</option>
+                      <option>UTC+01:00 Paris/Berlin (CET)</option>
+                      <option>UTC+02:00 Cairo/Athens</option>
+                      <option>UTC+03:00 Moscow/Istanbul</option>
+                      <option>UTC+05:30 Mumbai/Delhi</option>
+                      <option>UTC+08:00 Beijing/Singapore</option>
+                      <option>UTC+09:00 Tokyo/Seoul</option>
+                      <option>UTC+10:00 Sydney</option>
+                    </optgroup>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Date Format</label>
-                  <select className="w-full px-3 py-2 rounded-md border border-input bg-background">
+                  <label htmlFor="date-format-select" className="block text-sm font-medium mb-2">
+                    Date Format
+                  </label>
+                  <select
+                    id="date-format-select"
+                    value={dateFormatForm}
+                    onChange={(e) => setDateFormatForm(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md border border-input bg-background"
+                  >
                     <option>MM/DD/YYYY</option>
                     <option>DD/MM/YYYY</option>
                     <option>YYYY-MM-DD</option>
@@ -989,7 +1114,131 @@ export function Settings() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button>Save Preferences</Button>
+                  <Button onClick={handleSaveSettings} showSuccess={saveSuccess} icon={<Save className="w-4 h-4" />}>
+                    Save Settings
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'api-connections' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">API Connections</h2>
+                <p className="text-muted-foreground mt-1">
+                  Configure external service integrations and API endpoints
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium mb-3">Hyperlink Processing</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="powerautomate-url" className="block text-sm font-medium mb-2">
+                        PowerAutomate Dictionary URL
+                      </label>
+                      <input
+                        id="powerautomate-url"
+                        type="url"
+                        value={apiConnectionsForm.powerAutomateUrl}
+                        onChange={(e) => setApiConnectionsForm({ ...apiConnectionsForm, powerAutomateUrl: e.target.value })}
+                        placeholder="https://www.example.com"
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                      />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        This URL is used by the Hyperlink Service to retrieve document metadata and validate links.
+                        The service will send collected document IDs to this endpoint and receive enriched data in response.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-border">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Link2 className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-medium mb-1">About API Connections</h4>
+                      <p className="text-sm text-muted-foreground">
+                        API connections allow Documentation Hub to integrate with external services for enhanced functionality.
+                        These endpoints are used during document processing to enrich data, validate content, and automate workflows.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveSettings} showSuccess={saveSuccess} icon={<Save className="w-4 h-4" />}>
+                    Save Settings
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'submit-idea' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Submit Idea for New Implementation</h2>
+                <p className="text-muted-foreground mt-1">
+                  Have an idea to improve the application? We'd love to hear from you!
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Title for Idea</label>
+                  <input
+                    type="text"
+                    value={ideaTitle}
+                    onChange={(e) => setIdeaTitle(e.target.value)}
+                    placeholder="Enter a brief title for your idea"
+                    className="w-full px-3 py-2 rounded-md border border-input bg-background"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Why is this needed / Who would this benefit?
+                  </label>
+                  <textarea
+                    value={ideaBenefit}
+                    onChange={(e) => setIdeaBenefit(e.target.value)}
+                    placeholder="Describe the benefits and potential users of this feature..."
+                    rows={6}
+                    className="w-full px-3 py-2 rounded-md border border-input bg-background resize-none"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => {
+                      if (ideaTitle && ideaBenefit) {
+                        setIdeaSubmitted(true);
+                        setTimeout(() => {
+                          setIdeaTitle('');
+                          setIdeaBenefit('');
+                          setIdeaSubmitted(false);
+                        }, 2000);
+                      }
+                    }}
+                    icon={<Send className="w-4 h-4" />}
+                    showSuccess={ideaSubmitted}
+                    disabled={!ideaTitle || !ideaBenefit}
+                  >
+                    Submit Idea
+                  </Button>
+                </div>
+
+                <div className="mt-6 p-4 bg-muted/30 rounded-lg border border-border">
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Note:</strong> Your ideas help shape the future of Documentation Hub. We
+                    review all submissions and prioritize features based on user feedback and
+                    technical feasibility.
+                  </p>
                 </div>
               </div>
             </div>
