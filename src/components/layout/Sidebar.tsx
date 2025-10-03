@@ -180,6 +180,8 @@ export function Sidebar() {
         )}
       </div>
 
+      <div className="mx-4 mb-3 h-px bg-border/50" />
+
       <nav className="flex-1 px-3 pb-3 overflow-y-auto">
         <div className="space-y-1">{navItems.map(renderNavItem)}</div>
       </nav>

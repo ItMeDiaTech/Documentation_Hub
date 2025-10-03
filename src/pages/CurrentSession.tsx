@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  FileText,
   Upload,
   X,
   CheckCircle,
@@ -10,13 +9,13 @@ import {
   Clock,
   Loader2,
   Save,
-  XCircle,
   FileCheck,
   Link,
   MessageSquare,
   Timer,
   Edit2,
   Check,
+  Play,
 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import {
@@ -28,11 +27,13 @@ import {
 } from '@/components/common/Card';
 import { cn } from '@/utils/cn';
 import { useSession } from '@/contexts/SessionContext';
+import { Session } from '@/types/session';
 import { Document } from '@/types/session';
 import { TabContainer } from '@/components/sessions/TabContainer';
 import { ProcessingOptions } from '@/components/sessions/ProcessingOptions';
 import { StylesEditor } from '@/components/sessions/StylesEditor';
 import { ReplacementsTab } from '@/components/sessions/ReplacementsTab';
+import { TrackedChanges } from '@/components/sessions/TrackedChanges';
 
 export function CurrentSession() {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +47,7 @@ export function CurrentSession() {
     removeDocument,
     processDocument,
     updateSessionName,
+    updateSessionOptions,
   } = useSession();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -79,29 +81,21 @@ export function CurrentSession() {
   }
 
   const handleFileSelect = async () => {
-    // In a real implementation, this would use Electron's dialog API
-    // For now, we'll use a file input
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = '.docx';
-
-    input.onchange = (e: Event) => {
-      const target = e.target as HTMLInputElement;
-      const files = Array.from(target.files || []);
-      if (files.length > 0) {
-        addDocuments(session.id, files);
-        // Start processing each document
-        files.forEach((file) => {
-          const doc = session.documents.find((d) => d.name === file.name);
-          if (doc) {
-            handleProcessDocument(doc.id);
-          }
-        });
-      }
-    };
-
-    input.click();
+    // Use Electron's native file dialog
+    const filePaths = await window.electronAPI.selectFiles();
+    if (filePaths && filePaths.length > 0) {
+      // Convert file paths to File-like objects with path property
+      const files = filePaths.map(filePath => {
+        const name = filePath.split(/[\\\/]/).pop() || 'document.docx';
+        return {
+          name,
+          path: filePath,
+          size: 0, // Size will be determined by the backend
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        } as File & { path: string };
+      });
+      await addDocuments(session.id, files);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -113,14 +107,16 @@ export function CurrentSession() {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
 
     const files = Array.from(e.dataTransfer.files).filter((file) => file.name.endsWith('.docx'));
 
     if (files.length > 0) {
-      addDocuments(session.id, files);
+      // Add file paths to the File objects for Electron processing
+      const filesWithPaths = files.map(file => Object.assign(file, { path: (file as any).path }));
+      await addDocuments(session.id, filesWithPaths);
     }
   };
 
@@ -150,6 +146,24 @@ export function CurrentSession() {
   const handleCancelEdit = () => {
     setIsEditingTitle(false);
     setEditedTitle('');
+  };
+
+  const handleProcessingOptionsChange = (options: any[]) => {
+    // Update session with selected processing options
+    const enabledOperations = options
+      .filter(opt => opt.enabled)
+      .map(opt => opt.id);
+
+    // Update session processing options using the context method
+    updateSessionOptions(session.id, {
+      appendContentId: enabledOperations.includes('fix-content-ids'),
+      contentIdToAppend: '#content',
+      validateUrls: true,
+      createBackup: true,
+      processInternalLinks: enabledOperations.includes('fix-internal-hyperlinks'),
+      processExternalLinks: true,
+      enabledOperations: enabledOperations,
+    });
   };
 
   const getStatusIcon = (status: Document['status']) => {
@@ -230,7 +244,12 @@ export function CurrentSession() {
               <Timer className="w-8 h-8 text-orange-500" />
               <div>
                 <p className="text-xs text-muted-foreground">Time Saved</p>
-                <p className="text-2xl font-bold">{session.stats.timeSaved}m</p>
+                <p className="text-2xl font-bold">
+                  {Math.round((session.stats.hyperlinksChecked * 101) / 60)}m
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  101 seconds per hyperlink
+                </p>
               </div>
             </div>
           </CardContent>
@@ -267,7 +286,22 @@ export function CurrentSession() {
             </div>
           ) : (
             <>
-              <div className="mb-4 flex justify-end">
+              <div className="mb-4 flex justify-between">
+                <Button
+                  onClick={() => {
+                    // Process all pending documents
+                    session.documents
+                      .filter(doc => doc.status === 'pending')
+                      .forEach(doc => handleProcessDocument(doc.id));
+                  }}
+                  size="sm"
+                  variant="default"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  icon={<Play className="w-4 h-4" />}
+                  disabled={!session.documents.some(doc => doc.status === 'pending')}
+                >
+                  Process Documents
+                </Button>
                 <Button
                   onClick={handleFileSelect}
                   size="sm"
@@ -366,17 +400,22 @@ export function CurrentSession() {
     {
       id: 'processing',
       label: 'Processing Options',
-      content: <ProcessingOptions sessionId={session.id} />,
+      content: <ProcessingOptions sessionId={session.id} onOptionsChange={handleProcessingOptionsChange} />,
     },
     {
       id: 'styles',
       label: 'Styles',
-      content: <StylesEditor sessionId={session.id} />,
+      content: <StylesEditor />,
     },
     {
       id: 'replacements',
       label: 'Replacements',
-      content: <ReplacementsTab sessionId={session.id} />,
+      content: <ReplacementsTab />,
+    },
+    {
+      id: 'tracked-changes',
+      label: 'Tracked Changes',
+      content: <TrackedChanges sessionId={session.id} />,
     },
   ];
 

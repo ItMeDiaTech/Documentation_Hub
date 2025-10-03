@@ -23,10 +23,11 @@ Layout components that structure the application shell:
   - Close button for active sessions
 
 - **Header.tsx** - Application header
-  - Breadcrumb navigation with page path
+  - **ENHANCED**: Clickable breadcrumb navigation for quick access
   - Page descriptions below breadcrumbs
-  - Theme switcher dropdown (removed)
-  - Command palette trigger (Cmd/Ctrl+K)
+  - **NEW**: Real-time clock widget in top-right
+  - **UPDATED**: Lightning bolt icon for command palette with tooltip
+  - Theme switcher (simplified to Light/Dark only)
   - Responsive text sizing
 
 ### common/
@@ -39,6 +40,9 @@ Reusable UI components used throughout the application:
   - Loading state with spinner
   - Icon support
   - Framer Motion animations
+  - **NEW**: Success state with checkmark animation
+  - **NEW**: showSuccess prop for visual feedback
+  - **NEW**: onSuccess callback after animation completes
 
 - **Input.tsx** - Advanced input field
   - Label and helper text support
@@ -62,9 +66,13 @@ Reusable UI components used throughout the application:
 
 - **ColorPickerDialog.tsx** - Theme color customization
   - Accent color selection
-  - Predefined color palette (4 per row)
-  - Visual preview
+  - Predefined color palette (8 colors per row, 24 total)
+  - Visual preview with hover tooltip
   - Dialog overlay
+  - **ENHANCED**: Click-to-pick color with visual feedback
+  - **ENHANCED**: Icon indicators in hex input field
+  - **ENHANCED**: "Quick Colors" label for palette
+  - **ENHANCED**: Explicit OK/Cancel buttons for better UX
 
 - **BugReportButton.tsx** - Floating feedback button
   - Fixed position bottom-right
