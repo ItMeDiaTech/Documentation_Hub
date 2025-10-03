@@ -274,6 +274,7 @@ export class WordDocumentProcessor {
     console.log('Parsing main relationships file...');
     const mainRelsData = this.xmlParser.parse(mainRelsXml);
     console.log('Main relationships data structure:', Object.keys(mainRelsData));
+    console.log('Full parsed structure:', JSON.stringify(mainRelsData, null, 2).substring(0, 2000));
     const mainRelationships = this.extractRelationshipsFromData(mainRelsData);
 
     // Parse document.xml for hyperlink elements
@@ -319,7 +320,7 @@ export class WordDocumentProcessor {
 
   /**
    * Extract relationships from parsed XML data
-   * Handles preserveOrder: true array structure
+   * Handles preserveOrder: true array structure with :@ attribute object
    */
   private extractRelationshipsFromData(relsData: any): Map<string, string> {
     console.log('Extracting relationships from parsed data...');
@@ -341,9 +342,11 @@ export class WordDocumentProcessor {
         } else if (data.Relationship) {
           const relArray = Array.isArray(data.Relationship) ? data.Relationship : [data.Relationship];
           for (const rel of relArray) {
-            if (rel['@_Type']?.includes('hyperlink')) {
-              const id = rel['@_Id'];
-              const target = rel['@_Target'];
+            // With preserveOrder: true, attributes are in :@ object
+            const attrs = rel[':@'] || {};
+            if (attrs['@_Type']?.includes('hyperlink')) {
+              const id = attrs['@_Id'];
+              const target = attrs['@_Target'];
               if (id && target) {
                 relationships.set(id, target);
                 console.log(`  Found relationship: ${id} -> ${target.substring(0, 60)}...`);
@@ -353,7 +356,7 @@ export class WordDocumentProcessor {
         } else {
           // Continue searching in nested objects
           for (const key in data) {
-            if (key.startsWith('@_')) continue; // Skip attributes
+            if (key.startsWith('@_') || key === ':@') continue; // Skip attributes
             findRelationships(data[key]);
           }
         }
@@ -378,13 +381,24 @@ export class WordDocumentProcessor {
     console.log(`Extracting hyperlinks from ${containingPart}...`);
     console.log(`Available relationships: ${relationships.size}`);
 
+    let hyperlinkCount = 0;
+
     // Traverse the document tree to find hyperlinks
     this.traverseElement(docData, (element: any) => {
       // Check for w:hyperlink in both direct key and nested structure
       const hyperlinkElement = element['w:hyperlink'];
 
       if (hyperlinkElement) {
-        const relationshipId = hyperlinkElement['@_r:id'];
+        hyperlinkCount++;
+
+        // With preserveOrder: true, attributes are in :@ object on the parent element
+        const attrs = element[':@'] || {};
+        const relationshipId = attrs['@_r:id'] || attrs['@_w:id'];
+
+        if (hyperlinkCount === 1) {
+          console.log('First hyperlink parent element :@ attributes:', attrs);
+        }
+
         console.log(`  Found w:hyperlink element with relationshipId: ${relationshipId}`);
 
         if (relationshipId && relationships.has(relationshipId)) {
@@ -450,25 +464,52 @@ export class WordDocumentProcessor {
 
   /**
    * Extract display text from hyperlink element
+   * Handles preserveOrder: true array structure
    */
   private extractDisplayText(hyperlinkElement: any): string {
     let text = '';
 
-    // Navigate to w:r/w:t elements
-    const runs = hyperlinkElement['w:r'];
-    const runsArray = Array.isArray(runs) ? runs : (runs ? [runs] : []);
+    // Helper to extract text from w:t elements
+    const extractText = (element: any): string => {
+      if (!element) return '';
 
-    for (const run of runsArray) {
-      const textElement = run['w:t'];
-      if (textElement) {
-        if (typeof textElement === 'string') {
-          text += textElement;
-        } else if (textElement['#text']) {
-          text += textElement['#text'];
+      // With preserveOrder: true, element might be an array
+      if (Array.isArray(element)) {
+        return element.map(extractText).join('');
+      }
+
+      // Check for 'w:t' key (text element)
+      if (element['w:t']) {
+        const textEl = element['w:t'];
+        if (Array.isArray(textEl)) {
+          for (const t of textEl) {
+            if (t['#text']) text += t['#text'];
+            else if (typeof t === 'string') text += t;
+          }
+        } else if (textEl['#text']) {
+          text += textEl['#text'];
+        } else if (typeof textEl === 'string') {
+          text += textEl;
         }
       }
-    }
 
+      // Check for 'w:r' key (run element)
+      if (element['w:r']) {
+        const runs = Array.isArray(element['w:r']) ? element['w:r'] : [element['w:r']];
+        for (const run of runs) {
+          text += extractText(run);
+        }
+      }
+
+      // If element has #text property, use it
+      if (element['#text']) {
+        text += element['#text'];
+      }
+
+      return text;
+    };
+
+    text = extractText(hyperlinkElement);
     return text.trim();
   }
 
@@ -921,6 +962,7 @@ export class WordDocumentProcessor {
   /**
    * Update relationship target URL in parsed relationships data
    * Returns true if update was successful
+   * Handles preserveOrder: true with :@ attribute object
    */
   private updateRelationshipTarget(relsData: any, relationshipId: string, newTarget: string): boolean {
     let updated = false;
@@ -934,8 +976,10 @@ export class WordDocumentProcessor {
         } else if (item.Relationship) {
           const rels = Array.isArray(item.Relationship) ? item.Relationship : [item.Relationship];
           for (const rel of rels) {
-            if (rel['@_Id'] === relationshipId) {
-              rel['@_Target'] = newTarget;
+            // With preserveOrder: true, attributes are in :@ object
+            const attrs = rel[':@'] || {};
+            if (attrs['@_Id'] === relationshipId) {
+              attrs['@_Target'] = newTarget;
               updated = true;
             }
           }
@@ -946,8 +990,10 @@ export class WordDocumentProcessor {
     } else if (relsData.Relationship) {
       const rels = Array.isArray(relsData.Relationship) ? relsData.Relationship : [relsData.Relationship];
       for (const rel of rels) {
-        if (rel['@_Id'] === relationshipId) {
-          rel['@_Target'] = newTarget;
+        // With preserveOrder: true, attributes are in :@ object
+        const attrs = rel[':@'] || {};
+        if (attrs['@_Id'] === relationshipId) {
+          attrs['@_Target'] = newTarget;
           updated = true;
         }
       }

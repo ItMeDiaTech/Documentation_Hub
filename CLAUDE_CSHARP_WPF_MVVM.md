@@ -9,12 +9,14 @@ A modern, polished WPF desktop application built with C# featuring comprehensive
 ## Technology Stack
 
 ### Core Framework
+
 - **.NET 8.0** - Latest LTS version
 - **WPF (Windows Presentation Foundation)** - Rich desktop UI framework
 - **MVVM (Model-View-ViewModel)** - Clean separation of concerns
 - **C# 12** - Latest language features
 
 ### Libraries & Packages
+
 - **CommunityToolkit.Mvvm** - Modern MVVM helpers (RelayCommand, ObservableObject)
 - **DocumentFormat.OpenXml** - Office document manipulation (replacement for JSZip)
 - **Newtonsoft.Json** - JSON serialization for settings
@@ -29,22 +31,22 @@ A modern, polished WPF desktop application built with C# featuring comprehensive
 
 ### MVVM Pattern Mapping
 
-| **TypeScript/React**         | **C# WPF/MVVM**               |
-|------------------------------|-------------------------------|
-| React Components             | XAML Views                    |
-| React Hooks/Context          | ViewModels (ObservableObject) |
-| useState                     | ObservableProperty            |
-| useContext                   | Services (DI)                 |
-| Props                        | DataContext binding           |
-| Event handlers               | ICommand / RelayCommand       |
-| localStorage                 | ApplicationSettings           |
-| Electron IPC                 | Services + Commands           |
+| **TypeScript/React** | **C# WPF/MVVM**               |
+| -------------------- | ----------------------------- |
+| React Components     | XAML Views                    |
+| React Hooks/Context  | ViewModels (ObservableObject) |
+| useState             | ObservableProperty            |
+| useContext           | Services (DI)                 |
+| Props                | DataContext binding           |
+| Event handlers       | ICommand / RelayCommand       |
+| localStorage         | ApplicationSettings           |
+| Electron IPC         | Services + Commands           |
 
 ---
 
 ## Project Structure
 
-```
+```text
 DocHub.WPF/
 ├── App.xaml                           # Application entry point
 ├── App.xaml.cs                        # Application code-behind
@@ -942,6 +944,7 @@ namespace DocHub.WPF
 ### 1. **Data Binding vs Props**
 
 **React (TypeScript):**
+
 ```typescript
 <Button onClick={handleClick} disabled={isLoading}>
   {buttonText}
@@ -949,6 +952,7 @@ namespace DocHub.WPF
 ```
 
 **WPF (C#/XAML):**
+
 ```xml
 <Button Content="{Binding ButtonText}"
         Command="{Binding HandleClickCommand}"
@@ -958,12 +962,14 @@ namespace DocHub.WPF
 ### 2. **State Management**
 
 **React (TypeScript):**
+
 ```typescript
 const [count, setCount] = useState(0);
 const increment = () => setCount(count + 1);
 ```
 
 **WPF (C#):**
+
 ```csharp
 [ObservableProperty]
 private int _count;
@@ -975,6 +981,7 @@ private void Increment() => Count++;
 ### 3. **Document Processing**
 
 **TypeScript (JSZip):**
+
 ```typescript
 const zip = await JSZip.loadAsync(data);
 const xml = await zip.file('word/document.xml')?.async('string');
@@ -982,6 +989,7 @@ const parsed = xmlParser.parse(xml);
 ```
 
 **C# (OpenXML SDK):**
+
 ```csharp
 using var doc = WordprocessingDocument.Open(filePath, true);
 var mainPart = doc.MainDocumentPart;
@@ -991,15 +999,17 @@ var hyperlinks = mainPart.Document.Descendants<Hyperlink>();
 ### 4. **API Calls**
 
 **TypeScript (fetch):**
+
 ```typescript
 const response = await fetch(url, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(data)
+  body: JSON.stringify(data),
 });
 ```
 
 **C# (HttpClient):**
+
 ```csharp
 var json = JsonSerializer.Serialize(data);
 var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -1030,6 +1040,7 @@ var response = await httpClient.PostAsync(url, content);
 ## Performance Optimizations
 
 ### 1. **Virtual UI (ItemsControl Virtualization)**
+
 ```xml
 <DataGrid VirtualizingPanel.IsVirtualizing="True"
           VirtualizingPanel.VirtualizationMode="Recycling"
@@ -1037,6 +1048,7 @@ var response = await httpClient.PostAsync(url, content);
 ```
 
 ### 2. **Async/Await Everywhere**
+
 ```csharp
 [RelayCommand]
 private async Task ProcessDocumentAsync()
@@ -1049,6 +1061,7 @@ private async Task ProcessDocumentAsync()
 ```
 
 ### 3. **INotifyPropertyChanged (Auto-Generated)**
+
 ```csharp
 [ObservableProperty]
 private string _name = string.Empty;
