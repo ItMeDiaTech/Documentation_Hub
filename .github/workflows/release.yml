@@ -59,21 +59,27 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/latest.yml
 
       - name: Upload macOS artifacts
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: macos-installer
-          path: release/*.dmg
+          path: |
+            release/*.dmg
+            release/latest-mac.yml
 
       - name: Upload Linux artifacts
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: linux-installer
-          path: release/*.AppImage
+          path: |
+            release/*.AppImage
+            release/latest-linux.yml
 
   create-release:
     needs: release
@@ -90,8 +96,11 @@ jobs:
         with:
           files: |
             windows-installer/*.exe
+            windows-installer/latest.yml
             macos-installer/*.dmg
+            macos-installer/latest-mac.yml
             linux-installer/*.AppImage
+            linux-installer/latest-linux.yml
           generate_release_notes: true
           draft: false
           prerelease: false
