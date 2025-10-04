@@ -94,6 +94,7 @@ export interface HyperlinkProcessingOptions {
     fixInternalHyperlinks?: boolean;
     updateTopHyperlinks?: boolean;
     updateTocHyperlinks?: boolean;
+    fixKeywords?: boolean;
   };
   textReplacements?: any[];
   styles?: any;

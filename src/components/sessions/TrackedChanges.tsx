@@ -6,8 +6,9 @@ import { useSession } from '@/contexts/SessionContext';
 
 interface Change {
   id: string;
+  description: string;
   type: 'addition' | 'deletion' | 'modification';
-  lineNumber: number;
+  lineNumber?: number;
   originalText: string;
   newText: string;
 }
@@ -22,59 +23,6 @@ interface DocumentChange {
 interface TrackedChangesProps {
   sessionId: string;
 }
-
-// Mock data for demonstration (will be replaced with real data)
-const mockChanges: DocumentChange[] = [
-  {
-    id: 'doc1',
-    documentName: 'Project_Report_2024.docx',
-    totalChanges: 12,
-    changes: [
-      {
-        id: 'change1',
-        type: 'modification',
-        lineNumber: 15,
-        originalText: 'The project timeline extends through December 2023',
-        newText: 'The project timeline extends through March 2024'
-      },
-      {
-        id: 'change2',
-        type: 'addition',
-        lineNumber: 23,
-        originalText: '',
-        newText: 'Additional resources have been allocated to ensure timely completion.'
-      },
-      {
-        id: 'change3',
-        type: 'deletion',
-        lineNumber: 45,
-        originalText: 'Legacy system integration is required for this phase.',
-        newText: ''
-      }
-    ]
-  },
-  {
-    id: 'doc2',
-    documentName: 'Technical_Specifications.docx',
-    totalChanges: 8,
-    changes: [
-      {
-        id: 'change4',
-        type: 'modification',
-        lineNumber: 10,
-        originalText: 'API version 2.0',
-        newText: 'API version 3.0'
-      },
-      {
-        id: 'change5',
-        type: 'addition',
-        lineNumber: 35,
-        originalText: '',
-        newText: 'New authentication mechanism using OAuth 2.0'
-      }
-    ]
-  }
-];
 
 export function TrackedChanges({ sessionId }: TrackedChangesProps) {
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
@@ -94,12 +42,12 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
       if (doc.status === 'completed' && doc.processingResult?.changes) {
         const docChanges: Change[] = doc.processingResult.changes.map((change, idx) => ({
           id: `${doc.id}-change-${idx}`,
+          description: change.description || 'Change applied',
           type: change.type === 'hyperlink' ? 'modification' as const :
                 change.type === 'text' ? 'modification' as const :
                 'addition' as const,
-          lineNumber: idx + 1, // Line numbers would need to be tracked during processing
           originalText: change.before || '',
-          newText: change.after || change.description || ''
+          newText: change.after || ''
         }));
 
         if (docChanges.length > 0) {
@@ -113,8 +61,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
       }
     });
 
-    // If no real changes yet, use mock data for demonstration
-    return changes.length > 0 ? changes : mockChanges;
+    return changes;
   }, [session]);
 
   const toggleDocument = (docId: string) => {
@@ -127,48 +74,13 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
     setExpandedDocs(newExpanded);
   };
 
-  const getChangeTypeColor = (type: Change['type']) => {
-    switch (type) {
-      case 'addition':
-        return 'text-green-600 bg-green-50';
-      case 'deletion':
-        return 'text-red-600 bg-red-50';
-      case 'modification':
-        return 'text-blue-600 bg-blue-50';
-    }
-  };
-
-  const getChangeTypeLabel = (type: Change['type']) => {
-    switch (type) {
-      case 'addition':
-        return 'Added';
-      case 'deletion':
-        return 'Deleted';
-      case 'modification':
-        return 'Modified';
-    }
-  };
-
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-lg font-semibold">Tracked Changes</h3>
-          <p className="text-sm text-muted-foreground">
-            Review all changes made during document processing
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="px-2 py-1 bg-green-50 text-green-600 rounded">
-            Additions
-          </span>
-          <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded">
-            Modifications
-          </span>
-          <span className="px-2 py-1 bg-red-50 text-red-600 rounded">
-            Deletions
-          </span>
-        </div>
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold">Tracked Changes</h3>
+        <p className="text-sm text-muted-foreground">
+          Review all changes made during document processing
+        </p>
       </div>
 
       <div className="space-y-2">
@@ -219,16 +131,8 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <span
-                              className={cn(
-                                'px-2 py-0.5 text-xs rounded font-medium',
-                                getChangeTypeColor(change.type)
-                              )}
-                            >
-                              {getChangeTypeLabel(change.type)}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              Line {change.lineNumber}
+                            <span className="px-2 py-0.5 text-xs rounded font-medium bg-blue-50 text-blue-600">
+                              {change.description}
                             </span>
                           </div>
                         </div>

@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, Check } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSession } from '@/contexts/SessionContext';
+import { ReplacementRule } from '@/types/session';
 
 interface HyperlinkRule {
   id: string;
@@ -19,14 +21,75 @@ interface TextRule {
 }
 
 interface ReplacementsTabProps {
-  onRulesChange?: (hyperlinkRules: HyperlinkRule[], textRules: TextRule[]) => void;
+  sessionId?: string;
 }
 
-export function ReplacementsTab({ onRulesChange }: ReplacementsTabProps) {
+export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
+  const { sessions, updateSessionReplacements } = useSession();
   const [replaceHyperlinksEnabled, setReplaceHyperlinksEnabled] = useState(false);
   const [replaceTextEnabled, setReplaceTextEnabled] = useState(false);
   const [hyperlinkRules, setHyperlinkRules] = useState<HyperlinkRule[]>([]);
   const [textRules, setTextRules] = useState<TextRule[]>([]);
+
+  // Load existing replacements from session on mount
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const session = sessions.find(s => s.id === sessionId);
+    if (session?.replacements) {
+      // Convert ReplacementRule[] to HyperlinkRule[] and TextRule[]
+      const hyperlinks: HyperlinkRule[] = [];
+      const texts: TextRule[] = [];
+
+      session.replacements.forEach(rule => {
+        if (rule.type === 'hyperlink') {
+          hyperlinks.push({
+            id: rule.id,
+            enabled: rule.enabled,
+            oldHyperlink: rule.pattern,
+            newContentId: rule.replacement,
+          });
+        } else if (rule.type === 'text') {
+          texts.push({
+            id: rule.id,
+            enabled: rule.enabled,
+            oldText: rule.pattern,
+            newText: rule.replacement,
+          });
+        }
+      });
+
+      setHyperlinkRules(hyperlinks);
+      setTextRules(texts);
+      setReplaceHyperlinksEnabled(hyperlinks.some(r => r.enabled));
+      setReplaceTextEnabled(texts.some(r => r.enabled));
+    }
+  }, [sessionId, sessions]);
+
+  // Save changes to session whenever rules change
+  const saveRulesToSession = (hyperlinks: HyperlinkRule[], texts: TextRule[]) => {
+    if (!sessionId) return;
+
+    // Convert back to ReplacementRule[]
+    const replacements: ReplacementRule[] = [
+      ...hyperlinks.map(h => ({
+        id: h.id,
+        enabled: h.enabled,
+        type: 'hyperlink' as const,
+        pattern: h.oldHyperlink,
+        replacement: h.newContentId,
+      })),
+      ...texts.map(t => ({
+        id: t.id,
+        enabled: t.enabled,
+        type: 'text' as const,
+        pattern: t.oldText,
+        replacement: t.newText,
+      })),
+    ];
+
+    updateSessionReplacements(sessionId, replacements);
+  };
 
   const addHyperlinkRule = () => {
     const newRule: HyperlinkRule = {
@@ -37,7 +100,7 @@ export function ReplacementsTab({ onRulesChange }: ReplacementsTabProps) {
     };
     const updatedRules = [...hyperlinkRules, newRule];
     setHyperlinkRules(updatedRules);
-    onRulesChange?.(updatedRules, textRules);
+    saveRulesToSession(updatedRules, textRules);
   };
 
   const updateHyperlinkRule = (id: string, updates: Partial<HyperlinkRule>) => {
@@ -45,13 +108,13 @@ export function ReplacementsTab({ onRulesChange }: ReplacementsTabProps) {
       rule.id === id ? { ...rule, ...updates } : rule
     );
     setHyperlinkRules(updatedRules);
-    onRulesChange?.(updatedRules, textRules);
+    saveRulesToSession(updatedRules, textRules);
   };
 
   const removeHyperlinkRule = (id: string) => {
     const updatedRules = hyperlinkRules.filter(rule => rule.id !== id);
     setHyperlinkRules(updatedRules);
-    onRulesChange?.(updatedRules, textRules);
+    saveRulesToSession(updatedRules, textRules);
   };
 
   const addTextRule = () => {
@@ -63,7 +126,7 @@ export function ReplacementsTab({ onRulesChange }: ReplacementsTabProps) {
     };
     const updatedRules = [...textRules, newRule];
     setTextRules(updatedRules);
-    onRulesChange?.(hyperlinkRules, updatedRules);
+    saveRulesToSession(hyperlinkRules, updatedRules);
   };
 
   const updateTextRule = (id: string, updates: Partial<TextRule>) => {
@@ -71,13 +134,13 @@ export function ReplacementsTab({ onRulesChange }: ReplacementsTabProps) {
       rule.id === id ? { ...rule, ...updates } : rule
     );
     setTextRules(updatedRules);
-    onRulesChange?.(hyperlinkRules, updatedRules);
+    saveRulesToSession(hyperlinkRules, updatedRules);
   };
 
   const removeTextRule = (id: string) => {
     const updatedRules = textRules.filter(rule => rule.id !== id);
     setTextRules(updatedRules);
-    onRulesChange?.(hyperlinkRules, updatedRules);
+    saveRulesToSession(hyperlinkRules, updatedRules);
   };
 
   return (
