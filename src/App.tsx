@@ -2,6 +2,7 @@ import { createHashRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { SessionProvider } from '@/contexts/SessionContext';
 import { UserSettingsProvider } from '@/contexts/UserSettingsContext';
+import { GlobalStatsProvider } from '@/contexts/GlobalStatsContext';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
@@ -89,9 +90,11 @@ function App() {
   return (
     <ThemeProvider>
       <UserSettingsProvider>
-        <SessionProvider>
-          <RouterProvider router={router} />
-        </SessionProvider>
+        <GlobalStatsProvider>
+          <SessionProvider>
+            <RouterProvider router={router} />
+          </SessionProvider>
+        </GlobalStatsProvider>
       </UserSettingsProvider>
     </ThemeProvider>
   );

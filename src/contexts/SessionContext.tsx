@@ -7,6 +7,7 @@ import {
   deleteSession as deleteSessionFromDB,
   migrateFromLocalStorage
 } from '@/utils/indexedDB';
+import { useGlobalStats } from './GlobalStatsContext';
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
@@ -25,6 +26,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
+  const { updateStats: updateGlobalStats } = useGlobalStats();
 
   const loadSessionsFromStorage = async () => {
     try {
@@ -411,6 +413,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             : s
         )
       );
+
+      // Update global stats if processing was successful
+      if (result.success) {
+        await updateGlobalStats({
+          documentsProcessed: 1,
+          hyperlinksChecked: result.totalHyperlinks,
+          timeSaved: Math.round((result.totalHyperlinks * 101) / 60),
+        });
+      }
     } catch (error) {
       console.error('Error processing document:', error);
 
