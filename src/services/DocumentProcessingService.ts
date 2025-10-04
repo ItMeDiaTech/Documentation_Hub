@@ -1165,6 +1165,7 @@ export class DocumentProcessingService {
 
             if (rows.length > 0 && tableSettings.headerRowShaded) {
               const headerRow = rows[0]; // First row is typically the header
+              const shadingColor = tableSettings.headerRowShadingColor || '#D3D3D3';
 
               // Apply shading to all cells in header row
               if (headerRow['w:tc']) {
@@ -1178,7 +1179,6 @@ export class DocumentProcessingService {
                   const tcPr = Array.isArray(cell['w:tcPr']) ? cell['w:tcPr'][0] : cell['w:tcPr'];
 
                   // Apply shading with color (strip # prefix)
-                  const shadingColor = tableSettings.headerRowShadingColor || '#D3D3D3';
                   tcPr['w:shd'] = {
                     '@_w:val': 'clear',
                     '@_w:color': 'auto',

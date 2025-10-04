@@ -350,10 +350,10 @@ export function Analytics() {
         onOpenChange={setShowResetDialog}
         onConfirm={handleResetStats}
         title="Reset All Statistics?"
-        description="This will permanently delete all historical data including daily, weekly, and monthly statistics. Your all-time totals will be reset to zero. This action cannot be undone."
-        confirmLabel="Reset All Stats"
-        confirmVariant="destructive"
-        isLoading={isResetting}
+        message="This will permanently delete all historical data including daily, weekly, and monthly statistics. Your all-time totals will be reset to zero. This action cannot be undone."
+        confirmText="Reset All Stats"
+        variant="destructive"
+        loading={isResetting}
       />
     </motion.div>
   );
