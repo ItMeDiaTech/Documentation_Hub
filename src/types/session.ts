@@ -163,6 +163,10 @@ export interface SessionContextType {
   removeDocument: (sessionId: string, documentId: string) => void;
   processDocument: (sessionId: string, documentId: string) => Promise<void>;
 
+  // Revert actions
+  revertChange: (sessionId: string, documentId: string, changeId: string) => Promise<void>;
+  revertAllChanges: (sessionId: string, documentId: string) => Promise<void>;
+
   // Stats
   updateSessionStats: (sessionId: string, stats: Partial<SessionStats>) => void;
   updateSessionName: (sessionId: string, name: string) => void;
