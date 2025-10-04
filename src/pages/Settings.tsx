@@ -69,6 +69,10 @@ export function Settings() {
   const [checkingForUpdates, setCheckingForUpdates] = useState(false);
   const [updateStatus, setUpdateStatus] = useState('');
   const [currentVersion, setCurrentVersion] = useState('');
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateVersion, setUpdateVersion] = useState('');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
   const { settings, updateProfile, updateNotifications, updateApiConnections, updateUpdateSettings, updateSettings, saveSettings } = useUserSettings();
 
@@ -92,6 +96,46 @@ export function Settings() {
       }
     };
     getVersion();
+  }, []);
+
+  // Update event listeners
+  useEffect(() => {
+    const unsubAvailable = window.electronAPI.onUpdateAvailable((info) => {
+      setUpdateAvailable(true);
+      setUpdateVersion(info.version);
+      setUpdateStatus(`Update available: ${info.version}`);
+      setCheckingForUpdates(false);
+    });
+
+    const unsubProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
+      setDownloadProgress(progress.percent);
+      setUpdateStatus(`Downloading update: ${Math.round(progress.percent)}%`);
+    });
+
+    const unsubDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
+      setUpdateDownloaded(true);
+      setDownloadProgress(100);
+      setUpdateStatus(`Update ${info.version} downloaded. Ready to install.`);
+    });
+
+    const unsubNotAvailable = window.electronAPI.onUpdateNotAvailable(() => {
+      setUpdateAvailable(false);
+      setUpdateStatus('You are up to date');
+      setCheckingForUpdates(false);
+    });
+
+    const unsubError = window.electronAPI.onUpdateError((error) => {
+      setUpdateStatus(`Update error: ${error.message}`);
+      setCheckingForUpdates(false);
+    });
+
+    return () => {
+      unsubAvailable();
+      unsubProgress();
+      unsubDownloaded();
+      unsubNotAvailable();
+      unsubError();
+    };
   }, []);
 
   // Update local states when settings change
@@ -128,24 +172,32 @@ export function Settings() {
   const handleCheckForUpdates = async () => {
     setCheckingForUpdates(true);
     setUpdateStatus('Checking for updates...');
+    setUpdateAvailable(false);
+    setUpdateDownloaded(false);
+    setDownloadProgress(0);
 
     try {
-      const result = await window.electronAPI.checkForUpdates();
-
-      if (result.success) {
-        if (result.updateInfo) {
-          setUpdateStatus(`Update available: ${result.updateInfo.version}`);
-        } else {
-          setUpdateStatus('You are up to date');
-        }
-      } else {
-        setUpdateStatus(result.message || 'Failed to check for updates');
-      }
+      await window.electronAPI.checkForUpdates();
+      // Status will be updated by event listeners
     } catch (error) {
       setUpdateStatus('Error checking for updates');
-    } finally {
       setCheckingForUpdates(false);
     }
+  };
+
+  const handleDownloadUpdate = async () => {
+    setUpdateStatus('Starting download...');
+    try {
+      await window.electronAPI.downloadUpdate();
+      // Progress will be updated by event listeners
+    } catch (error) {
+      setUpdateStatus('Download failed');
+    }
+  };
+
+  const handleInstallUpdate = () => {
+    // This will quit the app and install the update
+    window.electronAPI.installUpdate();
   };
   const {
     theme,
@@ -1193,6 +1245,33 @@ export function Settings() {
                   </div>
                   {updateStatus && (
                     <p className="text-sm text-muted-foreground">{updateStatus}</p>
+                  )}
+                  {updateAvailable && !updateDownloaded && (
+                    <Button
+                      onClick={handleDownloadUpdate}
+                      variant="default"
+                      className="w-full"
+                      disabled={downloadProgress > 0 && downloadProgress < 100}
+                    >
+                      {downloadProgress > 0 ? `Downloading ${Math.round(downloadProgress)}%` : `Download Update ${updateVersion}`}
+                    </Button>
+                  )}
+                  {downloadProgress > 0 && downloadProgress < 100 && (
+                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                      <div
+                        className="h-full bg-primary transition-all duration-300"
+                        style={{ width: `${downloadProgress}%` }}
+                      />
+                    </div>
+                  )}
+                  {updateDownloaded && (
+                    <Button
+                      onClick={handleInstallUpdate}
+                      variant="default"
+                      className="w-full bg-green-600 hover:bg-green-700"
+                    >
+                      Install & Restart
+                    </Button>
                   )}
                 </div>
 

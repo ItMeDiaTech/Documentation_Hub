@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { CommandPalette } from '@/components/navigation/CommandPalette';
 import { BugReportButton } from '@/components/common/BugReportButton';
+import { UpdateNotification } from '@/components/common/UpdateNotification';
 import { Dashboard } from '@/pages/Dashboard';
 import { Settings } from '@/pages/Settings';
 import { CurrentSession } from '@/pages/CurrentSession';
@@ -47,6 +48,8 @@ function Layout() {
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
 
       <BugReportButton />
+
+      <UpdateNotification />
     </div>
   );
 }
