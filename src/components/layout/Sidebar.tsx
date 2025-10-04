@@ -91,6 +91,7 @@ export function Sidebar() {
         )}
       >
         <div
+          onClick={() => handleNavClick(item.path)}
           className={cn(
             'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200',
             'hover:bg-accent hover:text-accent-foreground',
@@ -99,10 +100,7 @@ export function Sidebar() {
             'cursor-pointer'
           )}
         >
-          <div
-            onClick={() => handleNavClick(item.path)}
-            className="flex items-center gap-3 flex-1"
-          >
+          <div className="flex items-center gap-3 flex-1 pointer-events-none">
             {item.indented && !collapsed && (
               <div className="w-4 h-4 flex items-center justify-center">
                 <Circle className="w-2 h-2" />
@@ -131,7 +129,7 @@ export function Sidebar() {
                 e.stopPropagation();
                 item.onClose?.();
               }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-background/20 z-10"
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-background/20 pointer-events-none group-hover:pointer-events-auto"
             >
               <X className="w-3 h-3" />
             </button>
