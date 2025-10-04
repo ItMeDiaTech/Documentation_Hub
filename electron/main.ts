@@ -441,6 +441,74 @@ ipcMain.handle('process-document', async (...[, path]: [Electron.IpcMainInvokeEv
   }
 });
 
+// Export/Import Settings
+ipcMain.handle('export-settings', async () => {
+  try {
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      title: 'Export Settings and Data',
+      defaultPath: `DocHub-Export-${new Date().toISOString().split('T')[0]}.json`,
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (!result.canceled && result.filePath) {
+      return {
+        success: true,
+        filePath: result.filePath
+      };
+    }
+
+    return { success: false, canceled: true };
+  } catch (error) {
+    console.error('Error showing export dialog:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('import-settings', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Import Settings and Data',
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      const fileContent = await fsPromises.readFile(filePath, 'utf-8');
+
+      return {
+        success: true,
+        data: JSON.parse(fileContent),
+        filePath
+      };
+    }
+
+    return { success: false, canceled: true };
+  } catch (error) {
+    console.error('Error importing settings:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('save-export-data', async (...[, request]: [Electron.IpcMainInvokeEvent, { filePath: string; data: any }]) => {
+  try {
+    await fsPromises.writeFile(request.filePath, JSON.stringify(request.data, null, 2), 'utf-8');
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving export data:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
 // ==============================================================================
 // Auto-Updater Configuration
 // ==============================================================================
