@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FileText, GitBranch, ChevronDown, ChevronRight, Settings, Check, Undo, RotateCcw } from 'lucide-react';
+import { FileText, GitBranch, ChevronDown, ChevronRight, Settings, Check, RotateCcw } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from '@/contexts/SessionContext';
@@ -30,12 +30,10 @@ interface TrackedChangesProps {
 export function TrackedChanges({ sessionId }: TrackedChangesProps) {
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [selectedChange, setSelectedChange] = useState<string | null>(null);
-  const [showProcessingOptions, setShowProcessingOptions] = useState(true);
-  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [showProcessingOptions, setShowProcessingOptions] = useState(false);
   const [revertAllDialogOpen, setRevertAllDialogOpen] = useState(false);
-  const [changeToRevert, setChangeToRevert] = useState<{ docId: string; changeId: string } | null>(null);
   const [documentToRevertAll, setDocumentToRevertAll] = useState<string | null>(null);
-  const { sessions, revertChange, revertAllChanges } = useSession();
+  const { sessions, revertAllChanges } = useSession();
 
   // Get the current session
   const session = sessions.find(s => s.id === sessionId);
@@ -111,24 +109,6 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
       .filter(Boolean)
       .map(opt => opt!.label);
   }, [session]);
-
-  // Handle individual change revert
-  const handleRevertChange = (docId: string, changeId: string) => {
-    setChangeToRevert({ docId, changeId });
-    setRevertDialogOpen(true);
-  };
-
-  const confirmRevertChange = async () => {
-    if (!changeToRevert) return;
-
-    try {
-      await revertChange(sessionId, changeToRevert.docId, changeToRevert.changeId);
-      setRevertDialogOpen(false);
-      setChangeToRevert(null);
-    } catch (error) {
-      console.error('Failed to revert change:', error);
-    }
-  };
 
   // Handle revert all changes for a document
   const handleRevertAllChanges = (docId: string) => {
@@ -275,16 +255,6 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
                               {change.description}
                             </span>
                           </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRevertChange(doc.id, change.id);
-                            }}
-                            className="ml-2 p-1 rounded hover:bg-muted transition-colors group"
-                            title="Revert this change"
-                          >
-                            <Undo className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
-                          </button>
                         </div>
 
                         <div className="space-y-2">
@@ -324,24 +294,12 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
         </div>
       )}
 
-      {/* Individual Change Revert Confirmation */}
-      <ConfirmDialog
-        open={revertDialogOpen}
-        onOpenChange={setRevertDialogOpen}
-        title="Revert Change"
-        message="Are you sure you want to revert this change? This will remove it from the tracked changes list."
-        confirmText="Revert"
-        cancelText="Cancel"
-        variant="default"
-        onConfirm={confirmRevertChange}
-      />
-
       {/* Revert All Changes Confirmation */}
       <ConfirmDialog
         open={revertAllDialogOpen}
         onOpenChange={setRevertAllDialogOpen}
         title="Revert All Changes"
-        message="Are you sure you want to revert ALL changes for this document? This will restore the document from the backup file and cannot be undone."
+        message="Are you sure you want to revert ALL changes for this document? This action will restore the document from its backup file, preserving the original filename. This is IRREVERSIBLE and will permanently discard all processing changes made to this document."
         confirmText="Revert All"
         cancelText="Cancel"
         variant="destructive"
