@@ -389,6 +389,38 @@ ipcMain.handle('show-in-folder', async (...[, path]: [Electron.IpcMainInvokeEven
   }
 });
 
+// Restore document from backup
+ipcMain.handle('restore-from-backup', async (...[, request]: [Electron.IpcMainInvokeEvent, { backupPath: string; targetPath: string }]) => {
+  if (!request.backupPath || !request.targetPath) {
+    throw new Error('Both backupPath and targetPath are required');
+  }
+
+  try {
+    // Validate backup exists
+    if (!fs.existsSync(request.backupPath)) {
+      throw new Error(`Backup file not found: ${request.backupPath}`);
+    }
+
+    // Validate backup is a .docx file
+    if (!request.backupPath.toLowerCase().endsWith('.docx')) {
+      throw new Error('Backup file must be a .docx file');
+    }
+
+    // Validate target path
+    if (!request.targetPath.toLowerCase().endsWith('.docx')) {
+      throw new Error('Target file must be a .docx file');
+    }
+
+    // Copy backup to target location, overwriting existing file
+    await fsPromises.copyFile(request.backupPath, request.targetPath);
+
+    console.log(`[Restore] Successfully restored ${request.targetPath} from backup ${request.backupPath}`);
+  } catch (error) {
+    console.error('Error restoring from backup:', error);
+    throw error;
+  }
+});
+
 ipcMain.handle('process-document', async (...[, path]: [Electron.IpcMainInvokeEvent, string]) => {
   if (!path) {
     return { success: false, error: 'No path provided' };
