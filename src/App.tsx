@@ -11,6 +11,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { Settings } from '@/pages/Settings';
 import { CurrentSession } from '@/pages/CurrentSession';
 import { Sessions } from '@/pages/Sessions';
+import { Documents } from '@/pages/Documents';
 import { useState } from 'react';
 
 function EmptyPage({ title }: { title: string }) {
@@ -61,7 +62,7 @@ const router = createBrowserRouter(
         { path: 'session/:id', element: <CurrentSession /> },
         { path: 'analytics', element: <EmptyPage title="Analytics" /> },
         { path: 'team', element: <EmptyPage title="Team" /> },
-        { path: 'documents', element: <EmptyPage title="Documents" /> },
+        { path: 'documents', element: <Documents /> },
         { path: 'plugins', element: <EmptyPage title="Plugins" /> },
         { path: 'notifications', element: <EmptyPage title="Notifications" /> },
         { path: 'search', element: <EmptyPage title="Search" /> },

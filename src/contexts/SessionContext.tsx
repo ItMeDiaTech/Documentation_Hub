@@ -1,6 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Session, Document, SessionStats, SessionContextType } from '@/types/session';
 import type { HyperlinkProcessingOptions, BatchProcessingOptions } from '@/types/hyperlink';
+import {
+  loadSessions,
+  saveSession as saveSessionToDB,
+  deleteSession as deleteSessionFromDB,
+  migrateFromLocalStorage
+} from '@/utils/indexedDB';
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
@@ -19,25 +25,69 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
 
-  const loadSessionsFromStorage = () => {
+  const loadSessionsFromStorage = async () => {
     try {
-      const storedSessions = localStorage.getItem('sessions');
+      // Check if localStorage has sessions that need migration
+      const hasLocalStorageSessions = localStorage.getItem('sessions');
+      if (hasLocalStorageSessions) {
+        console.log('[Session] Found sessions in localStorage, migrating to IndexedDB...');
+        await migrateFromLocalStorage();
+        // Clear localStorage after migration
+        localStorage.removeItem('sessions');
+        localStorage.removeItem('activeSessions');
+      }
+
+      // Load sessions from IndexedDB
+      const storedSessions = await loadSessions();
       const storedActiveSessions = localStorage.getItem('activeSessions');
-      if (storedSessions) {
-        const parsed: SerializedSession[] = JSON.parse(storedSessions);
+
+      if (storedSessions && storedSessions.length > 0) {
+        const parsed: SerializedSession[] = storedSessions;
         const restored: Session[] = parsed.map((s) => ({
           ...s,
           createdAt: new Date(s.createdAt),
           lastModified: new Date(s.lastModified),
+          closedAt: s.closedAt ? new Date(s.closedAt) : undefined,
           documents: s.documents.map((d) => ({
             ...d,
             processedAt: d.processedAt ? new Date(d.processedAt) : undefined,
           })),
         }));
-        setSessions(restored);
+
+        // Clean up sessions older than 30 days (only if closed)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const cleanedSessions = restored.filter((s) => {
+          // Keep all active sessions
+          if (s.status === 'active') return true;
+
+          // For closed sessions, check if they're older than 30 days
+          if (s.status === 'closed' && s.closedAt) {
+            const shouldKeep = s.closedAt > thirtyDaysAgo;
+            if (!shouldKeep) {
+              // Remove from IndexedDB as well
+              deleteSessionFromDB(s.id).catch(err =>
+                console.error(`Failed to delete old session ${s.id}:`, err)
+              );
+            }
+            return shouldKeep;
+          }
+
+          // Keep sessions without closedAt (shouldn't happen, but be safe)
+          return true;
+        });
+
+        // Log cleanup if any sessions were removed
+        const removedCount = restored.length - cleanedSessions.length;
+        if (removedCount > 0) {
+          console.log(`[Session] Cleaned up ${removedCount} old session(s) (>30 days)`);
+        }
+
+        setSessions(cleanedSessions);
         if (storedActiveSessions) {
           const activeIds: string[] = JSON.parse(storedActiveSessions);
-          const active = restored.filter((s) => activeIds.includes(s.id));
+          const active = cleanedSessions.filter((s) => activeIds.includes(s.id));
           setActiveSessions(active);
           if (active.length > 0) {
             setCurrentSession(active[0]);
@@ -56,17 +106,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   // Persist sessions and active sessions whenever they change
   useEffect(() => {
-    const serializedSessions: SerializedSession[] = sessions.map((s) => ({
-      ...s,
-      createdAt: s.createdAt.toISOString(),
-      lastModified: s.lastModified.toISOString(),
-      documents: s.documents.map((d) => ({
-        ...d,
-        processedAt: d.processedAt ? d.processedAt.toISOString() : undefined,
-      })),
-    }));
-    localStorage.setItem('sessions', JSON.stringify(serializedSessions));
-    localStorage.setItem('activeSessions', JSON.stringify(activeSessions.map((s) => s.id)));
+    const persistSessions = async () => {
+      try {
+        const serializedSessions: SerializedSession[] = sessions.map((s) => ({
+          ...s,
+          createdAt: s.createdAt.toISOString(),
+          lastModified: s.lastModified.toISOString(),
+          closedAt: s.closedAt ? s.closedAt.toISOString() : undefined,
+          documents: s.documents.map((d) => ({
+            ...d,
+            processedAt: d.processedAt ? d.processedAt.toISOString() : undefined,
+          })),
+        }));
+
+        // Save each session to IndexedDB
+        for (const session of serializedSessions) {
+          await saveSessionToDB(session);
+        }
+
+        // Keep active sessions in localStorage for quick access
+        localStorage.setItem('activeSessions', JSON.stringify(activeSessions.map((s) => s.id)));
+      } catch (err) {
+        console.error('Failed to persist sessions:', err);
+      }
+    };
+
+    if (sessions.length > 0) {
+      persistSessions();
+    }
   }, [sessions, activeSessions]);
 
   const createSession = (name: string): Session => {
@@ -111,6 +178,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
 
   const closeSession = (id: string) => {
+    // Get session info for logging
+    const session = sessions.find((s) => s.id === id);
+    const closedAt = new Date();
+
     // Remove from active sessions (sidebar) but keep in sessions list
     setActiveSessions((prev) => prev.filter((s) => s.id !== id));
 
@@ -123,12 +194,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Update session status to 'closed' but keep in sessions list for history
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === id ? { ...s, status: 'closed' as const, lastModified: new Date() } : s
+        s.id === id ? { ...s, status: 'closed' as const, lastModified: new Date(), closedAt } : s
       )
     );
+
+    // Log session closure
+    if (session) {
+      console.log('[Session] Closed:', {
+        id: session.id,
+        name: session.name,
+        closedAt: closedAt.toISOString(),
+        documentsProcessed: session.documents.length,
+      });
+    }
   };
 
   const deleteSession = (id: string) => {
+    // Get session info for logging before deletion
+    const session = sessions.find((s) => s.id === id);
+
     // Permanently delete session from storage
     setSessions((prev) => prev.filter((s) => s.id !== id));
     setActiveSessions((prev) => prev.filter((s) => s.id !== id));
@@ -138,6 +222,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     // Also remove individual session from localStorage if it exists
     localStorage.removeItem(`session_${id}`);
+
+    // Log session deletion
+    if (session) {
+      console.log('[Session] Deleted:', {
+        id: session.id,
+        name: session.name,
+        status: session.status,
+        createdAt: session.createdAt.toISOString(),
+      });
+    }
   };
 
   const switchSession = (id: string) => {
@@ -262,6 +356,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           fixInternalHyperlinks: session.processingOptions?.enabledOperations?.includes('fix-internal-hyperlinks'),
           updateTopHyperlinks: session.processingOptions?.enabledOperations?.includes('update-top-hyperlinks'),
           updateTocHyperlinks: session.processingOptions?.enabledOperations?.includes('update-toc-hyperlinks'),
+          fixKeywords: session.processingOptions?.enabledOperations?.includes('fix-keywords'),
         },
         textReplacements: session.replacements?.filter(r => r.enabled) || [],
         styles: session.styles || {},
@@ -291,12 +386,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           hyperlinksModified: result.modifiedHyperlinks,
                           contentIdsAppended: result.appendedContentIds || result.processedHyperlinks,
                           duration: result.duration,
-                          changes: result.processedLinks?.map((change) => ({
-                            type: 'hyperlink',
-                            description: `Updated ${change.displayText || 'hyperlink'}`,
-                            before: change.before,
-                            after: change.after
-                          }))
+                          changes: result.processedLinks?.flatMap((link) =>
+                            link.modifications?.map((mod) => ({
+                              type: 'hyperlink' as const,
+                              description: mod,
+                              before: link.before,
+                              after: link.after
+                            })) || []
+                          ) || []
                         },
                       }
                     : d
@@ -418,6 +515,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateSessionReplacements = (sessionId: string, replacements: ReplacementRule[]) => {
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              replacements,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update active sessions
+    setActiveSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              replacements,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update current session if it's being modified
+    if (currentSession?.id === sessionId) {
+      setCurrentSession((prev) => (prev ? { ...prev, replacements, lastModified: new Date() } : null));
+    }
+  };
+
   const saveSession = (session: Session) => {
     localStorage.setItem(`session_${session.id}`, JSON.stringify(session));
   };
@@ -457,6 +586,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         updateSessionStats,
         updateSessionName,
         updateSessionOptions,
+        updateSessionReplacements,
         saveSession,
         loadSessionFromStorage,
       }}

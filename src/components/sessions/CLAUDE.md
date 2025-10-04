@@ -49,15 +49,40 @@ This directory contains all session-related components for the Documentation Hub
   - `onOptionsChange`: Callback with updated options array
 
 ### StylesEditor.tsx
-- **Purpose**: Configure document styles (Header 1, Header 2, Normal)
+- **Purpose**: Configure document styles and uniformity settings
 - **Features**:
+
+  **Lists & Bullets Uniformity**:
+  - 5-level indentation hierarchy (0pt, 36pt, 72pt, 108pt, 144pt)
+  - Bullet character selection per level (alternating •, ○, •, ○, •)
+  - Numbered list format options (1., a., i., 1), a))
+  - Spacing between list items control
+
+  **Table Uniformity**:
+  - Basic table settings (border style, width, cell padding, auto-fit)
+  - Header row formatting (bold, shaded background)
+  - Alternating row colors toggle
+  - **NEW: Header 2 in 1x1 table cell** - Custom shading color and alignment
+  - **NEW: Large table conditional formatting** - Font, size, bold, italic, underline, alignment, cell padding
+  - **NEW: Pattern-based application** - Apply to cells with "If...Then" pattern
+  - **NEW: Top row formatting** - Apply settings to top row (if not 1x1)
+
+  **Table of Contents**:
+  - Customizable TOC title with show/hide toggle
+  - Heading level selection (1-9, default: Level 2 only)
+  - Tab leader style (none, dots, dashes, underline) - default: none
+  - Page numbers with right-align option
+  - **NEW: Spacing between hyperlinks** (default 0pt)
+  - Hyperlinks for navigation toggle
+
+  **Paragraph Styles** (Header 1, Header 2, Normal):
   - Font family and size selection
   - Text formatting toggles (bold, italic, underline)
   - Alignment options (left, center, right, justify)
   - Color picker for text
   - Spacing controls (before/after)
   - Live preview of style appearance
-  - Special option for Normal style: "Don't add space between paragraphs"
+
 - **Default Values**:
   - Header 1: 18pt, bold, black, Verdana, left, 0pt before/12pt after
   - Header 2: 14pt, bold, black, Verdana, left, 6pt before/6pt after

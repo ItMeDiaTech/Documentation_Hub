@@ -53,3 +53,16 @@ Template_UI.code-workspace
 
 # Reports (optional - these seem to be development notes)
 reports/
+
+# Development documentation
+**/CLAUDE.md
+CLAUDE_CSHARP_WPF_MVVM.md
+Hyperlink_Implementation.md
+changes.md
+Update_Needs_Implementation.md
+
+# Test files
+*.docx
+TestDocument.docx
+log.txt
+*.log.txt

@@ -18,6 +18,7 @@ This directory contains the React application source code for the Documentation 
   - Dashboard - Main dashboard with stats and activity
   - CurrentSession - Active session workspace with tabs
   - Sessions - Session grid/list view with search
+  - **Documents - NEW!** All processed documents across sessions with search/filter and "Open Location" feature
   - Settings - Modern vertical nav settings with live preview
   - Projects - Project management view (placeholder)
 
@@ -29,6 +30,7 @@ This directory contains the React application source code for the Documentation 
 - **utils/** - Utility functions
   - cn.ts - Class name utility for merging Tailwind classes
   - colorConvert.ts - Color format conversion utilities
+  - **indexedDB.ts - NEW!** IndexedDB wrapper for session persistence with migration support
 
 - **types/** - TypeScript type definitions
   - session.ts - Session and document type definitions
@@ -71,9 +73,10 @@ This directory contains the React application source code for the Documentation 
 ## State Management
 
 - Theme & density state via ThemeContext
-- Session state via SessionContext
+- Session state via SessionContext (persisted to IndexedDB)
 - Local component state with hooks
 - URL-based routing with React Router v7
+- **NEW: IndexedDB Persistence** - Sessions now stored in IndexedDB for improved performance and reliability
 
 ## Styling
 

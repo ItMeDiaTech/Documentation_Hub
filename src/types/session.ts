@@ -39,6 +39,7 @@ export interface Session {
   name: string;
   createdAt: Date;
   lastModified: Date;
+  closedAt?: Date;
   documents: Document[];
   stats: SessionStats;
   status: 'active' | 'closed';
@@ -54,6 +55,10 @@ export interface Session {
   };
   // Style configuration
   styles?: SessionStyle[];
+  // Document uniformity settings
+  listBulletSettings?: ListBulletSettings;
+  tableUniformitySettings?: TableUniformitySettings;
+  tableOfContentsSettings?: TableOfContentsSettings;
   // Replacement rules
   replacements?: ReplacementRule[];
 }
@@ -69,6 +74,57 @@ export interface SessionStyle {
   color: string;
   spacingBefore: number;
   spacingAfter: number;
+}
+
+export interface IndentationLevel {
+  level: number;
+  indentation: number; // in points
+  bulletChar?: string; // bullet character for this level
+  numberedFormat?: string; // format for numbered lists (1., a., i., etc.)
+}
+
+export interface ListBulletSettings {
+  enabled: boolean;
+  indentationLevels: IndentationLevel[];
+  spacingBetweenItems: number; // in points
+}
+
+export interface TableUniformitySettings {
+  enabled: boolean;
+  borderStyle: 'none' | 'single' | 'double' | 'dashed';
+  borderWidth: number; // in points
+  headerRowBold: boolean;
+  headerRowShaded: boolean;
+  alternatingRowColors: boolean;
+  cellPadding: number; // in points
+  autoFit: 'content' | 'window';
+  // Header 2 in 1x1 table cell settings
+  header2In1x1CellShading: string; // color hex
+  header2In1x1Alignment: 'left' | 'center' | 'right' | 'justify';
+  // Large table (>1x1) settings
+  largeTableSettings: {
+    font: string;
+    fontSize: number;
+    bold: boolean;
+    italic: boolean;
+    underline: boolean;
+    alignment: 'left' | 'center' | 'right' | 'justify';
+    cellPadding: number;
+  };
+  applyToIfThenPattern: boolean; // Apply to cells with "If...Then" pattern
+  applyToTopRow: boolean; // Apply to top row if not 1x1
+}
+
+export interface TableOfContentsSettings {
+  enabled: boolean;
+  includeHeadingLevels: number[]; // e.g., [1, 2, 3]
+  showPageNumbers: boolean;
+  rightAlignPageNumbers: boolean;
+  useHyperlinks: boolean;
+  tabLeaderStyle: 'none' | 'dots' | 'dashes' | 'underline';
+  tocTitle: string;
+  showTocTitle: boolean; // Option to turn off TOC title display
+  spacingBetweenHyperlinks: number; // in points
 }
 
 export interface ReplacementRule {
@@ -102,6 +158,7 @@ export interface SessionContextType {
   updateSessionStats: (sessionId: string, stats: Partial<SessionStats>) => void;
   updateSessionName: (sessionId: string, name: string) => void;
   updateSessionOptions: (sessionId: string, processingOptions: Session['processingOptions']) => void;
+  updateSessionReplacements: (sessionId: string, replacements: ReplacementRule[]) => void;
 
   // Persistence
   saveSession: (session: Session) => void;
