@@ -48,6 +48,12 @@ export interface ProcessingOptions {
   listIndentation?: boolean;
   bulletUniformity?: boolean;
   tableUniformity?: boolean;
+
+  // Style settings
+  header2Spacing?: {
+    spaceBefore: number;
+    spaceAfter: number;
+  };
 }
 
 export class DocumentProcessingService {
@@ -139,7 +145,8 @@ export class DocumentProcessingService {
 
       // Apply other processing options if needed
       if (options.removeWhitespace || options.removeParagraphLines || options.removeItalics) {
-        await this.applyTextFormatting(zip, options);
+        const formattingChanges = await this.applyTextFormatting(zip, options);
+        result.processedLinks.push(...formattingChanges);
       }
 
       // Generate the processed document
@@ -507,36 +514,248 @@ export class DocumentProcessingService {
   private async applyTextFormatting(
     zip: JSZip,
     options: ProcessingOptions
-  ): Promise<void> {
+  ): Promise<any[]> {
     const documentXml = await this.getXmlContent(zip, 'word/document.xml');
-    if (!documentXml) return;
+    if (!documentXml) return [];
+
+    const changes: any[] = [];
 
     // Apply formatting options
     if (options.removeWhitespace) {
-      this.removeExtraWhitespace(documentXml);
+      const whitespaceChanges = this.removeExtraWhitespace(documentXml);
+      changes.push(...whitespaceChanges);
+    }
+
+    if (options.removeParagraphLines) {
+      const paragraphChanges = this.removeExtraParagraphs(documentXml);
+      changes.push(...paragraphChanges);
     }
 
     if (options.removeItalics) {
       this.removeItalics(documentXml);
     }
 
+    if (options.assignStyles) {
+      const styleChanges = this.assignStyles(documentXml);
+      changes.push(...styleChanges);
+    }
+
+    if (options.header2Spacing) {
+      const spacingChanges = this.applyHeader2Spacing(documentXml, options.header2Spacing);
+      changes.push(...spacingChanges);
+    }
+
     await this.setXmlContent(zip, 'word/document.xml', documentXml);
+
+    return changes;
+  }
+
+  /**
+   * Apply spacing to Header 2 paragraphs
+   */
+  private applyHeader2Spacing(xmlContent: any, spacing: { spaceBefore: number; spaceAfter: number }): any[] {
+    const changes: any[] = [];
+
+    const applySpacing = (obj: any): void => {
+      if (!obj) return;
+
+      if (obj['w:p']) {
+        const paragraphs = Array.isArray(obj['w:p']) ? obj['w:p'] : [obj['w:p']];
+
+        for (const p of paragraphs) {
+          // Check if this is a Header 2 paragraph
+          const currentStyle = this.getCurrentParagraphStyle(p);
+
+          if (currentStyle === 'Heading2' || currentStyle === 'Header2') {
+            // Ensure paragraph properties exist
+            if (!p['w:pPr']) {
+              p['w:pPr'] = {};
+            }
+
+            const pPr = Array.isArray(p['w:pPr']) ? p['w:pPr'][0] : p['w:pPr'];
+
+            // Get current spacing
+            const currentSpaceBefore = pPr['w:spacing']?.['@_w:before'] || 0;
+            const currentSpaceAfter = pPr['w:spacing']?.['@_w:after'] || 0;
+
+            // Apply new spacing
+            if (!pPr['w:spacing']) {
+              pPr['w:spacing'] = {};
+            }
+
+            const twipsBefore = spacing.spaceBefore * 20; // Convert points to twips
+            const twipsAfter = spacing.spaceAfter * 20;
+
+            pPr['w:spacing']['@_w:before'] = twipsBefore.toString();
+            pPr['w:spacing']['@_w:after'] = twipsAfter.toString();
+
+            // Track the change if spacing was different
+            if (currentSpaceBefore !== twipsBefore || currentSpaceAfter !== twipsAfter) {
+              const text = this.extractParagraphText(p);
+              changes.push({
+                type: 'style',
+                description: 'Applied Header 2 spacing',
+                before: `"${text}" - Spacing: ${currentSpaceBefore/20}pt before, ${currentSpaceAfter/20}pt after`,
+                after: `"${text}" - Spacing: ${spacing.spaceBefore}pt before, ${spacing.spaceAfter}pt after`
+              });
+            }
+          }
+        }
+      }
+
+      // Recursively process children
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+          applySpacing(obj[key]);
+        }
+      }
+    };
+
+    applySpacing(xmlContent);
+    return changes;
+  }
+
+  /**
+   * Assign styles to paragraphs based on content patterns
+   */
+  private assignStyles(xmlContent: any): any[] {
+    const changes: any[] = [];
+
+    const assignStyleToParagraph = (obj: any): void => {
+      if (!obj) return;
+
+      if (obj['w:p']) {
+        const paragraphs = Array.isArray(obj['w:p']) ? obj['w:p'] : [obj['w:p']];
+
+        for (const p of paragraphs) {
+          // Extract paragraph text
+          const text = this.extractParagraphText(p);
+          if (!text) continue;
+
+          // Determine style based on patterns
+          let styleToApply: string | null = null;
+
+          // Check for heading patterns
+          if (text.length < 100) { // Headings are typically short
+            // Header 1 patterns: ALL CAPS, numbered sections like "1. ", "2. "
+            if (text === text.toUpperCase() && text.length > 3) {
+              styleToApply = 'Heading1';
+            }
+            // Header 2 patterns: Title Case at start of line, or numbered subsections
+            else if (/^[A-Z][a-z]+(\s+[A-Z][a-z]+)*:?\s*$/.test(text) || /^\d+\.\d+/.test(text)) {
+              styleToApply = 'Heading2';
+            }
+          }
+
+          if (styleToApply) {
+            // Get current style
+            const currentStyle = this.getCurrentParagraphStyle(p);
+
+            if (currentStyle !== styleToApply) {
+              // Apply the new style
+              this.applyStyleToParagraph(p, styleToApply);
+
+              changes.push({
+                type: 'style',
+                description: `Applied ${styleToApply} style`,
+                before: currentStyle ? `Style: ${currentStyle}` : 'No style',
+                after: `Style: ${styleToApply}`
+              });
+            }
+          }
+        }
+      }
+
+      // Recursively process children
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+          assignStyleToParagraph(obj[key]);
+        }
+      }
+    };
+
+    assignStyleToParagraph(xmlContent);
+    return changes;
+  }
+
+  /**
+   * Get current style of a paragraph
+   */
+  private getCurrentParagraphStyle(pElem: any): string | null {
+    if (!pElem) return null;
+
+    // Check for pStyle in paragraph properties
+    if (pElem['w:pPr']) {
+      const pPr = Array.isArray(pElem['w:pPr']) ? pElem['w:pPr'][0] : pElem['w:pPr'];
+      if (pPr && pPr['w:pStyle']) {
+        const pStyle = Array.isArray(pPr['w:pStyle']) ? pPr['w:pStyle'][0] : pPr['w:pStyle'];
+        if (pStyle) {
+          return pStyle['@_w:val'] || pStyle.$ || null;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Apply a style to a paragraph
+   */
+  private applyStyleToParagraph(pElem: any, styleName: string): void {
+    if (!pElem) return;
+
+    // Ensure paragraph properties exist
+    if (!pElem['w:pPr']) {
+      pElem['w:pPr'] = {};
+    }
+
+    const pPr = Array.isArray(pElem['w:pPr']) ? pElem['w:pPr'][0] : pElem['w:pPr'];
+
+    // Set the style
+    pPr['w:pStyle'] = {
+      '@_w:val': styleName
+    };
   }
 
   /**
    * Remove extra whitespace from document
    */
-  private removeExtraWhitespace(xmlContent: any): void {
+  private removeExtraWhitespace(xmlContent: any): any[] {
+    const changes: any[] = [];
+
     const processText = (obj: any): void => {
       if (!obj) return;
 
       if (obj['w:t']) {
         const texts = Array.isArray(obj['w:t']) ? obj['w:t'] : [obj['w:t']];
         for (const t of texts) {
+          let original = '';
+          let cleaned = '';
+
           if (typeof t === 'string') {
-            obj['w:t'] = t.replace(/\s+/g, ' ').trim();
+            original = t;
+            cleaned = t.replace(/\s+/g, ' ').trim();
+            if (original !== cleaned) {
+              changes.push({
+                type: 'text',
+                description: 'Removed extra whitespace',
+                before: original,
+                after: cleaned
+              });
+              obj['w:t'] = cleaned;
+            }
           } else if (t._) {
-            t._ = t._.replace(/\s+/g, ' ').trim();
+            original = t._;
+            cleaned = t._.replace(/\s+/g, ' ').trim();
+            if (original !== cleaned) {
+              changes.push({
+                type: 'text',
+                description: 'Removed extra whitespace',
+                before: original,
+                after: cleaned
+              });
+              t._ = cleaned;
+            }
           }
         }
       }
@@ -549,6 +768,171 @@ export class DocumentProcessingService {
     };
 
     processText(xmlContent);
+    return changes;
+  }
+
+  /**
+   * Remove extra paragraphs (empty paragraph elements)
+   */
+  private removeExtraParagraphs(xmlContent: any): any[] {
+    const changes: any[] = [];
+    const paragraphsToRemove: any[] = [];
+
+    // Helper to check if paragraph is empty
+    const isParagraphEmpty = (pElem: any): boolean => {
+      if (!pElem) return true;
+
+      // Check if paragraph has text content
+      const hasText = (obj: any): boolean => {
+        if (!obj) return false;
+
+        if (obj['w:t']) {
+          const texts = Array.isArray(obj['w:t']) ? obj['w:t'] : [obj['w:t']];
+          for (const t of texts) {
+            const text = typeof t === 'string' ? t : (t._ || t['#text'] || '');
+            if (text.trim().length > 0) return true;
+          }
+        }
+
+        for (const key in obj) {
+          if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+            if (hasText(obj[key])) return true;
+          }
+        }
+
+        return false;
+      };
+
+      return !hasText(pElem);
+    };
+
+    // Helper to extract text from surrounding paragraphs for context
+    const extractContext = (paragraphs: any[], currentIndex: number): { before: string[]; after: string[] } => {
+      const before: string[] = [];
+      const after: string[] = [];
+
+      // Get 2 lines before
+      for (let i = Math.max(0, currentIndex - 2); i < currentIndex; i++) {
+        const text = this.extractParagraphText(paragraphs[i]);
+        if (text) before.push(text);
+      }
+
+      // Get 2 lines after
+      for (let i = currentIndex + 1; i < Math.min(paragraphs.length, currentIndex + 3); i++) {
+        const text = this.extractParagraphText(paragraphs[i]);
+        if (text) after.push(text);
+      }
+
+      return { before, after };
+    };
+
+    // Find all paragraphs in the document body
+    const findAndRemoveEmptyParagraphs = (obj: any, path: string = ''): void => {
+      if (!obj) return;
+
+      // Check for w:body which contains paragraphs
+      if (obj['w:body']) {
+        const body = obj['w:body'];
+        const paragraphs: any[] = [];
+
+        // Collect all paragraphs
+        const collectParagraphs = (node: any): void => {
+          if (Array.isArray(node)) {
+            node.forEach(item => collectParagraphs(item));
+          } else if (node && typeof node === 'object') {
+            if (node['w:p']) {
+              const pArray = Array.isArray(node['w:p']) ? node['w:p'] : [node['w:p']];
+              paragraphs.push(...pArray);
+            }
+            Object.keys(node).forEach(key => {
+              if (key !== 'w:p') collectParagraphs(node[key]);
+            });
+          }
+        };
+
+        collectParagraphs(body);
+
+        // Find empty paragraphs with context
+        paragraphs.forEach((p, index) => {
+          if (isParagraphEmpty(p)) {
+            const context = extractContext(paragraphs, index);
+            paragraphsToRemove.push(p);
+
+            changes.push({
+              type: 'deletion',
+              description: 'Removed empty paragraph',
+              before: context.before.length > 0 ? context.before.join('\n') + '\n[Empty Line]\n' + context.after.join('\n') : '[Empty Line]',
+              after: context.before.length > 0 ? context.before.join('\n') + '\n' + context.after.join('\n') : ''
+            });
+          }
+        });
+
+        // Remove empty paragraphs
+        const removeFromBody = (node: any): any => {
+          if (Array.isArray(node)) {
+            return node.map(item => removeFromBody(item)).filter(item => item !== null);
+          } else if (node && typeof node === 'object') {
+            if (node['w:p']) {
+              const pArray = Array.isArray(node['w:p']) ? node['w:p'] : [node['w:p']];
+              const filtered = pArray.filter((p: any) => !paragraphsToRemove.includes(p));
+              if (filtered.length === 0) {
+                delete node['w:p'];
+              } else {
+                node['w:p'] = Array.isArray(node['w:p']) ? filtered : filtered[0];
+              }
+            }
+
+            Object.keys(node).forEach(key => {
+              if (key !== 'w:p') {
+                node[key] = removeFromBody(node[key]);
+              }
+            });
+          }
+          return node;
+        };
+
+        removeFromBody(body);
+      }
+
+      // Continue traversing
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key) && typeof obj[key] === 'object' && key !== 'w:body') {
+          findAndRemoveEmptyParagraphs(obj[key], `${path}/${key}`);
+        }
+      }
+    };
+
+    findAndRemoveEmptyParagraphs(xmlContent);
+    return changes;
+  }
+
+  /**
+   * Extract text content from a paragraph element
+   */
+  private extractParagraphText(pElem: any): string {
+    if (!pElem) return '';
+
+    let text = '';
+
+    const extractText = (obj: any): void => {
+      if (!obj) return;
+
+      if (obj['w:t']) {
+        const texts = Array.isArray(obj['w:t']) ? obj['w:t'] : [obj['w:t']];
+        for (const t of texts) {
+          text += typeof t === 'string' ? t : (t._ || t['#text'] || '');
+        }
+      }
+
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+          extractText(obj[key]);
+        }
+      }
+    };
+
+    extractText(pElem);
+    return text.trim();
   }
 
   /**
