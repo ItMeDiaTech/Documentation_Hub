@@ -202,6 +202,25 @@ The services implement multiple levels of error recovery:
 
 ## Recent Enhancements (December 2024)
 
+- [x] **Enhanced Change Tracking** (January 2025):
+  - **Text replacement tracking** with location metadata
+    - `processTextReplacements()` returns `{modified, changes}` object
+    - Each change includes unique ID, elementPath, paragraphIndex, runIndex
+    - Applied rules tracking in change descriptions
+    - Before/after values for all text changes
+  - **Hyperlink replacement tracking** with unique IDs
+    - Custom hyperlink rules tracked in processedLinks array
+    - Complete metadata: id, type, description, before, after, url, location
+    - Integration with custom replacement rules from session settings
+  - **Location tracking for reversion**:
+    - XPath-like elementPath for precise element identification
+    - Paragraph and run indices for document navigation
+    - Context strings for better change identification
+  - **Change metadata structure**:
+    - All changes include unique identifiers for potential reversion
+    - Consistent format across text, hyperlink, keyword processing
+    - Integration with DocumentChange interface
+
 - [x] PowerAutomate API Integration:
   - 4-phase processing pipeline (ID Extraction → API Communication → URL Reconstruction → Display Text Rules)
   - Batch API requests with Lookup_ID array

@@ -92,7 +92,7 @@ This directory contains all session-related components for the Documentation Hub
   - `onStylesChange`: Callback with updated styles array
 
 ### TrackedChanges.tsx
-- **Purpose**: Display diff view of all document changes after processing
+- **Purpose**: Display diff view of all document changes after processing with revert functionality
 - **Features**:
   - Expandable document list showing change counts
   - Color-coded change types (additions, modifications, deletions)
@@ -101,12 +101,24 @@ This directory contains all session-related components for the Documentation Hub
   - Animated expand/collapse for document sections
   - Visual indicators for change types
   - Empty state when no changes tracked
+  - **NEW: Individual change reversion** with Undo icon button
+  - **NEW: Bulk document restoration** with "Revert All Changes" button
+  - **NEW: Confirmation dialogs** for all revert actions
 - **Change Types**:
   - **Additions** (green): New content added to document
   - **Modifications** (blue): Existing content that was changed
   - **Deletions** (red): Content removed from document
+- **Revert Functionality**:
+  - **Individual Revert**: Removes specific change from tracked changes list (UI tracking only)
+  - **Revert All**: Restores entire document from backup file via IPC handler
+  - **Confirmations**: ConfirmDialog component for user safety
+  - **Error Handling**: Graceful error messages for failed operations
 - **Props**:
   - `sessionId`: Current session identifier for tracking changes
+- **Integration**:
+  - Uses `revertChange()` from SessionContext for individual changes
+  - Uses `revertAllChanges()` from SessionContext for bulk restoration
+  - Communicates with Electron IPC for backup file restoration
 
 ### ReplacementsTab.tsx
 - **Purpose**: Configure text and hyperlink replacement rules
@@ -171,6 +183,10 @@ All components use Framer Motion for smooth 60fps transitions:
 
 ## Recent Updates
 
+- **Added revert changes functionality** to TrackedChanges component
+  - Individual change reversion with confirmation
+  - Bulk document restoration from backup
+  - ConfirmDialog integration for user safety
 - Enhanced with density modes (minimal, compact, comfortable)
 - Improved typography system integration
 - Glass morphism effects for modern appearance
