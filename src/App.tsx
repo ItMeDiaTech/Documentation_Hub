@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
+import { createHashRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { SessionProvider } from '@/contexts/SessionContext';
 import { UserSettingsProvider } from '@/contexts/UserSettingsContext';
@@ -51,7 +51,7 @@ function Layout() {
   );
 }
 
-const router = createBrowserRouter(
+const router = createHashRouter(
   [
     {
       path: '/',
