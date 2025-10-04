@@ -16,6 +16,13 @@ export interface NotificationSettings {
 
 export interface ApiConnections {
   powerAutomateUrl: string;
+  bugReportUrl: string;
+  submitIdeaUrl: string;
+}
+
+export interface UpdateSettings {
+  autoUpdateOnLaunch: boolean;
+  checkForPreReleases: boolean;
 }
 
 export interface UserSettings {
@@ -25,6 +32,7 @@ export interface UserSettings {
   language: string;
   timezone: string;
   dateFormat: string;
+  updateSettings: UpdateSettings;
 }
 
 export const defaultUserSettings: UserSettings = {
@@ -44,8 +52,14 @@ export const defaultUserSettings: UserSettings = {
   },
   apiConnections: {
     powerAutomateUrl: 'https://www.example.com',
+    bugReportUrl: 'https://www.example.com',
+    submitIdeaUrl: 'https://www.example.com',
   },
   language: 'English (US)',
   timezone: 'UTC-05:00 Eastern Time (ET)',
   dateFormat: 'MM/DD/YYYY',
+  updateSettings: {
+    autoUpdateOnLaunch: true,
+    checkForPreReleases: false,
+  },
 };
