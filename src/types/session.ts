@@ -16,6 +16,8 @@ export interface Document {
     backupPath?: string;
     duration?: number;
     changes?: DocumentChange[];
+    optionsUsed?: string[]; // IDs of processing options that were enabled during processing
+    warnings?: string[]; // Any warnings or issues encountered (e.g., "Header 2 spacing could not be applied")
   };
 }
 

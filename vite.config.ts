@@ -5,6 +5,9 @@ import renderer from 'vite-plugin-electron-renderer';
 import { resolve } from 'path';
 
 export default defineConfig({
+  optimizeDeps: {
+    include: ['lucide-react']
+  },
   plugins: [
     react(),
     electron([
@@ -76,6 +79,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    commonjsOptions: {
+      include: [/lucide-react/, /node_modules/]
+    },
     rollupOptions: {
       input: {
         index: resolve(__dirname, 'index.html'),

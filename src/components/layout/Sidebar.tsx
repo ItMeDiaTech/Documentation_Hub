@@ -34,7 +34,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeSessions, closeSession } = useSession();
+  const { sessions, activeSessions, closeSession } = useSession();
 
   const handleNavClick = (path: string) => {
     navigate(path);
@@ -57,12 +57,15 @@ export function Sidebar() {
       });
     });
 
+    // Calculate total documents across all sessions
+    const totalDocuments = sessions.reduce((sum, s) => sum + s.documents.length, 0);
+
     // Add other navigation items
     items.push(
       { id: 'sessions', label: 'Sessions', icon: FolderOpen, path: '/sessions' },
       { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
       { id: 'team', label: 'Team', icon: Users, path: '/team' },
-      { id: 'documents', label: 'Documents', icon: FileText, path: '/documents' },
+      { id: 'documents', label: 'Documents', icon: FileText, path: '/documents', badge: totalDocuments },
       { id: 'plugins', label: 'Plugins', icon: Plug, path: '/plugins' }
     );
 
