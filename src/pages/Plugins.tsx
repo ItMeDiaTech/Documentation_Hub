@@ -318,7 +318,7 @@ export function Plugins() {
                           <div className="flex items-center gap-2 mb-1">
                             <CardTitle className="text-xl">{plugin.name}</CardTitle>
                             {plugin.verified && (
-                              <Shield className="w-4 h-4 text-blue-500" title="Verified" />
+                              <Shield className="w-4 h-4 text-blue-500" aria-label="Verified" />
                             )}
                           </div>
                           <CardDescription className="mb-3">

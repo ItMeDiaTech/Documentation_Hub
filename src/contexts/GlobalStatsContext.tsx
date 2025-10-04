@@ -37,7 +37,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
     const initDB = async () => {
       try {
         const database = await openDB<GlobalStatsDB>(DB_NAME, DB_VERSION, {
-          upgrade(db) {
+          upgrade(db: IDBPDatabase<GlobalStatsDB>) {
             if (!db.objectStoreNames.contains(STATS_STORE)) {
               db.createObjectStore(STATS_STORE);
             }
@@ -187,7 +187,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
         updatedStats.lastUpdated = now;
 
         // Persist to IndexedDB
-        db.put(STATS_STORE, updatedStats, STATS_KEY).catch((error) =>
+        db.put(STATS_STORE, updatedStats, STATS_KEY).catch((error: Error) =>
           console.error('Failed to save stats:', error)
         );
 
