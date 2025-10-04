@@ -65,7 +65,7 @@ export function Sidebar() {
       { id: 'sessions', label: 'Sessions', icon: FolderOpen, path: '/sessions' },
       { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
       { id: 'team', label: 'Team', icon: Users, path: '/team' },
-      { id: 'documents', label: 'Documents', icon: FileText, path: '/documents', badge: totalDocuments },
+      { id: 'documents', label: 'Documents', icon: FileText, path: '/documents' },
       { id: 'plugins', label: 'Plugins', icon: Plug, path: '/plugins' }
     );
 

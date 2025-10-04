@@ -157,9 +157,11 @@ export class WordDocumentProcessor {
       let keywordsProcessed = false;
       if (options.operations?.fixKeywords) {
         console.log('\n=== KEYWORD PROCESSING ===');
-        keywordsProcessed = await this.processKeywords(zip);
+        const keywordResult = await this.processKeywords(zip);
+        keywordsProcessed = keywordResult.modified;
         if (keywordsProcessed) {
           result.modifiedHyperlinks++; // Count as modification for save logic
+          result.processedLinks.push(...keywordResult.changes);
         }
       }
 
@@ -991,16 +993,17 @@ export class WordDocumentProcessor {
   /**
    * Process keywords - bold specific keywords at the beginning of lines
    */
-  private async processKeywords(zip: JSZip): Promise<boolean> {
+  private async processKeywords(zip: JSZip): Promise<{ modified: boolean; changes: any[] }> {
     const keywords = ['Example:', 'Note:', 'Notes:', 'Result:', 'Results:', 'Important:', 'Caution:', 'Description:'];
     let modified = false;
+    const changes: any[] = [];
 
     try {
       // Parse main document
       const documentXmlFile = zip.file('word/document.xml');
       if (!documentXmlFile) {
         console.log('No document.xml found');
-        return false;
+        return { modified: false, changes: [] };
       }
 
       const documentXml = await documentXmlFile.async('text');
@@ -1043,6 +1046,14 @@ export class WordDocumentProcessor {
                         keywordCount++;
                         modified = true;
                         console.log(`  ✓ Bolded keyword: "${keyword}"`);
+
+                        // Track the change
+                        changes.push({
+                          type: 'text',
+                          description: 'Bolded keyword',
+                          before: text,
+                          after: `**${text}**` // Indicate bold with markdown-style formatting
+                        });
                       }
                       break;
                     }
@@ -1066,10 +1077,10 @@ export class WordDocumentProcessor {
         console.log('No keywords found to bold');
       }
 
-      return modified;
+      return { modified, changes };
     } catch (error) {
       console.error('Error processing keywords:', error);
-      return false;
+      return { modified: false, changes: [] };
     }
   }
 
