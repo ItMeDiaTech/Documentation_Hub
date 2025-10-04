@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
-import { FileText, GitBranch, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileText, GitBranch, ChevronDown, ChevronRight, Settings, Check } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from '@/contexts/SessionContext';
+import { defaultOptions } from './ProcessingOptions';
 
 interface Change {
   id: string;
@@ -27,6 +28,7 @@ interface TrackedChangesProps {
 export function TrackedChanges({ sessionId }: TrackedChangesProps) {
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [selectedChange, setSelectedChange] = useState<string | null>(null);
+  const [showProcessingOptions, setShowProcessingOptions] = useState(true);
   const { sessions } = useSession();
 
   // Get the current session
@@ -40,21 +42,41 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
 
     session.documents.forEach(doc => {
       if (doc.status === 'completed' && doc.processingResult?.changes) {
-        const docChanges: Change[] = doc.processingResult.changes.map((change, idx) => ({
-          id: `${doc.id}-change-${idx}`,
-          description: change.description || 'Change applied',
-          type: change.type === 'hyperlink' ? 'modification' as const :
-                change.type === 'text' ? 'modification' as const :
-                'addition' as const,
-          originalText: change.before || '',
-          newText: change.after || ''
+        // Group changes by original and new text to merge duplicates
+        const changeMap = new Map<string, Change & { count: number }>();
+
+        doc.processingResult.changes.forEach((change, idx) => {
+          const key = `${change.before || ''}_${change.after || ''}`;
+
+          if (changeMap.has(key)) {
+            const existing = changeMap.get(key)!;
+            existing.count += 1;
+            // Update description to show count
+            existing.description = `${change.description || 'Change applied'} (${existing.count} occurrences)`;
+          } else {
+            changeMap.set(key, {
+              id: `${doc.id}-change-${idx}`,
+              description: change.description || 'Change applied',
+              type: change.type === 'hyperlink' ? 'modification' as const :
+                    change.type === 'text' ? 'modification' as const :
+                    'addition' as const,
+              originalText: change.before || '',
+              newText: change.after || '',
+              count: 1
+            });
+          }
+        });
+
+        const docChanges: Change[] = Array.from(changeMap.values()).map(({ count, ...change }) => ({
+          ...change,
+          description: count > 1 ? `${change.description.replace(/ \(\d+ occurrences\)$/, '')} (${count} occurrences)` : change.description
         }));
 
         if (docChanges.length > 0) {
           changes.push({
             id: doc.id,
             documentName: doc.name,
-            totalChanges: docChanges.length,
+            totalChanges: doc.processingResult.changes.length, // Use original count for total
             changes: docChanges
           });
         }
@@ -74,6 +96,16 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
     setExpandedDocs(newExpanded);
   };
 
+  // Get enabled processing options
+  const enabledOptions = useMemo(() => {
+    if (!session?.processingOptions?.enabledOperations) return [];
+
+    return session.processingOptions.enabledOperations
+      .map(optionId => defaultOptions.find(opt => opt.id === optionId))
+      .filter(Boolean)
+      .map(opt => opt!.label);
+  }, [session]);
+
   return (
     <div className="space-y-4">
       <div className="mb-4">
@@ -82,6 +114,53 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
           Review all changes made during document processing
         </p>
       </div>
+
+      {/* Processing Options Used Section */}
+      {enabledOptions.length > 0 && (
+        <div className="border border-border rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowProcessingOptions(!showProcessingOptions)}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              {showProcessingOptions ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+              <Settings className="w-4 h-4 text-muted-foreground" />
+              <span className="font-medium">Processing Options Used</span>
+              <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">
+                {enabledOptions.length} enabled
+              </span>
+            </div>
+          </button>
+
+          <AnimatePresence>
+            {showProcessingOptions && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="border-t border-border"
+              >
+                <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {enabledOptions.map((option, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 p-2 rounded-lg bg-muted/30"
+                    >
+                      <Check className="w-4 h-4 text-green-600" />
+                      <span className="text-sm">{option}</span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       <div className="space-y-2">
         {documentChanges.map((doc) => (

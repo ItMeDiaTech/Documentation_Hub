@@ -47,6 +47,9 @@ allowedPackageJsonDependencies.txt
 Template_UI.code-workspace
 *.code-workspace
 
+# Release automation (customize per developer)
+release.ps1
+
 # Claude AI files
 .claude/
 
