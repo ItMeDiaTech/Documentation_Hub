@@ -11,6 +11,17 @@ export default defineConfig({
       {
         entry: 'electron/main.ts',
         vite: {
+          resolve: {
+            alias: {
+              '@': resolve(__dirname, './src'),
+              '@components': resolve(__dirname, './src/components'),
+              '@hooks': resolve(__dirname, './src/hooks'),
+              '@utils': resolve(__dirname, './src/utils'),
+              '@styles': resolve(__dirname, './src/styles'),
+              '@pages': resolve(__dirname, './src/pages'),
+              '@contexts': resolve(__dirname, './src/contexts'),
+            },
+          },
           build: {
             outDir: 'dist/electron',
             rollupOptions: {
@@ -25,6 +36,17 @@ export default defineConfig({
           options.reload();
         },
         vite: {
+          resolve: {
+            alias: {
+              '@': resolve(__dirname, './src'),
+              '@components': resolve(__dirname, './src/components'),
+              '@hooks': resolve(__dirname, './src/hooks'),
+              '@utils': resolve(__dirname, './src/utils'),
+              '@styles': resolve(__dirname, './src/styles'),
+              '@pages': resolve(__dirname, './src/pages'),
+              '@contexts': resolve(__dirname, './src/contexts'),
+            },
+          },
           build: {
             outDir: 'dist/electron',
             rollupOptions: {
