@@ -12,7 +12,7 @@ import type {
 } from '../src/types/hyperlink';
 
 let mainWindow: BrowserWindow | null = null;
-const isDev = process.env.NODE_ENV !== 'production';
+const isDev = !app.isPackaged;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -37,7 +37,7 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(join(__dirname, '../dist/index.html'));
+    mainWindow.loadFile(join(__dirname, '../index.html'));
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
