@@ -61,7 +61,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
             existing.description = `${change.description || 'Change applied'} (${existing.count} occurrences)`;
           } else {
             changeMap.set(key, {
-              id: `${doc.id}-change-${idx}`,
+              id: change.id || `${doc.id}-change-${idx}`,
               description: change.description || 'Change applied',
               type: change.type === 'hyperlink' ? 'modification' as const :
                     change.type === 'text' ? 'modification' as const :
