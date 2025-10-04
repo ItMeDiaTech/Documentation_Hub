@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Session, Document, SessionStats, SessionContextType } from '@/types/session';
+import { Session, Document, SessionStats, SessionContextType, ReplacementRule } from '@/types/session';
 import type { HyperlinkProcessingOptions, BatchProcessingOptions } from '@/types/hyperlink';
 import {
   loadSessions,
@@ -14,9 +14,10 @@ type SerializedDocument = Omit<Document, 'processedAt'> & {
   processedAt?: string;
 };
 
-type SerializedSession = Omit<Session, 'createdAt' | 'lastModified' | 'documents'> & {
+type SerializedSession = Omit<Session, 'createdAt' | 'lastModified' | 'closedAt' | 'documents'> & {
   createdAt: string;
   lastModified: string;
+  closedAt?: string;
   documents: SerializedDocument[];
 };
 

@@ -319,7 +319,7 @@ export class ValidationEngine {
 
     try {
       const content = await stylesFile.async('string');
-      const parsed = await parseStringPromise(content);
+      const parsed = this.xmlParser.parse(content);
 
       // Check for required default styles
       const requiredStyles = ['Normal', 'Heading1', 'Heading2'];
@@ -506,7 +506,7 @@ export class ValidationEngine {
 
     try {
       const content = await coreFile.async('string');
-      const parsed = await parseStringPromise(content);
+      const parsed = this.xmlParser.parse(content);
 
       // Check for recommended metadata fields
       const metadata = parsed['cp:coreProperties'];
