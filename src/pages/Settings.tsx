@@ -218,7 +218,7 @@ export function Settings() {
             theme,
             density,
             accentColor,
-            glassEffects,
+            blur,
           },
           sessions,
           globalStats: stats,
