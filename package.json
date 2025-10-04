@@ -81,6 +81,7 @@
   "build": {
     "appId": "com.documentationhub.app",
     "productName": "Documentation Hub",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
     "asar": true,
     "asarUnpack": [
       "**/*.node"
@@ -99,7 +100,8 @@
       ],
       "publish": [
         "github"
-      ]
+      ],
+      "artifactName": "Documentation-Hub-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -107,7 +109,8 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Documentation-Hub-Setup-${version}.exe"
     },
     "mac": {
       "target": [
@@ -116,7 +119,8 @@
       "category": "public.app-category.productivity",
       "publish": [
         "github"
-      ]
+      ],
+      "artifactName": "Documentation-Hub-${version}.${ext}"
     },
     "dmg": {
       "contents": [
@@ -130,7 +134,8 @@
           "type": "link",
           "path": "/Applications"
         }
-      ]
+      ],
+      "artifactName": "Documentation-Hub-${version}.dmg"
     },
     "linux": {
       "target": [
@@ -139,7 +144,8 @@
       "category": "Office",
       "publish": [
         "github"
-      ]
+      ],
+      "artifactName": "Documentation-Hub-${version}.${ext}"
     },
     "publish": {
       "provider": "github",
