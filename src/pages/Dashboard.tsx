@@ -18,9 +18,13 @@ import {
   Calendar,
   FileText,
   ArrowUpRight,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useSession } from '@/contexts/SessionContext';
+import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 import { useNavigate } from 'react-router-dom';
 import { SessionManager } from '@/components/sessions/SessionManager';
 
@@ -47,46 +51,48 @@ const itemVariants = {
 
 export function Dashboard() {
   const { recentSessions, loadSession } = useSession();
+  const { stats: globalStats, getTodayStats, getTodayChange } = useGlobalStats();
   const navigate = useNavigate();
   const [showSessionManager, setShowSessionManager] = useState(false);
   const [sessionManagerMode, setSessionManagerMode] = useState<'new' | 'load'>('new');
 
-  // Calculate total stats from all sessions
-  const totalStats = recentSessions.reduce(
-    (acc, session) => ({
-      documentsProcessed: acc.documentsProcessed + session.stats.documentsProcessed,
-      hyperlinksChecked: acc.hyperlinksChecked + session.stats.hyperlinksChecked,
-      feedbackImported: acc.feedbackImported + session.stats.feedbackImported,
-      timeSaved: acc.timeSaved + session.stats.timeSaved,
-    }),
-    { documentsProcessed: 0, hyperlinksChecked: 0, feedbackImported: 0, timeSaved: 0 }
-  );
+  // Get today's stats and changes from yesterday
+  const todayStats = getTodayStats();
+  const todayChange = getTodayChange();
 
   const stats = [
     {
       title: 'Documents Processed',
-      value: totalStats.documentsProcessed.toString(),
+      value: globalStats.allTime.documentsProcessed.toString(),
+      todayValue: todayStats.documentsProcessed,
+      change: todayChange.documentsProcessed || 0,
       icon: FileCheck,
       gradient: 'from-green-400 to-emerald-600',
       bgGradient: 'from-green-500/20 to-emerald-500/10',
     },
     {
       title: 'Hyperlinks Checked',
-      value: totalStats.hyperlinksChecked.toString(),
+      value: globalStats.allTime.hyperlinksChecked.toString(),
+      todayValue: todayStats.hyperlinksChecked,
+      change: todayChange.hyperlinksChecked || 0,
       icon: Link,
       gradient: 'from-blue-400 to-indigo-600',
       bgGradient: 'from-blue-500/20 to-indigo-500/10',
     },
     {
       title: 'Feedback Imported',
-      value: totalStats.feedbackImported.toString(),
+      value: globalStats.allTime.feedbackImported.toString(),
+      todayValue: todayStats.feedbackImported,
+      change: todayChange.feedbackImported || 0,
       icon: MessageSquare,
       gradient: 'from-purple-400 to-pink-600',
       bgGradient: 'from-purple-500/20 to-pink-500/10',
     },
     {
       title: 'Time Saved',
-      value: `${totalStats.timeSaved}m`,
+      value: `${globalStats.allTime.timeSaved}m`,
+      todayValue: todayStats.timeSaved,
+      change: todayChange.timeSaved || 0,
       icon: Clock,
       gradient: 'from-orange-400 to-red-600',
       bgGradient: 'from-orange-500/20 to-red-500/10',
@@ -193,7 +199,33 @@ export function Dashboard() {
                       {stat.title}
                     </p>
                     <p className="text-3xl font-bold tracking-tight">{stat.value}</p>
-                    <p className="text-xs text-muted-foreground pt-2">Total across all sessions</p>
+                    <div className="flex items-center gap-2 pt-2">
+                      {stat.todayValue > 0 ? (
+                        <>
+                          <div className="flex items-center gap-1">
+                            {stat.change > 0 ? (
+                              <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                <TrendingUp className="w-3 h-3" />
+                                <span>+{stat.change}</span>
+                              </div>
+                            ) : stat.change < 0 ? (
+                              <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                <TrendingDown className="w-3 h-3" />
+                                <span>{stat.change}</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
+                                <Minus className="w-3 h-3" />
+                                <span>No change</span>
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">vs yesterday</span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No activity today</span>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
