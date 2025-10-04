@@ -14,6 +14,9 @@ import { Settings } from '@/pages/Settings';
 import { CurrentSession } from '@/pages/CurrentSession';
 import { Sessions } from '@/pages/Sessions';
 import { Documents } from '@/pages/Documents';
+import { Analytics } from '@/pages/Analytics';
+import { Search } from '@/pages/Search';
+import { Plugins } from '@/pages/Plugins';
 import { useState } from 'react';
 
 function EmptyPage({ title }: { title: string }) {
@@ -64,11 +67,11 @@ const router = createHashRouter(
         { index: true, element: <Dashboard /> },
         { path: 'sessions', element: <Sessions /> },
         { path: 'session/:id', element: <CurrentSession /> },
-        { path: 'analytics', element: <EmptyPage title="Analytics" /> },
+        { path: 'analytics', element: <Analytics /> },
         { path: 'team', element: <EmptyPage title="Team" /> },
         { path: 'documents', element: <Documents /> },
-        { path: 'plugins', element: <EmptyPage title="Plugins" /> },
-        { path: 'search', element: <EmptyPage title="Search" /> },
+        { path: 'plugins', element: <Plugins /> },
+        { path: 'search', element: <Search /> },
         { path: 'profile', element: <EmptyPage title="Profile" /> },
         { path: 'settings', element: <Settings /> },
       ],

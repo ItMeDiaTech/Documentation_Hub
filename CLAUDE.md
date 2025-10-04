@@ -6,9 +6,64 @@ Every subfolder should have a detailed CLAUDE.md describing what each file does.
 
 Every big change, CLAUDE.md files should be updated as needed and project should be added and committed with git.
 
-## Recent Updates (December 2024)
+## Recent Updates
 
-### Latest UI/UX Improvements
+### Phase 2B - Feature Completion (January 2025)
+
+**NEW FEATURES:**
+
+1. **Analytics Page** (`/analytics`)
+   - Complete data visualization dashboard with Recharts
+   - View modes: Daily (30 days), Weekly (12 weeks), Monthly (12 months)
+   - Line and bar charts for productivity trends
+   - Stats summary cards with real-time data
+   - Reset All Stats functionality with confirmation dialog
+
+2. **Search Page** (`/search`)
+   - Advanced fuzzy search powered by Fuse.js
+   - Cross-session document search
+   - Advanced filters: status, session, date range
+   - Keyboard navigation (↑↓ navigate, Enter to open)
+   - Real-time search results with highlighting
+   - Auto-scroll to selected item
+
+3. **Plugins Page** (`/plugins`)
+   - Plugin marketplace and management system
+   - Install/Uninstall plugins
+   - Enable/Disable toggle for installed plugins
+   - Category filtering (Document, UI, Integration, Automation)
+   - Plugin stats (rating, downloads, version, author)
+   - Verified badge system for official plugins
+   - Search functionality
+
+4. **Export/Import System**
+   - Full data portability via JSON export/import
+   - Export all settings, sessions, and global stats
+   - Import with validation and version checking
+   - Located in Settings → Storage section
+   - IPC handlers for file dialogs and data persistence
+
+5. **Global Statistics System**
+   - Application-wide stats tracking (independent of sessions)
+   - IndexedDB persistence with automatic rollover
+   - Historical data: 30 days, 12 weeks, 12 months
+   - Trend comparison (today vs yesterday, etc.)
+   - Powers Dashboard and Analytics pages
+
+**TECHNICAL IMPROVEMENTS:**
+- Added Recharts library for data visualization
+- Added Fuse.js for fuzzy search functionality
+- Enhanced IPC communication for Export/Import
+- New GlobalStatsContext with IndexedDB persistence
+- Comprehensive TypeScript types for all new features
+
+**DEPENDENCIES ADDED:**
+- `recharts`: ^3.2.1 (charts and data visualization)
+- `fuse.js`: ^7.1.0 (fuzzy search)
+
+### UI/UX Improvements (December 2024)
+
+#### Latest Updates
 
 #### Interface Enhancements
 
