@@ -5,11 +5,12 @@
   "main": "dist/electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "build": "tsc && vite build",
+    "build:electron": "electron-builder",
     "preview": "vite preview",
     "electron": "electron .",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "dist": "npm run build",
+    "dist": "npm run build && npm run build:electron",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md}\"",
     "typecheck": "tsc --noEmit"
@@ -85,12 +86,10 @@
       "**/*.node"
     ],
     "directories": {
-      "output": "release",
-      "buildResources": "build"
+      "output": "release"
     },
     "files": [
       "dist/**/*",
-      "electron/**/*",
       "node_modules/**/*",
       "package.json"
     ],
@@ -98,7 +97,6 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.ico",
       "publish": [
         "github"
       ]
@@ -109,9 +107,6 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false
     },
     "mac": {
@@ -119,7 +114,6 @@
         "dmg"
       ],
       "category": "public.app-category.productivity",
-      "icon": "build/icon.icns",
       "publish": [
         "github"
       ]
@@ -143,7 +137,6 @@
         "AppImage"
       ],
       "category": "Office",
-      "icon": "build/icon.png",
       "publish": [
         "github"
       ]
