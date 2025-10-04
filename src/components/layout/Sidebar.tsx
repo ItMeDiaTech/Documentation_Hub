@@ -5,7 +5,6 @@ import {
   FolderOpen,
   Settings,
   Search,
-  Bell,
   User,
   ChevronRight,
   BarChart3,
@@ -66,15 +65,14 @@ export function Sidebar() {
       { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
       { id: 'team', label: 'Team', icon: Users, path: '/team' },
       { id: 'documents', label: 'Documents', icon: FileText, path: '/documents' },
-      { id: 'plugins', label: 'Plugins', icon: Plug, path: '/plugins' }
+      { id: 'plugins', label: 'Plugins', icon: Plug, path: '/plugins' },
+      { id: 'search', label: 'Search', icon: Search, path: '/search' }
     );
 
     return items;
   };
 
   const bottomItems: NavItem[] = [
-    { id: 'notifications', label: 'Notifications', icon: Bell, path: '/notifications', badge: 3 },
-    { id: 'search', label: 'Search', icon: Search, path: '/search' },
     { id: 'profile', label: 'Profile', icon: User, path: '/profile' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
   ];
