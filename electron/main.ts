@@ -28,7 +28,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    icon: join(__dirname, '../public/icon.png'),
+    // Icon will be set by electron-builder during packaging
   });
 
   Menu.setApplicationMenu(null);
