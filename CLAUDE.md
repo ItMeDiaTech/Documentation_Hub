@@ -77,6 +77,148 @@ Every big change, CLAUDE.md files should be updated as needed and project should
 - TypeScript validation passing
 - Code follows 2025 best practices
 
+## Release Process & GitHub Actions Workflow
+
+### Automated Release System
+
+This project uses **GitHub Actions** for fully automated multi-platform releases. The workflow is triggered automatically when you push a version tag.
+
+**Workflow Location**: `.github/workflows/release.yml`
+
+### How to Create a Release
+
+#### Step 1: Commit Your Changes
+```bash
+git add .
+git commit -m "Your descriptive commit message
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+#### Step 2: Push to Master
+```bash
+git push origin master
+```
+
+#### Step 3: Create and Push Version Tag
+```bash
+# Create tag (increment version number appropriately)
+git tag v1.0.X -m "Release v1.0.X - Brief description"
+
+# Push tag to GitHub (this triggers the workflow)
+git push origin v1.0.X
+```
+
+**IMPORTANT**: The tag MUST start with `v` (e.g., `v1.0.12`) to trigger the workflow.
+
+### What Happens Automatically
+
+Once the tag is pushed, GitHub Actions will:
+
+1. **Build on Three Platforms**:
+   - Windows (windows-latest)
+   - macOS (macos-latest)
+   - Linux (ubuntu-latest)
+
+2. **For Each Platform**:
+   - Updates package.json version to match the tag
+   - Installs dependencies (`npm ci`)
+   - Runs TypeScript type checking (`npm run typecheck`)
+   - Builds the React application (`npm run build`)
+   - Packages the Electron app (`npm run build:electron`)
+
+3. **Create Installers**:
+   - **Windows**: `.exe` installer + `latest.yml` (for auto-updates)
+   - **macOS**: `.dmg` installer + `latest-mac.yml`
+   - **Linux**: `.AppImage` + `latest-linux.yml`
+
+4. **Create GitHub Release**:
+   - Automatically creates a release on GitHub
+   - Uploads all installers and metadata files
+   - Generates release notes from commit messages
+   - Publishes as a public release (not draft)
+
+### Monitoring the Release
+
+#### Using GitHub CLI
+```bash
+# Watch the current workflow run
+gh run watch
+
+# List recent workflow runs
+gh run list --limit 5
+
+# View specific run details
+gh run view <run-id>
+```
+
+#### Using GitHub Web Interface
+- **Actions Page**: https://github.com/ItMeDiaTech/Documentation_Hub/actions
+- **Releases Page**: https://github.com/ItMeDiaTech/Documentation_Hub/releases
+
+### Workflow Timing
+
+Based on historical data:
+- **Total Duration**: 3-5 minutes
+- **Build Phase**: ~2-4 minutes (all platforms in parallel)
+- **Release Creation**: ~30-60 seconds
+- **Upload**: ~30 seconds
+
+### Auto-Update System
+
+The `latest.yml`, `latest-mac.yml`, and `latest-linux.yml` files enable the built-in auto-update feature:
+
+- Users are notified when new versions are available
+- Updates download in the background
+- Users prompted to restart and install
+- Seamless update experience across all platforms
+
+### Version Numbering
+
+Follow semantic versioning (MAJOR.MINOR.PATCH):
+- **MAJOR**: Breaking changes or major feature releases
+- **MINOR**: New features, backward compatible
+- **PATCH**: Bug fixes and minor improvements
+
+Current version: Check latest tag with `git tag --sort=-v:refname | head -1`
+
+### Troubleshooting
+
+**If the workflow fails**:
+1. Check the Actions tab for error messages
+2. Common issues:
+   - TypeScript errors: Run `npm run typecheck` locally first
+   - Build errors: Run `npm run build` locally first
+   - Dependency issues: Ensure `package-lock.json` is committed
+
+**If you need to rebuild**:
+```bash
+# Delete the tag locally and remotely
+git tag -d v1.0.X
+git push origin :refs/tags/v1.0.X
+
+# Fix issues, then recreate and push the tag
+git tag v1.0.X -m "Release v1.0.X - Description"
+git push origin v1.0.X
+```
+
+### Manual Building (Local Testing)
+
+To build locally without creating a release:
+```bash
+# Build and package for current platform only
+npm run dist
+
+# Output will be in: release/
+# Windows: Documentation Hub Setup 1.0.0.exe
+# macOS: Documentation Hub-1.0.0.dmg
+# Linux: Documentation Hub-1.0.0.AppImage
+```
+
+**Note**: Local builds will show GH_TOKEN errors when trying to publish - this is expected and can be ignored. The installers are still created successfully in the `release/` folder.
+
 ## Core Requirements
 
 ### Design Philosophy
