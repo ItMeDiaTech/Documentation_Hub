@@ -368,6 +368,26 @@ ipcMain.handle('select-documents', async () => {
   return undefined;
 });
 
+// Show file in folder
+ipcMain.handle('show-in-folder', async (...[, path]: [Electron.IpcMainInvokeEvent, string]) => {
+  if (!path) {
+    throw new Error('No path provided');
+  }
+
+  try {
+    // Check if file exists
+    if (!fs.existsSync(path)) {
+      throw new Error(`File not found: ${path}`);
+    }
+
+    // Show the file in the system file explorer
+    shell.showItemInFolder(path);
+  } catch (error) {
+    console.error('Error showing file in folder:', error);
+    throw error;
+  }
+});
+
 ipcMain.handle('process-document', async (...[, path]: [Electron.IpcMainInvokeEvent, string]) => {
   if (!path) {
     return { success: false, error: 'No path provided' };

@@ -153,8 +153,31 @@ export class WordDocumentProcessor {
       result.appendedContentIds = processedData.contentIdsAppended;
       result.processedLinks = processedData.processedLinks;
 
+      // Process keywords (bold specific keywords at line start)
+      let keywordsProcessed = false;
+      if (options.operations?.fixKeywords) {
+        console.log('\n=== KEYWORD PROCESSING ===');
+        keywordsProcessed = await this.processKeywords(zip);
+        if (keywordsProcessed) {
+          result.modifiedHyperlinks++; // Count as modification for save logic
+        }
+      }
+
+      // Process text replacements
+      let textReplacementsProcessed = false;
+      if (options.textReplacements && options.textReplacements.length > 0) {
+        console.log('\n=== TEXT REPLACEMENT PROCESSING ===');
+        const textReplacements = options.textReplacements.filter(r => r.type === 'text' && r.enabled);
+        if (textReplacements.length > 0) {
+          textReplacementsProcessed = await this.processTextReplacements(zip, textReplacements);
+          if (textReplacementsProcessed) {
+            result.modifiedHyperlinks++; // Count as modification for save logic
+          }
+        }
+      }
+
       // Save the modified document
-      if (processedData.modifiedCount > 0) {
+      if (processedData.modifiedCount > 0 || keywordsProcessed || textReplacementsProcessed) {
         console.log('\n=== SAVING DOCUMENT ===');
         console.log(`Saving ${processedData.modifiedCount} modifications...`);
 
@@ -339,17 +362,70 @@ export class WordDocumentProcessor {
         // Check if this object has Relationship or Relationships keys
         if (data.Relationships) {
           findRelationships(data.Relationships);
-        } else if (data.Relationship) {
+        } else if (data.Relationship !== undefined) {
+          // With preserveOrder: true, relationship data can be in two places:
+          // 1. Parent object's :@ attribute (actual structure from test documents)
+          // 2. Inside Relationship array elements (alternative structure)
+
+          // FIRST: Check parent object's :@ attribute
+          const parentAttrs = data[':@'] || {};
+          if (parentAttrs['@_Type']?.includes('hyperlink')) {
+            const id = parentAttrs['@_Id'];
+            const target = parentAttrs['@_Target'];
+
+            // Log all attributes to check for fragments
+            console.log(`  Relationship ${id} ALL attributes:`, JSON.stringify(parentAttrs, null, 2));
+            console.log(`  Parent element ALL keys:`, Object.keys(data));
+
+            if (id && target) {
+              // Decode URL to convert %23 to # and other encoded characters
+              let fullUrl = decodeURIComponent(target);
+
+              // Check for anchor/fragment attributes
+              if (parentAttrs['@_Anchor']) {
+                console.log(`    Found @_Anchor: ${parentAttrs['@_Anchor']}`);
+                fullUrl = fullUrl + '#' + parentAttrs['@_Anchor'];
+              }
+
+              relationships.set(id, fullUrl);
+              console.log(`  Found relationship: ${id}`);
+              console.log(`    Full target (no truncation): ${fullUrl}`);
+              console.log(`    Target length: ${fullUrl.length} chars`);
+              console.log(`    Contains #: ${fullUrl.includes('#')}`);
+              console.log(`    Contains %23: ${fullUrl.includes('%23')}`);
+              console.log(`    Contains docid=: ${fullUrl.includes('docid=')}`);
+            }
+          }
+
+          // THEN: Also check inside Relationship array (for alternative structures)
           const relArray = Array.isArray(data.Relationship) ? data.Relationship : [data.Relationship];
           for (const rel of relArray) {
-            // With preserveOrder: true, attributes are in :@ object
             const attrs = rel[':@'] || {};
             if (attrs['@_Type']?.includes('hyperlink')) {
               const id = attrs['@_Id'];
               const target = attrs['@_Target'];
+
+              // Log all attributes to check for fragments
+              console.log(`  Relationship ${id} ALL attributes (from array):`, JSON.stringify(attrs, null, 2));
+              console.log(`  Array element ALL keys:`, Object.keys(rel));
+
               if (id && target) {
-                relationships.set(id, target);
-                console.log(`  Found relationship: ${id} -> ${target.substring(0, 60)}...`);
+                // Decode URL to convert %23 to # and other encoded characters
+                let fullUrl = decodeURIComponent(target);
+
+                // Check for anchor/fragment attributes
+                if (attrs['@_Anchor']) {
+                  console.log(`    Found @_Anchor: ${attrs['@_Anchor']}`);
+                  fullUrl = fullUrl + '#' + attrs['@_Anchor'];
+                }
+
+                relationships.set(id, fullUrl);
+                console.log(`  Found relationship: ${id}`);
+                console.log(`    Full target (no truncation): ${fullUrl}`);
+                console.log(`    Target length: ${fullUrl.length} chars`);
+                console.log(`    Contains #: ${fullUrl.includes('#')}`);
+                console.log(`    Contains %23: ${fullUrl.includes('%23')}`);
+                console.log(`    Contains docid=: ${fullUrl.includes('docid=')}`);
               }
             }
           }
@@ -394,15 +470,26 @@ export class WordDocumentProcessor {
         // With preserveOrder: true, attributes are in :@ object on the parent element
         const attrs = element[':@'] || {};
         const relationshipId = attrs['@_r:id'] || attrs['@_w:id'];
+        const anchor = attrs['@_w:anchor']; // Extract w:anchor attribute
 
         if (hyperlinkCount === 1) {
           console.log('First hyperlink parent element :@ attributes:', attrs);
         }
 
         console.log(`  Found w:hyperlink element with relationshipId: ${relationshipId}`);
+        if (anchor) {
+          console.log(`    w:anchor attribute found: ${anchor}`);
+        }
 
         if (relationshipId && relationships.has(relationshipId)) {
-          const target = relationships.get(relationshipId) || '';
+          let target = relationships.get(relationshipId) || '';
+
+          // Append anchor fragment if present and not already in URL (anchor doesn't include the # prefix)
+          if (anchor && !target.includes('#')) {
+            target = target + '#' + anchor;
+            console.log(`    Combined with anchor: ${target.substring(0, 80)}...`);
+          }
+
           const displayText = this.extractDisplayText(hyperlinkElement);
 
           console.log(`  ✓ Hyperlink extracted: "${displayText}" -> ${target.substring(0, 60)}...`);
@@ -543,28 +630,37 @@ export class WordDocumentProcessor {
     const uniqueIds = new Set<string>();
 
     for (const hyperlink of hyperlinks) {
-      console.log(`Examining hyperlink: ${hyperlink.target.substring(0, 100)}...`);
+      console.log(`\n--- Examining hyperlink ---`);
+      console.log(`  Display Text: "${hyperlink.displayText}"`);
+      console.log(`  Full URL: ${hyperlink.target}`);
 
       const contentId = this.extractContentId(hyperlink.target);
       if (contentId) {
-        console.log(`  - Found Content_ID: ${contentId}`);
+        console.log(`  ✓ Extracted Content_ID: ${contentId}`);
         if (!uniqueIds.has(contentId)) {
           lookupIds.push(contentId);
           uniqueIds.add(contentId);
+          console.log(`    → Added to Lookup_ID (new)`);
+        } else {
+          console.log(`    → Already in Lookup_ID (duplicate)`);
         }
       }
 
       const documentId = this.extractDocumentId(hyperlink.target);
       if (documentId) {
-        console.log(`  - Found Document_ID: ${documentId}`);
+        console.log(`  ✓ Extracted Document_ID: ${documentId}`);
         if (!uniqueIds.has(documentId)) {
           lookupIds.push(documentId);
           uniqueIds.add(documentId);
+          console.log(`    → Added to Lookup_ID (new)`);
+        } else {
+          console.log(`    → Already in Lookup_ID (duplicate)`);
         }
       }
 
       if (!contentId && !documentId) {
-        console.log(`  - No IDs found in this hyperlink`);
+        console.log(`  ✗ No IDs extracted from URL`);
+        console.log(`    URL pattern doesn't match Content_ID or Document_ID format`);
       }
     }
 
@@ -620,7 +716,16 @@ export class WordDocumentProcessor {
     }
 
     // Phase 3 & 4: Update relationships and display text
+    console.log('\n=== PHASE 3 & 4: URL RECONSTRUCTION AND DISPLAY TEXT UPDATES ===');
+    console.log(`API results cached: ${apiResults.size} entries`);
+    console.log(`Hyperlinks to process: ${hyperlinks.length}`);
+    console.log(`Operations enabled:`, {
+      fixContentIds: options.operations?.fixContentIds,
+      updateTitles: options.operations?.updateTitles
+    });
+
     for (const [partName, partHyperlinks] of hyperlinksByPart) {
+      console.log(`\nProcessing ${partHyperlinks.length} hyperlinks from ${partName}...`);
       const relsPath = partName === 'document.xml'
         ? 'word/_rels/document.xml.rels'
         : `word/_rels/${partName}.rels`;
@@ -644,79 +749,174 @@ export class WordDocumentProcessor {
         processedCount++;
         let modified = false;
         const changes: string[] = [];
+        const originalDisplayText = hyperlink.displayText; // Store original before any modifications
+
+        console.log(`\n  Hyperlink ${processedCount}/${hyperlinks.length}:`);
+        console.log(`    relationshipId: ${hyperlink.relationshipId}`);
+        console.log(`    target: ${hyperlink.target.substring(0, 80)}...`);
+        console.log(`    displayText: "${hyperlink.displayText}"`);
+
+        // Apply custom hyperlink replacement rules (before API processing)
+        if (options.textReplacements) {
+          const hyperlinkRules = options.textReplacements.filter(r => r.type === 'hyperlink' && r.enabled);
+          for (const rule of hyperlinkRules) {
+            if (hyperlink.displayText === rule.pattern) {
+              console.log(`    Custom replacement: "${rule.pattern}" → "${rule.replacement}"`);
+              const updated = this.updateHyperlinkDisplayText(partData, hyperlink.relationshipId, rule.replacement);
+              if (updated) {
+                partModified = true;
+                modified = true;
+                changes.push(`Custom hyperlink replacement applied`);
+                hyperlink.displayText = rule.replacement;
+              }
+            }
+          }
+        }
 
         // Find matching API result
         const apiResult = this.findApiResult(hyperlink.target, apiResults);
 
         if (apiResult) {
+          console.log(`    ✓ Found API result:`, {
+            Document_ID: apiResult.Document_ID,
+            Content_ID: apiResult.Content_ID,
+            Title: apiResult.Title,
+            Status: apiResult.Status
+          });
           // Phase 3: Update URL to Document_ID format using proper XML manipulation
           if (apiResult.Document_ID && options.operations?.fixContentIds) {
             const oldUrl = hyperlink.target;
             const newUrl = `https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=${apiResult.Document_ID.trim()}`;
 
+            console.log(`    Phase 3: URL Reconstruction`);
+            console.log(`      oldUrl: ${oldUrl.substring(0, 80)}...`);
+            console.log(`      newUrl: ${newUrl.substring(0, 80)}...`);
+
             if (oldUrl !== newUrl) {
+              console.log(`      URLs different, updating relationship...`);
               // Update in parsed relationships object (NOT string manipulation)
               const updated = this.updateRelationshipTarget(relsData, hyperlink.relationshipId, newUrl);
               if (updated) {
+                console.log(`      ✓ Relationship updated successfully`);
                 relsModified = true;
                 hyperlink.target = newUrl;
                 urlsUpdated++;
                 modified = true;
-                changes.push(`URL: ${oldUrl} → ${newUrl}`);
+                changes.push(`URL fixed to Document_ID format`);
+              } else {
+                console.log(`      ✗ Failed to update relationship`);
               }
+            } else {
+              console.log(`      URLs identical, no update needed`);
             }
+          } else if (!apiResult.Document_ID) {
+            console.log(`    Phase 3: Skipped (no Document_ID in API result)`);
+          } else if (!options.operations?.fixContentIds) {
+            console.log(`    Phase 3: Skipped (fixContentIds not enabled)`);
           }
 
           // Phase 4: Update display text with Title and Content_ID
-          if (options.operations?.updateTitles) {
+          if (options.operations?.fixContentIds || options.operations?.updateTitles) {
+            console.log(`    Phase 4: Display Text Update`);
             const oldDisplayText = hyperlink.displayText;
             let newDisplayText = oldDisplayText;
 
-            // Remove existing Content_ID pattern (4-6 digits in parentheses)
-            newDisplayText = newDisplayText.replace(/\s*\(\d{4,6}\)\s*$/g, '');
+            // Extract existing Content_ID before removing (for comparison)
+            const existingIdMatch = newDisplayText.match(/\s*\((\d{4,6})\)\s*$/);
+            const existingId = existingIdMatch ? existingIdMatch[1].padStart(6, '0') : null;
 
-            // Update with API title if different
-            if (apiResult.Title && newDisplayText.trim() !== apiResult.Title.trim()) {
+            // Remove existing Content_ID pattern and status indicators for clean comparison
+            const cleanOldText = newDisplayText
+              .replace(/\s*\(\d{4,6}\)\s*$/g, '')
+              .replace(/\s*-\s*(Expired|Not Found)\s*$/g, '')
+              .trim();
+            newDisplayText = cleanOldText;
+            console.log(`      Removed existing Content_ID: "${newDisplayText}"`);
+
+            // Track individual changes
+            let titleChanged = false;
+            let contentIdAdded = false;
+            let statusAdded = false;
+
+            // Update with API title if different (only if updateTitles is enabled)
+            if (options.operations?.updateTitles && apiResult.Title && newDisplayText.trim() !== apiResult.Title.trim()) {
+              console.log(`      Updating title: "${newDisplayText}" → "${apiResult.Title}"`);
+              titleChanged = true;
               newDisplayText = apiResult.Title.trim();
             }
 
-            // Append Content_ID (last 6 digits)
-            if (apiResult.Content_ID) {
+            // Append Content_ID (last 6 digits) - only if fixContentIds is enabled
+            let newContentId: string | null = null;
+            if (options.operations?.fixContentIds && apiResult.Content_ID) {
               const contentIdMatch = apiResult.Content_ID.match(/(\d+)$/);
               if (contentIdMatch) {
-                const digits = contentIdMatch[1].padStart(6, '0').slice(-6);
-                newDisplayText = `${newDisplayText} (${digits})`;
+                newContentId = contentIdMatch[1].padStart(6, '0').slice(-6);
+
+                if (newContentId !== existingId) {
+                  console.log(`      Appending Content_ID: (${newContentId}) [was: ${existingId || 'none'}]`);
+                  contentIdsAppended++;
+                  contentIdAdded = true;
+                } else {
+                  console.log(`      Content_ID unchanged: (${newContentId})`);
+                }
+                newDisplayText = `${newDisplayText} (${newContentId})`;
               }
             }
 
             // Add status indicators
             if (apiResult.Status?.trim().toLowerCase() === 'expired') {
+              console.log(`      Adding status: - Expired`);
               newDisplayText += ' - Expired';
+              statusAdded = true;
             }
 
+            console.log(`      oldDisplayText: "${oldDisplayText}"`);
+            console.log(`      newDisplayText: "${newDisplayText}"`);
+
             if (newDisplayText !== oldDisplayText) {
+              console.log(`      Display text different, updating...`);
+              const updated = this.updateHyperlinkDisplayText(partData, hyperlink.relationshipId, newDisplayText);
+              if (updated) {
+                console.log(`      ✓ Display text updated successfully`);
+                partModified = true;
+                hyperlink.displayText = newDisplayText;
+                displayTextsUpdated++;
+                modified = true;
+
+                // Add specific change descriptions instead of generic "Display: old → new"
+                if (titleChanged) {
+                  changes.push(`Title updated from API`);
+                }
+                if (contentIdAdded && newContentId) {
+                  changes.push(`Content ID appended: (${newContentId})`);
+                }
+                if (statusAdded) {
+                  changes.push(`Status indicator added: ${apiResult.Status}`);
+                }
+              } else {
+                console.log(`      ✗ Failed to update display text`);
+              }
+            } else {
+              console.log(`      Display text identical, no update needed`);
+            }
+          } else {
+            console.log(`    Phase 4: Skipped (neither fixContentIds nor updateTitles enabled)`);
+          }
+        } else {
+          console.log(`    ✗ No API result found for this hyperlink`);
+          if (lookupIds.length > 0 && this.isTheSourceUrl(hyperlink.target)) {
+            // ID not found in API - add indicator
+            const oldDisplayText = hyperlink.displayText;
+            if (!oldDisplayText.includes(' - Not Found')) {
+              const newDisplayText = oldDisplayText + ' - Not Found';
               const updated = this.updateHyperlinkDisplayText(partData, hyperlink.relationshipId, newDisplayText);
               if (updated) {
                 partModified = true;
                 hyperlink.displayText = newDisplayText;
                 displayTextsUpdated++;
                 modified = true;
-                changes.push(`Display: ${oldDisplayText} → ${newDisplayText}`);
+                changes.push(`Status indicator added: Not Found`);
               }
-            }
-          }
-        } else if (lookupIds.length > 0 && this.isTheSourceUrl(hyperlink.target)) {
-          // ID not found in API - add indicator
-          const oldDisplayText = hyperlink.displayText;
-          if (!oldDisplayText.includes(' - Not Found')) {
-            const newDisplayText = oldDisplayText + ' - Not Found';
-            const updated = this.updateHyperlinkDisplayText(partData, hyperlink.relationshipId, newDisplayText);
-            if (updated) {
-              partModified = true;
-              hyperlink.displayText = newDisplayText;
-              displayTextsUpdated++;
-              modified = true;
-              changes.push(`Display: ${oldDisplayText} → ${newDisplayText}`);
             }
           }
         }
@@ -725,17 +925,20 @@ export class WordDocumentProcessor {
           modifiedCount++;
         }
 
-        processedLinks.push({
-          id: hyperlink.relationshipId,
-          url: hyperlink.target,
-          displayText: hyperlink.displayText,
-          type: 'external' as HyperlinkType,
-          location: hyperlink.containingPart,
-          status: modified ? 'modified' : 'unchanged',
-          modifications: changes,
-          before: processedCount > 0 ? partHyperlinks[processedCount - 1]?.displayText : '',
-          after: hyperlink.displayText
-        });
+        // Only add to processedLinks if there were actual changes
+        if (changes.length > 0) {
+          processedLinks.push({
+            id: hyperlink.relationshipId,
+            url: hyperlink.target,
+            displayText: hyperlink.displayText,
+            type: 'external' as HyperlinkType,
+            location: hyperlink.containingPart,
+            status: 'modified',
+            modifications: changes,
+            before: originalDisplayText,
+            after: hyperlink.displayText
+          });
+        }
       }
 
       // Save modified files back to zip - ONLY rebuild if modified
@@ -786,11 +989,222 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Process keywords - bold specific keywords at the beginning of lines
+   */
+  private async processKeywords(zip: JSZip): Promise<boolean> {
+    const keywords = ['Example:', 'Note:', 'Notes:', 'Result:', 'Results:', 'Important:', 'Caution:', 'Description:'];
+    let modified = false;
+
+    try {
+      // Parse main document
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        console.log('No document.xml found');
+        return false;
+      }
+
+      const documentXml = await documentXmlFile.async('text');
+      const documentData = this.xmlParser.parse(documentXml);
+
+      // Find all paragraphs and check first text run
+      let keywordCount = 0;
+      this.traverseElement(documentData, (element: any) => {
+        if (element['w:p']) { // Paragraph
+          const paragraph = element['w:p'];
+          if (Array.isArray(paragraph)) {
+            // With preserveOrder: true, paragraph is an array
+            for (const pItem of paragraph) {
+              if (pItem['w:r']) { // Run
+                const runs = Array.isArray(pItem['w:r']) ? pItem['w:r'] : [pItem['w:r']];
+                if (runs.length > 0) {
+                  const firstRun = runs[0];
+                  const textEl = firstRun['w:t'];
+                  let text = '';
+
+                  // Extract text from different structures
+                  if (typeof textEl === 'string') {
+                    text = textEl;
+                  } else if (Array.isArray(textEl)) {
+                    text = textEl[0] && typeof textEl[0] === 'string' ? textEl[0] : (textEl[0]?.['#text'] || '');
+                  } else if (textEl && typeof textEl === 'object') {
+                    text = textEl['#text'] || '';
+                  }
+
+                  // Check if text starts with a keyword
+                  for (const keyword of keywords) {
+                    if (text.trimStart().startsWith(keyword)) {
+                      // Apply bold formatting to the run
+                      if (!firstRun['w:rPr']) {
+                        firstRun['w:rPr'] = [{}];
+                      }
+                      const rPr = Array.isArray(firstRun['w:rPr']) ? firstRun['w:rPr'][0] : firstRun['w:rPr'];
+                      if (!rPr['w:b']) {
+                        rPr['w:b'] = [{ ':@': {} }];
+                        keywordCount++;
+                        modified = true;
+                        console.log(`  ✓ Bolded keyword: "${keyword}"`);
+                      }
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (modified) {
+        console.log(`✓ Total keywords bolded: ${keywordCount}`);
+        // Save modified document
+        const rebuiltXml = this.xmlBuilder.build(documentData);
+        const xmlWithDeclaration = rebuiltXml.startsWith('<?xml')
+          ? rebuiltXml
+          : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltXml;
+        zip.file('word/document.xml', xmlWithDeclaration);
+      } else {
+        console.log('No keywords found to bold');
+      }
+
+      return modified;
+    } catch (error) {
+      console.error('Error processing keywords:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Process text replacements - find and replace text based on custom rules
+   */
+  private async processTextReplacements(zip: JSZip, replacements: any[]): Promise<boolean> {
+    let modified = false;
+    let replacementCount = 0;
+
+    try {
+      // Parse main document
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        console.log('No document.xml found');
+        return false;
+      }
+
+      const documentXml = await documentXmlFile.async('text');
+      const documentData = this.xmlParser.parse(documentXml);
+
+      // Find all text runs and apply replacements
+      this.traverseElement(documentData, (element: any) => {
+        if (element['w:r']) { // Text run
+          const runs = Array.isArray(element['w:r']) ? element['w:r'] : [element['w:r']];
+
+          for (const run of runs) {
+            const textEl = run['w:t'];
+            if (!textEl) continue;
+
+            let text = '';
+            let textNode: any = null;
+
+            // Extract text from different structures
+            if (typeof textEl === 'string') {
+              text = textEl;
+              textNode = { type: 'direct', parent: run };
+            } else if (Array.isArray(textEl)) {
+              if (textEl.length > 0) {
+                if (typeof textEl[0] === 'string') {
+                  text = textEl[0];
+                  textNode = { type: 'array-string', index: 0, array: textEl };
+                } else if (textEl[0]?.['#text']) {
+                  text = textEl[0]['#text'];
+                  textNode = { type: 'array-object', index: 0, array: textEl };
+                }
+              }
+            } else if (typeof textEl === 'object' && textEl['#text']) {
+              text = textEl['#text'];
+              textNode = { type: 'object', obj: textEl };
+            }
+
+            if (!text || !textNode) continue;
+
+            // Apply each replacement rule
+            let newText = text;
+            for (const rule of replacements) {
+              const pattern = rule.pattern;
+              const replacement = rule.replacement;
+              const caseSensitive = rule.caseSensitive !== false; // Default to true
+
+              if (caseSensitive) {
+                if (newText.includes(pattern)) {
+                  newText = newText.split(pattern).join(replacement);
+                }
+              } else {
+                const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                if (regex.test(newText)) {
+                  newText = newText.replace(regex, replacement);
+                }
+              }
+            }
+
+            // If text changed, update it
+            if (newText !== text) {
+              replacementCount++;
+              modified = true;
+
+              // Update based on structure type
+              switch (textNode.type) {
+                case 'direct':
+                  textNode.parent['w:t'] = newText;
+                  break;
+                case 'array-string':
+                  textNode.array[textNode.index] = newText;
+                  break;
+                case 'array-object':
+                  textNode.array[textNode.index]['#text'] = newText;
+                  break;
+                case 'object':
+                  textNode.obj['#text'] = newText;
+                  break;
+              }
+
+              console.log(`  Replaced: "${text}" → "${newText}"`);
+            }
+          }
+        }
+      });
+
+      if (modified) {
+        console.log(`✓ Total text replacements: ${replacementCount}`);
+        // Save modified document
+        const rebuiltXml = this.xmlBuilder.build(documentData);
+        const xmlWithDeclaration = rebuiltXml.startsWith('<?xml')
+          ? rebuiltXml
+          : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltXml;
+        zip.file('word/document.xml', xmlWithDeclaration);
+      } else {
+        console.log('No text replacements made');
+      }
+
+      return modified;
+    } catch (error) {
+      console.error('Error processing text replacements:', error);
+      return false;
+    }
+  }
+
+  /**
    * Call PowerAutomate API with Lookup_IDs
    */
   private async callPowerAutomateApi(apiUrl: string, lookupIds: string[]): Promise<any> {
     console.log('\n--- PowerAutomate API Call Details ---');
-    console.log('URL:', apiUrl);
+
+    // Decode escaped Unicode characters (e.g., \u0026 -> &)
+    // This happens when URLs are stored in JSON/localStorage
+    const decodedUrl = apiUrl.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
+      return String.fromCharCode(parseInt(hex, 16));
+    });
+
+    console.log('Original URL:', apiUrl);
+    if (decodedUrl !== apiUrl) {
+      console.log('Decoded URL:', decodedUrl);
+    }
     console.log('Lookup_IDs count:', lookupIds.length);
     console.log('Lookup_IDs:', JSON.stringify(lookupIds, null, 2));
 
@@ -814,7 +1228,7 @@ export class WordDocumentProcessor {
           }
 
           const startTime = Date.now();
-          const response = await fetch(apiUrl, {
+          const response = await fetch(decodedUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(request),
@@ -840,11 +1254,11 @@ export class WordDocumentProcessor {
           const data = JSON.parse(responseText);
           console.log('Parsed response:', JSON.stringify(data, null, 2).substring(0, 1000));
 
-          // Parse response format: { StatusCode, Body: { Results: [...] } }
-          if (data.Body?.Results) {
-            console.log(`✓ API SUCCESS - Found ${data.Body.Results.length} results`);
+          // Parse response format: { Results: [...], Version: "...", Changes: "..." }
+          if (data.Results && Array.isArray(data.Results)) {
+            console.log(`✓ API SUCCESS - Found ${data.Results.length} results`);
             return {
-              results: data.Body.Results.map((r: any) => ({
+              results: data.Results.map((r: any) => ({
                 Document_ID: r.Document_ID?.trim() || '',
                 Content_ID: r.Content_ID?.trim() || '',
                 Title: r.Title?.trim() || '',
@@ -852,8 +1266,8 @@ export class WordDocumentProcessor {
               }))
             };
           } else {
-            console.warn('⚠️  Response does not contain Body.Results structure');
-            console.warn('Expected: { Body: { Results: [...] } }');
+            console.warn('⚠️  Response does not contain Results array');
+            console.warn('Expected: { Results: [...] }');
             console.warn('Received:', data);
           }
 
@@ -885,12 +1299,14 @@ export class WordDocumentProcessor {
    * Extract Content_ID from URL
    */
   private extractContentId(url: string): string | null {
-    const match = url.match(/([TC][SM][RS]C?-[A-Za-z0-9]+-\d{6})/i);
+    const match = url.match(/((?:TSRC|CMS)-[A-Za-z0-9]+-\d{6})/i);
     return match ? match[1] : null;
   }
 
   /**
    * Extract Document_ID from URL
+   * Only matches "docid=" (theSource URLs) - NOT "documentId=" (external policy URLs)
+   * Example: https://thesource.cvshealth.com/nuxeo/thesource/%23!/view?docid=8f2f198d-df40-4667-b72c-6f2d2141a91c
    */
   private extractDocumentId(url: string): string | null {
     const match = url.match(/docid=([A-Za-z0-9\-]+)(?:[^A-Za-z0-9\-]|$)/i);
@@ -929,27 +1345,91 @@ export class WordDocumentProcessor {
     let updated = false;
 
     this.traverseElement(docData, (element: any) => {
-      if (element['w:hyperlink'] && element['w:hyperlink']['@_r:id'] === relationshipId) {
-        const hyperlinkElement = element['w:hyperlink'];
-        const runs = hyperlinkElement['w:r'];
-        const runsArray = Array.isArray(runs) ? runs : (runs ? [runs] : []);
+      if (element['w:hyperlink']) {
+        // With preserveOrder: true, attributes are in :@ object on parent element
+        const attrs = element[':@'] || {};
+        const rid = attrs['@_r:id'] || attrs['@_w:id'];
 
-        if (runsArray.length > 0) {
-          // Update first text run, clear others
-          let firstRun = true;
-          for (const run of runsArray) {
-            if (run['w:t']) {
-              if (firstRun) {
-                if (typeof run['w:t'] === 'string') {
-                  run['w:t'] = newText;
-                } else {
-                  run['w:t']['#text'] = newText;
-                }
-                firstRun = false;
-                updated = true;
-              } else {
-                delete run['w:t'];
+        if (rid === relationshipId) {
+          let hyperlinkElement = element['w:hyperlink'];
+
+          // With preserveOrder: true, w:hyperlink is an array
+          if (Array.isArray(hyperlinkElement)) {
+            // Search through array to find w:r elements
+            let allRuns: any[] = [];
+            for (const item of hyperlinkElement) {
+              if (item['w:r']) {
+                const runs = Array.isArray(item['w:r']) ? item['w:r'] : [item['w:r']];
+                allRuns = allRuns.concat(runs);
               }
+            }
+
+            if (allRuns.length > 0) {
+              // Update first text run, clear others
+              let firstRun = true;
+              for (const run of allRuns) {
+                const textEl = run['w:t'];
+                if (textEl) {
+                  if (firstRun) {
+                    // Handle different w:t structures
+                    if (typeof textEl === 'string') {
+                      run['w:t'] = newText;
+                    } else if (Array.isArray(textEl)) {
+                      if (textEl.length > 0) {
+                        if (typeof textEl[0] === 'string') {
+                          textEl[0] = newText;
+                        } else {
+                          textEl[0]['#text'] = newText;
+                        }
+                      }
+                    } else {
+                      textEl['#text'] = newText;
+                    }
+                    firstRun = false;
+                    updated = true;
+                  } else {
+                    delete run['w:t'];
+                  }
+                }
+              }
+            } else {
+              console.log(`      Hyperlink ${relationshipId} has no text runs`);
+            }
+          } else {
+            // Non-array structure (fallback)
+            const runs = hyperlinkElement['w:r'];
+            const runsArray = Array.isArray(runs) ? runs : (runs ? [runs] : []);
+
+            if (runsArray.length > 0) {
+              // Update first text run, clear others
+              let firstRun = true;
+              for (const run of runsArray) {
+                const textEl = run['w:t'];
+                if (textEl) {
+                  if (firstRun) {
+                    // Handle different w:t structures
+                    if (typeof textEl === 'string') {
+                      run['w:t'] = newText;
+                    } else if (Array.isArray(textEl)) {
+                      if (textEl.length > 0) {
+                        if (typeof textEl[0] === 'string') {
+                          textEl[0] = newText;
+                        } else {
+                          textEl[0]['#text'] = newText;
+                        }
+                      }
+                    } else {
+                      textEl['#text'] = newText;
+                    }
+                    firstRun = false;
+                    updated = true;
+                  } else {
+                    delete run['w:t'];
+                  }
+                }
+              }
+            } else {
+              console.log(`      Hyperlink ${relationshipId} has no text runs`);
             }
           }
         }
@@ -973,10 +1453,21 @@ export class WordDocumentProcessor {
         if (item.Relationships) {
           const result = this.updateRelationshipTarget(item.Relationships, relationshipId, newTarget);
           if (result) updated = true;
-        } else if (item.Relationship) {
+        } else if (item.Relationship !== undefined) {
+          // With preserveOrder: true, relationship data can be in two places:
+          // 1. Parent object's :@ attribute (actual structure from test documents)
+          // 2. Inside Relationship array elements (alternative structure)
+
+          // FIRST: Check parent object's :@ attribute
+          const parentAttrs = item[':@'] || {};
+          if (parentAttrs['@_Id'] === relationshipId) {
+            parentAttrs['@_Target'] = newTarget;
+            updated = true;
+          }
+
+          // THEN: Also check inside Relationship array (for alternative structures)
           const rels = Array.isArray(item.Relationship) ? item.Relationship : [item.Relationship];
           for (const rel of rels) {
-            // With preserveOrder: true, attributes are in :@ object
             const attrs = rel[':@'] || {};
             if (attrs['@_Id'] === relationshipId) {
               attrs['@_Target'] = newTarget;
@@ -987,10 +1478,17 @@ export class WordDocumentProcessor {
       }
     } else if (relsData.Relationships) {
       return this.updateRelationshipTarget(relsData.Relationships, relationshipId, newTarget);
-    } else if (relsData.Relationship) {
+    } else if (relsData.Relationship !== undefined) {
+      // FIRST: Check parent object's :@ attribute
+      const parentAttrs = relsData[':@'] || {};
+      if (parentAttrs['@_Id'] === relationshipId) {
+        parentAttrs['@_Target'] = newTarget;
+        updated = true;
+      }
+
+      // THEN: Also check inside Relationship array
       const rels = Array.isArray(relsData.Relationship) ? relsData.Relationship : [relsData.Relationship];
       for (const rel of rels) {
-        // With preserveOrder: true, attributes are in :@ object
         const attrs = rel[':@'] || {};
         if (attrs['@_Id'] === relationshipId) {
           attrs['@_Target'] = newTarget;
