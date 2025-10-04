@@ -236,45 +236,45 @@ export function Plugins() {
       <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-border/50">
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-lg bg-green-500/10">
+                <Download className="w-6 h-6 text-green-500" />
+              </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Installed</p>
                 <p className="text-2xl font-bold">
                   {plugins.filter((p) => p.isInstalled).length}
                 </p>
               </div>
-              <div className="p-3 rounded-lg bg-green-500/10">
-                <Download className="w-6 h-6 text-green-500" />
-              </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-lg bg-blue-500/10">
+                <Power className="w-6 h-6 text-blue-500" />
+              </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Active</p>
                 <p className="text-2xl font-bold">
                   {plugins.filter((p) => p.isEnabled).length}
                 </p>
               </div>
-              <div className="p-3 rounded-lg bg-blue-500/10">
-                <Power className="w-6 h-6 text-blue-500" />
-              </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-lg bg-purple-500/10">
+                <Puzzle className="w-6 h-6 text-purple-500" />
+              </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Available</p>
                 <p className="text-2xl font-bold">{plugins.length}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-purple-500/10">
-                <Puzzle className="w-6 h-6 text-purple-500" />
               </div>
             </div>
           </CardContent>
