@@ -66,8 +66,6 @@ export function Dashboard() {
     {
       title: 'Documents Processed',
       value: totalStats.documentsProcessed.toString(),
-      change: '+12',
-      trend: 'up',
       icon: FileCheck,
       gradient: 'from-green-400 to-emerald-600',
       bgGradient: 'from-green-500/20 to-emerald-500/10',
@@ -75,8 +73,6 @@ export function Dashboard() {
     {
       title: 'Hyperlinks Checked',
       value: totalStats.hyperlinksChecked.toString(),
-      change: '+245',
-      trend: 'up',
       icon: Link,
       gradient: 'from-blue-400 to-indigo-600',
       bgGradient: 'from-blue-500/20 to-indigo-500/10',
@@ -84,8 +80,6 @@ export function Dashboard() {
     {
       title: 'Feedback Imported',
       value: totalStats.feedbackImported.toString(),
-      change: '+8',
-      trend: 'up',
       icon: MessageSquare,
       gradient: 'from-purple-400 to-pink-600',
       bgGradient: 'from-purple-500/20 to-pink-500/10',
@@ -93,8 +87,6 @@ export function Dashboard() {
     {
       title: 'Time Saved',
       value: `${totalStats.timeSaved}m`,
-      change: '+45m',
-      trend: 'up',
       icon: Clock,
       gradient: 'from-orange-400 to-red-600',
       bgGradient: 'from-orange-500/20 to-red-500/10',
@@ -201,17 +193,7 @@ export function Dashboard() {
                       {stat.title}
                     </p>
                     <p className="text-3xl font-bold tracking-tight">{stat.value}</p>
-                    <div className="flex items-center gap-2 pt-2">
-                      <div
-                        className={cn(
-                          'flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium',
-                          'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                        )}
-                      >
-                        <span>{stat.change}</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">today</span>
-                    </div>
+                    <p className="text-xs text-muted-foreground pt-2">Total across all sessions</p>
                   </div>
                 </CardContent>
               </Card>
