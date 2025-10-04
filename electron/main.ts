@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, dialog, session } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import { join } from 'path';
 import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';
@@ -405,5 +406,187 @@ ipcMain.handle('process-document', async (...[, path]: [Electron.IpcMainInvokeEv
       success: false,
       error: message,
     };
+  }
+});
+
+// ==============================================================================
+// Auto-Updater Configuration
+// ==============================================================================
+
+class AutoUpdaterHandler {
+  private updateCheckInProgress = false;
+  private downloadInProgress = false;
+
+  constructor() {
+    this.setupAutoUpdater();
+    this.setupIPCHandlers();
+  }
+
+  private setupAutoUpdater(): void {
+    // Configure auto-updater
+    autoUpdater.autoDownload = false; // Manual control over downloads
+    autoUpdater.autoInstallOnAppQuit = true; // Install on quit
+
+    // Logging
+    autoUpdater.logger = {
+      info: (message) => console.log('[AutoUpdater]', message),
+      warn: (message) => console.warn('[AutoUpdater]', message),
+      error: (message) => console.error('[AutoUpdater]', message),
+      debug: (message) => console.debug('[AutoUpdater]', message),
+    };
+
+    // Update event handlers
+    autoUpdater.on('checking-for-update', () => {
+      this.sendStatusToWindow('Checking for updates...');
+      mainWindow?.webContents.send('update-checking');
+    });
+
+    autoUpdater.on('update-available', (info) => {
+      this.sendStatusToWindow(`Update available: ${info.version}`);
+      mainWindow?.webContents.send('update-available', {
+        version: info.version,
+        releaseDate: info.releaseDate,
+        releaseNotes: info.releaseNotes,
+      });
+      this.updateCheckInProgress = false;
+    });
+
+    autoUpdater.on('update-not-available', (info) => {
+      this.sendStatusToWindow('Already up to date');
+      mainWindow?.webContents.send('update-not-available', {
+        version: info.version,
+      });
+      this.updateCheckInProgress = false;
+    });
+
+    autoUpdater.on('error', (error) => {
+      this.sendStatusToWindow(`Update error: ${error.message}`);
+      mainWindow?.webContents.send('update-error', {
+        message: error.message,
+      });
+      this.updateCheckInProgress = false;
+      this.downloadInProgress = false;
+    });
+
+    autoUpdater.on('download-progress', (progressObj) => {
+      mainWindow?.webContents.send('update-download-progress', {
+        bytesPerSecond: progressObj.bytesPerSecond,
+        percent: progressObj.percent,
+        transferred: progressObj.transferred,
+        total: progressObj.total,
+      });
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      this.sendStatusToWindow(`Update downloaded: ${info.version}`);
+      mainWindow?.webContents.send('update-downloaded', {
+        version: info.version,
+        releaseNotes: info.releaseNotes,
+      });
+      this.downloadInProgress = false;
+    });
+  }
+
+  private setupIPCHandlers(): void {
+    // Check for updates
+    ipcMain.handle('check-for-updates', async () => {
+      if (this.updateCheckInProgress) {
+        return {
+          success: false,
+          message: 'Update check already in progress',
+        };
+      }
+
+      if (isDev) {
+        return {
+          success: false,
+          message: 'Updates are not available in development mode',
+        };
+      }
+
+      try {
+        this.updateCheckInProgress = true;
+        const result = await autoUpdater.checkForUpdates();
+        return {
+          success: true,
+          updateInfo: result?.updateInfo,
+        };
+      } catch (error) {
+        this.updateCheckInProgress = false;
+        return {
+          success: false,
+          message: error instanceof Error ? error.message : 'Failed to check for updates',
+        };
+      }
+    });
+
+    // Download update
+    ipcMain.handle('download-update', async () => {
+      if (this.downloadInProgress) {
+        return {
+          success: false,
+          message: 'Download already in progress',
+        };
+      }
+
+      try {
+        this.downloadInProgress = true;
+        await autoUpdater.downloadUpdate();
+        return {
+          success: true,
+          message: 'Download started',
+        };
+      } catch (error) {
+        this.downloadInProgress = false;
+        return {
+          success: false,
+          message: error instanceof Error ? error.message : 'Failed to download update',
+        };
+      }
+    });
+
+    // Install update and restart
+    ipcMain.handle('install-update', () => {
+      autoUpdater.quitAndInstall(false, true);
+    });
+
+    // Get current version
+    ipcMain.handle('get-app-version', () => {
+      return app.getVersion();
+    });
+  }
+
+  private sendStatusToWindow(text: string): void {
+    console.log('[AutoUpdater]', text);
+  }
+
+  // Check for updates on app start (if enabled in settings)
+  public async checkOnStartup(): Promise<void> {
+    if (isDev) {
+      console.log('[AutoUpdater] Skipping update check in development mode');
+      return;
+    }
+
+    // Wait a bit for the window to load
+    setTimeout(async () => {
+      try {
+        console.log('[AutoUpdater] Checking for updates on startup...');
+        await autoUpdater.checkForUpdates();
+      } catch (error) {
+        console.error('[AutoUpdater] Startup update check failed:', error);
+      }
+    }, 3000);
+  }
+}
+
+// Initialize auto-updater handler
+const updaterHandler = new AutoUpdaterHandler();
+
+// Check for updates on startup (will be controlled by user settings in production)
+app.whenReady().then(() => {
+  // Check for updates 3 seconds after app is ready
+  // This can be controlled by user settings later
+  if (!isDev) {
+    updaterHandler.checkOnStartup();
   }
 });

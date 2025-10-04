@@ -60,6 +60,44 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('window-unfullscreen', subscription);
     return () => ipcRenderer.removeListener('window-unfullscreen', subscription);
   },
+
+  // Auto-updater
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  getCurrentVersion: () => ipcRenderer.invoke('get-app-version'),
+
+  // Update event listeners
+  onUpdateChecking: (callback: () => void) => {
+    const subscription = (_event: IpcRendererEvent) => callback();
+    ipcRenderer.on('update-checking', subscription);
+    return () => ipcRenderer.removeListener('update-checking', subscription);
+  },
+  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string; releaseNotes: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, info: any) => callback(info);
+    ipcRenderer.on('update-available', subscription);
+    return () => ipcRenderer.removeListener('update-available', subscription);
+  },
+  onUpdateNotAvailable: (callback: (info: { version: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, info: any) => callback(info);
+    ipcRenderer.on('update-not-available', subscription);
+    return () => ipcRenderer.removeListener('update-not-available', subscription);
+  },
+  onUpdateError: (callback: (error: { message: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, error: any) => callback(error);
+    ipcRenderer.on('update-error', subscription);
+    return () => ipcRenderer.removeListener('update-error', subscription);
+  },
+  onUpdateDownloadProgress: (callback: (progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => void) => {
+    const subscription = (_event: IpcRendererEvent, progress: any) => callback(progress);
+    ipcRenderer.on('update-download-progress', subscription);
+    return () => ipcRenderer.removeListener('update-download-progress', subscription);
+  },
+  onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, info: any) => callback(info);
+    ipcRenderer.on('update-downloaded', subscription);
+    return () => ipcRenderer.removeListener('update-downloaded', subscription);
+  },
 });
 
 export type ElectronAPI = {
@@ -83,6 +121,16 @@ export type ElectronAPI = {
   onWindowUnmaximized: (callback: () => void) => () => void;
   onWindowFullscreen: (callback: () => void) => () => void;
   onWindowUnfullscreen: (callback: () => void) => () => void;
+  checkForUpdates: () => Promise<{ success: boolean; message?: string; updateInfo?: any }>;
+  downloadUpdate: () => Promise<{ success: boolean; message?: string }>;
+  installUpdate: () => void;
+  getCurrentVersion: () => Promise<string>;
+  onUpdateChecking: (callback: () => void) => () => void;
+  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string; releaseNotes: string }) => void) => () => void;
+  onUpdateNotAvailable: (callback: (info: { version: string }) => void) => () => void;
+  onUpdateError: (callback: (error: { message: string }) => void) => () => void;
+  onUpdateDownloadProgress: (callback: (progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => void) => () => void;
+  onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string }) => void) => () => void;
 };
 
 declare global {
