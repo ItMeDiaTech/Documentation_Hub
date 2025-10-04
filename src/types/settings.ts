@@ -2,8 +2,6 @@ export interface UserProfile {
   firstName: string;
   lastName: string;
   email: string;
-  username: string;
-  bio: string;
 }
 
 export interface NotificationSettings {
@@ -40,8 +38,6 @@ export const defaultUserSettings: UserSettings = {
     firstName: 'John',
     lastName: 'Doe',
     email: 'john.doe@example.com',
-    username: 'johndoe',
-    bio: 'Software developer passionate about creating amazing experiences',
   },
   notifications: {
     emailNotifications: false,
