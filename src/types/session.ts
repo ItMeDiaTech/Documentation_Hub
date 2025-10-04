@@ -97,6 +97,7 @@ export interface TableUniformitySettings {
   borderWidth: number; // in points
   headerRowBold: boolean;
   headerRowShaded: boolean;
+  headerRowShadingColor: string; // color hex for header row shading
   alternatingRowColors: boolean;
   cellPadding: number; // in points
   autoFit: 'content' | 'window';

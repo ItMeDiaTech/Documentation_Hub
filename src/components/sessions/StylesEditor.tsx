@@ -106,6 +106,7 @@ const defaultTableUniformitySettings: TableUniformitySettings = {
   borderWidth: 1,
   headerRowBold: true,
   headerRowShaded: true,
+  headerRowShadingColor: '#D3D3D3',
   alternatingRowColors: false,
   cellPadding: 4,
   autoFit: 'content',
@@ -632,6 +633,27 @@ export function StylesEditor({ onStylesChange, renderSaveButton }: StylesEditorP
                 </div>
                 <span className="text-sm">Shaded header row background</span>
               </label>
+
+              {tableUniformitySettings.headerRowShaded && (
+                <div className="pl-8">
+                  <label className="text-sm text-muted-foreground mb-1 block">Header Row Shading Color</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="color"
+                      value={tableUniformitySettings.headerRowShadingColor}
+                      onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, headerRowShadingColor: e.target.value })}
+                      className="h-9 w-16 border border-border rounded cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={tableUniformitySettings.headerRowShadingColor}
+                      onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, headerRowShadingColor: e.target.value })}
+                      className="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background max-w-xs"
+                      placeholder="#D3D3D3"
+                    />
+                  </div>
+                </div>
+              )}
 
               <label className="flex items-center gap-3 cursor-pointer">
                 <div className="relative">
