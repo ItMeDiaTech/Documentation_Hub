@@ -222,7 +222,7 @@ Track your productivity with comprehensive statistics:
 **Installer (Recommended):**
 ```powershell
 # Download and install using PowerShell
-iwr https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/main/install.ps1 | iex
+iwr https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/master/install.ps1 | iex
 ```
 
 **Manual Installation:**
@@ -239,7 +239,7 @@ No administrator rights required - installs to user directory.
 **Installer:**
 ```bash
 # Download and install using curl
-curl -fsSL https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/master/install.sh | bash
 ```
 
 **Manual Installation:**
@@ -253,7 +253,7 @@ curl -fsSL https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/main/
 **AppImage:**
 ```bash
 # Download and run
-curl -fsSL https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/master/install.sh | bash
 ```
 
 **Manual Installation:**
