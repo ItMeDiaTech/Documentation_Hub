@@ -54,6 +54,29 @@ export interface ProcessingOptions {
     spaceBefore: number;
     spaceAfter: number;
   };
+  customStyles?: any; // Session styles from StylesEditor
+  tableUniformitySettings?: any; // Table uniformity settings from StylesEditor
+}
+
+/**
+ * Utility: Convert hex color from #RRGGBB to RRGGBB for OpenXML
+ */
+function stripHashFromColor(color: string): string {
+  return color.startsWith('#') ? color.substring(1) : color;
+}
+
+/**
+ * Utility: Convert font size from points to half-points for OpenXML
+ */
+function pointsToHalfPoints(points: number): number {
+  return points * 2;
+}
+
+/**
+ * Utility: Convert points to twips for OpenXML spacing
+ */
+function pointsToTwips(points: number): number {
+  return points * 20;
 }
 
 export class DocumentProcessingService {
@@ -540,9 +563,21 @@ export class DocumentProcessingService {
       changes.push(...styleChanges);
     }
 
+    // Apply custom style properties from session styles
+    if (options.customStyles) {
+      const customStyleChanges = this.applyCustomStyleProperties(documentXml, options.customStyles);
+      changes.push(...customStyleChanges);
+    }
+
     if (options.header2Spacing) {
       const spacingChanges = this.applyHeader2Spacing(documentXml, options.header2Spacing);
       changes.push(...spacingChanges);
+    }
+
+    // Apply table uniformity settings
+    if (options.tableUniformitySettings) {
+      const tableChanges = this.applyTableUniformity(documentXml, options.tableUniformitySettings);
+      changes.push(...tableChanges);
     }
 
     await this.setXmlContent(zip, 'word/document.xml', documentXml);
@@ -715,6 +750,159 @@ export class DocumentProcessingService {
     pPr['w:pStyle'] = {
       '@_w:val': styleName
     };
+  }
+
+  /**
+   * Apply custom style properties from session styles to paragraphs
+   * Applies font, size, color, spacing, alignment, bold, italic, underline
+   */
+  private applyCustomStyleProperties(xmlContent: any, customStyles: any): any[] {
+    const changes: any[] = [];
+    if (!customStyles) return changes;
+
+    const applyPropertiesToParagraph = (obj: any): void => {
+      if (!obj) return;
+
+      if (obj['w:p']) {
+        const paragraphs = Array.isArray(obj['w:p']) ? obj['w:p'] : [obj['w:p']];
+
+        for (const p of paragraphs) {
+          const currentStyle = this.getCurrentParagraphStyle(p);
+          let styleToApply: any = null;
+
+          // Match paragraph to style definition
+          if (currentStyle === 'Heading1' || currentStyle === 'Header1') {
+            styleToApply = customStyles.header1 || customStyles.find((s: any) => s.id === 'header1');
+          } else if (currentStyle === 'Heading2' || currentStyle === 'Header2') {
+            styleToApply = customStyles.header2 || customStyles.find((s: any) => s.id === 'header2');
+          } else {
+            styleToApply = customStyles.normal || customStyles.find((s: any) => s.id === 'normal');
+          }
+
+          if (styleToApply) {
+            // Ensure paragraph properties exist
+            if (!p['w:pPr']) {
+              p['w:pPr'] = {};
+            }
+            const pPr = Array.isArray(p['w:pPr']) ? p['w:pPr'][0] : p['w:pPr'];
+
+            // Apply alignment
+            if (styleToApply.alignment) {
+              pPr['w:jc'] = { '@_w:val': styleToApply.alignment };
+            }
+
+            // Apply spacing (before/after)
+            if (styleToApply.spaceBefore !== undefined || styleToApply.spaceAfter !== undefined) {
+              if (!pPr['w:spacing']) {
+                pPr['w:spacing'] = {};
+              }
+              if (styleToApply.spaceBefore !== undefined) {
+                pPr['w:spacing']['@_w:before'] = pointsToTwips(styleToApply.spaceBefore).toString();
+              }
+              if (styleToApply.spaceAfter !== undefined) {
+                pPr['w:spacing']['@_w:after'] = pointsToTwips(styleToApply.spaceAfter).toString();
+              }
+            }
+
+            // Apply run properties to paragraph (affects all text)
+            if (!pPr['w:rPr']) {
+              pPr['w:rPr'] = {};
+            }
+
+            // Apply font family
+            if (styleToApply.fontFamily) {
+              pPr['w:rPr']['w:rFonts'] = {
+                '@_w:ascii': styleToApply.fontFamily,
+                '@_w:hAnsi': styleToApply.fontFamily,
+                '@_w:cs': styleToApply.fontFamily
+              };
+            }
+
+            // Apply font size (convert points to half-points)
+            if (styleToApply.fontSize) {
+              const halfPoints = pointsToHalfPoints(styleToApply.fontSize).toString();
+              pPr['w:rPr']['w:sz'] = { '@_w:val': halfPoints };
+              pPr['w:rPr']['w:szCs'] = { '@_w:val': halfPoints };
+            }
+
+            // Apply bold
+            if (styleToApply.bold) {
+              pPr['w:rPr']['w:b'] = { '@_w:val': '1' };
+            }
+
+            // Apply italic
+            if (styleToApply.italic) {
+              pPr['w:rPr']['w:i'] = { '@_w:val': '1' };
+            }
+
+            // Apply underline
+            if (styleToApply.underline) {
+              pPr['w:rPr']['w:u'] = { '@_w:val': 'single' };
+            }
+
+            // Apply color (strip # prefix)
+            if (styleToApply.color) {
+              pPr['w:rPr']['w:color'] = { '@_w:val': stripHashFromColor(styleToApply.color) };
+            }
+
+            // Also apply to all text runs within the paragraph
+            if (p['w:r']) {
+              const runs = Array.isArray(p['w:r']) ? p['w:r'] : [p['w:r']];
+              for (const run of runs) {
+                if (!run['w:rPr']) {
+                  run['w:rPr'] = {};
+                }
+
+                // Apply same properties to each run
+                if (styleToApply.fontFamily) {
+                  run['w:rPr']['w:rFonts'] = {
+                    '@_w:ascii': styleToApply.fontFamily,
+                    '@_w:hAnsi': styleToApply.fontFamily,
+                    '@_w:cs': styleToApply.fontFamily
+                  };
+                }
+                if (styleToApply.fontSize) {
+                  const halfPoints = pointsToHalfPoints(styleToApply.fontSize).toString();
+                  run['w:rPr']['w:sz'] = { '@_w:val': halfPoints };
+                  run['w:rPr']['w:szCs'] = { '@_w:val': halfPoints };
+                }
+                if (styleToApply.bold) {
+                  run['w:rPr']['w:b'] = { '@_w:val': '1' };
+                }
+                if (styleToApply.italic) {
+                  run['w:rPr']['w:i'] = { '@_w:val': '1' };
+                }
+                if (styleToApply.underline) {
+                  run['w:rPr']['w:u'] = { '@_w:val': 'single' };
+                }
+                if (styleToApply.color) {
+                  run['w:rPr']['w:color'] = { '@_w:val': stripHashFromColor(styleToApply.color) };
+                }
+              }
+            }
+
+            // Track the change
+            const text = this.extractParagraphText(p);
+            changes.push({
+              type: 'style',
+              description: `Applied custom ${styleToApply.name || styleToApply.id} formatting`,
+              before: `"${text}" - Default formatting`,
+              after: `"${text}" - ${styleToApply.fontFamily} ${styleToApply.fontSize}pt ${styleToApply.bold ? 'Bold' : ''} ${styleToApply.color}`
+            });
+          }
+        }
+      }
+
+      // Recursively process children
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+          applyPropertiesToParagraph(obj[key]);
+        }
+      }
+    };
+
+    applyPropertiesToParagraph(xmlContent);
+    return changes;
   }
 
   /**
@@ -954,6 +1142,91 @@ export class DocumentProcessingService {
     };
 
     removeItalic(xmlContent);
+  }
+
+  /**
+   * Apply table uniformity settings including header row shading
+   */
+  private applyTableUniformity(xmlContent: any, tableSettings: any): any[] {
+    const changes: any[] = [];
+    if (!tableSettings) return changes;
+
+    const applyToTables = (obj: any): void => {
+      if (!obj) return;
+
+      // Look for table elements (w:tbl)
+      if (obj['w:tbl']) {
+        const tables = Array.isArray(obj['w:tbl']) ? obj['w:tbl'] : [obj['w:tbl']];
+
+        for (const table of tables) {
+          // Find table rows (w:tr)
+          if (table['w:tr']) {
+            const rows = Array.isArray(table['w:tr']) ? table['w:tr'] : [table['w:tr']];
+
+            if (rows.length > 0 && tableSettings.headerRowShaded) {
+              const headerRow = rows[0]; // First row is typically the header
+
+              // Apply shading to all cells in header row
+              if (headerRow['w:tc']) {
+                const cells = Array.isArray(headerRow['w:tc']) ? headerRow['w:tc'] : [headerRow['w:tc']];
+
+                for (const cell of cells) {
+                  // Ensure cell properties exist
+                  if (!cell['w:tcPr']) {
+                    cell['w:tcPr'] = {};
+                  }
+                  const tcPr = Array.isArray(cell['w:tcPr']) ? cell['w:tcPr'][0] : cell['w:tcPr'];
+
+                  // Apply shading with color (strip # prefix)
+                  const shadingColor = tableSettings.headerRowShadingColor || '#D3D3D3';
+                  tcPr['w:shd'] = {
+                    '@_w:val': 'clear',
+                    '@_w:color': 'auto',
+                    '@_w:fill': stripHashFromColor(shadingColor)
+                  };
+
+                  // Apply bold if specified
+                  if (tableSettings.headerRowBold) {
+                    // Apply bold to all text runs in the cell
+                    if (cell['w:p']) {
+                      const paragraphs = Array.isArray(cell['w:p']) ? cell['w:p'] : [cell['w:p']];
+                      for (const p of paragraphs) {
+                        if (p['w:r']) {
+                          const runs = Array.isArray(p['w:r']) ? p['w:r'] : [p['w:r']];
+                          for (const run of runs) {
+                            if (!run['w:rPr']) {
+                              run['w:rPr'] = {};
+                            }
+                            run['w:rPr']['w:b'] = { '@_w:val': '1' };
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                changes.push({
+                  type: 'table',
+                  description: 'Applied table header row formatting',
+                  before: 'No shading',
+                  after: `Shaded with ${shadingColor}${tableSettings.headerRowBold ? ', bold text' : ''}`
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Recursively process children
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+          applyToTables(obj[key]);
+        }
+      }
+    };
+
+    applyToTables(xmlContent);
+    return changes;
   }
 
   /**
