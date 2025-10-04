@@ -171,9 +171,11 @@ export class WordDocumentProcessor {
         console.log('\n=== TEXT REPLACEMENT PROCESSING ===');
         const textReplacements = options.textReplacements.filter(r => r.type === 'text' && r.enabled);
         if (textReplacements.length > 0) {
-          textReplacementsProcessed = await this.processTextReplacements(zip, textReplacements);
+          const textReplacementResult = await this.processTextReplacements(zip, textReplacements);
+          textReplacementsProcessed = textReplacementResult.modified;
           if (textReplacementsProcessed) {
             result.modifiedHyperlinks++; // Count as modification for save logic
+            result.processedLinks.push(...textReplacementResult.changes);
           }
         }
       }
@@ -763,12 +765,25 @@ export class WordDocumentProcessor {
           const hyperlinkRules = options.textReplacements.filter(r => r.type === 'hyperlink' && r.enabled);
           for (const rule of hyperlinkRules) {
             if (hyperlink.displayText === rule.pattern) {
+              const beforeText = hyperlink.displayText;
               console.log(`    Custom replacement: "${rule.pattern}" → "${rule.replacement}"`);
               const updated = this.updateHyperlinkDisplayText(partData, hyperlink.relationshipId, rule.replacement);
               if (updated) {
                 partModified = true;
                 modified = true;
-                changes.push(`Custom hyperlink replacement applied`);
+                changes.push(`Custom hyperlink replacement: "${rule.pattern}"`);
+
+                // Track the change with proper metadata
+                processedLinks.push({
+                  id: `hyperlink-replacement-${Date.now()}-${processedCount}`,
+                  type: 'hyperlink',
+                  description: `Custom hyperlink replacement rule applied: Pattern "${rule.pattern}"`,
+                  before: beforeText,
+                  after: rule.replacement,
+                  url: hyperlink.target,
+                  location: hyperlink.containingPart
+                });
+
                 hyperlink.displayText = rule.replacement;
               }
             }
@@ -1087,27 +1102,37 @@ export class WordDocumentProcessor {
   /**
    * Process text replacements - find and replace text based on custom rules
    */
-  private async processTextReplacements(zip: JSZip, replacements: any[]): Promise<boolean> {
+  private async processTextReplacements(zip: JSZip, replacements: any[]): Promise<{ modified: boolean; changes: any[] }> {
     let modified = false;
     let replacementCount = 0;
+    const changes: any[] = [];
 
     try {
       // Parse main document
       const documentXmlFile = zip.file('word/document.xml');
       if (!documentXmlFile) {
         console.log('No document.xml found');
-        return false;
+        return { modified: false, changes: [] };
       }
 
       const documentXml = await documentXmlFile.async('text');
       const documentData = this.xmlParser.parse(documentXml);
 
+      let paragraphIndex = 0;
+      let runIndex = 0;
+
       // Find all text runs and apply replacements
       this.traverseElement(documentData, (element: any) => {
+        if (element['w:p']) {
+          paragraphIndex++;
+          runIndex = 0;
+        }
+
         if (element['w:r']) { // Text run
           const runs = Array.isArray(element['w:r']) ? element['w:r'] : [element['w:r']];
 
           for (const run of runs) {
+            runIndex++;
             const textEl = run['w:t'];
             if (!textEl) continue;
 
@@ -1137,6 +1162,7 @@ export class WordDocumentProcessor {
 
             // Apply each replacement rule
             let newText = text;
+            let appliedRules: string[] = [];
             for (const rule of replacements) {
               const pattern = rule.pattern;
               const replacement = rule.replacement;
@@ -1145,11 +1171,13 @@ export class WordDocumentProcessor {
               if (caseSensitive) {
                 if (newText.includes(pattern)) {
                   newText = newText.split(pattern).join(replacement);
+                  appliedRules.push(`Pattern: "${pattern}"`);
                 }
               } else {
                 const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
                 if (regex.test(newText)) {
                   newText = newText.replace(regex, replacement);
+                  appliedRules.push(`Pattern (case-insensitive): "${pattern}"`);
                 }
               }
             }
@@ -1176,6 +1204,18 @@ export class WordDocumentProcessor {
               }
 
               console.log(`  Replaced: "${text}" → "${newText}"`);
+
+              // Track the change
+              changes.push({
+                id: `text-replacement-${Date.now()}-${replacementCount}`,
+                type: 'text',
+                description: `Custom text replacement applied: ${appliedRules.join(', ')}`,
+                before: text,
+                after: newText,
+                paragraphIndex,
+                runIndex,
+                elementPath: `//w:p[${paragraphIndex}]/w:r[${runIndex}]`
+              });
             }
           }
         }
@@ -1193,10 +1233,10 @@ export class WordDocumentProcessor {
         console.log('No text replacements made');
       }
 
-      return modified;
+      return { modified, changes };
     } catch (error) {
       console.error('Error processing text replacements:', error);
-      return false;
+      return { modified: false, changes: [] };
     }
   }
 

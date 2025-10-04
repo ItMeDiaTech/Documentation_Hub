@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
-import { FileText, GitBranch, ChevronDown, ChevronRight, Settings, Check } from 'lucide-react';
+import { FileText, GitBranch, ChevronDown, ChevronRight, Settings, Check, Undo, RotateCcw } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from '@/contexts/SessionContext';
 import { defaultOptions } from './ProcessingOptions';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { Button } from '@/components/common/Button';
 
 interface Change {
   id: string;
@@ -29,7 +31,11 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [selectedChange, setSelectedChange] = useState<string | null>(null);
   const [showProcessingOptions, setShowProcessingOptions] = useState(true);
-  const { sessions } = useSession();
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [revertAllDialogOpen, setRevertAllDialogOpen] = useState(false);
+  const [changeToRevert, setChangeToRevert] = useState<{ docId: string; changeId: string } | null>(null);
+  const [documentToRevertAll, setDocumentToRevertAll] = useState<string | null>(null);
+  const { sessions, revertChange, revertAllChanges } = useSession();
 
   // Get the current session
   const session = sessions.find(s => s.id === sessionId);
@@ -106,6 +112,43 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
       .map(opt => opt!.label);
   }, [session]);
 
+  // Handle individual change revert
+  const handleRevertChange = (docId: string, changeId: string) => {
+    setChangeToRevert({ docId, changeId });
+    setRevertDialogOpen(true);
+  };
+
+  const confirmRevertChange = async () => {
+    if (!changeToRevert) return;
+
+    try {
+      await revertChange(sessionId, changeToRevert.docId, changeToRevert.changeId);
+      setRevertDialogOpen(false);
+      setChangeToRevert(null);
+    } catch (error) {
+      console.error('Failed to revert change:', error);
+    }
+  };
+
+  // Handle revert all changes for a document
+  const handleRevertAllChanges = (docId: string) => {
+    setDocumentToRevertAll(docId);
+    setRevertAllDialogOpen(true);
+  };
+
+  const confirmRevertAllChanges = async () => {
+    if (!documentToRevertAll) return;
+
+    try {
+      await revertAllChanges(sessionId, documentToRevertAll);
+      setRevertAllDialogOpen(false);
+      setDocumentToRevertAll(null);
+    } catch (error) {
+      console.error('Failed to revert all changes:', error);
+      alert(`Failed to revert changes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="mb-4">
@@ -168,24 +211,40 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
             key={doc.id}
             className="border border-border rounded-lg overflow-hidden"
           >
-            <button
-              onClick={() => toggleDocument(doc.id)}
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                {expandedDocs.has(doc.id) ? (
-                  <ChevronDown className="w-4 h-4" />
-                ) : (
-                  <ChevronRight className="w-4 h-4" />
-                )}
-                <FileText className="w-4 h-4 text-muted-foreground" />
-                <span className="font-medium">{doc.documentName}</span>
-                <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">
-                  {doc.totalChanges} changes
-                </span>
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => toggleDocument(doc.id)}
+                className="flex-1 px-4 py-3 flex items-center gap-3 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  {expandedDocs.has(doc.id) ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                  <FileText className="w-4 h-4 text-muted-foreground" />
+                  <span className="font-medium">{doc.documentName}</span>
+                  <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">
+                    {doc.totalChanges} changes
+                  </span>
+                </div>
+              </button>
+              <div className="px-4 flex items-center gap-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRevertAllChanges(doc.id);
+                  }}
+                  className="flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Revert All Changes
+                </Button>
+                <GitBranch className="w-4 h-4 text-muted-foreground" />
               </div>
-              <GitBranch className="w-4 h-4 text-muted-foreground" />
-            </button>
+            </div>
 
             <AnimatePresence>
               {expandedDocs.has(doc.id) && (
@@ -201,19 +260,31 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
                       <div
                         key={change.id}
                         className={cn(
-                          'p-3 rounded-lg border cursor-pointer transition-all',
+                          'p-3 rounded-lg border transition-all',
                           selectedChange === change.id
                             ? 'border-primary shadow-sm'
                             : 'border-border hover:border-muted-foreground'
                         )}
-                        onClick={() => setSelectedChange(change.id)}
                       >
                         <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
+                          <div
+                            className="flex items-center gap-2 flex-1 cursor-pointer"
+                            onClick={() => setSelectedChange(change.id)}
+                          >
                             <span className="px-2 py-0.5 text-xs rounded font-medium bg-blue-50 text-blue-600">
                               {change.description}
                             </span>
                           </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRevertChange(doc.id, change.id);
+                            }}
+                            className="ml-2 p-1 rounded hover:bg-muted transition-colors group"
+                            title="Revert this change"
+                          >
+                            <Undo className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
+                          </button>
                         </div>
 
                         <div className="space-y-2">
@@ -252,6 +323,30 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
           </p>
         </div>
       )}
+
+      {/* Individual Change Revert Confirmation */}
+      <ConfirmDialog
+        open={revertDialogOpen}
+        onOpenChange={setRevertDialogOpen}
+        title="Revert Change"
+        message="Are you sure you want to revert this change? This will remove it from the tracked changes list."
+        confirmText="Revert"
+        cancelText="Cancel"
+        variant="default"
+        onConfirm={confirmRevertChange}
+      />
+
+      {/* Revert All Changes Confirmation */}
+      <ConfirmDialog
+        open={revertAllDialogOpen}
+        onOpenChange={setRevertAllDialogOpen}
+        title="Revert All Changes"
+        message="Are you sure you want to revert ALL changes for this document? This will restore the document from the backup file and cannot be undone."
+        confirmText="Revert All"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={confirmRevertAllChanges}
+      />
     </div>
   );
 }

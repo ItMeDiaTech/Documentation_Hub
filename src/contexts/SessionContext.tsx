@@ -438,6 +438,90 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
 
 
+  const revertChange = async (sessionId: string, documentId: string, changeId: string): Promise<void> => {
+    const session = sessions.find((s) => s.id === sessionId);
+    const document = session?.documents.find((d) => d.id === documentId);
+
+    if (!session || !document) {
+      console.error('Session or document not found');
+      return;
+    }
+
+    // Remove the change from the tracked changes list
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              documents: s.documents.map((d) =>
+                d.id === documentId && d.processingResult
+                  ? {
+                      ...d,
+                      processingResult: {
+                        ...d.processingResult,
+                        changes: d.processingResult.changes?.filter(c => c.id !== changeId) || []
+                      }
+                    }
+                  : d
+              ),
+              lastModified: new Date(),
+            }
+          : s
+      )
+    );
+
+    console.log(`[Session] Reverted change ${changeId} from document ${documentId}`);
+  };
+
+  const revertAllChanges = async (sessionId: string, documentId: string): Promise<void> => {
+    const session = sessions.find((s) => s.id === sessionId);
+    const document = session?.documents.find((d) => d.id === documentId);
+
+    if (!session || !document || !document.path) {
+      console.error('Session, document, or document path not found');
+      return;
+    }
+
+    const backupPath = document.processingResult?.backupPath;
+    if (!backupPath) {
+      console.error('No backup path found for document');
+      throw new Error('No backup available for this document');
+    }
+
+    try {
+      // Call Electron IPC to restore from backup
+      await window.electronAPI.restoreFromBackup(backupPath, document.path);
+
+      // Clear all tracked changes and reset processing status
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                documents: s.documents.map((d) =>
+                  d.id === documentId
+                    ? {
+                        ...d,
+                        status: 'pending' as const,
+                        processedAt: undefined,
+                        errors: undefined,
+                        processingResult: undefined
+                      }
+                    : d
+                ),
+                lastModified: new Date(),
+              }
+            : s
+        )
+      );
+
+      console.log(`[Session] Reverted all changes for document ${documentId} from backup ${backupPath}`);
+    } catch (error) {
+      console.error('Error reverting all changes:', error);
+      throw error;
+    }
+  };
+
   const updateSessionStats = (sessionId: string, stats: Partial<SessionStats>) => {
     setSessions((prev) =>
       prev.map((session) =>
@@ -584,6 +668,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         addDocuments,
         removeDocument,
         processDocument,
+        revertChange,
+        revertAllChanges,
         updateSessionStats,
         updateSessionName,
         updateSessionOptions,
