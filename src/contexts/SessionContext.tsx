@@ -389,14 +389,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           hyperlinksModified: result.modifiedHyperlinks,
                           contentIdsAppended: result.appendedContentIds || result.processedHyperlinks,
                           duration: result.duration,
-                          changes: result.processedLinks?.flatMap((link) =>
-                            link.modifications?.map((mod) => ({
-                              type: 'hyperlink' as const,
-                              description: mod,
-                              before: link.before,
-                              after: link.after
-                            })) || []
-                          ) || []
+                          changes: (result.processedLinks || []) as any[]
                         },
                       }
                     : d
