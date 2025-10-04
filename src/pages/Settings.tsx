@@ -20,6 +20,8 @@ import {
   Send,
   Link2,
   Save,
+  Download,
+  RefreshCw,
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUserSettings } from '@/contexts/UserSettingsContext';
@@ -45,6 +47,7 @@ const settingsSections = [
     group: 'System',
     items: [
       { id: 'language', label: 'Language', icon: Globe, description: 'Region & locale' },
+      { id: 'updates', label: 'Updates', icon: Download, description: 'App updates & versioning' },
       { id: 'api-connections', label: 'API Connections', icon: Link2, description: 'External services' },
       { id: 'data', label: 'Storage', icon: Database, description: 'Data management' },
       {
@@ -63,8 +66,11 @@ export function Settings() {
   const [ideaBenefit, setIdeaBenefit] = useState('');
   const [ideaSubmitted, setIdeaSubmitted] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [checkingForUpdates, setCheckingForUpdates] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState('');
+  const [currentVersion, setCurrentVersion] = useState('');
 
-  const { settings, updateProfile, updateNotifications, updateApiConnections, updateSettings, saveSettings } = useUserSettings();
+  const { settings, updateProfile, updateNotifications, updateApiConnections, updateUpdateSettings, updateSettings, saveSettings } = useUserSettings();
 
   // Local form states
   const [profileForm, setProfileForm] = useState(settings.profile);
@@ -73,6 +79,20 @@ export function Settings() {
   const [languageForm, setLanguageForm] = useState(settings.language);
   const [timezoneForm, setTimezoneForm] = useState(settings.timezone);
   const [dateFormatForm, setDateFormatForm] = useState(settings.dateFormat);
+  const [updateSettingsForm, setUpdateSettingsForm] = useState(settings.updateSettings);
+
+  // Get current version on mount
+  useEffect(() => {
+    const getVersion = async () => {
+      try {
+        const version = await window.electronAPI.getCurrentVersion();
+        setCurrentVersion(version);
+      } catch (error) {
+        console.error('Failed to get version:', error);
+      }
+    };
+    getVersion();
+  }, []);
 
   // Update local states when settings change
   useEffect(() => {
@@ -82,6 +102,7 @@ export function Settings() {
     setLanguageForm(settings.language);
     setTimezoneForm(settings.timezone);
     setDateFormatForm(settings.dateFormat);
+    setUpdateSettingsForm(settings.updateSettings);
   }, [settings]);
 
   const handleSaveSettings = async () => {
@@ -89,6 +110,7 @@ export function Settings() {
     updateProfile(profileForm);
     updateNotifications(notificationsForm);
     updateApiConnections(apiConnectionsForm);
+    updateUpdateSettings(updateSettingsForm);
     updateSettings({
       language: languageForm,
       timezone: timezoneForm,
@@ -100,6 +122,29 @@ export function Settings() {
     if (success) {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    setCheckingForUpdates(true);
+    setUpdateStatus('Checking for updates...');
+
+    try {
+      const result = await window.electronAPI.checkForUpdates();
+
+      if (result.success) {
+        if (result.updateInfo) {
+          setUpdateStatus(`Update available: ${result.updateInfo.version}`);
+        } else {
+          setUpdateStatus('You are up to date');
+        }
+      } else {
+        setUpdateStatus(result.message || 'Failed to check for updates');
+      }
+    } catch (error) {
+      setUpdateStatus('Error checking for updates');
+    } finally {
+      setCheckingForUpdates(false);
     }
   };
   const {
@@ -1122,6 +1167,102 @@ export function Settings() {
             </div>
           )}
 
+          {activeSection === 'updates' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Updates</h2>
+                <p className="text-muted-foreground mt-1">
+                  Manage application updates and versioning
+                </p>
+              </div>
+
+              <div className="space-y-6">
+                <div className="p-4 bg-muted/20 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-medium">Current Version</h3>
+                      <p className="text-sm text-muted-foreground">{currentVersion || 'Loading...'}</p>
+                    </div>
+                    <Button
+                      onClick={handleCheckForUpdates}
+                      disabled={checkingForUpdates}
+                      icon={<RefreshCw className={cn('w-4 h-4', checkingForUpdates && 'animate-spin')} />}
+                    >
+                      {checkingForUpdates ? 'Checking...' : 'Check for Updates'}
+                    </Button>
+                  </div>
+                  {updateStatus && (
+                    <p className="text-sm text-muted-foreground">{updateStatus}</p>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <label htmlFor="auto-update" className="text-sm font-medium">
+                        Auto-update on launch
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Automatically check for updates when the application starts
+                      </p>
+                    </div>
+                    <button
+                      id="auto-update"
+                      role="switch"
+                      aria-checked={updateSettingsForm.autoUpdateOnLaunch}
+                      onClick={() => setUpdateSettingsForm({ ...updateSettingsForm, autoUpdateOnLaunch: !updateSettingsForm.autoUpdateOnLaunch })}
+                      className={cn(
+                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                        updateSettingsForm.autoUpdateOnLaunch ? 'bg-primary' : 'bg-input'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                          updateSettingsForm.autoUpdateOnLaunch ? 'translate-x-6' : 'translate-x-1'
+                        )}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <label htmlFor="pre-releases" className="text-sm font-medium">
+                        Check for pre-releases
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Include beta and pre-release versions in update checks
+                      </p>
+                    </div>
+                    <button
+                      id="pre-releases"
+                      role="switch"
+                      aria-checked={updateSettingsForm.checkForPreReleases}
+                      onClick={() => setUpdateSettingsForm({ ...updateSettingsForm, checkForPreReleases: !updateSettingsForm.checkForPreReleases })}
+                      className={cn(
+                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                        updateSettingsForm.checkForPreReleases ? 'bg-primary' : 'bg-input'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                          updateSettingsForm.checkForPreReleases ? 'translate-x-6' : 'translate-x-1'
+                        )}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveSettings} showSuccess={saveSuccess} icon={<Save className="w-4 h-4" />}>
+                    Save Settings
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeSection === 'api-connections' && (
             <div className="space-y-6">
               <div>
@@ -1150,6 +1291,45 @@ export function Settings() {
                       <p className="text-xs text-muted-foreground mt-2">
                         This URL is used by the Hyperlink Service to retrieve document metadata and validate links.
                         The service will send collected document IDs to this endpoint and receive enriched data in response.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-medium mb-3">Feedback & Reporting</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="bug-report-url" className="block text-sm font-medium mb-2">
+                        Bug Report API URL
+                      </label>
+                      <input
+                        id="bug-report-url"
+                        type="url"
+                        value={apiConnectionsForm.bugReportUrl}
+                        onChange={(e) => setApiConnectionsForm({ ...apiConnectionsForm, bugReportUrl: e.target.value })}
+                        placeholder="https://www.example.com"
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                      />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Bug reports will be sent to this API endpoint. Leave as default to use email instead.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label htmlFor="submit-idea-url" className="block text-sm font-medium mb-2">
+                        Submit Idea API URL
+                      </label>
+                      <input
+                        id="submit-idea-url"
+                        type="url"
+                        value={apiConnectionsForm.submitIdeaUrl}
+                        onChange={(e) => setApiConnectionsForm({ ...apiConnectionsForm, submitIdeaUrl: e.target.value })}
+                        placeholder="https://www.example.com"
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                      />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Feature suggestions will be sent to this API endpoint. Leave as default to use email instead.
                       </p>
                     </div>
                   </div>
@@ -1215,14 +1395,66 @@ export function Settings() {
 
                 <div className="flex justify-end">
                   <Button
-                    onClick={() => {
-                      if (ideaTitle && ideaBenefit) {
+                    onClick={async () => {
+                      if (!ideaTitle || !ideaBenefit) return;
+
+                      const idea = {
+                        title: ideaTitle,
+                        benefit: ideaBenefit,
+                        date: new Date().toISOString(),
+                        version: currentVersion,
+                      };
+
+                      const apiUrl = settings.apiConnections.submitIdeaUrl;
+
+                      // Check if using default URL - if so, fallback to mailto
+                      if (apiUrl === 'https://www.example.com' || !apiUrl) {
+                        const subject = encodeURIComponent(`Feature Idea: ${ideaTitle}`);
+                        const body = encodeURIComponent(`
+Feature Idea
+------------
+Title: ${ideaTitle}
+
+Why is this needed / Who would this benefit?
+${ideaBenefit}
+
+Submitted: ${new Date().toLocaleString()}
+Version: ${currentVersion}
+                        `);
+
+                        window.location.href = `mailto:support@example.com?subject=${subject}&body=${body}`;
                         setIdeaSubmitted(true);
                         setTimeout(() => {
                           setIdeaTitle('');
                           setIdeaBenefit('');
                           setIdeaSubmitted(false);
                         }, 2000);
+                        return;
+                      }
+
+                      // Use API if configured
+                      try {
+                        const response = await fetch(apiUrl, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify(idea),
+                        });
+
+                        if (response.ok) {
+                          setIdeaSubmitted(true);
+                          setTimeout(() => {
+                            setIdeaTitle('');
+                            setIdeaBenefit('');
+                            setIdeaSubmitted(false);
+                          }, 2000);
+                        } else {
+                          alert('Failed to submit idea. Please try again.');
+                        }
+                      } catch (error) {
+                        console.error('Error submitting idea:', error);
+                        alert('Failed to submit idea. Please check your API configuration.');
                       }
                     }}
                     icon={<Send className="w-4 h-4" />}

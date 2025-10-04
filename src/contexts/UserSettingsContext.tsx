@@ -7,6 +7,7 @@ interface UserSettingsContextType {
   updateProfile: (updates: Partial<UserSettings['profile']>) => void;
   updateNotifications: (updates: Partial<UserSettings['notifications']>) => void;
   updateApiConnections: (updates: Partial<UserSettings['apiConnections']>) => void;
+  updateUpdateSettings: (updates: Partial<UserSettings['updateSettings']>) => void;
   saveSettings: () => Promise<boolean>;
   loadSettings: () => void;
   resetSettings: () => void;
@@ -77,6 +78,18 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const updateUpdateSettings = (updates: Partial<UserSettings['updateSettings']>) => {
+    setSettings((prev) => {
+      const newSettings = {
+        ...prev,
+        updateSettings: { ...prev.updateSettings, ...updates },
+      };
+      // Auto-save update settings to localStorage
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
+      return newSettings;
+    });
+  };
+
   const resetSettings = () => {
     setSettings(defaultUserSettings);
     localStorage.removeItem(STORAGE_KEY);
@@ -92,6 +105,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     updateProfile,
     updateNotifications,
     updateApiConnections,
+    updateUpdateSettings,
     saveSettings,
     loadSettings,
     resetSettings,
