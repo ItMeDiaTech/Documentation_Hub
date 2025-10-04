@@ -63,6 +63,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('window-unfullscreen', subscription);
   },
 
+  // Export/Import
+  exportSettings: () => ipcRenderer.invoke('export-settings'),
+  importSettings: () => ipcRenderer.invoke('import-settings'),
+  saveExportData: (filePath: string, data: any) => ipcRenderer.invoke('save-export-data', { filePath, data }),
+
   // Auto-updater
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
@@ -124,6 +129,9 @@ export type ElectronAPI = {
   onWindowUnmaximized: (callback: () => void) => () => void;
   onWindowFullscreen: (callback: () => void) => () => void;
   onWindowUnfullscreen: (callback: () => void) => () => void;
+  exportSettings: () => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
+  importSettings: () => Promise<{ success: boolean; data?: any; filePath?: string; canceled?: boolean; error?: string }>;
+  saveExportData: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   checkForUpdates: () => Promise<{ success: boolean; message?: string; updateInfo?: any }>;
   downloadUpdate: () => Promise<{ success: boolean; message?: string }>;
   installUpdate: () => void;

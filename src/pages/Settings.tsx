@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUserSettings } from '@/contexts/UserSettingsContext';
+import { useSession } from '@/contexts/SessionContext';
+import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 import { cn } from '@/utils/cn';
 
 const settingsSections = [
@@ -70,6 +72,8 @@ export function Settings() {
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
   const { settings, updateProfile, updateNotifications, updateApiConnections, updateUpdateSettings, updateSettings, saveSettings } = useUserSettings();
+  const { sessions } = useSession();
+  const { stats } = useGlobalStats();
 
   // Local form states
   const [profileForm, setProfileForm] = useState(settings.profile);
@@ -194,6 +198,80 @@ export function Settings() {
     // This will quit the app and install the update
     window.electronAPI.installUpdate();
   };
+
+  const handleExport = async () => {
+    try {
+      // Show save dialog
+      const result = await window.electronAPI.exportSettings();
+
+      if (!result.success || result.canceled) {
+        return;
+      }
+
+      // Prepare export data
+      const exportData = {
+        version: '1.0',
+        exportDate: new Date().toISOString(),
+        data: {
+          userSettings: settings,
+          themeSettings: {
+            theme,
+            density,
+            accentColor,
+            glassEffects,
+          },
+          sessions,
+          globalStats: stats,
+        },
+      };
+
+      // Save data to selected file
+      const saveResult = await window.electronAPI.saveExportData(result.filePath!, exportData);
+
+      if (saveResult.success) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      } else {
+        console.error('Failed to save export data:', saveResult.error);
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      // Show open dialog and read data
+      const result = await window.electronAPI.importSettings();
+
+      if (!result.success || result.canceled) {
+        return;
+      }
+
+      // Validate import data
+      if (!result.data?.version || !result.data?.data) {
+        console.error('Invalid import file format');
+        return;
+      }
+
+      const importedData = result.data.data;
+
+      // Apply imported settings (would need to add methods to each context)
+      if (importedData.userSettings) {
+        updateSettings(importedData.userSettings);
+      }
+
+      // Show success message
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+
+      // Reload page to apply all changes
+      window.location.reload();
+    } catch (error) {
+      console.error('Import failed:', error);
+    }
+  };
+
   const {
     theme,
     setTheme,
@@ -1505,8 +1583,21 @@ Version: ${currentVersion}
                   <Button variant="outline" className="w-full">
                     Clear Cache
                   </Button>
-                  <Button variant="outline" className="w-full">
-                    Export Data
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    icon={<Download className="w-4 h-4" />}
+                    onClick={handleExport}
+                  >
+                    Export Settings & Data
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    icon={<Download className="w-4 h-4" style={{ transform: 'rotate(180deg)' }} />}
+                    onClick={handleImport}
+                  >
+                    Import Settings & Data
                   </Button>
                   <Button variant="destructive" className="w-full">
                     Delete Account

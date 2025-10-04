@@ -77,6 +77,22 @@ This directory contains the Electron main process and preload scripts for the Do
 - **hyperlink:validate-api**: Validate PowerAutomate endpoint
 - **hyperlink:cancel-operation**: Cancel ongoing processing
 
+### Export/Import (NEW - Phase 2B)
+
+- **export-settings**: Show save dialog for data export
+  - Opens save file dialog with default filename
+  - Returns file path for export
+  - Filters: JSON files
+- **import-settings**: Show open dialog and read import data
+  - Opens file picker for JSON import
+  - Reads and parses file content
+  - Returns parsed data object
+  - Error handling for invalid JSON
+- **save-export-data**: Write export data to file
+  - Takes file path and data object
+  - Writes formatted JSON (2-space indent)
+  - Validates write success
+
 ### Auto-Updater
 
 - **check-for-updates**: Check for application updates
@@ -86,6 +102,14 @@ This directory contains the Electron main process and preload scripts for the Do
 
 ## Recent Updates
 
+### Phase 2B (Latest)
+- **Export/Import IPC Handlers** (January 2025)
+  - `export-settings`: Save dialog for data export
+  - `import-settings`: File picker and JSON parsing for import
+  - `save-export-data`: File write with error handling
+  - Full data portability system
+
+### Earlier Updates
 - **Added restore-from-backup IPC handler** for revert changes functionality (January 2025)
 - Enhanced security with proper CSP headers
 - Improved window state management
