@@ -22,11 +22,17 @@ export interface Document {
 }
 
 export interface DocumentChange {
-  type: 'hyperlink' | 'text' | 'style' | 'structure';
+  id?: string; // Unique identifier for the change (for reversion)
+  type: 'hyperlink' | 'text' | 'style' | 'structure' | 'table' | 'deletion';
   description: string;
   before?: string;
   after?: string;
   count?: number;
+  // Location tracking for precise reversion
+  elementPath?: string; // XPath-like identifier for element
+  paragraphIndex?: number; // Paragraph index in document
+  runIndex?: number; // Run index within paragraph
+  context?: string; // Surrounding context for better identification
 }
 
 export interface SessionStats {
