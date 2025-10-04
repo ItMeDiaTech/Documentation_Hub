@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File handling
   selectDocuments: () => ipcRenderer.invoke('select-documents'),
   processDocument: (path: string) => ipcRenderer.invoke('process-document', path),
+  showInFolder: (path: string) => ipcRenderer.invoke('show-in-folder', path),
 
   // Hyperlink processing
   selectFiles: () => ipcRenderer.invoke('hyperlink:select-files'),
@@ -71,6 +72,7 @@ export type ElectronAPI = {
   getPlatform: () => Promise<NodeJS.Platform>;
   selectDocuments: () => Promise<string[] | undefined>;
   processDocument: (path: string) => Promise<unknown>;
+  showInFolder: (path: string) => Promise<void>;
   selectFiles: () => Promise<string[]>;
   processHyperlinkDocument: (filePath: string, options: HyperlinkProcessingOptions) => Promise<HyperlinkProcessingResult>;
   batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) => Promise<BatchProcessingResult>;

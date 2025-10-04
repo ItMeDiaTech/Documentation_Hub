@@ -16,6 +16,7 @@ import {
   Edit2,
   Check,
   Play,
+  FolderOpen,
 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import {
@@ -54,6 +55,8 @@ export function CurrentSession() {
   const [processingQueue, setProcessingQueue] = useState<string[]>([]);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
+  const [showStylesSaveSuccess, setShowStylesSaveSuccess] = useState(false);
+  const [stylesSaveHandler, setStylesSaveHandler] = useState<(() => void) | null>(null);
 
   useEffect(() => {
     if (id && !currentSession) {
@@ -367,6 +370,22 @@ export function CurrentSession() {
                           <span className="text-xs text-red-500 font-medium">Error</span>
                         )}
 
+                        {doc.path && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await window.electronAPI.showInFolder(doc.path!);
+                              } catch (err) {
+                                console.error('Failed to open file location:', err);
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-background"
+                            title="Open file location"
+                          >
+                            <FolderOpen className="w-4 h-4 text-muted-foreground" />
+                          </button>
+                        )}
+
                         <button
                           onClick={() => removeDocument(session.id, doc.id)}
                           className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-background"
@@ -399,6 +418,22 @@ export function CurrentSession() {
     </div>
   );
 
+  // Header actions for each tab
+  const headerActions: Record<string, React.ReactNode> = {
+    styles: stylesSaveHandler ? (
+      <Button
+        variant="default"
+        size="sm"
+        icon={<Save className="w-4 h-4" />}
+        onClick={stylesSaveHandler}
+        showSuccess={showStylesSaveSuccess}
+        onSuccess={() => setShowStylesSaveSuccess(false)}
+      >
+        Save Styles
+      </Button>
+    ) : null,
+  };
+
   // Create tabs configuration
   const tabs = [
     {
@@ -420,12 +455,25 @@ export function CurrentSession() {
     {
       id: 'styles',
       label: 'Styles',
-      content: <StylesEditor />,
+      content: (
+        <StylesEditor
+          renderSaveButton={(handleSave, showSuccess, onSuccessComplete) => {
+            // Store the handler on first render
+            if (!stylesSaveHandler) {
+              setStylesSaveHandler(() => () => {
+                handleSave();
+                setShowStylesSaveSuccess(true);
+              });
+            }
+            return null; // Don't render in content area
+          }}
+        />
+      ),
     },
     {
       id: 'replacements',
       label: 'Replacements',
-      content: <ReplacementsTab />,
+      content: <ReplacementsTab sessionId={session.id} />,
     },
     {
       id: 'tracked-changes',
@@ -435,53 +483,58 @@ export function CurrentSession() {
   ];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header with Title Edit */}
-      <div className="flex items-center gap-2">
-        {isEditingTitle ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={editedTitle}
-              onChange={(e) => setEditedTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveTitle();
-                if (e.key === 'Escape') handleCancelEdit();
-              }}
-              className="text-3xl font-bold bg-transparent border-b-2 border-primary outline-none px-1"
-              autoFocus
-            />
-            <button
-              onClick={handleSaveTitle}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-            >
-              <Check className="w-5 h-5 text-green-500" />
-            </button>
-            <button
-              onClick={handleCancelEdit}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-            >
-              <X className="w-5 h-5 text-red-500" />
-            </button>
-          </div>
-        ) : (
-          <>
-            <h1 className="text-3xl font-bold">{session.name}</h1>
-            <button
-              onClick={handleEditTitle}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-              title="Edit session name"
-            >
-              <Edit2 className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </>
-        )}
+    <div className="h-full flex flex-col">
+      {/* Sticky Header Section */}
+      <div className="sticky top-0 z-30 bg-background p-6 pb-0 max-w-6xl mx-auto w-full">
+        {/* Title Edit */}
+        <div className="flex items-center gap-2 mb-6">
+          {isEditingTitle ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={editedTitle}
+                onChange={(e) => setEditedTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveTitle();
+                  if (e.key === 'Escape') handleCancelEdit();
+                }}
+                className="text-3xl font-bold bg-transparent border-b-2 border-primary outline-none px-1"
+                autoFocus
+              />
+              <button
+                onClick={handleSaveTitle}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+              >
+                <Check className="w-5 h-5 text-green-500" />
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+              >
+                <X className="w-5 h-5 text-red-500" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <h1 className="text-3xl font-bold">{session.name}</h1>
+              <button
+                onClick={handleEditTitle}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                title="Edit session name"
+              >
+                <Edit2 className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Tabbed Interface */}
-      <Card>
-        <TabContainer tabs={tabs} defaultTab="session" />
-      </Card>
+      {/* Scrollable Content Area */}
+      <div className="flex-1 overflow-auto px-6 max-w-6xl mx-auto w-full">
+        <Card>
+          <TabContainer tabs={tabs} defaultTab="session" headerActions={headerActions} />
+        </Card>
+      </div>
     </div>
   );
 }
