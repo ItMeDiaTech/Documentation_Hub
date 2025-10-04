@@ -36,7 +36,6 @@ electron-builder.yml
 .env.test.local
 
 # Package manager
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
