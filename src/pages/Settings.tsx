@@ -5,12 +5,9 @@ import { Input } from '@/components/common/Input';
 import { ColorPickerDialog } from '@/components/common/ColorPickerDialog';
 import {
   User,
-  Bell,
-  Shield,
   Palette,
   Globe,
   Database,
-  Key,
   Sun,
   Moon,
   Check,
@@ -32,8 +29,6 @@ const settingsSections = [
     group: 'Account',
     items: [
       { id: 'profile', label: 'Profile', icon: User, description: 'Personal information' },
-      { id: 'security', label: 'Security', icon: Shield, description: 'Password & authentication' },
-      { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Alerts & updates' },
     ],
   },
   {
@@ -345,85 +340,14 @@ export function Settings() {
                   <Input label="Last Name" defaultValue="Doe" />
                 </div>
                 <Input label="Email" type="email" defaultValue="john.doe@example.com" />
-                <Input label="Username" defaultValue="johndoe" />
-                <Input
-                  label="Bio"
-                  defaultValue="Software developer passionate about creating amazing experiences"
-                  helperText="Brief description for your profile"
-                />
-                <div className="flex justify-end">
-                  <Button>Save Changes</Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeSection === 'notifications' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold">Notifications</h2>
-                <p className="text-muted-foreground mt-1">
-                  Control how and when you receive notifications
-                </p>
-              </div>
-              <div className="space-y-4">
-                {[
-                  { label: 'Email notifications', description: 'Receive updates via email' },
-                  {
-                    label: 'Push notifications',
-                    description: 'Get push notifications on your device',
-                  },
-                  { label: 'Project updates', description: 'Notifications about project activity' },
-                  { label: 'Team mentions', description: 'When someone mentions you' },
-                  { label: 'Weekly digest', description: 'Summary of weekly activity' },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between py-2">
-                    <div>
-                      <p className="font-medium">{item.label}</p>
-                      <p className="text-sm text-muted-foreground">{item.description}</p>
-                    </div>
-                    <button
-                      aria-label={`Toggle ${item.label.toLowerCase()}`}
-                      className={cn(
-                        'relative w-11 h-6 rounded-full transition-colors',
-                        'bg-input hover:bg-accent'
-                      )}
-                    >
-                      <span className="absolute left-0.5 top-0.5 w-5 h-5 bg-background rounded-full shadow-sm transition-transform" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeSection === 'security' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold">Security</h2>
-                <p className="text-muted-foreground mt-1">
-                  Protect your account with enhanced security settings
-                </p>
-              </div>
-              <div className="space-y-4">
-                <div className="space-y-4">
-                  <Input label="Current Password" type="password" />
-                  <Input label="New Password" type="password" />
-                  <Input label="Confirm New Password" type="password" />
-                </div>
-
-                <div className="border-t border-border pt-4">
-                  <h3 className="font-medium mb-3">Two-Factor Authentication</h3>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Add an extra layer of security to your account
-                  </p>
-                  <Button variant="outline" icon={<Key className="w-4 h-4" />}>
-                    Enable 2FA
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" icon={<Download className="w-4 h-4" />}>
+                    Export Settings
                   </Button>
-                </div>
-
-                <div className="flex justify-end">
-                  <Button>Update Security</Button>
+                  <Button variant="outline" icon={<Download className="w-4 h-4" style={{ transform: 'rotate(180deg)' }} />}>
+                    Import Settings
+                  </Button>
+                  <Button>Save Changes</Button>
                 </div>
               </div>
             </div>

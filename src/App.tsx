@@ -67,7 +67,6 @@ const router = createHashRouter(
         { path: 'team', element: <EmptyPage title="Team" /> },
         { path: 'documents', element: <Documents /> },
         { path: 'plugins', element: <EmptyPage title="Plugins" /> },
-        { path: 'notifications', element: <EmptyPage title="Notifications" /> },
         { path: 'search', element: <EmptyPage title="Search" /> },
         { path: 'profile', element: <EmptyPage title="Profile" /> },
         { path: 'settings', element: <Settings /> },
