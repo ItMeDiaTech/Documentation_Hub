@@ -1711,12 +1711,20 @@ export class WordDocumentProcessor {
                   // Find or create spacing element
                   const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
 
-                  // CRITICAL FIX: Remove w:contextualSpacing element if present
+                  // CRITICAL FIX: Explicitly disable w:contextualSpacing
                   // This element causes Word to ignore spacing between paragraphs of the same style
-                  const contextualSpacingIndex = pPrArray.findIndex(el => el['w:contextualSpacing'] !== undefined);
-                  if (contextualSpacingIndex !== -1) {
-                    console.log(`  ⚠️  Removing w:contextualSpacing element (prevents spacing from working)`);
-                    pPrArray.splice(contextualSpacingIndex, 1);
+                  // We must set w:val="0" to override the parent style setting (not just remove it!)
+                  const contextualSpacingItem = pPrArray.find(el => el['w:contextualSpacing']);
+                  if (contextualSpacingItem) {
+                    // Update existing contextualSpacing to explicitly disable it
+                    console.log(`  ⚠️  Disabling w:contextualSpacing (setting w:val="0")`);
+                    contextualSpacingItem['w:contextualSpacing'] = [{ '@_w:val': '0' }];
+                  } else {
+                    // Add contextualSpacing explicitly set to false to override style
+                    console.log(`  ✓ Adding w:contextualSpacing w:val="0" to override parent style`);
+                    pPrArray.push({
+                      'w:contextualSpacing': [{ '@_w:val': '0' }]
+                    });
                   }
 
                   let spacingItem = pPrArray.find(el => el['w:spacing']);
