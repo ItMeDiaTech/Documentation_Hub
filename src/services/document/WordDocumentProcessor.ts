@@ -1703,7 +1703,16 @@ export class WordDocumentProcessor {
 
                   // Ensure paragraph properties exist
                   if (!pPr) {
-                    const newPPr = [{ 'w:spacing': [{ '@_w:before': '0', '@_w:after': '0', '@_w:line': '240', '@_w:lineRule': 'auto' }] }];
+                    const newPPr = [{
+                      'w:spacing': [{
+                        ':@': {
+                          '@_w:before': '0',
+                          '@_w:after': '0',
+                          '@_w:line': '240',
+                          '@_w:lineRule': 'auto'
+                        }
+                      }]
+                    }];
                     pArray.unshift({ 'w:pPr': newPPr });
                     pPr = newPPr;
                   }
@@ -1718,23 +1727,32 @@ export class WordDocumentProcessor {
                   if (contextualSpacingItem) {
                     // Update existing contextualSpacing to explicitly disable it
                     console.log(`  ⚠️  Disabling w:contextualSpacing (setting w:val="0")`);
-                    contextualSpacingItem['w:contextualSpacing'] = [{ '@_w:val': '0' }];
+                    contextualSpacingItem['w:contextualSpacing'] = [{
+                      ':@': {
+                        '@_w:val': '0'
+                      }
+                    }];
                   } else {
                     // Add contextualSpacing explicitly set to false to override style
                     console.log(`  ✓ Adding w:contextualSpacing w:val="0" to override parent style`);
                     pPrArray.push({
-                      'w:contextualSpacing': [{ '@_w:val': '0' }]
+                      'w:contextualSpacing': [{
+                        ':@': {
+                          '@_w:val': '0'
+                        }
+                      }]
                     });
                   }
 
                   let spacingItem = pPrArray.find(el => el['w:spacing']);
                   let spacingElement = spacingItem ? spacingItem['w:spacing'] : null;
 
-                  // Get current spacing values
+                  // Get current spacing values from :@ attribute object
                   const spacingArray = Array.isArray(spacingElement) ? spacingElement : [spacingElement];
-                  const currentSpaceBefore = parseInt(spacingArray[0]?.['@_w:before'] || '0', 10);
-                  const currentSpaceAfter = parseInt(spacingArray[0]?.['@_w:after'] || '0', 10);
-                  const currentLine = parseInt(spacingArray[0]?.['@_w:line'] || '240', 10);
+                  const currentAttrs = spacingArray[0]?.[':@'] || {};
+                  const currentSpaceBefore = parseInt(currentAttrs['@_w:before'] || '0', 10);
+                  const currentSpaceAfter = parseInt(currentAttrs['@_w:after'] || '0', 10);
+                  const currentLine = parseInt(currentAttrs['@_w:line'] || '240', 10);
 
                   // Convert points to twips (1 point = 20 twips) for before/after
                   const twipsBefore = spacing.spaceBefore * 20;
@@ -1744,21 +1762,28 @@ export class WordDocumentProcessor {
                   // 1.0 = 240, 1.15 = 276, 1.5 = 360, 2.0 = 480
                   const lineValue = Math.round((spacing.lineSpacing || 1.15) * 240);
 
-                  // Update spacing with ALL attributes
+                  // Update spacing with ALL attributes (in :@ format)
                   if (!spacingElement) {
+                    // Create new spacing element with :@ attribute wrapper
                     pPrArray.push({
                       'w:spacing': [{
-                        '@_w:before': twipsBefore.toString(),
-                        '@_w:after': twipsAfter.toString(),
-                        '@_w:line': lineValue.toString(),
-                        '@_w:lineRule': 'auto'
+                        ':@': {
+                          '@_w:before': twipsBefore.toString(),
+                          '@_w:after': twipsAfter.toString(),
+                          '@_w:line': lineValue.toString(),
+                          '@_w:lineRule': 'auto'
+                        }
                       }]
                     });
                   } else {
-                    spacingArray[0]['@_w:before'] = twipsBefore.toString();
-                    spacingArray[0]['@_w:after'] = twipsAfter.toString();
-                    spacingArray[0]['@_w:line'] = lineValue.toString();
-                    spacingArray[0]['@_w:lineRule'] = 'auto';
+                    // Update existing spacing element attributes in :@ object
+                    if (!spacingArray[0][':@']) {
+                      spacingArray[0][':@'] = {};
+                    }
+                    spacingArray[0][':@']['@_w:before'] = twipsBefore.toString();
+                    spacingArray[0][':@']['@_w:after'] = twipsAfter.toString();
+                    spacingArray[0][':@']['@_w:line'] = lineValue.toString();
+                    spacingArray[0][':@']['@_w:lineRule'] = 'auto';
                   }
 
                   // Track the change if spacing was different
