@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isFullscreen: () => ipcRenderer.invoke('window-is-fullscreen'),
   getAppVersion: () => ipcRenderer.invoke('app-version'),
   getPlatform: () => ipcRenderer.invoke('platform'),
+  openDevTools: () => ipcRenderer.invoke('open-dev-tools'),
 
   // File handling
   selectDocuments: () => ipcRenderer.invoke('select-documents'),
@@ -115,6 +116,7 @@ export type ElectronAPI = {
   isFullscreen: () => Promise<boolean>;
   getAppVersion: () => Promise<string>;
   getPlatform: () => Promise<NodeJS.Platform>;
+  openDevTools: () => Promise<void>;
   selectDocuments: () => Promise<string[] | undefined>;
   processDocument: (path: string) => Promise<unknown>;
   showInFolder: (path: string) => Promise<void>;
