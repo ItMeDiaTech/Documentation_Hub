@@ -1696,6 +1696,9 @@ export class WordDocumentProcessor {
                 );
 
                 if (styleConfig && styleConfig.spacing) {
+                  // Debug logging to track which paragraphs we're processing
+                  const text = this.extractParagraphText(pArray);
+                  console.log(`  Found ${styleConfig.displayName}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}}"`);
                   const spacing = styleConfig.spacing;
 
                   // Ensure paragraph properties exist
@@ -1707,6 +1710,15 @@ export class WordDocumentProcessor {
 
                   // Find or create spacing element
                   const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
+
+                  // CRITICAL FIX: Remove w:contextualSpacing element if present
+                  // This element causes Word to ignore spacing between paragraphs of the same style
+                  const contextualSpacingIndex = pPrArray.findIndex(el => el['w:contextualSpacing'] !== undefined);
+                  if (contextualSpacingIndex !== -1) {
+                    console.log(`  ⚠️  Removing w:contextualSpacing element (prevents spacing from working)`);
+                    pPrArray.splice(contextualSpacingIndex, 1);
+                  }
+
                   let spacingItem = pPrArray.find(el => el['w:spacing']);
                   let spacingElement = spacingItem ? spacingItem['w:spacing'] : null;
 
