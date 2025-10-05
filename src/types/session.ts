@@ -172,6 +172,7 @@ export interface SessionContextType {
   updateSessionName: (sessionId: string, name: string) => void;
   updateSessionOptions: (sessionId: string, processingOptions: Session['processingOptions']) => void;
   updateSessionReplacements: (sessionId: string, replacements: ReplacementRule[]) => void;
+  updateSessionStyles: (sessionId: string, styles: any[]) => void;
 
   // Persistence
   saveSession: (session: Session) => void;

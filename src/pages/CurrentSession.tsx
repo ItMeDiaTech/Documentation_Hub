@@ -49,6 +49,7 @@ export function CurrentSession() {
     processDocument,
     updateSessionName,
     updateSessionOptions,
+    updateSessionStyles,
   } = useSession();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -457,6 +458,8 @@ export function CurrentSession() {
       label: 'Styles',
       content: (
         <StylesEditor
+          initialStyles={session.styles}
+          onStylesChange={(styles) => updateSessionStyles(session.id, styles)}
           renderSaveButton={(handleSave, showSuccess, onSuccessComplete) => {
             // Store the handler on first render
             if (!stylesSaveHandler) {
