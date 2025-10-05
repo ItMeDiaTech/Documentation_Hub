@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home,
@@ -31,9 +31,39 @@ interface NavItem {
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const [logoClickCount, setLogoClickCount] = useState(0);
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { sessions, activeSessions, closeSession } = useSession();
+
+  // Reset click count after 2 seconds of inactivity
+  useEffect(() => {
+    if (logoClickCount > 0) {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+      }
+      clickTimerRef.current = setTimeout(() => {
+        setLogoClickCount(0);
+      }, 2000);
+    }
+    return () => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+      }
+    };
+  }, [logoClickCount]);
+
+  const handleLogoClick = () => {
+    const newCount = logoClickCount + 1;
+    setLogoClickCount(newCount);
+
+    if (newCount === 5) {
+      // Easter egg: open dev tools!
+      window.electronAPI.openDevTools();
+      setLogoClickCount(0);
+    }
+  };
 
   const handleNavClick = (path: string) => {
     navigate(path);
@@ -165,17 +195,25 @@ export function Sidebar() {
               exit={{ opacity: 0 }}
               className="flex items-center gap-2"
             >
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <motion.div
+                onClick={handleLogoClick}
+                whileTap={{ scale: 0.9 }}
+                className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+              >
                 <span className="text-primary-foreground text-sm font-bold">D</span>
-              </div>
+              </motion.div>
               <span className="font-semibold text-sm">DocHub</span>
             </motion.div>
           )}
         </AnimatePresence>
         {collapsed && (
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+          <motion.div
+            onClick={handleLogoClick}
+            whileTap={{ scale: 0.9 }}
+            className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+          >
             <span className="text-primary-foreground text-sm font-bold">D</span>
-          </div>
+          </motion.div>
         )}
       </div>
 
