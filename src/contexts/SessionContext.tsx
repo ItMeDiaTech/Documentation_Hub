@@ -358,24 +358,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const customStyleSpacing: any = {};
 
-      if (header1Style && (header1Style.spaceBefore !== undefined || header1Style.spaceAfter !== undefined)) {
+      if (header1Style && (header1Style.spaceBefore !== undefined || header1Style.spaceAfter !== undefined || header1Style.lineSpacing !== undefined)) {
         customStyleSpacing.header1 = {
           spaceBefore: header1Style.spaceBefore || 0,
-          spaceAfter: header1Style.spaceAfter || 0
+          spaceAfter: header1Style.spaceAfter || 0,
+          lineSpacing: header1Style.lineSpacing || 1.0
         };
       }
 
-      if (header2Style && (header2Style.spaceBefore !== undefined || header2Style.spaceAfter !== undefined)) {
+      if (header2Style && (header2Style.spaceBefore !== undefined || header2Style.spaceAfter !== undefined || header2Style.lineSpacing !== undefined)) {
         customStyleSpacing.header2 = {
           spaceBefore: header2Style.spaceBefore || 0,
-          spaceAfter: header2Style.spaceAfter || 0
+          spaceAfter: header2Style.spaceAfter || 0,
+          lineSpacing: header2Style.lineSpacing || 1.0
         };
       }
 
-      if (normalStyle && (normalStyle.spaceBefore !== undefined || normalStyle.spaceAfter !== undefined)) {
+      if (normalStyle && (normalStyle.spaceBefore !== undefined || normalStyle.spaceAfter !== undefined || normalStyle.lineSpacing !== undefined)) {
         customStyleSpacing.normal = {
           spaceBefore: normalStyle.spaceBefore || 0,
-          spaceAfter: normalStyle.spaceAfter || 0
+          spaceAfter: normalStyle.spaceAfter || 0,
+          lineSpacing: normalStyle.lineSpacing || 1.15
         };
       }
 
