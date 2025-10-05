@@ -33,6 +33,7 @@ interface StyleDefinition {
   alignment: 'left' | 'center' | 'right' | 'justify';
   spaceBefore: number;
   spaceAfter: number;
+  lineSpacing: number; // 1.0 = single, 1.15 = Word default, 1.5, 2.0 = double
   color: string;
   noSpaceBetweenSame?: boolean;
 }
@@ -49,6 +50,7 @@ const defaultStyles: StyleDefinition[] = [
     alignment: 'left',
     spaceBefore: 0,
     spaceAfter: 12,
+    lineSpacing: 1.0, // Single spacing for headings
     color: '#000000'
   },
   {
@@ -62,6 +64,7 @@ const defaultStyles: StyleDefinition[] = [
     alignment: 'left',
     spaceBefore: 6,
     spaceAfter: 6,
+    lineSpacing: 1.0, // Single spacing for headings
     color: '#000000'
   },
   {
@@ -75,6 +78,7 @@ const defaultStyles: StyleDefinition[] = [
     alignment: 'left',
     spaceBefore: 3,
     spaceAfter: 3,
+    lineSpacing: 1.15, // Word default
     color: '#000000',
     noSpaceBetweenSame: false
   }
@@ -83,6 +87,12 @@ const defaultStyles: StyleDefinition[] = [
 const fontSizes = Array.from({ length: 65 }, (_, i) => i + 8); // 8pt to 72pt
 const fontFamilies = ['Verdana', 'Arial', 'Times New Roman', 'Calibri', 'Georgia', 'Helvetica'];
 const spacingOptions = Array.from({ length: 25 }, (_, i) => i * 3); // 0pt to 72pt in increments of 3
+const lineSpacingOptions = [
+  { value: 1.0, label: 'Single' },
+  { value: 1.15, label: '1.15 (Default)' },
+  { value: 1.5, label: '1.5 Lines' },
+  { value: 2.0, label: 'Double' }
+];
 
 // Default indentation levels based on documentation best practices
 // Alternating between closed (•) and open (○) bullets
@@ -167,6 +177,8 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
         color: sessionStyle.color || defaultStyle.color,
         spaceBefore: sessionStyle.spaceBefore ?? defaultStyle.spaceBefore,
         spaceAfter: sessionStyle.spaceAfter ?? defaultStyle.spaceAfter,
+        lineSpacing: sessionStyle.lineSpacing ?? defaultStyle.lineSpacing,
+        noSpaceBetweenSame: sessionStyle.noSpaceBetweenSame ?? defaultStyle.noSpaceBetweenSame,
       };
     });
   };
@@ -356,6 +368,19 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">Line Spacing</label>
+              <select
+                value={style.lineSpacing}
+                onChange={(e) => updateStyle(style.id, { lineSpacing: Number(e.target.value) })}
+                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+              >
+                {lineSpacingOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
