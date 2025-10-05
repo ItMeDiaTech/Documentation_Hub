@@ -82,6 +82,7 @@ export interface SessionStyle {
   color: string;
   spaceBefore: number;
   spaceAfter: number;
+  lineSpacing: number;
 }
 
 export interface IndentationLevel {

@@ -24,9 +24,9 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
     spaceAfter: number;
   };
   customStyleSpacing?: {
-    header1?: { spaceBefore: number; spaceAfter: number };
-    header2?: { spaceBefore: number; spaceAfter: number };
-    normal?: { spaceBefore: number; spaceAfter: number };
+    header1?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
+    header2?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
+    normal?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
   };
 }
 
@@ -1644,9 +1644,9 @@ export class WordDocumentProcessor {
   private async processCustomStyleSpacing(
     zip: JSZip,
     styleSpacing: {
-      header1?: { spaceBefore: number; spaceAfter: number };
-      header2?: { spaceBefore: number; spaceAfter: number };
-      normal?: { spaceBefore: number; spaceAfter: number };
+      header1?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
+      header2?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
+      normal?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
     }
   ): Promise<{ modified: boolean; changes: any[] }> {
     const changes: any[] = [];
@@ -1700,7 +1700,7 @@ export class WordDocumentProcessor {
 
                   // Ensure paragraph properties exist
                   if (!pPr) {
-                    const newPPr = [{ 'w:spacing': [{ '@_w:before': '0', '@_w:after': '0' }] }];
+                    const newPPr = [{ 'w:spacing': [{ '@_w:before': '0', '@_w:after': '0', '@_w:line': '240', '@_w:lineRule': 'auto' }] }];
                     pArray.unshift({ 'w:pPr': newPPr });
                     pPr = newPPr;
                   }
@@ -1714,33 +1714,44 @@ export class WordDocumentProcessor {
                   const spacingArray = Array.isArray(spacingElement) ? spacingElement : [spacingElement];
                   const currentSpaceBefore = parseInt(spacingArray[0]?.['@_w:before'] || '0', 10);
                   const currentSpaceAfter = parseInt(spacingArray[0]?.['@_w:after'] || '0', 10);
+                  const currentLine = parseInt(spacingArray[0]?.['@_w:line'] || '240', 10);
 
-                  // Convert points to twips (1 point = 20 twips)
+                  // Convert points to twips (1 point = 20 twips) for before/after
                   const twipsBefore = spacing.spaceBefore * 20;
                   const twipsAfter = spacing.spaceAfter * 20;
 
-                  // Update spacing
+                  // Convert line spacing to OpenXML format (multiply by 240)
+                  // 1.0 = 240, 1.15 = 276, 1.5 = 360, 2.0 = 480
+                  const lineValue = Math.round((spacing.lineSpacing || 1.15) * 240);
+
+                  // Update spacing with ALL attributes
                   if (!spacingElement) {
                     pPrArray.push({
                       'w:spacing': [{
                         '@_w:before': twipsBefore.toString(),
-                        '@_w:after': twipsAfter.toString()
+                        '@_w:after': twipsAfter.toString(),
+                        '@_w:line': lineValue.toString(),
+                        '@_w:lineRule': 'auto'
                       }]
                     });
                   } else {
                     spacingArray[0]['@_w:before'] = twipsBefore.toString();
                     spacingArray[0]['@_w:after'] = twipsAfter.toString();
+                    spacingArray[0]['@_w:line'] = lineValue.toString();
+                    spacingArray[0]['@_w:lineRule'] = 'auto';
                   }
 
                   // Track the change if spacing was different
-                  if (currentSpaceBefore !== twipsBefore || currentSpaceAfter !== twipsAfter) {
+                  if (currentSpaceBefore !== twipsBefore || currentSpaceAfter !== twipsAfter || currentLine !== lineValue) {
                     const text = this.extractParagraphText(pArray);
+                    const currentLineSpacing = currentLine / 240;
+                    const newLineSpacing = spacing.lineSpacing || 1.15;
                     changes.push({
                       id: `spacing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                       type: 'style',
                       description: `Applied ${styleConfig.displayName} spacing`,
-                      before: `"${text}" - Spacing: ${currentSpaceBefore/20}pt before, ${currentSpaceAfter/20}pt after`,
-                      after: `"${text}" - Spacing: ${spacing.spaceBefore}pt before, ${spacing.spaceAfter}pt after`,
+                      before: `"${text}" - Para: ${currentSpaceBefore/20}pt before, ${currentSpaceAfter/20}pt after | Line: ${currentLineSpacing.toFixed(2)}`,
+                      after: `"${text}" - Para: ${spacing.spaceBefore}pt before, ${spacing.spaceAfter}pt after | Line: ${newLineSpacing.toFixed(2)}`,
                       location: 'Main Document'
                     });
                   }

@@ -103,9 +103,9 @@ export interface HyperlinkProcessingOptions {
     spaceAfter: number;
   };
   customStyleSpacing?: {
-    header1?: { spaceBefore: number; spaceAfter: number };
-    header2?: { spaceBefore: number; spaceAfter: number };
-    normal?: { spaceBefore: number; spaceAfter: number };
+    header1?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
+    header2?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
+    normal?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
   };
 }
 
