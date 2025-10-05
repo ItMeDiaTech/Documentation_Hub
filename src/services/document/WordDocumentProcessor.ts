@@ -19,6 +19,15 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   validateBeforeProcessing?: boolean;
   streamLargeFiles?: boolean;
   maxFileSizeMB?: number;
+  header2Spacing?: {
+    spaceBefore: number;
+    spaceAfter: number;
+  };
+  customStyleSpacing?: {
+    header1?: { spaceBefore: number; spaceAfter: number };
+    header2?: { spaceBefore: number; spaceAfter: number };
+    normal?: { spaceBefore: number; spaceAfter: number };
+  };
 }
 
 export interface WordProcessingResult extends HyperlinkProcessingResult {
@@ -180,8 +189,29 @@ export class WordDocumentProcessor {
         }
       }
 
+      // Process custom style spacing (Header 1, Header 2, Normal)
+      let customSpacingProcessed = false;
+      if (options.customStyleSpacing || options.header2Spacing) {
+        console.log('\n=== CUSTOM STYLE SPACING PROCESSING ===');
+
+        // Build style spacing config (customStyleSpacing takes precedence)
+        const styleSpacing = options.customStyleSpacing || {};
+
+        // For backwards compatibility, use header2Spacing if customStyleSpacing.header2 is not provided
+        if (options.header2Spacing && !styleSpacing.header2) {
+          styleSpacing.header2 = options.header2Spacing;
+        }
+
+        const spacingResult = await this.processCustomStyleSpacing(zip, styleSpacing);
+        customSpacingProcessed = spacingResult.modified;
+        if (customSpacingProcessed) {
+          result.modifiedHyperlinks++; // Count as modification for save logic
+          result.processedLinks.push(...spacingResult.changes);
+        }
+      }
+
       // Save the modified document
-      if (processedData.modifiedCount > 0 || keywordsProcessed || textReplacementsProcessed) {
+      if (processedData.modifiedCount > 0 || keywordsProcessed || textReplacementsProcessed || customSpacingProcessed) {
         console.log('\n=== SAVING DOCUMENT ===');
         console.log(`Saving ${processedData.modifiedCount} modifications...`);
 
@@ -1606,6 +1636,207 @@ export class WordDocumentProcessor {
    */
   private escapeRegExp(string: string): string {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * Process custom style spacing throughout the document
+   */
+  private async processCustomStyleSpacing(
+    zip: JSZip,
+    styleSpacing: {
+      header1?: { spaceBefore: number; spaceAfter: number };
+      header2?: { spaceBefore: number; spaceAfter: number };
+      normal?: { spaceBefore: number; spaceAfter: number };
+    }
+  ): Promise<{ modified: boolean; changes: any[] }> {
+    const changes: any[] = [];
+
+    try {
+      // Parse main document
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        console.log('No document.xml found');
+        return { modified: false, changes: [] };
+      }
+
+      const documentXml = await documentXmlFile.async('text');
+      const documentData = this.xmlParser.parse(documentXml);
+
+    // Map style IDs to their display names and spacing configs
+    const styleConfigs = [
+      { id: 'Heading1', displayName: 'Header 1', spacing: styleSpacing.header1 },
+      { id: 'Header1', displayName: 'Header 1', spacing: styleSpacing.header1 },
+      { id: 'Heading2', displayName: 'Header 2', spacing: styleSpacing.header2 },
+      { id: 'Header2', displayName: 'Header 2', spacing: styleSpacing.header2 },
+      { id: 'Normal', displayName: 'Normal', spacing: styleSpacing.normal },
+    ];
+
+    const applySpacing = (obj: any): void => {
+      if (!obj) return;
+
+      // Handle ordered array format from fast-xml-parser with preserveOrder: true
+      if (Array.isArray(obj)) {
+        for (const item of obj) {
+          if (item['w:p']) {
+            const paragraphs = Array.isArray(item['w:p']) ? item['w:p'] : [item['w:p']];
+
+            for (const pArray of paragraphs) {
+              // Each paragraph is an array of elements
+              if (Array.isArray(pArray)) {
+                // Find paragraph properties
+                const pPrItem = pArray.find(el => el['w:pPr']);
+                let pPr = pPrItem ? pPrItem['w:pPr'] : null;
+
+                // Check paragraph style
+                const currentStyle = this.getParagraphStyle(pArray);
+
+                // Find matching style config
+                const styleConfig = styleConfigs.find(config =>
+                  config.id === currentStyle && config.spacing
+                );
+
+                if (styleConfig && styleConfig.spacing) {
+                  const spacing = styleConfig.spacing;
+
+                  // Ensure paragraph properties exist
+                  if (!pPr) {
+                    const newPPr = [{ 'w:spacing': [{ '@_w:before': '0', '@_w:after': '0' }] }];
+                    pArray.unshift({ 'w:pPr': newPPr });
+                    pPr = newPPr;
+                  }
+
+                  // Find or create spacing element
+                  const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
+                  let spacingItem = pPrArray.find(el => el['w:spacing']);
+                  let spacingElement = spacingItem ? spacingItem['w:spacing'] : null;
+
+                  // Get current spacing values
+                  const spacingArray = Array.isArray(spacingElement) ? spacingElement : [spacingElement];
+                  const currentSpaceBefore = parseInt(spacingArray[0]?.['@_w:before'] || '0', 10);
+                  const currentSpaceAfter = parseInt(spacingArray[0]?.['@_w:after'] || '0', 10);
+
+                  // Convert points to twips (1 point = 20 twips)
+                  const twipsBefore = spacing.spaceBefore * 20;
+                  const twipsAfter = spacing.spaceAfter * 20;
+
+                  // Update spacing
+                  if (!spacingElement) {
+                    pPrArray.push({
+                      'w:spacing': [{
+                        '@_w:before': twipsBefore.toString(),
+                        '@_w:after': twipsAfter.toString()
+                      }]
+                    });
+                  } else {
+                    spacingArray[0]['@_w:before'] = twipsBefore.toString();
+                    spacingArray[0]['@_w:after'] = twipsAfter.toString();
+                  }
+
+                  // Track the change if spacing was different
+                  if (currentSpaceBefore !== twipsBefore || currentSpaceAfter !== twipsAfter) {
+                    const text = this.extractParagraphText(pArray);
+                    changes.push({
+                      id: `spacing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                      type: 'style',
+                      description: `Applied ${styleConfig.displayName} spacing`,
+                      before: `"${text}" - Spacing: ${currentSpaceBefore/20}pt before, ${currentSpaceAfter/20}pt after`,
+                      after: `"${text}" - Spacing: ${spacing.spaceBefore}pt before, ${spacing.spaceAfter}pt after`,
+                      location: 'Main Document'
+                    });
+                  }
+                }
+              }
+            }
+          }
+
+          // Recursively process other elements
+          for (const key in item) {
+            if (item.hasOwnProperty(key) && typeof item[key] === 'object') {
+              applySpacing(item[key]);
+            }
+          }
+        }
+      } else if (typeof obj === 'object') {
+        for (const key in obj) {
+          if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+            applySpacing(obj[key]);
+          }
+        }
+      }
+    };
+
+      applySpacing(documentData);
+
+      if (changes.length > 0) {
+        console.log(`✓ Applied custom style spacing to ${changes.length} paragraph(s)`);
+        // Save modified document
+        const rebuiltXml = this.xmlBuilder.build(documentData);
+        const xmlWithDeclaration = rebuiltXml.startsWith('<?xml')
+          ? rebuiltXml
+          : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltXml;
+        zip.file('word/document.xml', xmlWithDeclaration);
+      } else {
+        console.log('No style spacing changes needed');
+      }
+
+      return { modified: changes.length > 0, changes };
+    } catch (error) {
+      console.error('Error applying custom style spacing:', error);
+      return { modified: false, changes: [] };
+    }
+  }
+
+  /**
+   * Extract text from a paragraph array
+   */
+  private extractParagraphText(pArray: any[]): string {
+    let text = '';
+
+    for (const item of pArray) {
+      if (item['w:r']) {
+        const runs = Array.isArray(item['w:r']) ? item['w:r'] : [item['w:r']];
+        for (const run of runs) {
+          if (Array.isArray(run)) {
+            for (const runItem of run) {
+              if (runItem['w:t']) {
+                const textItems = Array.isArray(runItem['w:t']) ? runItem['w:t'] : [runItem['w:t']];
+                for (const textItem of textItems) {
+                  if (textItem['#text']) {
+                    text += textItem['#text'];
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return text.trim().substring(0, 100); // Limit to 100 chars for display
+  }
+
+  /**
+   * Get the style of a paragraph
+   */
+  private getParagraphStyle(pArray: any[]): string | null {
+    const pPrItem = pArray.find(el => el['w:pPr']);
+    if (!pPrItem) return null;
+
+    const pPr = pPrItem['w:pPr'];
+    const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
+
+    for (const item of pPrArray) {
+      if (item['w:pStyle']) {
+        const styleItems = Array.isArray(item['w:pStyle']) ? item['w:pStyle'] : [item['w:pStyle']];
+        for (const styleItem of styleItems) {
+          if (styleItem['@_w:val']) {
+            return styleItem['@_w:val'];
+          }
+        }
+      }
+    }
+
+    return null;
   }
 
   /**
