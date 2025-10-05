@@ -108,6 +108,12 @@ ipcMain.handle('app-version', () => {
   return app.getVersion();
 });
 
+ipcMain.handle('open-dev-tools', () => {
+  if (mainWindow) {
+    mainWindow.webContents.openDevTools();
+  }
+});
+
 // Hyperlink processing IPC handlers with security validation
 class HyperlinkIPCHandler {
   private processor: WordDocumentProcessor;

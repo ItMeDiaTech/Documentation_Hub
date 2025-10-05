@@ -665,6 +665,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateSessionStyles = (sessionId: string, styles: any[]) => {
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              styles,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update active sessions
+    setActiveSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              styles,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update current session if it's being modified
+    if (currentSession?.id === sessionId) {
+      setCurrentSession((prev) => (prev ? { ...prev, styles, lastModified: new Date() } : null));
+    }
+  };
+
   const saveSession = (session: Session) => {
     localStorage.setItem(`session_${session.id}`, JSON.stringify(session));
   };
@@ -707,6 +739,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         updateSessionName,
         updateSessionOptions,
         updateSessionReplacements,
+        updateSessionStyles,
         saveSession,
         loadSessionFromStorage,
       }}

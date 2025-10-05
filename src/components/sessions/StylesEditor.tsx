@@ -140,12 +140,38 @@ const defaultTableOfContentsSettings: TableOfContentsSettings = {
 };
 
 interface StylesEditorProps {
+  initialStyles?: any[];
   onStylesChange?: (styles: StyleDefinition[]) => void;
   renderSaveButton?: (handleSave: () => void, showSuccess: boolean, onSuccessComplete: () => void) => React.ReactNode;
 }
 
-export function StylesEditor({ onStylesChange, renderSaveButton }: StylesEditorProps) {
-  const [styles, setStyles] = useState<StyleDefinition[]>(defaultStyles);
+export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }: StylesEditorProps) {
+  // Convert session styles to StyleDefinition format or use defaults
+  const convertToStyleDefinitions = (sessionStyles?: any[]): StyleDefinition[] => {
+    if (!sessionStyles || sessionStyles.length === 0) {
+      return defaultStyles;
+    }
+
+    // Map session styles to style definitions
+    return sessionStyles.map(sessionStyle => {
+      const defaultStyle = defaultStyles.find(d => d.id === sessionStyle.id) || defaultStyles[0];
+      return {
+        id: sessionStyle.id || defaultStyle.id,
+        name: sessionStyle.name || defaultStyle.name,
+        fontFamily: sessionStyle.fontFamily || defaultStyle.fontFamily,
+        fontSize: sessionStyle.fontSize || defaultStyle.fontSize,
+        bold: sessionStyle.bold ?? defaultStyle.bold,
+        italic: sessionStyle.italic ?? defaultStyle.italic,
+        underline: sessionStyle.underline ?? defaultStyle.underline,
+        alignment: sessionStyle.alignment || defaultStyle.alignment,
+        color: sessionStyle.color || defaultStyle.color,
+        spaceBefore: sessionStyle.spaceBefore ?? defaultStyle.spaceBefore,
+        spaceAfter: sessionStyle.spaceAfter ?? defaultStyle.spaceAfter,
+      };
+    });
+  };
+
+  const [styles, setStyles] = useState<StyleDefinition[]>(() => convertToStyleDefinitions(initialStyles));
   const [listBulletSettings, setListBulletSettings] = useState<ListBulletSettings>(defaultListBulletSettings);
   const [tableUniformitySettings, setTableUniformitySettings] = useState<TableUniformitySettings>(defaultTableUniformitySettings);
   const [tableOfContentsSettings, setTableOfContentsSettings] = useState<TableOfContentsSettings>(defaultTableOfContentsSettings);
