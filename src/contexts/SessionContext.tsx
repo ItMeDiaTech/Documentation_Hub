@@ -351,6 +351,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       console.log('Processing document with PowerAutomate URL:', settings.apiConnections.powerAutomateUrl);
 
       // Convert session processing options to hyperlink processing options
+      // Extract style spacing from session styles
+      const header1Style = session.styles?.find((s: any) => s.id === 'header1');
+      const header2Style = session.styles?.find((s: any) => s.id === 'header2');
+      const normalStyle = session.styles?.find((s: any) => s.id === 'normal');
+
+      const customStyleSpacing: any = {};
+
+      if (header1Style && (header1Style.spaceBefore !== undefined || header1Style.spaceAfter !== undefined)) {
+        customStyleSpacing.header1 = {
+          spaceBefore: header1Style.spaceBefore || 0,
+          spaceAfter: header1Style.spaceAfter || 0
+        };
+      }
+
+      if (header2Style && (header2Style.spaceBefore !== undefined || header2Style.spaceAfter !== undefined)) {
+        customStyleSpacing.header2 = {
+          spaceBefore: header2Style.spaceBefore || 0,
+          spaceAfter: header2Style.spaceAfter || 0
+        };
+      }
+
+      if (normalStyle && (normalStyle.spaceBefore !== undefined || normalStyle.spaceAfter !== undefined)) {
+        customStyleSpacing.normal = {
+          spaceBefore: normalStyle.spaceBefore || 0,
+          spaceAfter: normalStyle.spaceAfter || 0
+        };
+      }
+
       const processingOptions: HyperlinkProcessingOptions = {
         apiEndpoint: settings.apiConnections.powerAutomateUrl || '',
         operations: {
@@ -363,6 +391,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         },
         textReplacements: session.replacements?.filter(r => r.enabled) || [],
         styles: session.styles || {},
+        customStyleSpacing: Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined,
       };
 
       // Process the document using Electron IPC

@@ -80,8 +80,8 @@ export interface SessionStyle {
   underline: boolean;
   alignment: 'left' | 'center' | 'right' | 'justify';
   color: string;
-  spacingBefore: number;
-  spacingAfter: number;
+  spaceBefore: number;
+  spaceAfter: number;
 }
 
 export interface IndentationLevel {

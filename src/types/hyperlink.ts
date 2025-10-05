@@ -98,6 +98,15 @@ export interface HyperlinkProcessingOptions {
   };
   textReplacements?: any[];
   styles?: any;
+  header2Spacing?: {
+    spaceBefore: number;
+    spaceAfter: number;
+  };
+  customStyleSpacing?: {
+    header1?: { spaceBefore: number; spaceAfter: number };
+    header2?: { spaceBefore: number; spaceAfter: number };
+    normal?: { spaceBefore: number; spaceAfter: number };
+  };
 }
 
 // Hyperlink fixing options (advanced)
