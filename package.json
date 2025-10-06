@@ -100,15 +100,19 @@
     "win": {
       "target": [
         "nsis",
-        "portable"
+        "msi"
       ],
       "publish": [
         "github"
       ],
       "artifactName": "Documentation-Hub-Setup-${version}.${ext}"
     },
-    "portable": {
-      "artifactName": "Documentation-Hub-${version}-portable.exe"
+    "msi": {
+      "artifactName": "Documentation-Hub-${version}.msi",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "perMachine": false,
+      "runAfterFinish": false
     },
     "nsis": {
       "oneClick": false,
