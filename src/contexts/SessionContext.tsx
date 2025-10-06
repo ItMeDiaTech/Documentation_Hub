@@ -245,39 +245,54 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
 
   const addDocuments = async (sessionId: string, files: File[]) => {
-    // Convert files to documents
-    const newDocuments: Document[] = await Promise.all(
-      files.map(async (file) => {
-        const fileWithPath = file as File & { path?: string };
+    // Convert files to documents with strict validation
+    const newDocuments: Document[] = [];
+    const invalidFiles: string[] = [];
 
-        // Check if this is an Electron file with just a path (no arrayBuffer method)
-        if (fileWithPath.path && typeof file.arrayBuffer !== 'function') {
-          // For Electron native dialog files, just use the path
-          return {
-            id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            name: file.name,
-            path: fileWithPath.path,
-            size: file.size || 0,
-            type: file.type,
-            status: 'pending' as const,
-            // No fileData - will be read by backend using the path
-          };
-        }
+    for (const file of files) {
+      const fileWithPath = file as File & { path?: string };
 
-        // For real File objects (e.g., from drag & drop), read ArrayBuffer
-        const arrayBuffer = await file.arrayBuffer();
-        return {
-          id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          name: file.name,
-          path: fileWithPath.path ?? (file.webkitRelativePath || file.name),
-          size: file.size,
-          type: file.type,
-          status: 'pending' as const,
-          // Store the ArrayBuffer data for web-based processing
-          fileData: arrayBuffer,
-        };
-      })
-    );
+      // STRICT VALIDATION: Only accept files with valid filesystem paths
+      // This is critical for Electron processing which requires absolute paths
+      if (!fileWithPath.path || fileWithPath.path.trim() === '') {
+        console.error(`[addDocuments] File "${file.name}" rejected: no path property`);
+        invalidFiles.push(file.name);
+        continue;
+      }
+
+      // Validate path is absolute (contains directory separators)
+      const isAbsolutePath = fileWithPath.path.includes('\\') || fileWithPath.path.includes('/');
+      if (!isAbsolutePath) {
+        console.error(`[addDocuments] File "${file.name}" rejected: invalid path "${fileWithPath.path}"`);
+        invalidFiles.push(file.name);
+        continue;
+      }
+
+      // Create document with validated path
+      newDocuments.push({
+        id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: file.name,
+        path: fileWithPath.path,
+        size: file.size || 0,
+        type: file.type,
+        status: 'pending' as const,
+        // No fileData - will be read by backend using the path
+      });
+    }
+
+    // Log results
+    if (invalidFiles.length > 0) {
+      console.warn(`[addDocuments] Rejected ${invalidFiles.length} file(s) with invalid paths:`, invalidFiles);
+    }
+    if (newDocuments.length > 0) {
+      console.log(`[addDocuments] Adding ${newDocuments.length} valid document(s) to session ${sessionId}`);
+    }
+
+    // Only update state if we have valid documents
+    if (newDocuments.length === 0) {
+      console.warn('[addDocuments] No valid documents to add');
+      return;
+    }
 
     setSessions((prev) =>
       prev.map((session) =>
