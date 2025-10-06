@@ -88,16 +88,29 @@ export function CurrentSession() {
     // Use Electron's native file dialog
     const filePaths = await window.electronAPI.selectFiles();
     if (filePaths && filePaths.length > 0) {
-      // Convert file paths to File-like objects with path property
-      const files = filePaths.map(filePath => {
-        const name = filePath.split(/[\\\/]/).pop() || 'document.docx';
-        return {
-          name,
-          path: filePath,
-          size: 0, // Size will be determined by the backend
-          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        } as File & { path: string };
-      });
+      // Convert file paths to File-like objects with path property and actual size
+      const files = await Promise.all(
+        filePaths.map(async (filePath) => {
+          const name = filePath.split(/[\\\/]/).pop() || 'document.docx';
+
+          // Get actual file size from filesystem
+          let fileSize = 0;
+          try {
+            const stats = await window.electronAPI.getFileStats(filePath);
+            fileSize = stats.size;
+          } catch (error) {
+            console.error('Failed to get file stats for', filePath, error);
+            // Size will remain 0 if stats retrieval fails
+          }
+
+          return {
+            name,
+            path: filePath,
+            size: fileSize,
+            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          } as File & { path: string };
+        })
+      );
       await addDocuments(session.id, files);
     }
   };
@@ -118,9 +131,33 @@ export function CurrentSession() {
     const files = Array.from(e.dataTransfer.files).filter((file) => file.name.endsWith('.docx'));
 
     if (files.length > 0) {
-      // Add file paths to the File objects for Electron processing
-      const filesWithPaths = files.map(file => Object.assign(file, { path: (file as any).path }));
-      await addDocuments(session.id, filesWithPaths);
+      // In Electron, dragged files have a path property
+      // Enhance file objects with path and actual file stats
+      const filesWithStats = await Promise.all(
+        files.map(async (file) => {
+          const fileWithPath = file as File & { path?: string };
+
+          // If path is available, get actual file stats from filesystem
+          if (fileWithPath.path) {
+            try {
+              const stats = await window.electronAPI.getFileStats(fileWithPath.path);
+              return Object.assign(file, {
+                path: fileWithPath.path,
+                size: stats.size
+              });
+            } catch (error) {
+              console.error('Failed to get file stats:', error);
+              // Fall back to file object's size if stats retrieval fails
+              return Object.assign(file, { path: fileWithPath.path });
+            }
+          }
+
+          // No path available - use file as-is
+          return file;
+        })
+      );
+
+      await addDocuments(session.id, filesWithStats);
     }
   };
 

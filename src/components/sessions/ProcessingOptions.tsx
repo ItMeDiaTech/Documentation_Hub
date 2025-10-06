@@ -22,6 +22,7 @@ export const defaultOptions: ProcessingOption[] = [
   { id: 'replace-outdated-titles', label: 'Replace Outdated Titles', group: 'hyperlinks', enabled: false },
   { id: 'fix-internal-hyperlinks', label: 'Attempt Fix for Internal Hyperlinks', group: 'hyperlinks', enabled: false },
   { id: 'fix-content-ids', label: 'Fix / Append Content IDs', group: 'hyperlinks', enabled: false },
+  { id: 'standardize-hyperlink-color', label: 'Standardize Hyperlink Color', group: 'hyperlinks', enabled: false },
 
   // Content Structure Group
   { id: 'assign-styles', label: 'Assign Styles', group: 'structure', enabled: false },
