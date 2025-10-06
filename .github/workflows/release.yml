@@ -10,11 +10,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
@@ -41,27 +37,12 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Package application (Windows)
-        if: matrix.os == 'windows-latest'
-        run: npm run build:electron
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Package application (macOS)
-        if: matrix.os == 'macos-latest'
-        run: npm run build:electron
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Package application (Linux)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Package Windows application
         run: npm run build:electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows artifacts
-        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
@@ -69,24 +50,6 @@ jobs:
             release/*.exe
             release/*.msi
             release/latest.yml
-
-      - name: Upload macOS artifacts
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-installer
-          path: |
-            release/*.dmg
-            release/latest-mac.yml
-
-      - name: Upload Linux artifacts
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-installer
-          path: |
-            release/*.AppImage
-            release/latest-linux.yml
 
   create-release:
     needs: release
@@ -105,10 +68,6 @@ jobs:
             windows-installer/*.exe
             windows-installer/*.msi
             windows-installer/latest.yml
-            macos-installer/*.dmg
-            macos-installer/latest-mac.yml
-            linux-installer/*.AppImage
-            linux-installer/latest-linux.yml
           generate_release_notes: true
           draft: false
           prerelease: false
