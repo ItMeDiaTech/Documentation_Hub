@@ -22,7 +22,7 @@
     "vite",
     "desktop"
   ],
-  "author": "",
+  "author": "DiaTech",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "24.5.2",
@@ -112,7 +112,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "perMachine": false,
-      "oneClick": false
+      "oneClick": false,
+      "warningsAsErrors": false
     },
     "nsis": {
       "oneClick": false,
