@@ -57,6 +57,7 @@ jobs:
         with:
           name: velopack-release
           path: |
+            Releases/*Setup.exe
             Releases/*.nupkg
             Releases/RELEASES
 
@@ -74,6 +75,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            velopack-release/*Setup.exe
             velopack-release/*.nupkg
             velopack-release/RELEASES
           generate_release_notes: true
