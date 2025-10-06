@@ -193,6 +193,8 @@ export class WordDocumentProcessor {
       let customSpacingProcessed = false;
       if (options.customStyleSpacing || options.header2Spacing) {
         console.log('\n=== CUSTOM STYLE SPACING PROCESSING ===');
+        console.log('Received customStyleSpacing:', options.customStyleSpacing);
+        console.log('Received header2Spacing (legacy):', options.header2Spacing);
 
         // Build style spacing config (customStyleSpacing takes precedence)
         const styleSpacing = options.customStyleSpacing || {};
@@ -201,6 +203,8 @@ export class WordDocumentProcessor {
         if (options.header2Spacing && !styleSpacing.header2) {
           styleSpacing.header2 = options.header2Spacing;
         }
+
+        console.log('Final styleSpacing config:', styleSpacing);
 
         const spacingResult = await this.processCustomStyleSpacing(zip, styleSpacing);
         customSpacingProcessed = spacingResult.modified;
@@ -1639,6 +1643,102 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Adjust table cell margins to allow paragraph spacing to work
+   * Table cell margins can override paragraph spacing, so we set them to 0
+   */
+  private adjustTableCellMargins(tableCellItem: any): void {
+    if (!tableCellItem || !tableCellItem['w:tc']) {
+      return;
+    }
+
+    const tcArray = tableCellItem['w:tc'];
+    if (!Array.isArray(tcArray)) {
+      return;
+    }
+
+    // Find or create w:tcPr (table cell properties)
+    let tcPrItem = tcArray.find(el => el['w:tcPr']);
+    let tcPr: any;
+
+    if (!tcPrItem) {
+      // Create new tcPr at the beginning of the cell
+      tcPr = [];
+      tcArray.unshift({ 'w:tcPr': tcPr });
+      console.log(`    ✓ Created w:tcPr for table cell`);
+    } else {
+      tcPr = tcPrItem['w:tcPr'];
+      if (!Array.isArray(tcPr)) {
+        tcPr = [tcPr];
+        tcPrItem['w:tcPr'] = tcPr;
+      }
+    }
+
+    // Find or create w:tcMar (table cell margins)
+    let tcMarItem = tcPr.find((el: any) => el['w:tcMar']);
+
+    if (!tcMarItem) {
+      // Create new tcMar with all margins set to 0
+      tcPr.push({
+        'w:tcMar': [{
+          'w:top': [{
+            ':@': {
+              '@_w:w': '0',
+              '@_w:type': 'dxa'
+            }
+          }],
+          'w:bottom': [{
+            ':@': {
+              '@_w:w': '0',
+              '@_w:type': 'dxa'
+            }
+          }]
+        }]
+      });
+      console.log(`    ✓ Set table cell margins to 0 (top/bottom) to allow paragraph spacing`);
+    } else {
+      // Update existing margins
+      const tcMar = tcMarItem['w:tcMar'];
+      const tcMarArray = Array.isArray(tcMar) ? tcMar : [tcMar];
+
+      if (tcMarArray.length > 0) {
+        const margins = tcMarArray[0];
+
+        // Set top margin to 0
+        if (margins['w:top']) {
+          const topArray = Array.isArray(margins['w:top']) ? margins['w:top'] : [margins['w:top']];
+          if (topArray[0] && topArray[0][':@']) {
+            topArray[0][':@']['@_w:w'] = '0';
+          }
+        } else {
+          margins['w:top'] = [{
+            ':@': {
+              '@_w:w': '0',
+              '@_w:type': 'dxa'
+            }
+          }];
+        }
+
+        // Set bottom margin to 0
+        if (margins['w:bottom']) {
+          const bottomArray = Array.isArray(margins['w:bottom']) ? margins['w:bottom'] : [margins['w:bottom']];
+          if (bottomArray[0] && bottomArray[0][':@']) {
+            bottomArray[0][':@']['@_w:w'] = '0';
+          }
+        } else {
+          margins['w:bottom'] = [{
+            ':@': {
+              '@_w:w': '0',
+              '@_w:type': 'dxa'
+            }
+          }];
+        }
+
+        console.log(`    ✓ Updated existing table cell margins to 0 (top/bottom)`);
+      }
+    }
+  }
+
+  /**
    * Process custom style spacing throughout the document
    */
   private async processCustomStyleSpacing(
@@ -1662,166 +1762,251 @@ export class WordDocumentProcessor {
       const documentXml = await documentXmlFile.async('text');
       const documentData = this.xmlParser.parse(documentXml);
 
+      // Debug: Log document structure to understand how to find paragraphs
+      console.log('\n🔍 Document Structure Analysis:');
+      console.log('documentData is Array:', Array.isArray(documentData));
+      console.log('documentData keys:', Object.keys(documentData || {}));
+      if (Array.isArray(documentData) && documentData.length > 0) {
+        console.log('First element keys:', Object.keys(documentData[0] || {}));
+        if (documentData[1]) {
+          console.log('Second element keys:', Object.keys(documentData[1] || {}));
+        }
+      }
+
     // Map style IDs to their display names and spacing configs
+    // Support multiple style name variations (with/without spaces, character styles, etc.)
     const styleConfigs = [
-      { id: 'Heading1', displayName: 'Header 1', spacing: styleSpacing.header1 },
-      { id: 'Header1', displayName: 'Header 1', spacing: styleSpacing.header1 },
-      { id: 'Heading2', displayName: 'Header 2', spacing: styleSpacing.header2 },
-      { id: 'Header2', displayName: 'Header 2', spacing: styleSpacing.header2 },
-      { id: 'Normal', displayName: 'Normal', spacing: styleSpacing.normal },
+      {
+        ids: ['Heading1', 'Heading 1', 'Header1', 'Header 1', 'Heading1Char'],
+        displayName: 'Header 1',
+        spacing: styleSpacing.header1
+      },
+      {
+        ids: ['Heading2', 'Heading 2', 'Header2', 'Header 2', 'Heading2Char'],
+        displayName: 'Header 2',
+        spacing: styleSpacing.header2
+      },
+      {
+        ids: ['Normal', 'NormalChar'],
+        displayName: 'Normal',
+        spacing: styleSpacing.normal
+      },
     ];
 
-    const applySpacing = (obj: any): void => {
+    let paragraphCount = 0;
+    let styledParagraphCount = 0;
+
+    let itemIndex = 0;
+
+    const applySpacing = (obj: any, currentTableCell: any = null): void => {
       if (!obj) return;
 
       // Handle ordered array format from fast-xml-parser with preserveOrder: true
       if (Array.isArray(obj)) {
         for (const item of obj) {
+          itemIndex++;
+          const itemKeys = Object.keys(item || {});
+          if (itemIndex <= 5) { // Only log first 5 items to avoid spam
+            console.log(`  Item ${itemIndex} keys:`, itemKeys);
+          }
+
+          // Log table structure detection to verify recursion reaches table cells
+          if (item['w:tbl']) {
+            console.log(`  🔍 Table (w:tbl) found - will recurse into cells`);
+          }
+          if (item['w:tr']) {
+            console.log(`  🔍 Table row (w:tr) found - will recurse into cells`);
+          }
+          if (item['w:tc']) {
+            console.log(`  🔍 Table cell (w:tc) found - will recurse to find paragraphs`);
+          }
+
           if (item['w:p']) {
-            const paragraphs = Array.isArray(item['w:p']) ? item['w:p'] : [item['w:p']];
+            // With preserveOrder: true, item['w:p'] is the array of child elements for this paragraph
+            const pArray = item['w:p'];
 
-            for (const pArray of paragraphs) {
-              // Each paragraph is an array of elements
-              if (Array.isArray(pArray)) {
-                // Find paragraph properties
-                const pPrItem = pArray.find(el => el['w:pPr']);
-                let pPr = pPrItem ? pPrItem['w:pPr'] : null;
+            // Each paragraph is an array of elements
+            if (Array.isArray(pArray)) {
+              paragraphCount++;
 
-                // Check paragraph style
-                const currentStyle = this.getParagraphStyle(pArray);
+              // Find paragraph properties
+              const pPrItem = pArray.find(el => el['w:pPr']);
+              let pPr = pPrItem ? pPrItem['w:pPr'] : null;
 
-                // Find matching style config
-                const styleConfig = styleConfigs.find(config =>
-                  config.id === currentStyle && config.spacing
-                );
+              // Check paragraph style
+              // Debug first 3 paragraphs in detail, but ALWAYS log Header 2 detections
+              const shouldDebug = paragraphCount <= 3;
+              const currentStyle = this.getParagraphStyle(pArray, shouldDebug);
 
-                if (styleConfig && styleConfig.spacing) {
-                  // Debug logging to track which paragraphs we're processing
-                  const text = this.extractParagraphText(pArray);
-                  console.log(`  Found ${styleConfig.displayName}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}}"`);
-                  const spacing = styleConfig.spacing;
+              if (currentStyle) {
+                styledParagraphCount++;
+                // Always log Header 2 (Heading2) detections to verify table cells are reached
+                const isHeader2 = currentStyle === 'Heading2' || currentStyle === 'Heading 2';
+                if (shouldDebug || isHeader2) {
+                  console.log(`  📍 Paragraph ${paragraphCount} has style: ${currentStyle}${isHeader2 ? ' ← HEADER 2 DETECTED' : ''}`);
+                }
+              } else {
+                if (shouldDebug) console.log(`  Paragraph ${paragraphCount} has NO style (will default to Normal)`);
+              }
 
-                  // Ensure paragraph properties exist
-                  if (!pPr) {
-                    const newPPr = [{
-                      'w:spacing': [{
-                        ':@': {
-                          '@_w:before': '0',
-                          '@_w:after': '0',
-                          '@_w:line': '240',
-                          '@_w:lineRule': 'auto'
-                        }
-                      }]
-                    }];
-                    pArray.unshift({ 'w:pPr': newPPr });
-                    pPr = newPPr;
-                  }
+              // Find matching style config (check if any variation matches)
+              const styleConfig = currentStyle
+                ? styleConfigs.find(config =>
+                    config.ids.includes(currentStyle) && config.spacing
+                  )
+                : undefined;
 
-                  // Find or create spacing element
-                  const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
+              if (styleConfig && styleConfig.spacing) {
+                // Always log Header 2 spacing applications to verify table cells are processed
+                const text = this.extractParagraphText(pArray);
+                const isHeader2 = styleConfig.displayName === 'Header 2';
+                console.log(`  ${isHeader2 ? '✅' : '✓'} Found ${styleConfig.displayName}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}}"`);
+                const spacing = styleConfig.spacing;
 
-                  // CRITICAL FIX: Explicitly disable w:contextualSpacing
-                  // This element causes Word to ignore spacing between paragraphs of the same style
-                  // We must set w:val="0" to override the parent style setting (not just remove it!)
-                  const contextualSpacingItem = pPrArray.find(el => el['w:contextualSpacing']);
-                  if (contextualSpacingItem) {
-                    // Update existing contextualSpacing to explicitly disable it
-                    console.log(`  ⚠️  Disabling w:contextualSpacing (setting w:val="0")`);
-                    contextualSpacingItem['w:contextualSpacing'] = [{
+                // Ensure paragraph properties exist
+                if (!pPr) {
+                  const newPPr = [{
+                    'w:spacing': [{
+                      ':@': {
+                        '@_w:before': '0',
+                        '@_w:after': '0',
+                        '@_w:line': '240',
+                        '@_w:lineRule': 'auto'
+                      }
+                    }]
+                  }];
+                  pArray.unshift({ 'w:pPr': newPPr });
+                  pPr = newPPr;
+                }
+
+                // Find or create spacing element
+                const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
+
+                // CRITICAL FIX: Explicitly disable w:contextualSpacing
+                // This element causes Word to ignore spacing between paragraphs of the same style
+                // We must set w:val="0" to override the parent style setting (not just remove it!)
+                const contextualSpacingItem = pPrArray.find(el => el['w:contextualSpacing']);
+                if (contextualSpacingItem) {
+                  // Update existing contextualSpacing to explicitly disable it
+                  console.log(`  ⚠️  Disabling w:contextualSpacing (setting w:val="0")`);
+                  contextualSpacingItem['w:contextualSpacing'] = [{
+                    ':@': {
+                      '@_w:val': '0'
+                    }
+                  }];
+                } else {
+                  // Add contextualSpacing explicitly set to false to override style
+                  console.log(`  ✓ Adding w:contextualSpacing w:val="0" to override parent style`);
+                  pPrArray.push({
+                    'w:contextualSpacing': [{
                       ':@': {
                         '@_w:val': '0'
                       }
-                    }];
-                  } else {
-                    // Add contextualSpacing explicitly set to false to override style
-                    console.log(`  ✓ Adding w:contextualSpacing w:val="0" to override parent style`);
-                    pPrArray.push({
-                      'w:contextualSpacing': [{
-                        ':@': {
-                          '@_w:val': '0'
-                        }
-                      }]
-                    });
+                    }]
+                  });
+                }
+
+                let spacingItem = pPrArray.find(el => el['w:spacing']);
+                let spacingElement = spacingItem ? spacingItem['w:spacing'] : null;
+
+                // Get current spacing values from :@ attribute object
+                const spacingArray = Array.isArray(spacingElement) ? spacingElement : [spacingElement];
+                const currentAttrs = spacingArray[0]?.[':@'] || {};
+                const currentSpaceBefore = parseInt(currentAttrs['@_w:before'] || '0', 10);
+                const currentSpaceAfter = parseInt(currentAttrs['@_w:after'] || '0', 10);
+                const currentLine = parseInt(currentAttrs['@_w:line'] || '240', 10);
+
+                // Convert points to twips (1 point = 20 twips) for before/after
+                const twipsBefore = spacing.spaceBefore * 20;
+                const twipsAfter = spacing.spaceAfter * 20;
+
+                // Convert line spacing to OpenXML format (multiply by 240)
+                // 1.0 = 240, 1.15 = 276, 1.5 = 360, 2.0 = 480
+                const lineValue = Math.round((spacing.lineSpacing || 1.15) * 240);
+
+                // Update spacing with ALL attributes (in :@ format)
+                if (!spacingElement || !spacingArray[0]) {
+                  // Create new spacing element with :@ attribute wrapper
+                  // (either no spacing element exists, or it's an empty array)
+                  pPrArray.push({
+                    'w:spacing': [{
+                      ':@': {
+                        '@_w:before': twipsBefore.toString(),
+                        '@_w:after': twipsAfter.toString(),
+                        '@_w:line': lineValue.toString(),
+                        '@_w:lineRule': 'auto',
+                        '@_w:beforeAutospacing': '0',  // Prevent Word from auto-adjusting spacing in tables
+                        '@_w:afterAutospacing': '0'    // Prevent Word from auto-adjusting spacing in tables
+                      }
+                    }]
+                  });
+                } else {
+                  // Update existing spacing element attributes in :@ object
+                  if (!spacingArray[0][':@']) {
+                    spacingArray[0][':@'] = {};
                   }
+                  spacingArray[0][':@']['@_w:before'] = twipsBefore.toString();
+                  spacingArray[0][':@']['@_w:after'] = twipsAfter.toString();
+                  spacingArray[0][':@']['@_w:line'] = lineValue.toString();
+                  spacingArray[0][':@']['@_w:lineRule'] = 'auto';
+                  spacingArray[0][':@']['@_w:beforeAutospacing'] = '0';  // Prevent Word from auto-adjusting spacing in tables
+                  spacingArray[0][':@']['@_w:afterAutospacing'] = '0';   // Prevent Word from auto-adjusting spacing in tables
+                }
 
-                  let spacingItem = pPrArray.find(el => el['w:spacing']);
-                  let spacingElement = spacingItem ? spacingItem['w:spacing'] : null;
+                // Track the change if spacing was different
+                if (currentSpaceBefore !== twipsBefore || currentSpaceAfter !== twipsAfter || currentLine !== lineValue) {
+                  const text = this.extractParagraphText(pArray);
+                  const currentLineSpacing = currentLine / 240;
+                  const newLineSpacing = spacing.lineSpacing || 1.15;
+                  changes.push({
+                    id: `spacing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    type: 'style',
+                    description: `Applied ${styleConfig.displayName} spacing`,
+                    before: `"${text}" - Para: ${currentSpaceBefore/20}pt before, ${currentSpaceAfter/20}pt after | Line: ${currentLineSpacing.toFixed(2)}`,
+                    after: `"${text}" - Para: ${spacing.spaceBefore}pt before, ${spacing.spaceAfter}pt after | Line: ${newLineSpacing.toFixed(2)}`,
+                    location: 'Main Document'
+                  });
+                }
 
-                  // Get current spacing values from :@ attribute object
-                  const spacingArray = Array.isArray(spacingElement) ? spacingElement : [spacingElement];
-                  const currentAttrs = spacingArray[0]?.[':@'] || {};
-                  const currentSpaceBefore = parseInt(currentAttrs['@_w:before'] || '0', 10);
-                  const currentSpaceAfter = parseInt(currentAttrs['@_w:after'] || '0', 10);
-                  const currentLine = parseInt(currentAttrs['@_w:line'] || '240', 10);
-
-                  // Convert points to twips (1 point = 20 twips) for before/after
-                  const twipsBefore = spacing.spaceBefore * 20;
-                  const twipsAfter = spacing.spaceAfter * 20;
-
-                  // Convert line spacing to OpenXML format (multiply by 240)
-                  // 1.0 = 240, 1.15 = 276, 1.5 = 360, 2.0 = 480
-                  const lineValue = Math.round((spacing.lineSpacing || 1.15) * 240);
-
-                  // Update spacing with ALL attributes (in :@ format)
-                  if (!spacingElement) {
-                    // Create new spacing element with :@ attribute wrapper
-                    pPrArray.push({
-                      'w:spacing': [{
-                        ':@': {
-                          '@_w:before': twipsBefore.toString(),
-                          '@_w:after': twipsAfter.toString(),
-                          '@_w:line': lineValue.toString(),
-                          '@_w:lineRule': 'auto'
-                        }
-                      }]
-                    });
-                  } else {
-                    // Update existing spacing element attributes in :@ object
-                    if (!spacingArray[0][':@']) {
-                      spacingArray[0][':@'] = {};
-                    }
-                    spacingArray[0][':@']['@_w:before'] = twipsBefore.toString();
-                    spacingArray[0][':@']['@_w:after'] = twipsAfter.toString();
-                    spacingArray[0][':@']['@_w:line'] = lineValue.toString();
-                    spacingArray[0][':@']['@_w:lineRule'] = 'auto';
-                  }
-
-                  // Track the change if spacing was different
-                  if (currentSpaceBefore !== twipsBefore || currentSpaceAfter !== twipsAfter || currentLine !== lineValue) {
-                    const text = this.extractParagraphText(pArray);
-                    const currentLineSpacing = currentLine / 240;
-                    const newLineSpacing = spacing.lineSpacing || 1.15;
-                    changes.push({
-                      id: `spacing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                      type: 'style',
-                      description: `Applied ${styleConfig.displayName} spacing`,
-                      before: `"${text}" - Para: ${currentSpaceBefore/20}pt before, ${currentSpaceAfter/20}pt after | Line: ${currentLineSpacing.toFixed(2)}`,
-                      after: `"${text}" - Para: ${spacing.spaceBefore}pt before, ${spacing.spaceAfter}pt after | Line: ${newLineSpacing.toFixed(2)}`,
-                      location: 'Main Document'
-                    });
-                  }
+                // CRITICAL FIX FOR TABLES: If paragraph is inside a table cell, adjust cell margins
+                // Table cell margins can override paragraph spacing, so we need to set them to 0
+                if (currentTableCell) {
+                  console.log(`  📋 Paragraph is in table cell - adjusting cell margins to allow paragraph spacing`);
+                  this.adjustTableCellMargins(currentTableCell);
                 }
               }
             }
           }
 
           // Recursively process other elements
+          // When we encounter a table cell, pass it down as context
+          let nextTableCell = currentTableCell;
+          if (item['w:tc']) {
+            nextTableCell = item; // This item IS the table cell, pass it down
+          }
+
           for (const key in item) {
             if (item.hasOwnProperty(key) && typeof item[key] === 'object') {
-              applySpacing(item[key]);
+              applySpacing(item[key], nextTableCell);
             }
           }
         }
       } else if (typeof obj === 'object') {
         for (const key in obj) {
           if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
-            applySpacing(obj[key]);
+            applySpacing(obj[key], currentTableCell);
           }
         }
       }
     };
 
       applySpacing(documentData);
+
+      console.log(`\n📊 Paragraph Processing Summary:`);
+      console.log(`   Total paragraphs found: ${paragraphCount}`);
+      console.log(`   Paragraphs with explicit styles: ${styledParagraphCount}`);
+      console.log(`   Paragraphs without explicit styles: ${paragraphCount - styledParagraphCount}`);
+      console.log(`   Style changes applied: ${changes.length}\n`);
 
       if (changes.length > 0) {
         console.log(`✓ Applied custom style spacing to ${changes.length} paragraph(s)`);
@@ -1874,24 +2059,52 @@ export class WordDocumentProcessor {
   /**
    * Get the style of a paragraph
    */
-  private getParagraphStyle(pArray: any[]): string | null {
-    const pPrItem = pArray.find(el => el['w:pPr']);
-    if (!pPrItem) return null;
+  private getParagraphStyle(pArray: any[], debug = false): string | null {
+    // Debug: Show paragraph structure (only for first few paragraphs)
+    if (debug) {
+      console.log('\n  🔍 getParagraphStyle() - Analyzing paragraph structure:');
+      console.log('    Paragraph array length:', pArray.length);
+      console.log('    Paragraph elements:', pArray.map(el => Object.keys(el)));
+    }
 
+    const pPrItem = pArray.find(el => el['w:pPr']);
+    if (!pPrItem) {
+      if (debug) console.log('    ❌ No w:pPr found in paragraph');
+      return null;
+    }
+
+    if (debug) console.log('    ✓ Found w:pPr element');
     const pPr = pPrItem['w:pPr'];
+    if (debug) {
+      console.log('    w:pPr is array?', Array.isArray(pPr));
+      console.log('    w:pPr structure:', Array.isArray(pPr) ? pPr.map(item => Object.keys(item)) : Object.keys(pPr || {}));
+    }
+
     const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
 
     for (const item of pPrArray) {
-      if (item['w:pStyle']) {
-        const styleItems = Array.isArray(item['w:pStyle']) ? item['w:pStyle'] : [item['w:pStyle']];
-        for (const styleItem of styleItems) {
-          if (styleItem['@_w:val']) {
-            return styleItem['@_w:val'];
-          }
+      if (debug) console.log('    Checking pPr item keys:', Object.keys(item || {}));
+      if (item['w:pStyle'] !== undefined) {
+        if (debug) console.log('    ✓ Found w:pStyle element');
+
+        // With preserveOrder: true, attributes are at item[':@'] (sibling level),
+        // NOT inside item['w:pStyle'] (which is an empty array)
+        const attrs = item[':@'];
+        if (debug) console.log('    Sibling :@ object:', attrs);
+
+        const styleVal = attrs?.['@_w:val'];
+        if (styleVal) {
+          if (debug) console.log(`    ✅ Detected paragraph style: ${styleVal}`);
+          return styleVal;
+        } else {
+          if (debug) console.log('    ❌ No @_w:val found in :@ attributes');
         }
+      } else {
+        if (debug) console.log('    ❌ No w:pStyle in this pPr item');
       }
     }
 
+    if (debug) console.log('    ❌ No style value found after checking all items');
     return null;
   }
 
