@@ -72,6 +72,7 @@ export interface Session {
 }
 
 export interface SessionStyle {
+  id: string; // CRITICAL: needed to identify which style (header1, header2, normal)
   name: string;
   fontFamily: string;
   fontSize: number;

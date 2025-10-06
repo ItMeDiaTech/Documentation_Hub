@@ -352,35 +352,89 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       // Convert session processing options to hyperlink processing options
       // Extract style spacing from session styles
+      console.log('\n=== SESSION CONTEXT: Extracting Style Spacing ===');
+      console.log('session.styles:', session.styles);
+
+      // Default style spacing (applied when session.styles is undefined/empty)
+      const defaultStyleSpacing = {
+        header1: {
+          spaceBefore: 0,
+          spaceAfter: 12,
+          lineSpacing: 1.0
+        },
+        header2: {
+          spaceBefore: 6,
+          spaceAfter: 6,
+          lineSpacing: 1.0
+        },
+        normal: {
+          spaceBefore: 3,
+          spaceAfter: 3,
+          lineSpacing: 1.15
+        }
+      };
+
+      // Check if session has configured styles
+      const hasSessionStyles = session.styles && session.styles.length > 0;
+
+      if (!hasSessionStyles) {
+        console.log('⚠️  No styles configured in session - using default spacing values');
+        console.log('   Default Header 1: 0pt before, 12pt after, 1.0 line spacing');
+        console.log('   Default Header 2: 6pt before, 6pt after, 1.0 line spacing');
+        console.log('   Default Normal: 3pt before, 3pt after, 1.15 line spacing');
+      }
+
       const header1Style = session.styles?.find((s: any) => s.id === 'header1');
       const header2Style = session.styles?.find((s: any) => s.id === 'header2');
       const normalStyle = session.styles?.find((s: any) => s.id === 'normal');
 
+      console.log('Found header1Style:', header1Style);
+      console.log('Found header2Style:', header2Style);
+      console.log('Found normalStyle:', normalStyle);
+
       const customStyleSpacing: any = {};
 
+      // Header 1 spacing (use session style or default)
       if (header1Style && (header1Style.spaceBefore !== undefined || header1Style.spaceAfter !== undefined || header1Style.lineSpacing !== undefined)) {
         customStyleSpacing.header1 = {
-          spaceBefore: header1Style.spaceBefore || 0,
-          spaceAfter: header1Style.spaceAfter || 0,
-          lineSpacing: header1Style.lineSpacing || 1.0
+          spaceBefore: header1Style.spaceBefore ?? 0,
+          spaceAfter: header1Style.spaceAfter ?? 0,
+          lineSpacing: header1Style.lineSpacing ?? 1.0
         };
+        console.log('✓ Added header1 spacing from session:', customStyleSpacing.header1);
+      } else if (!hasSessionStyles) {
+        customStyleSpacing.header1 = defaultStyleSpacing.header1;
+        console.log('✓ Added header1 spacing from defaults:', customStyleSpacing.header1);
       }
 
+      // Header 2 spacing (use session style or default)
       if (header2Style && (header2Style.spaceBefore !== undefined || header2Style.spaceAfter !== undefined || header2Style.lineSpacing !== undefined)) {
         customStyleSpacing.header2 = {
-          spaceBefore: header2Style.spaceBefore || 0,
-          spaceAfter: header2Style.spaceAfter || 0,
-          lineSpacing: header2Style.lineSpacing || 1.0
+          spaceBefore: header2Style.spaceBefore ?? 0,
+          spaceAfter: header2Style.spaceAfter ?? 0,
+          lineSpacing: header2Style.lineSpacing ?? 1.0
         };
+        console.log('✓ Added header2 spacing from session:', customStyleSpacing.header2);
+      } else if (!hasSessionStyles) {
+        customStyleSpacing.header2 = defaultStyleSpacing.header2;
+        console.log('✓ Added header2 spacing from defaults:', customStyleSpacing.header2);
       }
 
+      // Normal spacing (use session style or default)
       if (normalStyle && (normalStyle.spaceBefore !== undefined || normalStyle.spaceAfter !== undefined || normalStyle.lineSpacing !== undefined)) {
         customStyleSpacing.normal = {
-          spaceBefore: normalStyle.spaceBefore || 0,
-          spaceAfter: normalStyle.spaceAfter || 0,
-          lineSpacing: normalStyle.lineSpacing || 1.15
+          spaceBefore: normalStyle.spaceBefore ?? 0,
+          spaceAfter: normalStyle.spaceAfter ?? 0,
+          lineSpacing: normalStyle.lineSpacing ?? 1.15
         };
+        console.log('✓ Added normal spacing from session:', customStyleSpacing.normal);
+      } else if (!hasSessionStyles) {
+        customStyleSpacing.normal = defaultStyleSpacing.normal;
+        console.log('✓ Added normal spacing from defaults:', customStyleSpacing.normal);
       }
+
+      console.log('Final customStyleSpacing object:', customStyleSpacing);
+      console.log('Will pass to processor:', Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined);
 
       const processingOptions: HyperlinkProcessingOptions = {
         apiEndpoint: settings.apiConnections.powerAutomateUrl || '',
