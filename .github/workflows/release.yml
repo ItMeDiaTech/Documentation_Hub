@@ -67,6 +67,7 @@ jobs:
           name: windows-installer
           path: |
             release/*.exe
+            release/*.msi
             release/latest.yml
 
       - name: Upload macOS artifacts
@@ -102,6 +103,7 @@ jobs:
         with:
           files: |
             windows-installer/*.exe
+            windows-installer/*.msi
             windows-installer/latest.yml
             macos-installer/*.dmg
             macos-installer/latest-mac.yml

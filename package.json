@@ -99,12 +99,20 @@
     ],
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "msi"
       ],
       "publish": [
         "github"
       ],
       "artifactName": "Documentation-Hub-Setup-${version}.${ext}"
+    },
+    "msi": {
+      "artifactName": "Documentation-Hub-${version}.msi",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "perMachine": false,
+      "oneClick": false
     },
     "nsis": {
       "oneClick": false,
