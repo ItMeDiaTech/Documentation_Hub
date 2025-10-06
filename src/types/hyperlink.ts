@@ -95,6 +95,7 @@ export interface HyperlinkProcessingOptions {
     updateTopHyperlinks?: boolean;
     updateTocHyperlinks?: boolean;
     fixKeywords?: boolean;
+    standardizeHyperlinkColor?: boolean;
   };
   textReplacements?: any[];
   styles?: any;

@@ -351,7 +351,7 @@ export function Settings() {
               <input
                 type="text"
                 placeholder="Search settings..."
-                className="w-full pl-10 pr-3 py-2 text-sm rounded-lg border border-border bg-background hover:border-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 transition-colors"
+                className="w-full pl-10 pr-3 py-2 text-sm rounded-lg border border-border bg-background text-muted-foreground placeholder:text-muted-foreground/50 hover:border-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 transition-colors"
               />
             </div>
 
