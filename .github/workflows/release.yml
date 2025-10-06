@@ -37,19 +37,28 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Package Windows application
-        run: npm run build:electron
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package Electron app
+        run: |
+          npx @electron/packager . "Documentation Hub" --platform=win32 --arch=x64 --out=out --overwrite --icon=build/icon.ico --asar
+        shell: bash
 
-      - name: Upload Windows artifacts
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk
+
+      - name: Package with Velopack
+        run: |
+          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          $VERSION = "${{ github.ref_name }}".TrimStart('v')
+          vpk pack --packId DocumentationHub --packVersion $VERSION --packDir "./out/Documentation Hub-win32-x64" --mainExe "Documentation Hub.exe" --icon build/icon.ico --packTitle "Documentation Hub" --packAuthors "DiaTech"
+        shell: powershell
+
+      - name: Upload Velopack artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
+          name: velopack-release
           path: |
-            release/*.exe
-            release/*.msi
-            release/latest.yml
+            Releases/*.nupkg
+            Releases/RELEASES
 
   create-release:
     needs: release
@@ -65,9 +74,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            windows-installer/*.exe
-            windows-installer/*.msi
-            windows-installer/latest.yml
+            velopack-release/*.nupkg
+            velopack-release/RELEASES
           generate_release_notes: true
           draft: false
           prerelease: false
