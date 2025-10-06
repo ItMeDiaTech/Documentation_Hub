@@ -1,8 +1,11 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, dialog, session } from 'electron';
-import { autoUpdater } from 'electron-updater';
+import { VelopackApp, UpdateManager } from 'velopack';
 import { join } from 'path';
 import * as fs from 'fs';
-import { promises as fsPromises } from 'fs';
+import { promises as fsPromises} from 'fs';
+
+// Initialize Velopack as early as possible (handles Squirrel events)
+VelopackApp.build().run();
 import { WordDocumentProcessor } from '../src/services/document/WordDocumentProcessor';
 import type {
   BatchProcessingOptions,
@@ -544,81 +547,27 @@ ipcMain.handle('save-export-data', async (...[, request]: [Electron.IpcMainInvok
 });
 
 // ==============================================================================
-// Auto-Updater Configuration
+// Velopack Auto-Updater Configuration
 // ==============================================================================
 
-class AutoUpdaterHandler {
+class VelopackHandler {
   private updateCheckInProgress = false;
   private downloadInProgress = false;
+  private updateManager: UpdateManager | null = null;
+  private pendingUpdate: any = null;
+
+  // Update URL - GitHub releases
+  private readonly updateUrl = 'https://github.com/ItMeDiaTech/Documentation_Hub/releases/latest/download';
 
   constructor() {
-    this.setupAutoUpdater();
     this.setupIPCHandlers();
   }
 
-  private setupAutoUpdater(): void {
-    // Configure auto-updater
-    autoUpdater.autoDownload = false; // Manual control over downloads
-    autoUpdater.autoInstallOnAppQuit = true; // Install on quit
-
-    // Logging
-    autoUpdater.logger = {
-      info: (message) => console.log('[AutoUpdater]', message),
-      warn: (message) => console.warn('[AutoUpdater]', message),
-      error: (message) => console.error('[AutoUpdater]', message),
-      debug: (message) => console.debug('[AutoUpdater]', message),
-    };
-
-    // Update event handlers
-    autoUpdater.on('checking-for-update', () => {
-      this.sendStatusToWindow('Checking for updates...');
-      mainWindow?.webContents.send('update-checking');
-    });
-
-    autoUpdater.on('update-available', (info) => {
-      this.sendStatusToWindow(`Update available: ${info.version}`);
-      mainWindow?.webContents.send('update-available', {
-        version: info.version,
-        releaseDate: info.releaseDate,
-        releaseNotes: info.releaseNotes,
-      });
-      this.updateCheckInProgress = false;
-    });
-
-    autoUpdater.on('update-not-available', (info) => {
-      this.sendStatusToWindow('Already up to date');
-      mainWindow?.webContents.send('update-not-available', {
-        version: info.version,
-      });
-      this.updateCheckInProgress = false;
-    });
-
-    autoUpdater.on('error', (error) => {
-      this.sendStatusToWindow(`Update error: ${error.message}`);
-      mainWindow?.webContents.send('update-error', {
-        message: error.message,
-      });
-      this.updateCheckInProgress = false;
-      this.downloadInProgress = false;
-    });
-
-    autoUpdater.on('download-progress', (progressObj) => {
-      mainWindow?.webContents.send('update-download-progress', {
-        bytesPerSecond: progressObj.bytesPerSecond,
-        percent: progressObj.percent,
-        transferred: progressObj.transferred,
-        total: progressObj.total,
-      });
-    });
-
-    autoUpdater.on('update-downloaded', (info) => {
-      this.sendStatusToWindow(`Update downloaded: ${info.version}`);
-      mainWindow?.webContents.send('update-downloaded', {
-        version: info.version,
-        releaseNotes: info.releaseNotes,
-      });
-      this.downloadInProgress = false;
-    });
+  private getUpdateManager(): UpdateManager {
+    if (!this.updateManager) {
+      this.updateManager = new UpdateManager();
+    }
+    return this.updateManager;
   }
 
   private setupIPCHandlers(): void {
@@ -640,17 +589,50 @@ class AutoUpdaterHandler {
 
       try {
         this.updateCheckInProgress = true;
-        const result = await autoUpdater.checkForUpdates();
-        return {
-          success: true,
-          updateInfo: result?.updateInfo,
-        };
+        this.sendStatusToWindow('Checking for updates...');
+        mainWindow?.webContents.send('update-checking');
+
+        const updateInfo = await this.getUpdateManager().checkForUpdatesAsync();
+
+        if (updateInfo) {
+          this.pendingUpdate = updateInfo;
+          this.sendStatusToWindow(`Update available: ${updateInfo.targetFullRelease?.version || 'Unknown'}`);
+          mainWindow?.webContents.send('update-available', {
+            version: updateInfo.targetFullRelease?.version || 'Unknown',
+            releaseDate: new Date().toISOString(),
+            releaseNotes: '',
+          });
+
+          return {
+            success: true,
+            updateInfo: {
+              version: updateInfo.targetFullRelease?.version,
+            },
+          };
+        } else {
+          this.sendStatusToWindow('Already up to date');
+          mainWindow?.webContents.send('update-not-available', {
+            version: app.getVersion(),
+          });
+
+          return {
+            success: true,
+            message: 'No updates available',
+          };
+        }
       } catch (error) {
-        this.updateCheckInProgress = false;
+        const errorMessage = error instanceof Error ? error.message : 'Failed to check for updates';
+        this.sendStatusToWindow(`Update error: ${errorMessage}`);
+        mainWindow?.webContents.send('update-error', {
+          message: errorMessage,
+        });
+
         return {
           success: false,
-          message: error instanceof Error ? error.message : 'Failed to check for updates',
+          message: errorMessage,
         };
+      } finally {
+        this.updateCheckInProgress = false;
       }
     });
 
@@ -663,25 +645,57 @@ class AutoUpdaterHandler {
         };
       }
 
-      try {
-        this.downloadInProgress = true;
-        await autoUpdater.downloadUpdate();
-        return {
-          success: true,
-          message: 'Download started',
-        };
-      } catch (error) {
-        this.downloadInProgress = false;
+      if (!this.pendingUpdate) {
         return {
           success: false,
-          message: error instanceof Error ? error.message : 'Failed to download update',
+          message: 'No update available to download',
         };
+      }
+
+      try {
+        this.downloadInProgress = true;
+
+        // Download with progress callback
+        await this.getUpdateManager().downloadUpdatesAsync(this.pendingUpdate, (progress) => {
+          mainWindow?.webContents.send('update-download-progress', {
+            bytesPerSecond: 0,
+            percent: progress,
+            transferred: 0,
+            total: 100,
+          });
+        });
+
+        this.sendStatusToWindow(`Update downloaded: ${this.pendingUpdate.targetFullRelease?.version}`);
+        mainWindow?.webContents.send('update-downloaded', {
+          version: this.pendingUpdate.targetFullRelease?.version || 'Unknown',
+          releaseNotes: '',
+        });
+
+        return {
+          success: true,
+          message: 'Download completed',
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to download update';
+        mainWindow?.webContents.send('update-error', {
+          message: errorMessage,
+        });
+
+        return {
+          success: false,
+          message: errorMessage,
+        };
+      } finally {
+        this.downloadInProgress = false;
       }
     });
 
     // Install update and restart
     ipcMain.handle('install-update', () => {
-      autoUpdater.quitAndInstall(false, true);
+      if (this.pendingUpdate) {
+        // Apply updates and restart (~2 seconds with Velopack!)
+        this.getUpdateManager().applyUpdatesAndRestart(this.pendingUpdate);
+      }
     });
 
     // Get current version
@@ -691,30 +705,39 @@ class AutoUpdaterHandler {
   }
 
   private sendStatusToWindow(text: string): void {
-    console.log('[AutoUpdater]', text);
+    console.log('[Velopack]', text);
   }
 
   // Check for updates on app start (if enabled in settings)
   public async checkOnStartup(): Promise<void> {
     if (isDev) {
-      console.log('[AutoUpdater] Skipping update check in development mode');
+      console.log('[Velopack] Skipping update check in development mode');
       return;
     }
 
     // Wait a bit for the window to load
     setTimeout(async () => {
       try {
-        console.log('[AutoUpdater] Checking for updates on startup...');
-        await autoUpdater.checkForUpdates();
+        console.log('[Velopack] Checking for updates on startup...');
+        const updateInfo = await this.getUpdateManager().checkForUpdatesAsync();
+
+        if (updateInfo) {
+          this.pendingUpdate = updateInfo;
+          mainWindow?.webContents.send('update-available', {
+            version: updateInfo.targetFullRelease?.version || 'Unknown',
+            releaseDate: new Date().toISOString(),
+            releaseNotes: '',
+          });
+        }
       } catch (error) {
-        console.error('[AutoUpdater] Startup update check failed:', error);
+        console.error('[Velopack] Startup update check failed:', error);
       }
     }, 3000);
   }
 }
 
-// Initialize auto-updater handler
-const updaterHandler = new AutoUpdaterHandler();
+// Initialize Velopack updater handler
+const updaterHandler = new VelopackHandler();
 
 // Check for updates on startup (will be controlled by user settings in production)
 app.whenReady().then(() => {
