@@ -395,6 +395,34 @@ ipcMain.handle('show-in-folder', async (...[, path]: [Electron.IpcMainInvokeEven
   }
 });
 
+// Get file statistics (size, modified date, etc.)
+ipcMain.handle('get-file-stats', async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
+  if (!filePath) {
+    throw new Error('No file path provided');
+  }
+
+  try {
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+
+    // Get file stats
+    const stats = await fsPromises.stat(filePath);
+
+    return {
+      size: stats.size,
+      created: stats.birthtime,
+      modified: stats.mtime,
+      isFile: stats.isFile(),
+      isDirectory: stats.isDirectory(),
+    };
+  } catch (error) {
+    console.error('Error getting file stats:', error);
+    throw error;
+  }
+});
+
 // Restore document from backup
 ipcMain.handle('restore-from-backup', async (...[, request]: [Electron.IpcMainInvokeEvent, { backupPath: string; targetPath: string }]) => {
   if (!request.backupPath || !request.targetPath) {

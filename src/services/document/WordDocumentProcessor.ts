@@ -19,6 +19,9 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   validateBeforeProcessing?: boolean;
   streamLargeFiles?: boolean;
   maxFileSizeMB?: number;
+  removeWhitespace?: boolean;
+  removeItalics?: boolean;
+  assignStyles?: boolean;
   header2Spacing?: {
     spaceBefore: number;
     spaceAfter: number;
@@ -186,6 +189,54 @@ export class WordDocumentProcessor {
             result.modifiedHyperlinks++; // Count as modification for save logic
             result.processedLinks.push(...textReplacementResult.changes);
           }
+        }
+      }
+
+      // Standardize hyperlink colors
+      let hyperlinkColorsStandardized = false;
+      if (options.operations?.standardizeHyperlinkColor) {
+        console.log('\n=== HYPERLINK COLOR STANDARDIZATION ===');
+        const colorResult = await this.standardizeHyperlinkColors(zip);
+        hyperlinkColorsStandardized = colorResult.modified;
+        if (hyperlinkColorsStandardized) {
+          result.modifiedHyperlinks++; // Count as modification for save logic
+          result.processedLinks.push(...colorResult.changes);
+        }
+      }
+
+      // Remove extra whitespace
+      let whitespaceRemoved = false;
+      if (options.removeWhitespace) {
+        console.log('\n=== WHITESPACE REMOVAL ===');
+        const whitespaceResult = await this.removeExtraWhitespace(zip);
+        whitespaceRemoved = whitespaceResult.modified;
+        if (whitespaceRemoved) {
+          result.modifiedHyperlinks++; // Count as modification for save logic
+          result.processedLinks.push(...whitespaceResult.changes);
+        }
+      }
+
+      // Remove all italics
+      let italicsRemoved = false;
+      if (options.removeItalics) {
+        console.log('\n=== ITALICS REMOVAL ===');
+        const italicsResult = await this.removeAllItalics(zip);
+        italicsRemoved = italicsResult.modified;
+        if (italicsRemoved) {
+          result.modifiedHyperlinks++; // Count as modification for save logic
+          result.processedLinks.push(...italicsResult.changes);
+        }
+      }
+
+      // Assign Normal styles
+      let stylesAssigned = false;
+      if (options.assignStyles) {
+        console.log('\n=== STYLE ASSIGNMENT ===');
+        const stylesResult = await this.assignNormalStyles(zip);
+        stylesAssigned = stylesResult.modified;
+        if (stylesAssigned) {
+          result.modifiedHyperlinks++; // Count as modification for save logic
+          result.processedLinks.push(...stylesResult.changes);
         }
       }
 
@@ -1620,6 +1671,424 @@ export class WordDocumentProcessor {
     } catch (error) {
       console.error('XML validation error:', error);
       return false;
+    }
+  }
+
+  /**
+   * Standardize all hyperlink colors to blue (#0000ff)
+   */
+  private async standardizeHyperlinkColors(zip: JSZip): Promise<{ modified: boolean; changes: any[] }> {
+    let modified = false;
+    let hyperlinkCount = 0;
+    const changes: any[] = [];
+
+    try {
+      // Parse main document
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        console.log('No document.xml found');
+        return { modified: false, changes: [] };
+      }
+
+      const documentXml = await documentXmlFile.async('text');
+      const documentData = this.xmlParser.parse(documentXml);
+
+      // Find all hyperlinks and set their color to blue
+      this.traverseElement(documentData, (element: any) => {
+        if (element['w:hyperlink']) {
+          const hyperlink = element['w:hyperlink'];
+          const hyperlinkArray = Array.isArray(hyperlink) ? hyperlink : [hyperlink];
+
+          for (const hlElement of hyperlinkArray) {
+            if (Array.isArray(hlElement)) {
+              // Process all runs within the hyperlink
+              for (const item of hlElement) {
+                if (item['w:r']) {
+                  const runs = Array.isArray(item['w:r']) ? item['w:r'] : [item['w:r']];
+
+                  for (const run of runs) {
+                    if (Array.isArray(run)) {
+                      // run is array with preserveOrder: true
+                      // Find or create w:rPr
+                      let rPrItem = run.find((el: any) => el['w:rPr']);
+
+                      if (!rPrItem) {
+                        // Create new run properties at the beginning
+                        rPrItem = { 'w:rPr': [{}] };
+                        run.unshift(rPrItem);
+                      }
+
+                      const rPr = Array.isArray(rPrItem['w:rPr']) ? rPrItem['w:rPr'][0] : rPrItem['w:rPr'];
+
+                      // Set or update color to blue
+                      rPr['w:color'] = [{
+                        ':@': {
+                          '@_w:val': '0000FF'
+                        }
+                      }];
+
+                      modified = true;
+                      hyperlinkCount++;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (modified) {
+        console.log(`✓ Standardized ${hyperlinkCount} hyperlink colors to blue`);
+
+        // Track the change
+        changes.push({
+          type: 'hyperlink',
+          description: 'Standardized hyperlink colors',
+          before: 'Various colors',
+          after: 'Blue (#0000FF)',
+          count: hyperlinkCount
+        });
+
+        // Save modified document
+        const rebuiltXml = this.xmlBuilder.build(documentData);
+        const xmlWithDeclaration = rebuiltXml.startsWith('<?xml')
+          ? rebuiltXml
+          : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltXml;
+        zip.file('word/document.xml', xmlWithDeclaration);
+      } else {
+        console.log('No hyperlinks found to standardize');
+      }
+
+      return { modified, changes };
+    } catch (error) {
+      console.error('Error standardizing hyperlink colors:', error);
+      return { modified: false, changes: [] };
+    }
+  }
+
+  /**
+   * Remove extra whitespace from text runs
+   */
+  private async removeExtraWhitespace(zip: JSZip): Promise<{ modified: boolean; changes: any[] }> {
+    let modified = false;
+    let whitespaceCount = 0;
+    const changes: any[] = [];
+
+    try {
+      // Parse main document
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        console.log('No document.xml found');
+        return { modified: false, changes: [] };
+      }
+
+      const documentXml = await documentXmlFile.async('text');
+      const documentData = this.xmlParser.parse(documentXml);
+
+      // Find all text elements and clean whitespace
+      this.traverseElement(documentData, (element: any) => {
+        if (element['w:t']) {
+          const textElements = Array.isArray(element['w:t']) ? element['w:t'] : [element['w:t']];
+
+          for (let i = 0; i < textElements.length; i++) {
+            const textEl = textElements[i];
+            let originalText = '';
+            let cleanedText = '';
+
+            // Extract text based on format
+            if (typeof textEl === 'string') {
+              originalText = textEl;
+              cleanedText = originalText.replace(/\s{2,}/g, ' '); // Replace 2+ spaces with 1
+              if (originalText !== cleanedText) {
+                textElements[i] = cleanedText;
+                modified = true;
+                whitespaceCount++;
+              }
+            } else if (Array.isArray(textEl)) {
+              // Array format with preserveOrder: true
+              for (const item of textEl) {
+                if (item['#text']) {
+                  originalText = item['#text'];
+                  cleanedText = originalText.replace(/\s{2,}/g, ' ');
+                  if (originalText !== cleanedText) {
+                    item['#text'] = cleanedText;
+                    modified = true;
+                    whitespaceCount++;
+                  }
+                } else if (typeof item === 'string') {
+                  originalText = item;
+                  cleanedText = originalText.replace(/\s{2,}/g, ' ');
+                  // Can't modify string in array directly, need to replace
+                  const index = textEl.indexOf(item);
+                  if (index !== -1 && originalText !== cleanedText) {
+                    textEl[index] = cleanedText;
+                    modified = true;
+                    whitespaceCount++;
+                  }
+                }
+              }
+            } else if (textEl && typeof textEl === 'object') {
+              if (textEl['#text']) {
+                originalText = textEl['#text'];
+                cleanedText = originalText.replace(/\s{2,}/g, ' ');
+                if (originalText !== cleanedText) {
+                  textEl['#text'] = cleanedText;
+                  modified = true;
+                  whitespaceCount++;
+                }
+              }
+            }
+
+            if (originalText !== cleanedText && originalText) {
+              changes.push({
+                type: 'text',
+                description: 'Removed extra whitespace',
+                before: originalText,
+                after: cleanedText
+              });
+            }
+          }
+        }
+      });
+
+      if (modified) {
+        console.log(`✓ Removed extra whitespace from ${whitespaceCount} text elements`);
+
+        // Save modified document
+        const rebuiltXml = this.xmlBuilder.build(documentData);
+        const xmlWithDeclaration = rebuiltXml.startsWith('<?xml')
+          ? rebuiltXml
+          : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltXml;
+        zip.file('word/document.xml', xmlWithDeclaration);
+      } else {
+        console.log('No extra whitespace found');
+      }
+
+      return { modified, changes };
+    } catch (error) {
+      console.error('Error removing whitespace:', error);
+      return { modified: false, changes: [] };
+    }
+  }
+
+  /**
+   * Remove all italic formatting from the document
+   */
+  private async removeAllItalics(zip: JSZip): Promise<{ modified: boolean; changes: any[] }> {
+    let modified = false;
+    let italicsCount = 0;
+    const changes: any[] = [];
+
+    try {
+      // Parse main document
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        console.log('No document.xml found');
+        return { modified: false, changes: [] };
+      }
+
+      const documentXml = await documentXmlFile.async('text');
+      const documentData = this.xmlParser.parse(documentXml);
+
+      // Find all runs and remove italic formatting
+      this.traverseElement(documentData, (element: any) => {
+        if (element['w:r']) {
+          const runs = Array.isArray(element['w:r']) ? element['w:r'] : [element['w:r']];
+
+          for (const run of runs) {
+            if (Array.isArray(run)) {
+              // preserveOrder: true format - run is an array
+              for (let i = 0; i < run.length; i++) {
+                const item = run[i];
+                if (item['w:rPr']) {
+                  const rPrArray = Array.isArray(item['w:rPr']) ? item['w:rPr'] : [item['w:rPr']];
+
+                  for (const rPr of rPrArray) {
+                    if (rPr && typeof rPr === 'object') {
+                      // Check if italics exist
+                      if (rPr['w:i']) {
+                        delete rPr['w:i'];
+                        modified = true;
+                        italicsCount++;
+                      }
+                    }
+                  }
+                }
+              }
+            } else if (run && typeof run === 'object') {
+              // Non-array format
+              if (run['w:rPr']) {
+                const rPr = Array.isArray(run['w:rPr']) ? run['w:rPr'][0] : run['w:rPr'];
+                if (rPr && rPr['w:i']) {
+                  delete rPr['w:i'];
+                  modified = true;
+                  italicsCount++;
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (modified) {
+        console.log(`✓ Removed italics from ${italicsCount} text runs`);
+
+        changes.push({
+          type: 'text',
+          description: 'Removed italic formatting',
+          before: 'Italic text',
+          after: 'Normal text',
+          count: italicsCount
+        });
+
+        // Save modified document
+        const rebuiltXml = this.xmlBuilder.build(documentData);
+        const xmlWithDeclaration = rebuiltXml.startsWith('<?xml')
+          ? rebuiltXml
+          : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltXml;
+        zip.file('word/document.xml', xmlWithDeclaration);
+      } else {
+        console.log('No italics found to remove');
+      }
+
+      return { modified, changes };
+    } catch (error) {
+      console.error('Error removing italics:', error);
+      return { modified: false, changes: [] };
+    }
+  }
+
+  /**
+   * Assign Normal style to paragraphs that don't have a heading style
+   */
+  private async assignNormalStyles(zip: JSZip): Promise<{ modified: boolean; changes: any[] }> {
+    let modified = false;
+    let stylesApplied = 0;
+    const changes: any[] = [];
+
+    try {
+      // Parse main document
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        console.log('No document.xml found');
+        return { modified: false, changes: [] };
+      }
+
+      const documentXml = await documentXmlFile.async('text');
+      const documentData = this.xmlParser.parse(documentXml);
+
+      // Find all paragraphs and apply Normal style if needed
+      this.traverseElement(documentData, (element: any) => {
+        if (element['w:p']) {
+          const paragraphs = Array.isArray(element['w:p']) ? element['w:p'] : [element['w:p']];
+
+          for (const paragraph of paragraphs) {
+            if (Array.isArray(paragraph)) {
+              // preserveOrder: true format - paragraph is an array
+              let hasPPr = false;
+              let pPrItem: any = null;
+              let currentStyle: string | null = null;
+
+              // Find paragraph properties
+              for (const item of paragraph) {
+                if (item['w:pPr']) {
+                  hasPPr = true;
+                  pPrItem = item;
+                  const pPr = Array.isArray(item['w:pPr']) ? item['w:pPr'][0] : item['w:pPr'];
+
+                  // Check for existing style
+                  if (pPr && pPr['w:pStyle']) {
+                    const pStyleArray = Array.isArray(pPr['w:pStyle']) ? pPr['w:pStyle'] : [pPr['w:pStyle']];
+                    const pStyle = pStyleArray[0];
+                    if (pStyle && pStyle[':@'] && pStyle[':@']['@_w:val']) {
+                      currentStyle = pStyle[':@']['@_w:val'];
+                    }
+                  }
+                  break;
+                }
+              }
+
+              // If no style or style is not a heading, apply Normal
+              if (!currentStyle || (!currentStyle.toLowerCase().includes('heading') && !currentStyle.toLowerCase().includes('header'))) {
+                if (!hasPPr) {
+                  // Create new paragraph properties
+                  pPrItem = { 'w:pPr': [{}] };
+                  paragraph.unshift(pPrItem);
+                }
+
+                const pPr = Array.isArray(pPrItem['w:pPr']) ? pPrItem['w:pPr'][0] : pPrItem['w:pPr'];
+
+                // Set Normal style
+                pPr['w:pStyle'] = [{
+                  ':@': {
+                    '@_w:val': 'Normal'
+                  }
+                }];
+
+                modified = true;
+                stylesApplied++;
+
+                changes.push({
+                  type: 'style',
+                  description: 'Applied Normal style',
+                  before: currentStyle || 'No style',
+                  after: 'Normal'
+                });
+              }
+            } else if (paragraph && typeof paragraph === 'object') {
+              // Non-array format
+              let currentStyle: string | null = null;
+
+              if (paragraph['w:pPr']) {
+                const pPr = Array.isArray(paragraph['w:pPr']) ? paragraph['w:pPr'][0] : paragraph['w:pPr'];
+                if (pPr && pPr['w:pStyle']) {
+                  const pStyle = Array.isArray(pPr['w:pStyle']) ? pPr['w:pStyle'][0] : pPr['w:pStyle'];
+                  currentStyle = pStyle?.['@_w:val'] || pStyle?.$?.val || null;
+                }
+              }
+
+              // If no style or style is not a heading, apply Normal
+              if (!currentStyle || (!currentStyle.toLowerCase().includes('heading') && !currentStyle.toLowerCase().includes('header'))) {
+                if (!paragraph['w:pPr']) {
+                  paragraph['w:pPr'] = {};
+                }
+
+                const pPr = Array.isArray(paragraph['w:pPr']) ? paragraph['w:pPr'][0] : paragraph['w:pPr'];
+                pPr['w:pStyle'] = { '@_w:val': 'Normal' };
+
+                modified = true;
+                stylesApplied++;
+
+                changes.push({
+                  type: 'style',
+                  description: 'Applied Normal style',
+                  before: currentStyle || 'No style',
+                  after: 'Normal'
+                });
+              }
+            }
+          }
+        }
+      });
+
+      if (modified) {
+        console.log(`✓ Applied Normal style to ${stylesApplied} paragraphs`);
+
+        // Save modified document
+        const rebuiltXml = this.xmlBuilder.build(documentData);
+        const xmlWithDeclaration = rebuiltXml.startsWith('<?xml')
+          ? rebuiltXml
+          : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltXml;
+        zip.file('word/document.xml', xmlWithDeclaration);
+      } else {
+        console.log('No paragraphs needed Normal style');
+      }
+
+      return { modified, changes };
+    } catch (error) {
+      console.error('Error assigning Normal styles:', error);
+      return { modified: false, changes: [] };
     }
   }
 
