@@ -145,7 +145,7 @@ const defaultTableOfContentsSettings: TableOfContentsSettings = {
   useHyperlinks: true,
   tabLeaderStyle: 'none', // Default to none instead of dots
   tocTitle: 'Table of Contents',
-  showTocTitle: true, // Option to turn off title
+  showTocTitle: false, // Option to turn off title (default: off)
   spacingBetweenHyperlinks: 0 // Default spacing
 };
 

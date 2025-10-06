@@ -445,11 +445,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           updateTopHyperlinks: session.processingOptions?.enabledOperations?.includes('update-top-hyperlinks'),
           updateTocHyperlinks: session.processingOptions?.enabledOperations?.includes('update-toc-hyperlinks'),
           fixKeywords: session.processingOptions?.enabledOperations?.includes('fix-keywords'),
+          standardizeHyperlinkColor: session.processingOptions?.enabledOperations?.includes('standardize-hyperlink-color'),
         },
         textReplacements: session.replacements?.filter(r => r.enabled) || [],
         styles: session.styles || {},
         customStyleSpacing: Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined,
-      };
+        removeWhitespace: session.processingOptions?.enabledOperations?.includes('remove-whitespace'),
+        removeItalics: session.processingOptions?.enabledOperations?.includes('remove-italics'),
+        assignStyles: session.processingOptions?.enabledOperations?.includes('assign-styles'),
+      } as any;
 
       // Process the document using Electron IPC
       const result = await window.electronAPI.processHyperlinkDocument(

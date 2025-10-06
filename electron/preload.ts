@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectDocuments: () => ipcRenderer.invoke('select-documents'),
   processDocument: (path: string) => ipcRenderer.invoke('process-document', path),
   showInFolder: (path: string) => ipcRenderer.invoke('show-in-folder', path),
+  getFileStats: (filePath: string) => ipcRenderer.invoke('get-file-stats', filePath),
   restoreFromBackup: (backupPath: string, targetPath: string) =>
     ipcRenderer.invoke('restore-from-backup', { backupPath, targetPath }),
 
@@ -120,6 +121,7 @@ export type ElectronAPI = {
   selectDocuments: () => Promise<string[] | undefined>;
   processDocument: (path: string) => Promise<unknown>;
   showInFolder: (path: string) => Promise<void>;
+  getFileStats: (filePath: string) => Promise<{ size: number; created: Date; modified: Date; isFile: boolean; isDirectory: boolean }>;
   restoreFromBackup: (backupPath: string, targetPath: string) => Promise<void>;
   selectFiles: () => Promise<string[]>;
   processHyperlinkDocument: (filePath: string, options: HyperlinkProcessingOptions) => Promise<HyperlinkProcessingResult>;
