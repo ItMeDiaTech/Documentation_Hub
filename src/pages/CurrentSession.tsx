@@ -131,33 +131,69 @@ export function CurrentSession() {
     const files = Array.from(e.dataTransfer.files).filter((file) => file.name.endsWith('.docx'));
 
     if (files.length > 0) {
-      // In Electron, dragged files have a path property
-      // Enhance file objects with path and actual file stats
-      const filesWithStats = await Promise.all(
-        files.map(async (file) => {
-          const fileWithPath = file as File & { path?: string };
+      // Use webUtils.getPathForFile() via preload (Electron v32+ compatible)
+      // This is the only way to get file paths from drag-dropped files in modern Electron
+      const validFiles: (File & { path: string })[] = [];
+      const invalidFiles: string[] = [];
 
-          // If path is available, get actual file stats from filesystem
-          if (fileWithPath.path) {
-            try {
-              const stats = await window.electronAPI.getFileStats(fileWithPath.path);
-              return Object.assign(file, {
-                path: fileWithPath.path,
-                size: stats.size
-              });
-            } catch (error) {
-              console.error('Failed to get file stats:', error);
-              // Fall back to file object's size if stats retrieval fails
-              return Object.assign(file, { path: fileWithPath.path });
-            }
+      try {
+        // Get absolute paths for all files using webUtils in preload context
+        const filePaths = window.electronAPI.getPathsForFiles(files);
+
+        // Validate and attach paths to File objects
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const path = filePaths[i];
+
+          // Validate path exists and is absolute
+          if (!path || path.trim() === '') {
+            console.error(`[Drag-Drop] File "${file.name}" has no accessible path`);
+            invalidFiles.push(file.name);
+            continue;
           }
 
-          // No path available - use file as-is
-          return file;
-        })
-      );
+          // Check if path is absolute (contains directory separators)
+          const isAbsolutePath = path.includes('\\') || path.includes('/');
+          if (!isAbsolutePath) {
+            console.error(`[Drag-Drop] File "${file.name}" has invalid path: "${path}"`);
+            invalidFiles.push(file.name);
+            continue;
+          }
 
-      await addDocuments(session.id, filesWithStats);
+          // Validate path by getting file stats
+          try {
+            const stats = await window.electronAPI.getFileStats(path);
+            // Create a new object with file properties + path (don't mutate File object)
+            // File objects are immutable - their properties are read-only getters
+            validFiles.push({
+              name: file.name,
+              path: path,
+              size: stats.size,
+              type: file.type
+            } as any as File & { path: string });
+          } catch (error) {
+            console.error(`[Drag-Drop] Failed to access file "${file.name}" at path "${path}":`, error);
+            invalidFiles.push(file.name);
+          }
+        }
+      } catch (error) {
+        console.error('[Drag-Drop] Failed to get file paths:', error);
+        return;
+      }
+
+      // Add valid files to the session
+      if (validFiles.length > 0) {
+        await addDocuments(session.id, validFiles);
+      }
+
+      // Log summary
+      if (invalidFiles.length > 0) {
+        console.warn(`[Drag-Drop] Rejected ${invalidFiles.length} file(s) due to invalid paths:`, invalidFiles);
+        // TODO: Show toast notification to user
+      }
+      if (validFiles.length > 0) {
+        console.log(`[Drag-Drop] Successfully added ${validFiles.length} file(s)`);
+      }
     }
   };
 

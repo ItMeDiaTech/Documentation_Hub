@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron';
 import type {
   HyperlinkProcessingOptions,
   HyperlinkProcessingResult,
@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFileStats: (filePath: string) => ipcRenderer.invoke('get-file-stats', filePath),
   restoreFromBackup: (backupPath: string, targetPath: string) =>
     ipcRenderer.invoke('restore-from-backup', { backupPath, targetPath }),
+
+  // Drag-and-drop file path extraction (Electron v32+ compatible)
+  // webUtils.getPathForFile() must be called in preload context
+  getPathsForFiles: (files: File[]) => {
+    return files.map(file => webUtils.getPathForFile(file));
+  },
 
   // Hyperlink processing
   selectFiles: () => ipcRenderer.invoke('hyperlink:select-files'),
@@ -123,6 +129,7 @@ export type ElectronAPI = {
   showInFolder: (path: string) => Promise<void>;
   getFileStats: (filePath: string) => Promise<{ size: number; created: Date; modified: Date; isFile: boolean; isDirectory: boolean }>;
   restoreFromBackup: (backupPath: string, targetPath: string) => Promise<void>;
+  getPathsForFiles: (files: File[]) => string[];
   selectFiles: () => Promise<string[]>;
   processHyperlinkDocument: (filePath: string, options: HyperlinkProcessingOptions) => Promise<HyperlinkProcessingResult>;
   batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) => Promise<BatchProcessingResult>;
