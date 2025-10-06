@@ -232,7 +232,7 @@ export class WordDocumentProcessor {
       let stylesAssigned = false;
       if (options.assignStyles) {
         console.log('\n=== STYLE ASSIGNMENT ===');
-        const stylesResult = await this.assignNormalStyles(zip);
+        const stylesResult = await this.assignNormalStyles(zip, options);
         stylesAssigned = stylesResult.modified;
         if (stylesAssigned) {
           result.modifiedHyperlinks++; // Count as modification for save logic
@@ -1683,65 +1683,133 @@ export class WordDocumentProcessor {
     const changes: any[] = [];
 
     try {
-      // Parse main document
-      const documentXmlFile = zip.file('word/document.xml');
-      if (!documentXmlFile) {
-        console.log('No document.xml found');
-        return { modified: false, changes: [] };
+      console.log('Starting hyperlink color standardization...');
+
+      // Helper function to process runs and set color
+      const processRuns = (runs: any[]): number => {
+        let count = 0;
+        for (const run of runs) {
+          if (Array.isArray(run)) {
+            // preserveOrder: true format - run is an array
+            let rPrItem = run.find((el: any) => el['w:rPr']);
+
+            // Log before state
+            const hadRPr = !!rPrItem;
+            const oldColor = hadRPr && rPrItem['w:rPr'] ?
+              (Array.isArray(rPrItem['w:rPr']) ? rPrItem['w:rPr'][0]?.['w:color'] : rPrItem['w:rPr']?.['w:color'])
+              : null;
+
+            if (!rPrItem) {
+              // Create new run properties
+              rPrItem = { 'w:rPr': [{}] };
+              run.unshift(rPrItem);
+            }
+
+            const rPr = Array.isArray(rPrItem['w:rPr']) ? rPrItem['w:rPr'][0] : rPrItem['w:rPr'];
+
+            // Set color to blue - using both formats for compatibility
+            rPr['w:color'] = [{
+              ':@': {
+                '@_w:val': '0000FF'
+              }
+            }];
+
+            console.log(`      Run (array): ${hadRPr ? 'had rPr' : 'created rPr'}, old color:`, oldColor, '→ new: 0000FF');
+            count++;
+          } else if (run && typeof run === 'object') {
+            // Non-array format
+            const hadRPr = !!run['w:rPr'];
+            const oldColor = run['w:rPr'] ?
+              (Array.isArray(run['w:rPr']) ? run['w:rPr'][0]?.['w:color'] : run['w:rPr']?.['w:color'])
+              : null;
+
+            if (!run['w:rPr']) {
+              run['w:rPr'] = {};
+            }
+
+            const rPr = Array.isArray(run['w:rPr']) ? run['w:rPr'][0] : run['w:rPr'];
+
+            // Set color using simpler format for non-array
+            rPr['w:color'] = { '@_w:val': '0000FF' };
+
+            console.log(`      Run (object): ${hadRPr ? 'had rPr' : 'created rPr'}, old color:`, oldColor, '→ new: 0000FF');
+            count++;
+          }
+        }
+        return count;
+      };
+
+      // Process document parts
+      const partsToProcess = ['word/document.xml'];
+
+      // Add headers and footers if they exist
+      const files = Object.keys(zip.files);
+      for (const file of files) {
+        if (file.startsWith('word/header') || file.startsWith('word/footer')) {
+          partsToProcess.push(file);
+        }
       }
 
-      const documentXml = await documentXmlFile.async('text');
-      const documentData = this.xmlParser.parse(documentXml);
+      for (const partPath of partsToProcess) {
+        const partFile = zip.file(partPath);
+        if (!partFile) continue;
 
-      // Find all hyperlinks and set their color to blue
-      this.traverseElement(documentData, (element: any) => {
-        if (element['w:hyperlink']) {
-          const hyperlink = element['w:hyperlink'];
-          const hyperlinkArray = Array.isArray(hyperlink) ? hyperlink : [hyperlink];
+        console.log(`  Processing: ${partPath}`);
+        const partXml = await partFile.async('text');
+        const partData = this.xmlParser.parse(partXml);
+        let partModified = false;
 
-          for (const hlElement of hyperlinkArray) {
-            if (Array.isArray(hlElement)) {
-              // Process all runs within the hyperlink
-              for (const item of hlElement) {
-                if (item['w:r']) {
-                  const runs = Array.isArray(item['w:r']) ? item['w:r'] : [item['w:r']];
+        // Traverse and find all hyperlinks
+        this.traverseElement(partData, (element: any) => {
+          if (element['w:hyperlink']) {
+            const hyperlinks = Array.isArray(element['w:hyperlink']) ? element['w:hyperlink'] : [element['w:hyperlink']];
 
-                  for (const run of runs) {
-                    if (Array.isArray(run)) {
-                      // run is array with preserveOrder: true
-                      // Find or create w:rPr
-                      let rPrItem = run.find((el: any) => el['w:rPr']);
+            for (const hyperlink of hyperlinks) {
+              // Find all runs in this hyperlink
+              const runs: any[] = [];
 
-                      if (!rPrItem) {
-                        // Create new run properties at the beginning
-                        rPrItem = { 'w:rPr': [{}] };
-                        run.unshift(rPrItem);
-                      }
-
-                      const rPr = Array.isArray(rPrItem['w:rPr']) ? rPrItem['w:rPr'][0] : rPrItem['w:rPr'];
-
-                      // Set or update color to blue
-                      rPr['w:color'] = [{
-                        ':@': {
-                          '@_w:val': '0000FF'
-                        }
-                      }];
-
-                      modified = true;
-                      hyperlinkCount++;
-                    }
+              if (Array.isArray(hyperlink)) {
+                // preserveOrder format - hyperlink is an array
+                for (const item of hyperlink) {
+                  if (item['w:r']) {
+                    const itemRuns = Array.isArray(item['w:r']) ? item['w:r'] : [item['w:r']];
+                    runs.push(...itemRuns);
                   }
+                }
+              } else if (hyperlink && typeof hyperlink === 'object') {
+                // Non-array format
+                if (hyperlink['w:r']) {
+                  const hlRuns = Array.isArray(hyperlink['w:r']) ? hyperlink['w:r'] : [hyperlink['w:r']];
+                  runs.push(...hlRuns);
+                }
+              }
+
+              if (runs.length > 0) {
+                const processedCount = processRuns(runs);
+                if (processedCount > 0) {
+                  hyperlinkCount += processedCount;
+                  partModified = true;
+                  console.log(`    ✓ Set color for ${processedCount} run(s) in hyperlink`);
                 }
               }
             }
           }
+        });
+
+        if (partModified) {
+          // Save modified document part
+          const rebuiltXml = this.xmlBuilder.build(partData);
+          const xmlWithDeclaration = rebuiltXml.startsWith('<?xml')
+            ? rebuiltXml
+            : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltXml;
+          zip.file(partPath, xmlWithDeclaration);
+          modified = true;
         }
-      });
+      }
 
       if (modified) {
-        console.log(`✓ Standardized ${hyperlinkCount} hyperlink colors to blue`);
+        console.log(`✓ Standardized ${hyperlinkCount} hyperlink text runs to blue`);
 
-        // Track the change
         changes.push({
           type: 'hyperlink',
           description: 'Standardized hyperlink colors',
@@ -1749,13 +1817,6 @@ export class WordDocumentProcessor {
           after: 'Blue (#0000FF)',
           count: hyperlinkCount
         });
-
-        // Save modified document
-        const rebuiltXml = this.xmlBuilder.build(documentData);
-        const xmlWithDeclaration = rebuiltXml.startsWith('<?xml')
-          ? rebuiltXml
-          : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + rebuiltXml;
-        zip.file('word/document.xml', xmlWithDeclaration);
       } else {
         console.log('No hyperlinks found to standardize');
       }
@@ -1960,14 +2021,24 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Assign Normal style to paragraphs that don't have a heading style
+   * Assign Normal style to paragraphs and apply formatting from styles editor
    */
-  private async assignNormalStyles(zip: JSZip): Promise<{ modified: boolean; changes: any[] }> {
+  private async assignNormalStyles(zip: JSZip, options?: any): Promise<{ modified: boolean; changes: any[] }> {
     let modified = false;
     let stylesApplied = 0;
+    let formattingApplied = 0;
     const changes: any[] = [];
 
     try {
+      console.log('Starting Normal style assignment...');
+
+      // Get Normal style settings from editor
+      const normalStyle = options?.styles && Array.isArray(options.styles)
+        ? options.styles.find((s: any) => s.id === 'normal')
+        : null;
+
+      console.log('Normal style from editor:', normalStyle);
+
       // Parse main document
       const documentXmlFile = zip.file('word/document.xml');
       if (!documentXmlFile) {
@@ -1978,22 +2049,77 @@ export class WordDocumentProcessor {
       const documentXml = await documentXmlFile.async('text');
       const documentData = this.xmlParser.parse(documentXml);
 
+      // Helper function to apply Normal style formatting from editor
+      const applyNormalFormatting = (rPr: any): boolean => {
+        if (!normalStyle) return false;
+
+        let applied = false;
+
+        // Apply font family
+        if (normalStyle.fontFamily) {
+          rPr['w:rFonts'] = [{
+            ':@': {
+              '@_w:ascii': normalStyle.fontFamily,
+              '@_w:hAnsi': normalStyle.fontFamily
+            }
+          }];
+          applied = true;
+        }
+
+        // Apply font size (convert points to half-points)
+        if (normalStyle.fontSize) {
+          const halfPoints = normalStyle.fontSize * 2;
+          rPr['w:sz'] = [{
+            ':@': {
+              '@_w:val': halfPoints.toString()
+            }
+          }];
+          rPr['w:szCs'] = [{
+            ':@': {
+              '@_w:val': halfPoints.toString()
+            }
+          }];
+          applied = true;
+        }
+
+        // Apply color (strip # if present)
+        if (normalStyle.color) {
+          const colorVal = normalStyle.color.replace('#', '').toUpperCase();
+          rPr['w:color'] = [{
+            ':@': {
+              '@_w:val': colorVal
+            }
+          }];
+          applied = true;
+        }
+
+        // Remove unwanted formatting
+        const propsToRemove = ['w:b', 'w:i', 'w:u'];
+        for (const prop of propsToRemove) {
+          if (rPr[prop]) {
+            delete rPr[prop];
+          }
+        }
+
+        return applied;
+      };
+
       // Find all paragraphs and apply Normal style if needed
       this.traverseElement(documentData, (element: any) => {
         if (element['w:p']) {
           const paragraphs = Array.isArray(element['w:p']) ? element['w:p'] : [element['w:p']];
 
           for (const paragraph of paragraphs) {
+            let currentStyle: string | null = null;
+            let pPrItem: any = null;
+            let runs: any[] = [];
+
             if (Array.isArray(paragraph)) {
               // preserveOrder: true format - paragraph is an array
-              let hasPPr = false;
-              let pPrItem: any = null;
-              let currentStyle: string | null = null;
 
-              // Find paragraph properties
+              // Find paragraph properties and runs
               for (const item of paragraph) {
                 if (item['w:pPr']) {
-                  hasPPr = true;
                   pPrItem = item;
                   const pPr = Array.isArray(item['w:pPr']) ? item['w:pPr'][0] : item['w:pPr'];
 
@@ -2005,21 +2131,24 @@ export class WordDocumentProcessor {
                       currentStyle = pStyle[':@']['@_w:val'];
                     }
                   }
-                  break;
+                }
+
+                // Collect runs
+                if (item['w:r']) {
+                  const itemRuns = Array.isArray(item['w:r']) ? item['w:r'] : [item['w:r']];
+                  runs.push(...itemRuns);
                 }
               }
 
               // If no style or style is not a heading, apply Normal
               if (!currentStyle || (!currentStyle.toLowerCase().includes('heading') && !currentStyle.toLowerCase().includes('header'))) {
-                if (!hasPPr) {
-                  // Create new paragraph properties
+                // Set paragraph style to Normal
+                if (!pPrItem) {
                   pPrItem = { 'w:pPr': [{}] };
                   paragraph.unshift(pPrItem);
                 }
 
                 const pPr = Array.isArray(pPrItem['w:pPr']) ? pPrItem['w:pPr'][0] : pPrItem['w:pPr'];
-
-                // Set Normal style
                 pPr['w:pStyle'] = [{
                   ':@': {
                     '@_w:val': 'Normal'
@@ -2029,23 +2158,66 @@ export class WordDocumentProcessor {
                 modified = true;
                 stylesApplied++;
 
+                // Apply Normal style formatting from editor to runs (unless in hyperlink)
+                for (const run of runs) {
+                  if (Array.isArray(run)) {
+                    // Find or create run properties
+                    let rPrItem = run.find((el: any) => el['w:rPr']);
+
+                    if (!rPrItem) {
+                      rPrItem = { 'w:rPr': [{}] };
+                      run.unshift(rPrItem);
+                    }
+
+                    const rPrArray = Array.isArray(rPrItem['w:rPr']) ? rPrItem['w:rPr'] : [rPrItem['w:rPr']];
+                    for (const rPr of rPrArray) {
+                      if (rPr && typeof rPr === 'object') {
+                        // Check if this run is inside a hyperlink
+                        const hasHyperlinkStyle = rPr['w:rStyle'] &&
+                          (String(rPr['w:rStyle']).toLowerCase().includes('hyperlink'));
+
+                        if (!hasHyperlinkStyle && applyNormalFormatting(rPr)) {
+                          formattingApplied++;
+                        }
+                      }
+                    }
+                  } else if (run && typeof run === 'object') {
+                    // Non-array format
+                    if (!run['w:rPr']) {
+                      run['w:rPr'] = {};
+                    }
+
+                    const rPr = Array.isArray(run['w:rPr']) ? run['w:rPr'][0] : run['w:rPr'];
+                    const hasHyperlinkStyle = rPr['w:rStyle'] &&
+                      (String(rPr['w:rStyle']).toLowerCase().includes('hyperlink'));
+
+                    if (!hasHyperlinkStyle && applyNormalFormatting(rPr)) {
+                      formattingApplied++;
+                    }
+                  }
+                }
+
                 changes.push({
                   type: 'style',
-                  description: 'Applied Normal style',
+                  description: 'Applied Normal style and removed direct formatting',
                   before: currentStyle || 'No style',
-                  after: 'Normal'
+                  after: 'Normal (formatting removed)',
+                  runsAffected: runs.length
                 });
               }
             } else if (paragraph && typeof paragraph === 'object') {
               // Non-array format
-              let currentStyle: string | null = null;
-
               if (paragraph['w:pPr']) {
                 const pPr = Array.isArray(paragraph['w:pPr']) ? paragraph['w:pPr'][0] : paragraph['w:pPr'];
                 if (pPr && pPr['w:pStyle']) {
                   const pStyle = Array.isArray(pPr['w:pStyle']) ? pPr['w:pStyle'][0] : pPr['w:pStyle'];
                   currentStyle = pStyle?.['@_w:val'] || pStyle?.$?.val || null;
                 }
+              }
+
+              // Get runs
+              if (paragraph['w:r']) {
+                runs = Array.isArray(paragraph['w:r']) ? paragraph['w:r'] : [paragraph['w:r']];
               }
 
               // If no style or style is not a heading, apply Normal
@@ -2060,11 +2232,26 @@ export class WordDocumentProcessor {
                 modified = true;
                 stylesApplied++;
 
+                // Apply Normal style formatting from editor to runs
+                for (const run of runs) {
+                  if (!run['w:rPr']) {
+                    run['w:rPr'] = {};
+                  }
+
+                  const rPr = Array.isArray(run['w:rPr']) ? run['w:rPr'][0] : run['w:rPr'];
+                  const hasHyperlinkStyle = rPr['w:rStyle'] &&
+                    (String(rPr['w:rStyle']).toLowerCase().includes('hyperlink'));
+
+                  if (!hasHyperlinkStyle && applyNormalFormatting(rPr)) {
+                    formattingApplied++;
+                  }
+                }
+
                 changes.push({
                   type: 'style',
-                  description: 'Applied Normal style',
+                  description: 'Applied Normal style with editor formatting',
                   before: currentStyle || 'No style',
-                  after: 'Normal'
+                  after: `Normal (${normalStyle ? normalStyle.fontFamily + ' ' + normalStyle.fontSize + 'pt' : 'style applied'})`
                 });
               }
             }
@@ -2074,6 +2261,10 @@ export class WordDocumentProcessor {
 
       if (modified) {
         console.log(`✓ Applied Normal style to ${stylesApplied} paragraphs`);
+        console.log(`✓ Applied editor formatting to ${formattingApplied} runs`);
+        if (normalStyle) {
+          console.log(`  Font: ${normalStyle.fontFamily}, Size: ${normalStyle.fontSize}pt, Color: ${normalStyle.color}`);
+        }
 
         // Save modified document
         const rebuiltXml = this.xmlBuilder.build(documentData);
