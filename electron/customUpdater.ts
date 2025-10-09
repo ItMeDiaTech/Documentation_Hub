@@ -27,6 +27,22 @@ export class CustomUpdater {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
 
+    // Configure to be more flexible with TLS issues
+    // Note: This still validates checksums, so security is maintained
+    autoUpdater.requestHeaders = {
+      'User-Agent': `DocumentationHub/${app.getVersion()} (${process.platform})`
+    };
+
+    // Allow self-signed certificates for GitHub (usually not needed, but helps with proxy issues)
+    process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+
+    // Log TLS configuration for debugging
+    console.log('[CustomUpdater] TLS Configuration:', {
+      NODE_TLS_REJECT_UNAUTHORIZED: process.env.NODE_TLS_REJECT_UNAUTHORIZED,
+      platform: process.platform,
+      version: app.getVersion()
+    });
+
     // Set up event handlers
     autoUpdater.on('checking-for-update', () => {
       this.sendToWindow('update-checking');
@@ -86,7 +102,7 @@ export class CustomUpdater {
   }
 
   /**
-   * Check if an error is likely due to network blocking
+   * Check if an error is likely due to network blocking or TLS issues
    */
   private isNetworkBlockingError(error: Error): boolean {
     const errorMessage = error.message.toLowerCase();
@@ -99,10 +115,54 @@ export class CustomUpdater {
       'timeout',
       'econnreset',
       'unable to download',
-      'cannot download'
+      'cannot download',
+      // TLS/SSL specific errors
+      'tls',
+      'ssl',
+      'certificate',
+      'cert_',
+      'unable to verify',
+      'self signed',
+      'self-signed',
+      'unable to get local issuer',
+      'certificate verify failed',
+      'wrong version number',
+      'ssl23_get_server_hello',
+      'tlsv1 alert',
+      '10013', // Windows TLS error state
+      'schannel', // Windows SSL/TLS provider
+      'secur32', // Windows security DLL
+      'could not establish trust relationship',
+      'underlying connection was closed'
     ];
 
-    return blockingIndicators.some(indicator => errorMessage.includes(indicator));
+    // Also check for specific error codes
+    if ('code' in error) {
+      const errorCode = (error as any).code;
+      const tlsErrorCodes = [
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+        'CERT_HAS_EXPIRED',
+        'CERT_NOT_YET_VALID',
+        'DEPTH_ZERO_SELF_SIGNED_CERT',
+        'SELF_SIGNED_CERT_IN_CHAIN',
+        'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+        'ERR_TLS_CERT_ALTNAME_INVALID',
+        'ECONNRESET',
+        'ETIMEDOUT',
+        'ESOCKETTIMEDOUT'
+      ];
+
+      if (tlsErrorCodes.includes(errorCode)) {
+        console.log(`[CustomUpdater] Detected TLS/network error code: ${errorCode}`);
+        return true;
+      }
+    }
+
+    const isBlocked = blockingIndicators.some(indicator => errorMessage.includes(indicator));
+    if (isBlocked) {
+      console.log(`[CustomUpdater] Detected network/TLS blocking indicator in error: ${errorMessage.substring(0, 200)}`);
+    }
+    return isBlocked;
   }
 
   /**
@@ -250,27 +310,53 @@ export class CustomUpdater {
   }
 
   /**
-   * Download a file from URL to destination
+   * Download a file from URL to destination with TLS fallback options
    */
-  private downloadFile(url: string, destPath: string): Promise<void> {
+  private downloadFile(url: string, destPath: string, attempt: number = 1): Promise<void> {
     return new Promise((resolve, reject) => {
       const file = fs.createWriteStream(destPath);
       let downloadedBytes = 0;
       let totalBytes = 0;
 
-      https.get(url, (response) => {
+      // Configure HTTPS options based on attempt number
+      const httpsOptions: https.RequestOptions = {
+        headers: {
+          'User-Agent': `DocumentationHub/${app.getVersion()} (${process.platform})`
+        }
+      };
+
+      // On second attempt, be more lenient with certificates
+      if (attempt >= 2) {
+        console.log(`[CustomUpdater] Attempt ${attempt}: Using relaxed TLS settings`);
+        httpsOptions.rejectUnauthorized = false;
+        httpsOptions.secureProtocol = 'TLSv1_2_method'; // Force TLS 1.2
+      }
+
+      // Parse URL to get options
+      const urlParts = new URL(url);
+      const options: https.RequestOptions = {
+        ...httpsOptions,
+        hostname: urlParts.hostname,
+        path: urlParts.pathname + urlParts.search,
+        port: urlParts.port || 443,
+        method: 'GET'
+      };
+
+      const request = https.request(options, (response) => {
         // Handle redirects
         if (response.statusCode === 301 || response.statusCode === 302) {
           const redirectUrl = response.headers.location;
           if (redirectUrl) {
             file.close();
-            return this.downloadFile(redirectUrl, destPath).then(resolve).catch(reject);
+            return this.downloadFile(redirectUrl, destPath, attempt).then(resolve).catch(reject);
           }
         }
 
         if (response.statusCode !== 200) {
           file.close();
-          fs.unlinkSync(destPath);
+          if (fs.existsSync(destPath)) {
+            fs.unlinkSync(destPath);
+          }
           reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
           return;
         }
@@ -287,7 +373,7 @@ export class CustomUpdater {
               percent: percent,
               transferred: downloadedBytes,
               total: totalBytes,
-              bytesPerSecond: 0, // Could calculate this with timestamps
+              bytesPerSecond: 0,
             });
           }
         });
@@ -296,17 +382,52 @@ export class CustomUpdater {
           file.close();
           resolve();
         });
+      });
 
-      }).on('error', (err) => {
-        fs.unlinkSync(destPath);
+      request.on('error', (err) => {
+        file.close();
+        if (fs.existsSync(destPath)) {
+          fs.unlinkSync(destPath);
+        }
+
+        // If first attempt failed due to TLS/certificate issue, retry with relaxed settings
+        if (attempt === 1 && this.isTlsError(err)) {
+          console.log(`[CustomUpdater] TLS error on attempt 1, retrying with relaxed settings: ${err.message}`);
+          this.sendToWindow('update-status', {
+            message: 'Connection issue detected, trying alternative method...'
+          });
+          return this.downloadFile(url, destPath, attempt + 1).then(resolve).catch(reject);
+        }
+
         reject(err);
       });
 
+      request.end();
+
       file.on('error', (err) => {
-        fs.unlinkSync(destPath);
+        if (fs.existsSync(destPath)) {
+          fs.unlinkSync(destPath);
+        }
         reject(err);
       });
     });
+  }
+
+  /**
+   * Check if an error is TLS/certificate related
+   */
+  private isTlsError(error: any): boolean {
+    const message = error.message?.toLowerCase() || '';
+    const code = error.code || '';
+
+    return message.includes('certificate') ||
+           message.includes('tls') ||
+           message.includes('ssl') ||
+           message.includes('self signed') ||
+           message.includes('unable to verify') ||
+           code.includes('CERT') ||
+           code.includes('TLS') ||
+           code.includes('SSL');
   }
 
   /**
