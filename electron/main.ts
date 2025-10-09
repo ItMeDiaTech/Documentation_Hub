@@ -67,6 +67,35 @@ function createWindow() {
   });
 }
 
+// Handle certificate errors globally
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  // Log the certificate error for debugging
+  console.log('[Certificate Error]', {
+    url,
+    error,
+    certificate: {
+      issuerName: certificate.issuerName,
+      subjectName: certificate.subjectName,
+      serialNumber: certificate.serialNumber
+    }
+  });
+
+  // Prevent the default behavior (which is to reject the certificate)
+  event.preventDefault();
+
+  // Check if this is for GitHub or our update server
+  const trustedHosts = ['github.com', 'githubusercontent.com', 'github.io'];
+  const urlHost = new URL(url).hostname.toLowerCase();
+
+  if (trustedHosts.some(host => urlHost.includes(host))) {
+    console.log(`[Certificate Error] Trusting certificate for known host: ${urlHost}`);
+    callback(true); // Trust the certificate
+  } else {
+    console.log(`[Certificate Error] Rejecting certificate for unknown host: ${urlHost}`);
+    callback(false); // Don't trust unknown certificates
+  }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
