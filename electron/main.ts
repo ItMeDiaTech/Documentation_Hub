@@ -25,6 +25,55 @@ console.log('[Main] Initializing proxy and TLS configuration...');
 proxyConfig.logConfiguration();
 proxyConfig.configureApp();
 
+// Configure session proxy after app is ready
+app.whenReady().then(async () => {
+  console.log('[Main] Configuring session-level proxy...');
+  try {
+    await proxyConfig.configureSessionProxy();
+
+    // Set clean User-Agent to avoid proxy rejection
+    const cleanUA = proxyConfig.getCleanUserAgent();
+    session.defaultSession.setUserAgent(cleanUA);
+
+    console.log('[Main] Session proxy configured successfully');
+  } catch (error) {
+    console.error('[Main] Failed to configure session proxy:', error);
+  }
+});
+
+// Enhanced login handler for proxy authentication
+app.on('login', async (event, webContents, details, authInfo, callback) => {
+  console.log('[Main] Login event received:', {
+    isProxy: authInfo.isProxy,
+    scheme: authInfo.scheme,
+    host: authInfo.host,
+    port: authInfo.port,
+    realm: authInfo.realm
+  });
+
+  if (authInfo.isProxy) {
+    event.preventDefault();
+
+    const proxyAuth = proxyConfig.getProxyAuth();
+    if (proxyAuth) {
+      console.log('[Main] Providing proxy authentication from configuration');
+      callback(proxyAuth.username, proxyAuth.password);
+    } else {
+      // Try to get credentials from environment or prompt user
+      const username = process.env.PROXY_USER || process.env.proxy_user;
+      const password = process.env.PROXY_PASS || process.env.proxy_pass;
+
+      if (username && password) {
+        console.log('[Main] Providing proxy authentication from environment');
+        callback(username, password);
+      } else {
+        console.log('[Main] No proxy credentials available, cancelling authentication');
+        callback('', ''); // Cancel authentication
+      }
+    }
+  }
+});
+
 // Configure TLS settings for corporate proxies and firewalls
 // This helps with certificate issues like "unable to get local issuer certificate"
 if (!isDev) {
