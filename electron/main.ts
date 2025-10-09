@@ -1,12 +1,10 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, dialog, session } from 'electron';
-import { VelopackApp, UpdateManager } from 'velopack';
+import { autoUpdater } from 'electron-updater';
 import { join } from 'path';
 import * as fs from 'fs';
-import { promises as fsPromises} from 'fs';
-
-// Initialize Velopack as early as possible (handles Squirrel events)
-VelopackApp.build().run();
+import { promises as fsPromises } from 'fs';
 import { WordDocumentProcessor } from '../src/services/document/WordDocumentProcessor';
+import { CustomUpdater } from './customUpdater';
 import type {
   BatchProcessingOptions,
   BatchProcessingResult,
@@ -547,27 +545,17 @@ ipcMain.handle('save-export-data', async (...[, request]: [Electron.IpcMainInvok
 });
 
 // ==============================================================================
-// Velopack Auto-Updater Configuration
+// Auto-Updater Configuration with ZIP Fallback Support
 // ==============================================================================
 
-class VelopackHandler {
+class AutoUpdaterHandler {
+  private customUpdater: CustomUpdater;
   private updateCheckInProgress = false;
   private downloadInProgress = false;
-  private updateManager: UpdateManager | null = null;
-  private pendingUpdate: any = null;
-
-  // Update URL - GitHub releases
-  private readonly updateUrl = 'https://github.com/ItMeDiaTech/Documentation_Hub/releases/latest/download';
 
   constructor() {
+    this.customUpdater = new CustomUpdater(mainWindow);
     this.setupIPCHandlers();
-  }
-
-  private getUpdateManager(): UpdateManager {
-    if (!this.updateManager) {
-      this.updateManager = new UpdateManager();
-    }
-    return this.updateManager;
   }
 
   private setupIPCHandlers(): void {
@@ -580,59 +568,17 @@ class VelopackHandler {
         };
       }
 
-      if (isDev) {
-        return {
-          success: false,
-          message: 'Updates are not available in development mode',
-        };
-      }
-
       try {
         this.updateCheckInProgress = true;
-        this.sendStatusToWindow('Checking for updates...');
-        mainWindow?.webContents.send('update-checking');
-
-        const updateInfo = await this.getUpdateManager().checkForUpdatesAsync();
-
-        if (updateInfo) {
-          this.pendingUpdate = updateInfo;
-          this.sendStatusToWindow(`Update available: ${updateInfo.targetFullRelease?.version || 'Unknown'}`);
-          mainWindow?.webContents.send('update-available', {
-            version: updateInfo.targetFullRelease?.version || 'Unknown',
-            releaseDate: new Date().toISOString(),
-            releaseNotes: '',
-          });
-
-          return {
-            success: true,
-            updateInfo: {
-              version: updateInfo.targetFullRelease?.version,
-            },
-          };
-        } else {
-          this.sendStatusToWindow('Already up to date');
-          mainWindow?.webContents.send('update-not-available', {
-            version: app.getVersion(),
-          });
-
-          return {
-            success: true,
-            message: 'No updates available',
-          };
-        }
+        const result = await this.customUpdater.checkForUpdates();
+        this.updateCheckInProgress = false;
+        return result;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to check for updates';
-        this.sendStatusToWindow(`Update error: ${errorMessage}`);
-        mainWindow?.webContents.send('update-error', {
-          message: errorMessage,
-        });
-
+        this.updateCheckInProgress = false;
         return {
           success: false,
-          message: errorMessage,
+          message: error instanceof Error ? error.message : 'Failed to check for updates',
         };
-      } finally {
-        this.updateCheckInProgress = false;
       }
     });
 
@@ -645,105 +591,55 @@ class VelopackHandler {
         };
       }
 
-      if (!this.pendingUpdate) {
-        return {
-          success: false,
-          message: 'No update available to download',
-        };
-      }
-
       try {
         this.downloadInProgress = true;
-
-        // Download with progress callback
-        await this.getUpdateManager().downloadUpdatesAsync(this.pendingUpdate, (progress) => {
-          mainWindow?.webContents.send('update-download-progress', {
-            bytesPerSecond: 0,
-            percent: progress,
-            transferred: 0,
-            total: 100,
-          });
-        });
-
-        this.sendStatusToWindow(`Update downloaded: ${this.pendingUpdate.targetFullRelease?.version}`);
-        mainWindow?.webContents.send('update-downloaded', {
-          version: this.pendingUpdate.targetFullRelease?.version || 'Unknown',
-          releaseNotes: '',
-        });
-
-        return {
-          success: true,
-          message: 'Download completed',
-        };
+        const result = await this.customUpdater.downloadUpdate();
+        this.downloadInProgress = false;
+        return result;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to download update';
-        mainWindow?.webContents.send('update-error', {
-          message: errorMessage,
-        });
-
+        this.downloadInProgress = false;
         return {
           success: false,
-          message: errorMessage,
+          message: error instanceof Error ? error.message : 'Failed to download update',
         };
-      } finally {
-        this.downloadInProgress = false;
       }
     });
 
     // Install update and restart
     ipcMain.handle('install-update', () => {
-      if (this.pendingUpdate) {
-        // Apply updates and restart (~2 seconds with Velopack!)
-        this.getUpdateManager().applyUpdatesAndRestart(this.pendingUpdate);
-      }
+      this.customUpdater.quitAndInstall();
     });
 
     // Get current version
     ipcMain.handle('get-app-version', () => {
       return app.getVersion();
     });
-  }
 
-  private sendStatusToWindow(text: string): void {
-    console.log('[Velopack]', text);
+    // Reset fallback mode (for testing)
+    ipcMain.handle('reset-update-fallback', () => {
+      this.customUpdater.resetFallbackMode();
+      return { success: true };
+    });
   }
 
   // Check for updates on app start (if enabled in settings)
   public async checkOnStartup(): Promise<void> {
-    if (isDev) {
-      console.log('[Velopack] Skipping update check in development mode');
-      return;
-    }
-
-    // Wait a bit for the window to load
-    setTimeout(async () => {
-      try {
-        console.log('[Velopack] Checking for updates on startup...');
-        const updateInfo = await this.getUpdateManager().checkForUpdatesAsync();
-
-        if (updateInfo) {
-          this.pendingUpdate = updateInfo;
-          mainWindow?.webContents.send('update-available', {
-            version: updateInfo.targetFullRelease?.version || 'Unknown',
-            releaseDate: new Date().toISOString(),
-            releaseNotes: '',
-          });
-        }
-      } catch (error) {
-        console.error('[Velopack] Startup update check failed:', error);
-      }
-    }, 3000);
+    await this.customUpdater.checkOnStartup();
   }
 }
 
-// Initialize Velopack updater handler
-const updaterHandler = new VelopackHandler();
+// Initialize auto-updater handler (will be created after window is ready)
+let updaterHandler: AutoUpdaterHandler;
 
 // Check for updates on startup (will be controlled by user settings in production)
 app.whenReady().then(() => {
-  // Check for updates 3 seconds after app is ready
-  // This can be controlled by user settings later
-  if (!isDev) {
-    updaterHandler.checkOnStartup();
-  }
+  // Initialize updater after window is created
+  setTimeout(() => {
+    updaterHandler = new AutoUpdaterHandler();
+    // Check for updates 3 seconds after app is ready
+    // This can be controlled by user settings later
+    if (!isDev) {
+      updaterHandler.checkOnStartup();
+    }
+  }, 1000);
 });
