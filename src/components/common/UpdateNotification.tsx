@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, X, AlertCircle, FileArchive, Info } from 'lucide-react';
+import { Download, X, AlertCircle, FileArchive, Info, ExternalLink, AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
 
 export function UpdateNotification() {
@@ -12,6 +12,8 @@ export function UpdateNotification() {
   const [isFallbackMode, setIsFallbackMode] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [downloadError, setDownloadError] = useState(false);
+  const [errorCount, setErrorCount] = useState(0);
 
   useEffect(() => {
     // Listen for update available
@@ -40,9 +42,14 @@ export function UpdateNotification() {
     const unsubError = window.electronAPI.onUpdateError((error) => {
       setIsDownloading(false);
       setIsExtracting(false);
-      // Don't hide on first error if it might trigger fallback
-      if (error.message?.includes('Fallback download failed')) {
-        setIsVisible(false);
+      setErrorCount(prev => prev + 1);
+
+      // Show error state after multiple failures or if fallback also failed
+      if (error.message?.includes('Fallback download failed') || errorCount >= 2) {
+        setDownloadError(true);
+        setStatusMessage('Unable to download automatically. Try manual download.');
+      } else {
+        setStatusMessage(`Error: ${error.message}. Trying alternative method...`);
       }
     });
 
@@ -58,6 +65,11 @@ export function UpdateNotification() {
       setStatusMessage(data.message || 'Extracting update...');
     });
 
+    // Listen for general status updates
+    const unsubStatus = window.electronAPI.onUpdateStatus?.((data) => {
+      setStatusMessage(data.message || '');
+    });
+
     return () => {
       unsubAvailable();
       unsubProgress();
@@ -65,11 +77,14 @@ export function UpdateNotification() {
       unsubError();
       unsubFallback?.();
       unsubExtracting?.();
+      unsubStatus?.();
     };
-  }, []);
+  }, [errorCount]); // Add errorCount to dependencies to track error state
 
   const handleDownload = async () => {
     setIsDownloading(true);
+    setDownloadError(false); // Reset error state when retrying
+    setErrorCount(0); // Reset error count
     try {
       await window.electronAPI.downloadUpdate();
     } catch (error) {
@@ -83,6 +98,16 @@ export function UpdateNotification() {
 
   const handleDismiss = () => {
     setIsVisible(false);
+  };
+
+  const handleManualDownload = () => {
+    // Open GitHub releases page in browser
+    const releaseUrl = updateInfo?.version
+      ? `https://github.com/ItMeDiaTech/Documentation_Hub/releases/tag/v${updateInfo.version}`
+      : 'https://github.com/ItMeDiaTech/Documentation_Hub/releases/latest';
+
+    // Open in external browser
+    window.open(releaseUrl, '_blank');
   };
 
   return (
@@ -187,6 +212,37 @@ export function UpdateNotification() {
                 >
                   Later
                 </Button>
+              </div>
+            )}
+
+            {downloadError && !isDownloading && !isDownloaded && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+                  <AlertTriangle className="w-4 h-4" />
+                  <p className="text-xs">Automatic download failed due to network restrictions</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleManualDownload}
+                    variant="default"
+                    size="sm"
+                    className="flex-1"
+                    icon={<ExternalLink className="w-4 h-4" />}
+                  >
+                    Download Manually
+                  </Button>
+                  <Button
+                    onClick={handleDownload}
+                    variant="outline"
+                    size="sm"
+                    icon={<Download className="w-4 h-4" />}
+                  >
+                    Retry
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Manual download will open in your browser
+                </p>
               </div>
             )}
           </div>

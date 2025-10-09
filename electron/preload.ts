@@ -123,6 +123,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-extracting', subscription);
     return () => ipcRenderer.removeListener('update-extracting', subscription);
   },
+  onUpdateStatus: (callback: (data: { message: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('update-status', subscription);
+    return () => ipcRenderer.removeListener('update-status', subscription);
+  },
 });
 
 export type ElectronAPI = {
@@ -165,6 +170,7 @@ export type ElectronAPI = {
   onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => void) => () => void;
   onUpdateFallbackMode?: (callback: (data: { message: string }) => void) => () => void;
   onUpdateExtracting?: (callback: (data: { message: string }) => void) => () => void;
+  onUpdateStatus?: (callback: (data: { message: string }) => void) => () => void;
 };
 
 declare global {
