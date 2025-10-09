@@ -1,10 +1,11 @@
 import { autoUpdater, UpdateInfo } from 'electron-updater';
-import { app, shell } from 'electron';
+import { app, shell, net } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as https from 'https';
 import AdmZip from 'adm-zip';
+import { proxyConfig } from './proxyConfig';
 
 /**
  * Custom updater that implements fallback to ZIP downloads
@@ -308,86 +309,134 @@ export class CustomUpdater {
   }
 
   /**
-   * Download a file from URL to destination with TLS fallback options
+   * Download a file using Electron's net module with exponential backoff
    */
-  private downloadFile(url: string, destPath: string, attempt: number = 1): Promise<void> {
+  private async downloadFile(url: string, destPath: string, attempt: number = 1): Promise<void> {
+    const maxAttempts = 5;
+    const retryDelays = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
+
+    for (let currentAttempt = attempt; currentAttempt <= maxAttempts; currentAttempt++) {
+      try {
+        await this.downloadFileWithNet(url, destPath, currentAttempt);
+        return; // Success!
+      } catch (error: any) {
+        const errorCode = error.code || '';
+        const errorMessage = error.message || '';
+
+        console.log(`[CustomUpdater] Download attempt ${currentAttempt} failed:`, {
+          code: errorCode,
+          message: errorMessage.substring(0, 200)
+        });
+
+        // Check if we should retry
+        const shouldRetry = currentAttempt < maxAttempts &&
+                          (errorCode === 'ECONNRESET' ||
+                           errorCode === 'ETIMEDOUT' ||
+                           errorCode === 'ESOCKETTIMEDOUT' ||
+                           this.isTlsError(error) ||
+                           this.isCertificateError(error));
+
+        if (shouldRetry) {
+          const delay = retryDelays[currentAttempt - 1] || 16000;
+          console.log(`[CustomUpdater] Retrying in ${delay}ms...`);
+
+          // Send status update
+          let statusMessage = 'Connection interrupted, retrying...';
+          if (errorCode === 'ECONNRESET') {
+            statusMessage = 'Connection reset by network, retrying with exponential backoff...';
+          } else if (this.isCertificateError(error)) {
+            statusMessage = `Certificate issue detected (attempt ${currentAttempt}/${maxAttempts}), retrying...`;
+          }
+
+          this.sendToWindow('update-status', {
+            message: statusMessage
+          });
+
+          // Wait with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          // Final error - provide helpful message
+          if (errorCode === 'ECONNRESET') {
+            throw new Error(
+              `Connection repeatedly reset by network after ${currentAttempt} attempts. ` +
+              `This is typically caused by a corporate proxy or firewall. ` +
+              `Please check your proxy settings or use manual download.`
+            );
+          } else if (this.isCertificateError(error)) {
+            throw new Error(
+              `Certificate verification failed after ${currentAttempt} attempts: ${errorMessage}. ` +
+              `Your corporate network may be using custom certificates. ` +
+              `Please contact your IT department for proxy/certificate configuration.`
+            );
+          } else {
+            throw error;
+          }
+        }
+      }
+    }
+
+    throw new Error(`Download failed after ${maxAttempts} attempts`);
+  }
+
+  /**
+   * Download file using Electron's net.request (better proxy support)
+   */
+  private downloadFileWithNet(url: string, destPath: string, attempt: number): Promise<void> {
     return new Promise((resolve, reject) => {
+      console.log(`[CustomUpdater] Downloading with net.request (attempt ${attempt}): ${url}`);
+
+      // Create file stream
       const file = fs.createWriteStream(destPath);
       let downloadedBytes = 0;
       let totalBytes = 0;
 
-      // Parse URL first
-      const urlParts = new URL(url);
-
-      // Create HTTPS agent with progressive certificate relaxation
-      let agent: https.Agent;
-
-      if (attempt === 1) {
-        // First attempt: Try with standard certificates
-        console.log(`[CustomUpdater] Attempt 1: Using standard TLS settings`);
-        agent = new https.Agent({
-          keepAlive: true,
-          timeout: 30000,
-        });
-      } else if (attempt === 2) {
-        // Second attempt: Relax certificate validation for GitHub
-        console.log(`[CustomUpdater] Attempt 2: Relaxing TLS for GitHub domains`);
-        agent = new https.Agent({
-          rejectUnauthorized: false, // Disable certificate validation
-          keepAlive: true,
-          timeout: 30000,
-        });
-      } else {
-        // Third attempt: Maximum compatibility mode
-        console.log(`[CustomUpdater] Attempt 3: Maximum TLS compatibility mode`);
-        process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'; // Global override
-        agent = new https.Agent({
-          rejectUnauthorized: false,
-          secureProtocol: 'TLSv1_2_method', // Force TLS 1.2
-          ciphers: 'ALL', // Allow all ciphers
-          keepAlive: true,
-          timeout: 30000,
-        });
-      }
-
-      // Configure request options
-      const options: https.RequestOptions = {
-        hostname: urlParts.hostname,
-        path: urlParts.pathname + urlParts.search,
-        port: urlParts.port || 443,
+      // Use Electron's net module which has better proxy support
+      const request = net.request({
         method: 'GET',
-        headers: {
-          'User-Agent': `DocumentationHub/${app.getVersion()} (${process.platform})`,
-          'Accept': 'application/octet-stream, application/zip, */*'
-        },
-        agent: agent
-      };
+        url: url,
+        // net.request automatically uses system proxy settings
+      });
 
-      const request = https.request(options, (response) => {
+      // Set custom headers
+      request.setHeader('User-Agent', `DocumentationHub/${app.getVersion()} (${process.platform})`);
+      request.setHeader('Accept', 'application/octet-stream, application/zip, */*');
+
+      // Handle response
+      request.on('response', (response) => {
+        const statusCode = response.statusCode;
+
         // Handle redirects
-        if (response.statusCode === 301 || response.statusCode === 302) {
+        if (statusCode === 301 || statusCode === 302 || statusCode === 303 || statusCode === 307 || statusCode === 308) {
           const redirectUrl = response.headers.location;
-          if (redirectUrl) {
+          if (redirectUrl && typeof redirectUrl === 'string') {
             file.close();
-            return this.downloadFile(redirectUrl, destPath, attempt).then(resolve).catch(reject);
+            console.log(`[CustomUpdater] Following redirect to: ${redirectUrl}`);
+            this.downloadFileWithNet(redirectUrl, destPath, attempt).then(resolve).catch(reject);
+            return;
           }
         }
 
-        if (response.statusCode !== 200) {
+        // Check for successful response
+        if (statusCode !== 200) {
           file.close();
           if (fs.existsSync(destPath)) {
             fs.unlinkSync(destPath);
           }
-          reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
+          reject(new Error(`Failed to download: HTTP ${statusCode}`));
           return;
         }
 
-        totalBytes = parseInt(response.headers['content-length'] || '0', 10);
+        // Get content length
+        const contentLength = response.headers['content-length'];
+        if (contentLength) {
+          totalBytes = parseInt(Array.isArray(contentLength) ? contentLength[0] : contentLength, 10);
+        }
 
-        response.pipe(file);
-
+        // Handle data
         response.on('data', (chunk) => {
+          file.write(chunk);
           downloadedBytes += chunk.length;
+
           if (totalBytes > 0) {
             const percent = (downloadedBytes / totalBytes) * 100;
             this.sendToWindow('update-download-progress', {
@@ -399,65 +448,51 @@ export class CustomUpdater {
           }
         });
 
-        file.on('finish', () => {
+        response.on('end', () => {
+          file.end(() => {
+            console.log(`[CustomUpdater] Download complete: ${downloadedBytes} bytes`);
+            resolve();
+          });
+        });
+
+        response.on('error', (error) => {
           file.close();
-          resolve();
+          if (fs.existsSync(destPath)) {
+            fs.unlinkSync(destPath);
+          }
+          reject(error);
         });
       });
 
-      request.on('error', (err) => {
+      // Handle request errors
+      request.on('error', (error) => {
         file.close();
         if (fs.existsSync(destPath)) {
           fs.unlinkSync(destPath);
         }
 
-        // Check if this is a certificate/TLS error
-        const isCertError = this.isCertificateError(err);
+        // Log detailed error information
+        console.error(`[CustomUpdater] net.request error:`, {
+          code: (error as any).code,
+          message: error.message,
+          syscall: (error as any).syscall,
+          errno: (error as any).errno
+        });
 
-        // Retry with progressively relaxed settings (up to 3 attempts)
-        if (attempt < 3 && (this.isTlsError(err) || isCertError)) {
-          const errorCode = (err as any).code || '';
-          console.log(`[CustomUpdater] TLS/Certificate error on attempt ${attempt}: ${err.message} (code: ${errorCode})`);
-
-          let statusMessage = 'Connection issue detected, trying alternative method...';
-          if (attempt === 1) {
-            statusMessage = 'Certificate validation failed, trying with relaxed settings...';
-          } else if (attempt === 2) {
-            statusMessage = 'Still having connection issues, trying compatibility mode...';
-          }
-
-          this.sendToWindow('update-status', {
-            message: statusMessage
-          });
-
-          // Wait a bit before retrying
-          setTimeout(() => {
-            this.downloadFile(url, destPath, attempt + 1).then(resolve).catch(reject);
-          }, 1000);
-          return;
-        }
-
-        // If all attempts failed, provide helpful error message
-        if (isCertError) {
-          const enhancedError = new Error(
-            `Certificate verification failed: ${err.message}. ` +
-            `This may be due to a corporate proxy or firewall. ` +
-            `Please use the manual download option or contact your IT department.`
-          );
-          reject(enhancedError);
-        } else {
-          reject(err);
-        }
+        reject(error);
       });
 
-      request.end();
-
-      file.on('error', (err) => {
+      // Handle abort
+      request.on('abort', () => {
+        file.close();
         if (fs.existsSync(destPath)) {
           fs.unlinkSync(destPath);
         }
-        reject(err);
+        reject(new Error('Request was aborted'));
       });
+
+      // Send the request
+      request.end();
     });
   }
 

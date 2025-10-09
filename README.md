@@ -488,6 +488,55 @@ Updates are downloaded from GitHub Releases and verified before installation.
 - Process fewer documents simultaneously
 - Increase available system memory
 
+### Auto-Update Issues (Corporate Networks)
+
+**ECONNRESET or Certificate Validation Errors:**
+
+Documentation Hub includes advanced proxy support for corporate environments. If you encounter update issues:
+
+1. **Automatic Proxy Detection:**
+   - The app automatically detects proxy settings from environment variables
+   - Supports HTTPS_PROXY, HTTP_PROXY, and NO_PROXY
+   - Works with NTLM, Kerberos, and basic authentication
+
+2. **Setting Proxy Environment Variables (if needed):**
+   ```bash
+   # Windows (Command Prompt)
+   set HTTPS_PROXY=http://proxy.company.com:8080
+   set HTTP_PROXY=http://proxy.company.com:8080
+   set NO_PROXY=localhost,127.0.0.1
+
+   # Windows (PowerShell)
+   $env:HTTPS_PROXY="http://proxy.company.com:8080"
+   $env:HTTP_PROXY="http://proxy.company.com:8080"
+   $env:NO_PROXY="localhost,127.0.0.1"
+
+   # With authentication
+   set HTTPS_PROXY=http://username:password@proxy.company.com:8080
+   ```
+
+3. **Automatic Retry with Exponential Backoff:**
+   - The app automatically retries failed downloads 5 times
+   - Retry delays: 1s, 2s, 4s, 8s, 16s
+   - Handles transient network issues gracefully
+
+4. **ZIP Fallback System:**
+   - If .exe downloads are blocked, the app automatically tries .zip format
+   - Downloads compressed version and extracts locally
+   - Maintains security and code signing
+
+5. **Corporate Certificate Issues:**
+   - For custom CA certificates: `set NODE_EXTRA_CA_CERTS=path\to\certificate.pem`
+   - The app uses Chromium's network stack for better certificate handling
+
+**Network Restriction Bypass:**
+
+If your network blocks .exe downloads:
+- The app automatically detects blocking and switches to ZIP fallback
+- No manual intervention required
+- Visual indicators show when fallback mode is active
+- Same "Install & Restart" workflow regardless of update method
+
 ## Contributing
 
 Contributions are welcome! Please follow these guidelines:
