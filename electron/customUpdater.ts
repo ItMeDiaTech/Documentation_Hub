@@ -1,5 +1,5 @@
 import { autoUpdater, UpdateInfo } from 'electron-updater';
-import { app, shell, net } from 'electron';
+import { app, shell, net, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
@@ -10,12 +10,15 @@ import { proxyConfig } from './proxyConfig';
 /**
  * Custom updater that implements fallback to ZIP downloads
  * when .exe downloads are blocked by network restrictions
+ * Enhanced with session-based proxy support and connection management
  */
 export class CustomUpdater {
   private mainWindow: Electron.BrowserWindow | null = null;
   private useZipFallback = false;
   private updateInfo: UpdateInfo | null = null;
   private isDev: boolean;
+  private maxConcurrentConnections = 2; // Limit concurrent connections
+  private activeRequests = new Set<Electron.ClientRequest>();
 
   constructor(mainWindow: Electron.BrowserWindow | null) {
     this.mainWindow = mainWindow;
@@ -309,6 +312,21 @@ export class CustomUpdater {
   }
 
   /**
+   * Clean up active requests
+   */
+  private cleanupActiveRequests(): void {
+    console.log(`[CustomUpdater] Cleaning up ${this.activeRequests.size} active requests...`);
+    for (const request of this.activeRequests) {
+      try {
+        request.abort();
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+    this.activeRequests.clear();
+  }
+
+  /**
    * Download a file using Electron's net module with exponential backoff
    */
   private async downloadFile(url: string, destPath: string, attempt: number = 1): Promise<void> {
@@ -317,6 +335,24 @@ export class CustomUpdater {
 
     for (let currentAttempt = attempt; currentAttempt <= maxAttempts; currentAttempt++) {
       try {
+        // Reset proxy configuration on retry
+        if (currentAttempt > 1) {
+          console.log(`[CustomUpdater] Resetting proxy configuration for attempt ${currentAttempt}...`);
+          await proxyConfig.resetProxyWithRetry();
+
+          // Clean up any lingering connections
+          this.cleanupActiveRequests();
+
+          // Wait a bit for proxy to reconfigure
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // Wait if we have too many concurrent connections
+        while (this.activeRequests.size >= this.maxConcurrentConnections) {
+          console.log('[CustomUpdater] Waiting for connection slot...');
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
         await this.downloadFileWithNet(url, destPath, currentAttempt);
         return; // Success!
       } catch (error: any) {
@@ -328,11 +364,20 @@ export class CustomUpdater {
           message: errorMessage.substring(0, 200)
         });
 
+        // Check if error is specifically ERR_CONNECTION_RESET from net module
+        if (errorMessage.includes('net::ERR_CONNECTION_RESET') ||
+            errorMessage.includes('ERR_CONNECTION_RESET')) {
+          console.log('[CustomUpdater] Detected ERR_CONNECTION_RESET from net module');
+        }
+
         // Check if we should retry
         const shouldRetry = currentAttempt < maxAttempts &&
                           (errorCode === 'ECONNRESET' ||
                            errorCode === 'ETIMEDOUT' ||
                            errorCode === 'ESOCKETTIMEDOUT' ||
+                           errorCode === 'ERR_CONNECTION_RESET' ||
+                           errorMessage.includes('ERR_CONNECTION_RESET') ||
+                           errorMessage.includes('net::ERR_CONNECTION_RESET') ||
                            this.isTlsError(error) ||
                            this.isCertificateError(error));
 
@@ -342,8 +387,8 @@ export class CustomUpdater {
 
           // Send status update
           let statusMessage = 'Connection interrupted, retrying...';
-          if (errorCode === 'ECONNRESET') {
-            statusMessage = 'Connection reset by network, retrying with exponential backoff...';
+          if (errorCode === 'ECONNRESET' || errorMessage.includes('ERR_CONNECTION_RESET')) {
+            statusMessage = `Connection reset (attempt ${currentAttempt}/${maxAttempts}), resetting proxy and retrying...`;
           } else if (this.isCertificateError(error)) {
             statusMessage = `Certificate issue detected (attempt ${currentAttempt}/${maxAttempts}), retrying...`;
           }
@@ -356,17 +401,17 @@ export class CustomUpdater {
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           // Final error - provide helpful message
-          if (errorCode === 'ECONNRESET') {
+          if (errorCode === 'ECONNRESET' || errorMessage.includes('ERR_CONNECTION_RESET')) {
             throw new Error(
               `Connection repeatedly reset by network after ${currentAttempt} attempts. ` +
               `This is typically caused by a corporate proxy or firewall. ` +
-              `Please check your proxy settings or use manual download.`
+              `Please check proxy settings: HTTPS_PROXY, HTTP_PROXY environment variables.`
             );
           } else if (this.isCertificateError(error)) {
             throw new Error(
               `Certificate verification failed after ${currentAttempt} attempts: ${errorMessage}. ` +
               `Your corporate network may be using custom certificates. ` +
-              `Please contact your IT department for proxy/certificate configuration.`
+              `Set NODE_EXTRA_CA_CERTS environment variable to your corporate CA certificate.`
             );
           } else {
             throw error;
@@ -389,17 +434,35 @@ export class CustomUpdater {
       const file = fs.createWriteStream(destPath);
       let downloadedBytes = 0;
       let totalBytes = 0;
+      let requestCompleted = false;
 
       // Use Electron's net module which has better proxy support
       const request = net.request({
         method: 'GET',
         url: url,
+        session: session.defaultSession, // Use the configured session
         // net.request automatically uses system proxy settings
       });
 
-      // Set custom headers
-      request.setHeader('User-Agent', `DocumentationHub/${app.getVersion()} (${process.platform})`);
+      // Track this request
+      this.activeRequests.add(request);
+
+      // Set custom headers with clean User-Agent
+      const cleanUA = proxyConfig.getCleanUserAgent();
+      request.setHeader('User-Agent', cleanUA);
       request.setHeader('Accept', 'application/octet-stream, application/zip, */*');
+      request.setHeader('Cache-Control', 'no-cache');
+      request.setHeader('Connection', 'keep-alive'); // Better for proxy
+
+      // Handle timeout (30 seconds per request)
+      const timeout = setTimeout(() => {
+        if (!requestCompleted) {
+          console.log('[CustomUpdater] Request timeout, aborting...');
+          request.abort();
+          this.activeRequests.delete(request);
+          reject(new Error('Download timeout - network may be too slow or blocked'));
+        }
+      }, 30000);
 
       // Handle response
       request.on('response', (response) => {
@@ -449,6 +512,9 @@ export class CustomUpdater {
         });
 
         response.on('end', () => {
+          requestCompleted = true;
+          clearTimeout(timeout);
+          this.activeRequests.delete(request);
           file.end(() => {
             console.log(`[CustomUpdater] Download complete: ${downloadedBytes} bytes`);
             resolve();
@@ -456,6 +522,9 @@ export class CustomUpdater {
         });
 
         response.on('error', (error) => {
+          requestCompleted = true;
+          clearTimeout(timeout);
+          this.activeRequests.delete(request);
           file.close();
           if (fs.existsSync(destPath)) {
             fs.unlinkSync(destPath);
@@ -466,6 +535,10 @@ export class CustomUpdater {
 
       // Handle request errors
       request.on('error', (error) => {
+        if (!requestCompleted) {
+          this.activeRequests.delete(request);
+          clearTimeout(timeout);
+        }
         file.close();
         if (fs.existsSync(destPath)) {
           fs.unlinkSync(destPath);
@@ -476,7 +549,8 @@ export class CustomUpdater {
           code: (error as any).code,
           message: error.message,
           syscall: (error as any).syscall,
-          errno: (error as any).errno
+          errno: (error as any).errno,
+          attempt: attempt
         });
 
         reject(error);
@@ -484,6 +558,10 @@ export class CustomUpdater {
 
       // Handle abort
       request.on('abort', () => {
+        if (!requestCompleted) {
+          this.activeRequests.delete(request);
+          clearTimeout(timeout);
+        }
         file.close();
         if (fs.existsSync(destPath)) {
           fs.unlinkSync(destPath);
