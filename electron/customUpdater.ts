@@ -33,14 +33,12 @@ export class CustomUpdater {
       'User-Agent': `DocumentationHub/${app.getVersion()} (${process.platform})`
     };
 
-    // Allow self-signed certificates for GitHub (usually not needed, but helps with proxy issues)
-    process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
-
     // Log TLS configuration for debugging
-    console.log('[CustomUpdater] TLS Configuration:', {
+    console.log('[CustomUpdater] Initialized with TLS configuration:', {
       NODE_TLS_REJECT_UNAUTHORIZED: process.env.NODE_TLS_REJECT_UNAUTHORIZED,
       platform: process.platform,
-      version: app.getVersion()
+      version: app.getVersion(),
+      nodeVersion: process.version
     });
 
     // Set up event handlers
@@ -318,28 +316,51 @@ export class CustomUpdater {
       let downloadedBytes = 0;
       let totalBytes = 0;
 
-      // Configure HTTPS options based on attempt number
-      const httpsOptions: https.RequestOptions = {
-        headers: {
-          'User-Agent': `DocumentationHub/${app.getVersion()} (${process.platform})`
-        }
-      };
+      // Parse URL first
+      const urlParts = new URL(url);
 
-      // On second attempt, be more lenient with certificates
-      if (attempt >= 2) {
-        console.log(`[CustomUpdater] Attempt ${attempt}: Using relaxed TLS settings`);
-        httpsOptions.rejectUnauthorized = false;
-        httpsOptions.secureProtocol = 'TLSv1_2_method'; // Force TLS 1.2
+      // Create HTTPS agent with progressive certificate relaxation
+      let agent: https.Agent;
+
+      if (attempt === 1) {
+        // First attempt: Try with standard certificates
+        console.log(`[CustomUpdater] Attempt 1: Using standard TLS settings`);
+        agent = new https.Agent({
+          keepAlive: true,
+          timeout: 30000,
+        });
+      } else if (attempt === 2) {
+        // Second attempt: Relax certificate validation for GitHub
+        console.log(`[CustomUpdater] Attempt 2: Relaxing TLS for GitHub domains`);
+        agent = new https.Agent({
+          rejectUnauthorized: false, // Disable certificate validation
+          keepAlive: true,
+          timeout: 30000,
+        });
+      } else {
+        // Third attempt: Maximum compatibility mode
+        console.log(`[CustomUpdater] Attempt 3: Maximum TLS compatibility mode`);
+        process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'; // Global override
+        agent = new https.Agent({
+          rejectUnauthorized: false,
+          secureProtocol: 'TLSv1_2_method', // Force TLS 1.2
+          ciphers: 'ALL', // Allow all ciphers
+          keepAlive: true,
+          timeout: 30000,
+        });
       }
 
-      // Parse URL to get options
-      const urlParts = new URL(url);
+      // Configure request options
       const options: https.RequestOptions = {
-        ...httpsOptions,
         hostname: urlParts.hostname,
         path: urlParts.pathname + urlParts.search,
         port: urlParts.port || 443,
-        method: 'GET'
+        method: 'GET',
+        headers: {
+          'User-Agent': `DocumentationHub/${app.getVersion()} (${process.platform})`,
+          'Accept': 'application/octet-stream, application/zip, */*'
+        },
+        agent: agent
       };
 
       const request = https.request(options, (response) => {
@@ -390,16 +411,43 @@ export class CustomUpdater {
           fs.unlinkSync(destPath);
         }
 
-        // If first attempt failed due to TLS/certificate issue, retry with relaxed settings
-        if (attempt === 1 && this.isTlsError(err)) {
-          console.log(`[CustomUpdater] TLS error on attempt 1, retrying with relaxed settings: ${err.message}`);
+        // Check if this is a certificate/TLS error
+        const isCertError = this.isCertificateError(err);
+
+        // Retry with progressively relaxed settings (up to 3 attempts)
+        if (attempt < 3 && (this.isTlsError(err) || isCertError)) {
+          const errorCode = (err as any).code || '';
+          console.log(`[CustomUpdater] TLS/Certificate error on attempt ${attempt}: ${err.message} (code: ${errorCode})`);
+
+          let statusMessage = 'Connection issue detected, trying alternative method...';
+          if (attempt === 1) {
+            statusMessage = 'Certificate validation failed, trying with relaxed settings...';
+          } else if (attempt === 2) {
+            statusMessage = 'Still having connection issues, trying compatibility mode...';
+          }
+
           this.sendToWindow('update-status', {
-            message: 'Connection issue detected, trying alternative method...'
+            message: statusMessage
           });
-          return this.downloadFile(url, destPath, attempt + 1).then(resolve).catch(reject);
+
+          // Wait a bit before retrying
+          setTimeout(() => {
+            this.downloadFile(url, destPath, attempt + 1).then(resolve).catch(reject);
+          }, 1000);
+          return;
         }
 
-        reject(err);
+        // If all attempts failed, provide helpful error message
+        if (isCertError) {
+          const enhancedError = new Error(
+            `Certificate verification failed: ${err.message}. ` +
+            `This may be due to a corporate proxy or firewall. ` +
+            `Please use the manual download option or contact your IT department.`
+          );
+          reject(enhancedError);
+        } else {
+          reject(err);
+        }
       });
 
       request.end();
@@ -428,6 +476,53 @@ export class CustomUpdater {
            code.includes('CERT') ||
            code.includes('TLS') ||
            code.includes('SSL');
+  }
+
+  /**
+   * Check specifically for certificate errors
+   */
+  private isCertificateError(error: any): boolean {
+    const code = error.code || '';
+    const message = error.message?.toLowerCase() || '';
+
+    // Specific certificate error codes
+    const certErrorCodes = [
+      'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      'CERT_HAS_EXPIRED',
+      'CERT_NOT_YET_VALID',
+      'DEPTH_ZERO_SELF_SIGNED_CERT',
+      'SELF_SIGNED_CERT_IN_CHAIN',
+      'ERR_TLS_CERT_ALTNAME_INVALID',
+      'CERT_CHAIN_TOO_LONG',
+      'CERT_REVOKED',
+      'INVALID_CA',
+      'UNABLE_TO_GET_ISSUER_CERT'
+    ];
+
+    // Check for specific error codes
+    if (certErrorCodes.includes(code)) {
+      console.log(`[CustomUpdater] Certificate error detected: ${code}`);
+      return true;
+    }
+
+    // Check for certificate-related messages
+    const certMessages = [
+      'unable to get local issuer certificate',
+      'unable to verify the first certificate',
+      'certificate verify failed',
+      'certificate has expired',
+      'self signed certificate',
+      'unable to get issuer cert locally'
+    ];
+
+    const hasCertMessage = certMessages.some(msg => message.includes(msg));
+    if (hasCertMessage) {
+      console.log(`[CustomUpdater] Certificate error message detected: ${message.substring(0, 100)}`);
+      return true;
+    }
+
+    return false;
   }
 
   /**
