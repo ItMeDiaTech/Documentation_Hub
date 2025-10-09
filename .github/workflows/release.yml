@@ -10,7 +10,11 @@ permissions:
 
 jobs:
   release:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
 
     steps:
       - name: Checkout code
@@ -37,29 +41,67 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Package Electron app
+      - name: Package application (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm run build:electron
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compress Windows installer to ZIP
+        if: matrix.os == 'windows-latest'
         run: |
-          npx @electron/packager . "Documentation Hub" --platform=win32 --arch=x64 --out=out --overwrite --icon=build/icon.ico --asar
-        shell: bash
+          cd release
+          $exeFile = Get-ChildItem -Filter "*.exe" | Select-Object -First 1
+          if ($exeFile) {
+            $zipName = $exeFile.BaseName + "-Compressed.zip"
+            Write-Host "Compressing $($exeFile.Name) to $zipName"
+            Compress-Archive -Path $exeFile.Name -DestinationPath $zipName -CompressionLevel Optimal
+            Write-Host "Created compressed installer: $zipName"
+          } else {
+            Write-Host "No .exe file found to compress"
+          }
+        shell: pwsh
 
-      - name: Install Velopack CLI
-        run: dotnet tool install -g vpk
+      - name: Package application (macOS)
+        if: matrix.os == 'macos-latest'
+        run: npm run build:electron
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Package with Velopack
-        run: |
-          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
-          $VERSION = "${{ github.ref_name }}".TrimStart('v')
-          vpk pack --packId DocumentationHub --packVersion $VERSION --packDir "./out/Documentation Hub-win32-x64" --mainExe "Documentation Hub.exe" --icon build/icon.ico --packTitle "Documentation Hub" --packAuthors "DiaTech"
-        shell: powershell
+      - name: Package application (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run build:electron
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Velopack artifacts
+      - name: Upload Windows artifacts
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: velopack-release
+          name: windows-installer
           path: |
-            Releases/*Setup.exe
-            Releases/*.nupkg
-            Releases/RELEASES
+            release/*.exe
+            release/*.zip
+            release/latest.yml
+
+      - name: Upload macOS artifacts
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: |
+            release/*.dmg
+            release/latest-mac.yml
+
+      - name: Upload Linux artifacts
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-installer
+          path: |
+            release/*.AppImage
+            release/latest-linux.yml
 
   create-release:
     needs: release
@@ -75,9 +117,13 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            velopack-release/*Setup.exe
-            velopack-release/*.nupkg
-            velopack-release/RELEASES
+            windows-installer/*.exe
+            windows-installer/*.zip
+            windows-installer/latest.yml
+            macos-installer/*.dmg
+            macos-installer/latest-mac.yml
+            linux-installer/*.AppImage
+            linux-installer/latest-linux.yml
           generate_release_notes: true
           draft: false
           prerelease: false
