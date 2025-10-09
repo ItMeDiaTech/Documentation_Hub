@@ -6,6 +6,11 @@ import * as fsPromises from 'fs/promises';
 import * as https from 'https';
 import AdmZip from 'adm-zip';
 import { proxyConfig } from './proxyConfig';
+import { zscalerConfig } from './zscalerConfig';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 /**
  * Custom updater that implements fallback to ZIP downloads
@@ -327,11 +332,98 @@ export class CustomUpdater {
   }
 
   /**
+   * PowerShell download fallback for Windows (works better with Zscaler)
+   */
+  private async downloadWithPowerShell(url: string, destPath: string): Promise<void> {
+    if (process.platform !== 'win32') {
+      throw new Error('PowerShell download only available on Windows');
+    }
+
+    console.log('[CustomUpdater] Attempting download with PowerShell (Zscaler-friendly)...');
+
+    const psCommand = `
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      [Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+      $ProgressPreference = 'SilentlyContinue'
+
+      try {
+        $webclient = New-Object System.Net.WebClient
+        $webclient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        $webclient.DownloadFile('${url}', '${destPath.replace(/\\/g, '\\\\')}')
+        Write-Host "SUCCESS"
+      } catch {
+        Write-Host "ERROR: $_"
+        exit 1
+      }
+    `.replace(/\n/g, ' ');
+
+    try {
+      const { stdout, stderr } = await execAsync(
+        `powershell -NoProfile -NonInteractive -Command "${psCommand}"`,
+        { timeout: 60000 }
+      );
+
+      if (stdout.includes('SUCCESS')) {
+        console.log('[CustomUpdater] PowerShell download successful');
+        // Verify file exists
+        if (!fs.existsSync(destPath)) {
+          throw new Error('Download appeared successful but file not found');
+        }
+      } else {
+        throw new Error(`PowerShell download failed: ${stdout} ${stderr}`);
+      }
+    } catch (error) {
+      console.error('[CustomUpdater] PowerShell download failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Curl download fallback (better certificate handling than Node.js)
+   */
+  private async downloadWithCurl(url: string, destPath: string): Promise<void> {
+    console.log('[CustomUpdater] Attempting download with curl...');
+
+    // Check if curl is available
+    try {
+      await execAsync('curl --version');
+    } catch {
+      throw new Error('curl is not available');
+    }
+
+    const curlCommand = `curl -L -k --retry 3 --retry-delay 2 -o "${destPath}" "${url}"`;
+
+    try {
+      const { stdout, stderr } = await execAsync(curlCommand, { timeout: 60000 });
+      console.log('[CustomUpdater] Curl download completed');
+
+      // Verify file exists
+      if (!fs.existsSync(destPath)) {
+        throw new Error('Curl download appeared successful but file not found');
+      }
+    } catch (error) {
+      console.error('[CustomUpdater] Curl download failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Download a file using Electron's net module with exponential backoff
    */
   private async downloadFile(url: string, destPath: string, attempt: number = 1): Promise<void> {
     const maxAttempts = 5;
     const retryDelays = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
+
+    // If Zscaler is detected and we've failed once, try PowerShell first
+    if (zscalerConfig.isDetected() && attempt > 1 && process.platform === 'win32') {
+      console.log('[CustomUpdater] Zscaler detected, trying PowerShell download first...');
+      try {
+        await this.downloadWithPowerShell(url, destPath);
+        return; // Success!
+      } catch (error) {
+        console.log('[CustomUpdater] PowerShell download failed, falling back to net.request');
+      }
+    }
 
     for (let currentAttempt = attempt; currentAttempt <= maxAttempts; currentAttempt++) {
       try {
@@ -401,16 +493,45 @@ export class CustomUpdater {
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           // Final error - provide helpful message
+
+          // Check if this is a Zscaler-specific issue
+          if (zscalerConfig.isDetected()) {
+            if (zscalerConfig.isZscalerError(error) || this.isCertificateError(error)) {
+              // Try PowerShell as last resort on Windows
+              if (process.platform === 'win32' && currentAttempt === maxAttempts) {
+                console.log('[CustomUpdater] Final attempt with PowerShell for Zscaler...');
+                try {
+                  await this.downloadWithPowerShell(url, destPath);
+                  return; // Success!
+                } catch (psError) {
+                  throw new Error(
+                    `Zscaler is blocking the download. ` +
+                    `To fix this:\n` +
+                    `1. Ask your IT department to bypass SSL inspection for github.com\n` +
+                    `2. Export Zscaler certificate and set ZSCALER_CERT_PATH to its location\n` +
+                    `3. Or download the update manually from GitHub releases`
+                  );
+                }
+              }
+            }
+          }
+
           if (errorCode === 'ECONNRESET' || errorMessage.includes('ERR_CONNECTION_RESET')) {
+            const zscalerHint = zscalerConfig.isDetected()
+              ? '\nZscaler detected: This is likely due to SSL inspection. '
+              : '';
             throw new Error(
               `Connection repeatedly reset by network after ${currentAttempt} attempts. ` +
-              `This is typically caused by a corporate proxy or firewall. ` +
+              `This is typically caused by a corporate proxy or firewall. ${zscalerHint}` +
               `Please check proxy settings: HTTPS_PROXY, HTTP_PROXY environment variables.`
             );
           } else if (this.isCertificateError(error)) {
+            const zscalerHint = zscalerConfig.isDetected()
+              ? '\nZscaler SSL inspection detected. Export Zscaler certificate or request bypass. '
+              : '';
             throw new Error(
               `Certificate verification failed after ${currentAttempt} attempts: ${errorMessage}. ` +
-              `Your corporate network may be using custom certificates. ` +
+              `Your corporate network may be using custom certificates. ${zscalerHint}` +
               `Set NODE_EXTRA_CA_CERTS environment variable to your corporate CA certificate.`
             );
           } else {
@@ -453,6 +574,15 @@ export class CustomUpdater {
       request.setHeader('Accept', 'application/octet-stream, application/zip, */*');
       request.setHeader('Cache-Control', 'no-cache');
       request.setHeader('Connection', 'keep-alive'); // Better for proxy
+
+      // Add Zscaler bypass headers if detected
+      if (zscalerConfig.isDetected()) {
+        console.log('[CustomUpdater] Adding Zscaler bypass headers');
+        const bypassHeaders = zscalerConfig.getBypassHeaders();
+        for (const [key, value] of Object.entries(bypassHeaders)) {
+          request.setHeader(key, value);
+        }
+      }
 
       // Handle timeout (30 seconds per request)
       const timeout = setTimeout(() => {

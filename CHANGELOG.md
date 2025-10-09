@@ -2,6 +2,40 @@
 
 All notable changes to Documentation Hub will be documented in this file.
 
+## [1.0.35] - 2025-01-10
+
+### Added
+- **ZSCALER SUPPORT: Comprehensive detection and handling for Zscaler SSL inspection**
+  - Auto-detection of Zscaler presence via processes, certificates, and environment
+  - Automatic certificate configuration from common Zscaler locations
+  - PowerShell download fallback for Windows (uses system certificates)
+  - Curl download fallback as alternative
+  - Zscaler-specific bypass headers
+  - Enhanced certificate error handling for Zscaler
+
+### Technical Features
+- New `zscalerConfig.ts` module for Zscaler detection and configuration
+- Searches for Zscaler certificates in standard locations:
+  - `C:\Zscaler\ZscalerRootCertificate.pem`
+  - `C:\Program Files\Zscaler\`
+  - `%APPDATA%\Local\Zscaler\`
+  - User home `.zscaler\` directory
+- Automatic NODE_EXTRA_CA_CERTS configuration
+- PowerShell WebClient fallback (bypasses Node.js certificate issues)
+- Detection of Zscaler-specific certificate errors
+- Clear error messages with Zscaler-specific guidance
+
+### Environment Variables
+- `ZSCALER_CERT_PATH`: Path to Zscaler root certificate
+- `ZSCALER_BYPASS`: Enable Zscaler bypass headers
+- Automatic detection of Zscaler environment
+
+### Error Handling
+- Specific detection for Zscaler SSL inspection issues
+- Helpful error messages explaining Zscaler problems
+- Multiple fallback download methods
+- Guidance for IT department bypass requests
+
 ## [1.0.34] - 2025-01-10
 
 ### Changed
