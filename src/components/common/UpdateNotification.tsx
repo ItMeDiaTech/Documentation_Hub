@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, X, AlertCircle } from 'lucide-react';
+import { Download, X, AlertCircle, FileArchive, Info } from 'lucide-react';
 import { Button } from './Button';
 
 export function UpdateNotification() {
   const [isVisible, setIsVisible] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<{ version: string } | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; fallbackUsed?: boolean } | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloaded, setIsDownloaded] = useState(false);
+  const [isFallbackMode, setIsFallbackMode] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string>('');
 
   useEffect(() => {
     // Listen for update available
@@ -25,14 +28,34 @@ export function UpdateNotification() {
     // Listen for update downloaded
     const unsubDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
       setIsDownloading(false);
+      setIsExtracting(false);
       setIsDownloaded(true);
-      setUpdateInfo(info);
+      setUpdateInfo({ ...info, fallbackUsed: info.fallbackUsed });
+      if (info.fallbackUsed) {
+        setStatusMessage('Update ready to install (downloaded as compressed archive)');
+      }
     });
 
     // Listen for errors
-    const unsubError = window.electronAPI.onUpdateError(() => {
+    const unsubError = window.electronAPI.onUpdateError((error) => {
       setIsDownloading(false);
-      setIsVisible(false);
+      setIsExtracting(false);
+      // Don't hide on first error if it might trigger fallback
+      if (error.message?.includes('Fallback download failed')) {
+        setIsVisible(false);
+      }
+    });
+
+    // Listen for fallback mode activation
+    const unsubFallback = window.electronAPI.onUpdateFallbackMode?.((data) => {
+      setIsFallbackMode(true);
+      setStatusMessage(data.message || 'Using alternative download method...');
+    });
+
+    // Listen for extraction status
+    const unsubExtracting = window.electronAPI.onUpdateExtracting?.((data) => {
+      setIsExtracting(true);
+      setStatusMessage(data.message || 'Extracting update...');
     });
 
     return () => {
@@ -40,6 +63,8 @@ export function UpdateNotification() {
       unsubProgress();
       unsubDownloaded();
       unsubError();
+      unsubFallback?.();
+      unsubExtracting?.();
     };
   }, []);
 
@@ -69,10 +94,14 @@ export function UpdateNotification() {
           exit={{ opacity: 0, y: 50 }}
           className="fixed bottom-4 right-4 z-50"
         >
-          <div className="bg-background border border-border rounded-lg shadow-lg p-4 w-80">
+          <div className="bg-background border border-border rounded-lg shadow-lg p-4 w-96">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-primary" />
+                {isFallbackMode ? (
+                  <FileArchive className="w-5 h-5 text-primary" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-primary" />
+                )}
                 <h3 className="font-semibold">Update Available</h3>
               </div>
               <button
@@ -87,6 +116,13 @@ export function UpdateNotification() {
               <p className="text-sm text-muted-foreground mb-4">
                 Version {updateInfo.version} is now available
               </p>
+            )}
+
+            {statusMessage && (
+              <div className="flex items-center gap-2 mb-3">
+                <Info className="w-4 h-4 text-blue-500" />
+                <p className="text-xs text-muted-foreground">{statusMessage}</p>
+              </div>
             )}
 
             {!isDownloading && !isDownloaded && (
@@ -113,15 +149,24 @@ export function UpdateNotification() {
             {isDownloading && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span>Downloading...</span>
-                  <span className="text-muted-foreground">{Math.round(downloadProgress)}%</span>
+                  <span>
+                    {isExtracting ? 'Extracting...' : isFallbackMode ? 'Downloading compressed update...' : 'Downloading...'}
+                  </span>
+                  {!isExtracting && (
+                    <span className="text-muted-foreground">{Math.round(downloadProgress)}%</span>
+                  )}
                 </div>
                 <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
                   <div
-                    className="h-full bg-primary transition-all duration-300"
-                    style={{ width: `${downloadProgress}%` }}
+                    className={`h-full ${isExtracting ? 'bg-blue-500' : 'bg-primary'} transition-all duration-300`}
+                    style={{ width: isExtracting ? '100%' : `${downloadProgress}%` }}
                   />
                 </div>
+                {isFallbackMode && !isExtracting && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Using compressed download to bypass network restrictions
+                  </p>
+                )}
               </div>
             )}
 

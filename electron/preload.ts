@@ -108,10 +108,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-download-progress', subscription);
     return () => ipcRenderer.removeListener('update-download-progress', subscription);
   },
-  onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string }) => void) => {
+  onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => void) => {
     const subscription = (_event: IpcRendererEvent, info: any) => callback(info);
     ipcRenderer.on('update-downloaded', subscription);
     return () => ipcRenderer.removeListener('update-downloaded', subscription);
+  },
+  onUpdateFallbackMode: (callback: (data: { message: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('update-fallback-mode', subscription);
+    return () => ipcRenderer.removeListener('update-fallback-mode', subscription);
+  },
+  onUpdateExtracting: (callback: (data: { message: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('update-extracting', subscription);
+    return () => ipcRenderer.removeListener('update-extracting', subscription);
   },
 });
 
@@ -152,7 +162,9 @@ export type ElectronAPI = {
   onUpdateNotAvailable: (callback: (info: { version: string }) => void) => () => void;
   onUpdateError: (callback: (error: { message: string }) => void) => () => void;
   onUpdateDownloadProgress: (callback: (progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => void) => () => void;
-  onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string }) => void) => () => void;
+  onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => void) => () => void;
+  onUpdateFallbackMode?: (callback: (data: { message: string }) => void) => () => void;
+  onUpdateExtracting?: (callback: (data: { message: string }) => void) => () => void;
 };
 
 declare global {
