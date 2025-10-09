@@ -1,13 +1,16 @@
-import { app } from 'electron';
+import { app, session } from 'electron';
 import * as os from 'os';
 
 /**
  * Proxy configuration and detection for corporate environments
+ * Enhanced with session management and connection cleanup
  */
 export class ProxyConfig {
   private proxyUrl: string | null = null;
   private proxyAuth: { username: string; password: string } | null = null;
   private bypassList: string[] = ['localhost', '127.0.0.1', '<local>'];
+  private isProxyConfigured: boolean = false;
+  private maxRetries: number = 3;
 
   constructor() {
     this.detectProxy();
@@ -78,16 +81,112 @@ export class ProxyConfig {
       app.commandLine.appendSwitch('proxy-bypass-list', this.bypassList.join(','));
     }
 
-    // Configure proxy authentication handler
+    // Configure proxy authentication handler at app level
     if (this.proxyAuth) {
       app.on('login', (event, webContents, request, authInfo, callback) => {
         if (authInfo.isProxy && this.proxyAuth) {
           event.preventDefault();
-          console.log('[ProxyConfig] Providing proxy authentication');
+          console.log('[ProxyConfig] Providing proxy authentication for:', authInfo.host);
           callback(this.proxyAuth.username, this.proxyAuth.password);
         }
       });
     }
+  }
+
+  /**
+   * Configure session-level proxy with connection cleanup
+   * This is crucial for preventing ECONNRESET errors
+   */
+  public async configureSessionProxy(ses?: Electron.Session): Promise<void> {
+    const targetSession = ses || session.defaultSession;
+
+    try {
+      // CRITICAL: Close all existing connections to prevent connection pool reuse
+      console.log('[ProxyConfig] Closing all existing connections...');
+      await targetSession.closeAllConnections();
+
+      if (!this.proxyUrl) {
+        console.log('[ProxyConfig] No proxy detected, configuring direct connection');
+        await targetSession.setProxy({ mode: 'direct' });
+        this.isProxyConfigured = true;
+        return;
+      }
+
+      console.log('[ProxyConfig] Configuring session proxy:', this.proxyUrl);
+
+      // Build proxy configuration
+      const proxyConfig: Electron.ProxyConfig = {
+        proxyRules: this.proxyUrl,
+        proxyBypassRules: this.bypassList.join(',')
+      };
+
+      // Check for PAC script
+      const pacUrl = process.env.PAC_URL || process.env.pac_url;
+      if (pacUrl) {
+        console.log('[ProxyConfig] Using PAC script:', pacUrl);
+        proxyConfig.pacScript = pacUrl;
+        proxyConfig.mode = 'pac_script';
+      }
+
+      // Apply proxy configuration
+      await targetSession.setProxy(proxyConfig);
+
+      // Force reload proxy configuration
+      await targetSession.forceReloadProxyConfig();
+
+      console.log('[ProxyConfig] Session proxy configured successfully');
+      this.isProxyConfigured = true;
+
+    } catch (error) {
+      console.error('[ProxyConfig] Failed to configure session proxy:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Reset proxy configuration with retry logic
+   */
+  public async resetProxyWithRetry(ses?: Electron.Session, retryCount: number = 0): Promise<void> {
+    const targetSession = ses || session.defaultSession;
+
+    try {
+      console.log(`[ProxyConfig] Resetting proxy configuration (attempt ${retryCount + 1}/${this.maxRetries})`);
+
+      // Close all connections
+      await targetSession.closeAllConnections();
+
+      // Wait a bit for connections to fully close
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Reconfigure proxy
+      await this.configureSessionProxy(targetSession);
+
+    } catch (error) {
+      if (retryCount < this.maxRetries - 1) {
+        console.log('[ProxyConfig] Retrying proxy reset...');
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return this.resetProxyWithRetry(targetSession, retryCount + 1);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get User-Agent without Electron identifier
+   * Some corporate proxies reject requests with "Electron" in User-Agent
+   */
+  public getCleanUserAgent(): string {
+    const currentUA = session.defaultSession.getUserAgent();
+    // Remove Electron/ and Electron-specific identifiers
+    const cleanUA = currentUA
+      .split(' ')
+      .filter(part => !part.includes('Electron'))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    console.log('[ProxyConfig] Clean User-Agent:', cleanUA);
+    return cleanUA;
   }
 
   /**
@@ -133,6 +232,20 @@ export class ProxyConfig {
    */
   public getProxyUrl(): string | null {
     return this.proxyUrl;
+  }
+
+  /**
+   * Get proxy authentication credentials
+   */
+  public getProxyAuth(): { username: string; password: string } | null {
+    return this.proxyAuth;
+  }
+
+  /**
+   * Check if proxy is configured
+   */
+  public isConfigured(): boolean {
+    return this.isProxyConfigured;
   }
 
   /**
