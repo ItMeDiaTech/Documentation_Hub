@@ -18,6 +18,16 @@ let mainWindow: BrowserWindow | null = null;
 const isDev = !app.isPackaged;
 
 // ============================================================================
+// Application Startup and Version Information
+// ============================================================================
+console.log('========================================');
+console.log(`[Main] Documentation Hub v${app.getVersion()} starting...`);
+console.log(`[Main] Electron: v${process.versions.electron}`);
+console.log(`[Main] Node: v${process.versions.node}`);
+console.log(`[Main] Platform: ${process.platform} ${process.arch}`);
+console.log('========================================');
+
+// ============================================================================
 // Proxy, Zscaler, and TLS/Certificate Configuration
 // ============================================================================
 
@@ -25,6 +35,13 @@ const isDev = !app.isPackaged;
 console.log('[Main] Initializing Zscaler detection...');
 zscalerConfig.logConfiguration();
 zscalerConfig.configureApp();
+
+// Log Zscaler status prominently
+if (zscalerConfig.isDetected()) {
+  console.log('⚠️  [Main] ZSCALER DETECTED - Using enhanced certificate handling and fallback methods');
+} else {
+  console.log('✓ [Main] No Zscaler detected - Using standard network configuration');
+}
 
 // Configure proxy settings
 console.log('[Main] Initializing proxy and TLS configuration...');

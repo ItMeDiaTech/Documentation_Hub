@@ -2,6 +2,18 @@
 
 All notable changes to Documentation Hub will be documented in this file.
 
+## [1.0.36] - 2025-01-10
+
+### Added
+- Enhanced startup logging to show Zscaler detection status
+- Version information in console on app start
+- Test release to verify auto-update with Zscaler support
+
+### Testing
+- This release tests the update mechanism from v1.0.35
+- Verifies Zscaler detection and fallback mechanisms work
+- Confirms PowerShell download fallback on Windows
+
 ## [1.0.35] - 2025-01-10
 
 ### Added
