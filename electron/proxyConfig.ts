@@ -1,9 +1,10 @@
 import { app, session } from 'electron';
 import * as os from 'os';
+import { zscalerConfig } from './zscalerConfig';
 
 /**
  * Proxy configuration and detection for corporate environments
- * Enhanced with session management and connection cleanup
+ * Enhanced with session management, connection cleanup, and Zscaler integration
  */
 export class ProxyConfig {
   private proxyUrl: string | null = null;
@@ -37,6 +38,14 @@ export class ProxyConfig {
         console.log(`[ProxyConfig] Detected proxy from ${envVar}: ${this.proxyUrl}`);
         break;
       }
+    }
+
+    // If Zscaler is detected but no proxy is set, use a default Zscaler proxy
+    if (!this.proxyUrl && zscalerConfig.isDetected()) {
+      console.log('[ProxyConfig] Zscaler detected but no proxy configured');
+      // Zscaler typically uses transparent proxy, so we might not need explicit proxy settings
+      // But we should ensure certificate handling is properly configured
+      console.log('[ProxyConfig] Relying on Zscaler transparent proxy');
     }
 
     // Check for NO_PROXY bypass list
@@ -261,8 +270,10 @@ export class ProxyConfig {
     console.log(`  - Proxy URL: ${this.proxyUrl || 'Not configured (direct connection)'}`);
     console.log(`  - Proxy Auth: ${this.proxyAuth ? 'Configured' : 'Not configured'}`);
     console.log(`  - Bypass List: ${this.bypassList.join(', ')}`);
+    console.log(`  - Zscaler Status: ${zscalerConfig.isDetected() ? 'DETECTED' : 'Not detected'}`);
     console.log(`  - NODE_EXTRA_CA_CERTS: ${process.env.NODE_EXTRA_CA_CERTS || 'Not configured'}`);
     console.log(`  - NODE_TLS_REJECT_UNAUTHORIZED: ${process.env.NODE_TLS_REJECT_UNAUTHORIZED || 'Default (1)'}`);
+    console.log(`  - ZSCALER_BYPASS: ${process.env.ZSCALER_BYPASS || 'Not set'}`);
     console.log(`  - Platform: ${os.platform()}`);
     console.log(`  - Node Version: ${process.version}`);
     console.log(`  - Electron Version: ${process.versions.electron}`);
