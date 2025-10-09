@@ -2,6 +2,36 @@
 
 All notable changes to Documentation Hub will be documented in this file.
 
+## [1.0.34] - 2025-01-10
+
+### Changed
+- Enhanced proxy logging for better diagnostics
+- Test release to verify auto-update functionality with ERR_CONNECTION_RESET fixes
+
+### Testing
+- This release is specifically for testing the update mechanism from v1.0.33
+- Verifies that the proxy fixes work correctly during update download
+
+## [1.0.33] - 2025-01-10
+
+### Fixed
+- **COMPREHENSIVE FIX: ERR_CONNECTION_RESET in Corporate Proxy Environments**
+  - Implemented session-level proxy configuration with connection cleanup
+  - Added closeAllConnections() before proxy changes (critical fix)
+  - Limited concurrent connections to 2 to prevent overload
+  - Remove "Electron" from User-Agent to avoid proxy rejection
+  - Proxy reset with retry logic on each attempt
+  - Exponential backoff with better error detection
+  - Enhanced login handler for proxy authentication
+  - 30-second timeout per request with proper cleanup
+
+### Technical Improvements
+- Better connection pool management
+- Request tracking and cleanup
+- Session.defaultSession proxy configuration
+- Clean User-Agent at session level
+- Support for multiple auth credential sources
+
 ## [1.0.31] - 2025-01-10
 
 ### Fixed

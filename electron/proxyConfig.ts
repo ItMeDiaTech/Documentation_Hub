@@ -103,6 +103,11 @@ export class ProxyConfig {
     try {
       // CRITICAL: Close all existing connections to prevent connection pool reuse
       console.log('[ProxyConfig] Closing all existing connections...');
+      console.log('[ProxyConfig] Session info:', {
+        partition: targetSession.partition || 'default',
+        cacheSize: await targetSession.getCacheSize(),
+        userAgent: targetSession.getUserAgent().substring(0, 100)
+      });
       await targetSession.closeAllConnections();
 
       if (!this.proxyUrl) {
