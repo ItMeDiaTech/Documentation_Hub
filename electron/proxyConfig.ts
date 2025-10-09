@@ -148,6 +148,8 @@ export class ProxyConfig {
     console.log(`  - Platform: ${os.platform()}`);
     console.log(`  - Node Version: ${process.version}`);
     console.log(`  - Electron Version: ${process.versions.electron}`);
+    console.log(`  - App Version: ${app.getVersion()}`);
+    console.log(`  - System Locale: ${app.getLocale()}`);
   }
 }
 
