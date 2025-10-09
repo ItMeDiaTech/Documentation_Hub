@@ -14,7 +14,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest]  # Temporarily disabled macos-latest and ubuntu-latest due to icon issues
 
     steps:
       - name: Checkout code
