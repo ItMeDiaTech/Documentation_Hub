@@ -44,12 +44,25 @@ export function UpdateNotification() {
       setIsExtracting(false);
       setErrorCount(prev => prev + 1);
 
+      // Check for certificate-specific errors
+      const isCertError = error.message?.toLowerCase().includes('certificate') ||
+                          error.message?.toLowerCase().includes('issuer') ||
+                          error.message?.toLowerCase().includes('proxy') ||
+                          error.message?.toLowerCase().includes('firewall');
+
       // Show error state after multiple failures or if fallback also failed
       if (error.message?.includes('Fallback download failed') || errorCount >= 2) {
         setDownloadError(true);
-        setStatusMessage('Unable to download automatically. Try manual download.');
+
+        if (isCertError) {
+          setStatusMessage('Network security settings are blocking the download. Please download manually or contact IT.');
+        } else {
+          setStatusMessage('Unable to download automatically. Please try manual download.');
+        }
+      } else if (isCertError) {
+        setStatusMessage('Certificate issue detected. Attempting alternative download method...');
       } else {
-        setStatusMessage(`Error: ${error.message}. Trying alternative method...`);
+        setStatusMessage(`Connection issue: Trying alternative method...`);
       }
     });
 
@@ -219,8 +232,11 @@ export function UpdateNotification() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
                   <AlertTriangle className="w-4 h-4" />
-                  <p className="text-xs">Automatic download failed due to network restrictions</p>
+                  <p className="text-xs font-medium">Network Security Issue</p>
                 </div>
+                {statusMessage && (
+                  <p className="text-xs text-muted-foreground">{statusMessage}</p>
+                )}
                 <div className="flex gap-2">
                   <Button
                     onClick={handleManualDownload}
@@ -240,9 +256,14 @@ export function UpdateNotification() {
                     Retry
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  Manual download will open in your browser
-                </p>
+                <div className="bg-muted/50 rounded p-2 text-xs space-y-1">
+                  <p className="font-medium">Troubleshooting Tips:</p>
+                  <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                    <li>Disconnect from VPN if connected</li>
+                    <li>Check with IT about proxy settings</li>
+                    <li>Use manual download for immediate access</li>
+                  </ul>
+                </div>
               </div>
             )}
           </div>

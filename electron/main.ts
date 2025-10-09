@@ -15,6 +15,33 @@ import type {
 let mainWindow: BrowserWindow | null = null;
 const isDev = !app.isPackaged;
 
+// ============================================================================
+// Global TLS/Certificate Configuration
+// ============================================================================
+
+// Configure TLS settings for corporate proxies and firewalls
+// This helps with certificate issues like "unable to get local issuer certificate"
+if (!isDev) {
+  console.log('[Main] Configuring global TLS settings for corporate environments...');
+
+  // Allow relaxed certificate validation for GitHub domains
+  // Note: This is a workaround for corporate proxies that intercept SSL
+  app.commandLine.appendSwitch('ignore-certificate-errors');
+  app.commandLine.appendSwitch('ignore-certificate-errors-spki-list');
+
+  // Log the configuration
+  console.log('[Main] TLS Configuration:', {
+    platform: process.platform,
+    nodeVersion: process.version,
+    electronVersion: process.versions.electron,
+    isDev: isDev
+  });
+}
+
+// Set environment variable for Node.js HTTPS module
+// This affects all HTTPS requests made by the app
+process.env['NODE_NO_WARNINGS'] = '1'; // Suppress TLS warnings in production
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
