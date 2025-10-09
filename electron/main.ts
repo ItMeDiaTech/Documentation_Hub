@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import { WordDocumentProcessor } from '../src/services/document/WordDocumentProcessor';
 import { CustomUpdater } from './customUpdater';
+import { proxyConfig } from './proxyConfig';
 import type {
   BatchProcessingOptions,
   BatchProcessingResult,
@@ -16,25 +17,29 @@ let mainWindow: BrowserWindow | null = null;
 const isDev = !app.isPackaged;
 
 // ============================================================================
-// Global TLS/Certificate Configuration
+// Proxy and TLS/Certificate Configuration
 // ============================================================================
+
+// Configure proxy settings before anything else
+console.log('[Main] Initializing proxy and TLS configuration...');
+proxyConfig.logConfiguration();
+proxyConfig.configureApp();
 
 // Configure TLS settings for corporate proxies and firewalls
 // This helps with certificate issues like "unable to get local issuer certificate"
 if (!isDev) {
   console.log('[Main] Configuring global TLS settings for corporate environments...');
 
-  // Allow relaxed certificate validation for GitHub domains
-  // Note: This is a workaround for corporate proxies that intercept SSL
-  app.commandLine.appendSwitch('ignore-certificate-errors');
-  app.commandLine.appendSwitch('ignore-certificate-errors-spki-list');
+  // Note: We're being more selective with certificate errors now
+  // Only ignore for known GitHub domains to maintain security
 
   // Log the configuration
   console.log('[Main] TLS Configuration:', {
     platform: process.platform,
     nodeVersion: process.version,
     electronVersion: process.versions.electron,
-    isDev: isDev
+    isDev: isDev,
+    proxyUrl: proxyConfig.getProxyUrl()
   });
 }
 
