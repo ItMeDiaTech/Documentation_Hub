@@ -6,6 +6,7 @@ import { promises as fsPromises } from 'fs';
 import { WordDocumentProcessor } from '../src/services/document/WordDocumentProcessor';
 import { CustomUpdater } from './customUpdater';
 import { proxyConfig } from './proxyConfig';
+import { zscalerConfig } from './zscalerConfig';
 import type {
   BatchProcessingOptions,
   BatchProcessingResult,
@@ -17,10 +18,15 @@ let mainWindow: BrowserWindow | null = null;
 const isDev = !app.isPackaged;
 
 // ============================================================================
-// Proxy and TLS/Certificate Configuration
+// Proxy, Zscaler, and TLS/Certificate Configuration
 // ============================================================================
 
-// Configure proxy settings before anything else
+// Configure Zscaler detection and setup before anything else
+console.log('[Main] Initializing Zscaler detection...');
+zscalerConfig.logConfiguration();
+zscalerConfig.configureApp();
+
+// Configure proxy settings
 console.log('[Main] Initializing proxy and TLS configuration...');
 proxyConfig.logConfiguration();
 proxyConfig.configureApp();
@@ -164,12 +170,35 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
   // Prevent the default behavior (which is to reject the certificate)
   event.preventDefault();
 
+  // Check if this is a Zscaler-related error
+  if (zscalerConfig.isDetected()) {
+    console.log('[Certificate Error] Zscaler detected - checking if this is a Zscaler certificate issue');
+
+    // Check if the certificate issuer contains Zscaler
+    if (certificate.issuerName?.includes('Zscaler') ||
+        certificate.subjectName?.includes('Zscaler') ||
+        zscalerConfig.isZscalerError({ message: error })) {
+      console.log('[Certificate Error] Detected Zscaler certificate - trusting it');
+      callback(true); // Trust Zscaler certificates
+      return;
+    }
+  }
+
   // Check if this is for GitHub or our update server
-  const trustedHosts = ['github.com', 'githubusercontent.com', 'github.io'];
+  const trustedHosts = [
+    'github.com',
+    'githubusercontent.com',
+    'github.io',
+    'github-releases.githubusercontent.com',
+    'objects.githubusercontent.com'
+  ];
   const urlHost = new URL(url).hostname.toLowerCase();
 
   if (trustedHosts.some(host => urlHost.includes(host))) {
     console.log(`[Certificate Error] Trusting certificate for known host: ${urlHost}`);
+    if (zscalerConfig.isDetected()) {
+      console.log('[Certificate Error] Note: Zscaler is performing SSL inspection on this connection');
+    }
     callback(true); // Trust the certificate
   } else {
     console.log(`[Certificate Error] Rejecting certificate for unknown host: ${urlHost}`);
