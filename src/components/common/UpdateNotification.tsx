@@ -44,21 +44,34 @@ export function UpdateNotification() {
       setIsExtracting(false);
       setErrorCount(prev => prev + 1);
 
-      // Check for certificate-specific errors
+      // Check for specific error types
       const isCertError = error.message?.toLowerCase().includes('certificate') ||
                           error.message?.toLowerCase().includes('issuer') ||
-                          error.message?.toLowerCase().includes('proxy') ||
-                          error.message?.toLowerCase().includes('firewall');
+                          error.message?.toLowerCase().includes('unable to verify');
+
+      const isMutualTLS = error.message?.toLowerCase().includes('econnreset') ||
+                          error.message?.toLowerCase().includes('connection reset') ||
+                          error.message?.toLowerCase().includes('mutual');
+
+      const isProxyError = error.message?.toLowerCase().includes('proxy') ||
+                           error.message?.toLowerCase().includes('firewall') ||
+                           error.message?.toLowerCase().includes('localhost:8005');
 
       // Show error state after multiple failures or if fallback also failed
       if (error.message?.includes('Fallback download failed') || errorCount >= 2) {
         setDownloadError(true);
 
-        if (isCertError) {
-          setStatusMessage('Network security settings are blocking the download. Please download manually or contact IT.');
+        if (isMutualTLS) {
+          setStatusMessage('Enterprise network detected (Mutual TLS required). Your network requires special certificates. Please use manual download or contact IT.');
+        } else if (isCertError) {
+          setStatusMessage('Certificate validation failed. Your organization may use custom certificates. Please download manually.');
+        } else if (isProxyError) {
+          setStatusMessage('Corporate proxy/firewall blocking download. Please use manual download or check with IT.');
         } else {
           setStatusMessage('Unable to download automatically. Please try manual download.');
         }
+      } else if (isMutualTLS) {
+        setStatusMessage('Enterprise network detected. Trying PowerShell download method...');
       } else if (isCertError) {
         setStatusMessage('Certificate issue detected. Attempting alternative download method...');
       } else {
@@ -113,14 +126,17 @@ export function UpdateNotification() {
     setIsVisible(false);
   };
 
-  const handleManualDownload = () => {
-    // Open GitHub releases page in browser
-    const releaseUrl = updateInfo?.version
-      ? `https://github.com/ItMeDiaTech/Documentation_Hub/releases/tag/v${updateInfo.version}`
-      : 'https://github.com/ItMeDiaTech/Documentation_Hub/releases/latest';
-
-    // Open in external browser
-    window.open(releaseUrl, '_blank');
+  const handleManualDownload = async () => {
+    try {
+      // Use the new IPC handler to open download in system browser
+      await window.electronAPI.openUpdateInBrowser();
+    } catch (error) {
+      // Fallback to direct window.open if IPC fails
+      const releaseUrl = updateInfo?.version
+        ? `https://github.com/ItMeDiaTech/Documentation_Hub/releases/tag/v${updateInfo.version}`
+        : 'https://github.com/ItMeDiaTech/Documentation_Hub/releases/latest';
+      window.open(releaseUrl, '_blank');
+    }
   };
 
   return (

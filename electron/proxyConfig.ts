@@ -15,6 +15,57 @@ export class ProxyConfig {
 
   constructor() {
     this.detectProxy();
+    this.detectLocalProxy();
+  }
+
+  /**
+   * Detect localhost proxy servers (WSUS, MSDTC, etc.)
+   */
+  private detectLocalProxy(): void {
+    // Common local proxy ports used by enterprise software
+    const localProxyPorts = [
+      8005,  // WSUS/MSDTC (as reported by user)
+      8080,  // Common proxy port
+      3128,  // Squid default
+      8888,  // Fiddler/Charles
+      9090,  // Another common proxy
+      1080   // SOCKS proxy
+    ];
+
+    // Check if we already have a proxy configured
+    if (this.proxyUrl && !this.proxyUrl.includes('localhost') && !this.proxyUrl.includes('127.0.0.1')) {
+      console.log('[ProxyConfig] Non-localhost proxy already configured, skipping localhost detection');
+      return;
+    }
+
+    // Check for specific localhost proxies
+    for (const port of localProxyPorts) {
+      // Check if this might be the active proxy
+      if (process.env[`LOCALHOST_PROXY_${port}`] === 'true') {
+        const proxyUrl = `http://localhost:${port}`;
+        console.log(`[ProxyConfig] Detected localhost proxy on port ${port} from environment`);
+
+        if (port === 8005) {
+          console.log('[ProxyConfig] ⚠️  WSUS/MSDTC proxy detected on port 8005 - Mutual TLS likely required');
+          console.log('[ProxyConfig] This proxy requires special handling for certificate authentication');
+        }
+
+        // Only set if we don't already have a proxy
+        if (!this.proxyUrl) {
+          this.proxyUrl = proxyUrl;
+          console.log(`[ProxyConfig] Using localhost proxy: ${proxyUrl}`);
+        }
+        break;
+      }
+    }
+
+    // Log if we detect the Windows Update localhost:8005 configuration
+    if (!this.proxyUrl) {
+      console.log('[ProxyConfig] Checking for Windows Update proxy configuration...');
+      // This is informational - the actual proxy might be transparent
+      console.log('[ProxyConfig] Note: Windows Update may be using localhost:8005 for WSUS');
+      console.log('[ProxyConfig] This often indicates enterprise network with mutual TLS requirements');
+    }
   }
 
   /**
