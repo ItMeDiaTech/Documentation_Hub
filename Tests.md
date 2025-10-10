@@ -3,9 +3,11 @@
 Run these tests in order and copy the output. This will help identify the exact cause of your TLS/network issues.
 
 ## Prerequisites
-- Run PowerShell as Administrator for some tests
+- Run PowerShell as regular user (no admin required)
 - Have your Documentation Hub application closed
 - Copy each command exactly as shown
+
+**Note:** All tests have been modified to work WITHOUT administrator privileges.
 
 ---
 
@@ -87,17 +89,25 @@ Get-ChildItem Cert:\CurrentUser\My | Where-Object {
 } | Format-List Subject, Issuer, EnhancedKeyUsageList
 ```
 
-### Test 2.3: NetworkService Certificate Access
+### Test 2.3: Machine Certificate Check (No Admin)
 ```powershell
-# Check if NetworkService has certificates (requires admin)
-$certs = Get-ChildItem Cert:\LocalMachine\My
-Write-Host "Total Machine Certificates: $($certs.Count)"
-foreach ($cert in $certs) {
-    $acl = Get-Acl -Path "Cert:\LocalMachine\My\$($cert.Thumbprint)"
-    if ($acl.Access | Where-Object {$_.IdentityReference -like "*NetworkService*"}) {
-        Write-Host "NetworkService has access to: $($cert.Subject)"
+# Check machine certificates (readable without admin)
+try {
+    $certs = Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue
+    if ($certs) {
+        Write-Host "Total Machine Certificates visible: $($certs.Count)"
+        $certs | Select-Object Subject, Issuer, Thumbprint -First 5 | Format-Table -AutoSize
+    } else {
+        Write-Host "Cannot read machine certificates (may need admin)"
     }
+} catch {
+    Write-Host "Machine certificate store not accessible: $_"
 }
+
+# Check your user certificates instead
+$userCerts = Get-ChildItem Cert:\CurrentUser\My
+Write-Host "`nUser Certificates: $($userCerts.Count)"
+$userCerts | Select-Object Subject, Issuer, NotAfter | Format-Table -AutoSize
 ```
 
 ---
@@ -135,9 +145,21 @@ Test-NetConnection -ComputerName localhost -Port 8005
 
 ### Test 4.1: Show Network Adapters with 802.1X
 ```powershell
-# Show network adapter authentication
-netsh lan show profiles
+# Show network adapter authentication (may work without admin)
+try {
+    netsh lan show profiles 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "LAN profiles require admin privileges"
+    }
+} catch {
+    Write-Host "Cannot show LAN profiles: $_"
+}
+
+# WLAN profiles usually work without admin
 netsh wlan show profiles
+
+# Alternative: Get network adapter info
+Get-NetAdapter | Select-Object Name, Status, MediaType, LinkSpeed | Format-Table -AutoSize
 ```
 
 ### Test 4.2: Check Active Connections
@@ -222,10 +244,29 @@ try {
 
 ## 7. MSDTC and Network Service Tests
 
-### Test 7.1: Check MSDTC Configuration
+### Test 7.1: Check MSDTC Configuration (Non-Admin)
 ```powershell
-# Check MSDTC security settings
-Get-DtcNetworkSetting | Format-List
+# Try to check MSDTC settings (may require admin)
+try {
+    Get-DtcNetworkSetting -ErrorAction SilentlyContinue | Format-List
+} catch {
+    Write-Host "MSDTC settings require admin privileges"
+    Write-Host "Checking registry instead..."
+
+    # Try to read MSDTC settings from registry (sometimes readable)
+    try {
+        $msdtc = Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\MSDTC\Security" -ErrorAction SilentlyContinue
+        if ($msdtc) {
+            Write-Host "MSDTC Registry Settings Found:"
+            $msdtc | Format-List NetworkDtcAccess*, XaTransactions*, LuTransactions*
+        }
+    } catch {
+        Write-Host "Cannot read MSDTC registry: $_"
+    }
+}
+
+# Check if MSDTC service is running
+Get-Service MSDTC | Select-Object Name, Status, StartType
 ```
 
 ### Test 7.2: Check Windows Services Using Mutual Auth
@@ -238,16 +279,33 @@ Get-WmiObject Win32_Service | Where-Object {$_.StartName -eq "NT AUTHORITY\Netwo
 
 ## 8. Event Log Analysis
 
-### Test 8.1: Recent Security Events
+### Test 8.1: Recent Security Events (Non-Admin)
 ```powershell
-# Check for recent authentication failures
-Get-EventLog -LogName Security -Newest 20 | Where-Object {$_.EntryType -eq "FailureAudit"} | Format-Table TimeGenerated, Message -AutoSize
+# Try to check security events (often requires admin)
+try {
+    Get-EventLog -LogName Security -Newest 5 -ErrorAction Stop | Format-Table TimeGenerated, EntryType, Message -AutoSize
+} catch {
+    Write-Host "Security log requires admin privileges: $_"
+    Write-Host "Skipping security event log check"
+}
 ```
 
-### Test 8.2: System Network Errors
+### Test 8.2: System and Application Events
 ```powershell
-# Check system log for network errors
-Get-EventLog -LogName System -Newest 50 | Where-Object {$_.Message -like "*TLS*" -or $_.Message -like "*certificate*" -or $_.Message -like "*8005*"} | Format-Table TimeGenerated, Message -Wrap
+# Check system log for network errors (sometimes accessible)
+try {
+    Get-EventLog -LogName System -Newest 20 -ErrorAction SilentlyContinue |
+        Where-Object {$_.Message -like "*TLS*" -or $_.Message -like "*certificate*" -or $_.Message -like "*8005*" -or $_.Message -like "*network*"} |
+        Select-Object TimeGenerated, EntryType, Source, Message -First 5 | Format-List
+} catch {
+    Write-Host "Cannot read System log: $_"
+}
+
+# Application log is usually readable
+Write-Host "`nChecking Application log for network/TLS errors..."
+Get-EventLog -LogName Application -Newest 50 |
+    Where-Object {$_.Source -like "*Electron*" -or $_.Source -like "*Chrome*" -or $_.Message -like "*TLS*" -or $_.Message -like "*certificate*"} |
+    Select-Object TimeGenerated, Source, Message -First 5 | Format-List
 ```
 
 ---
@@ -336,9 +394,46 @@ try {
 
 ---
 
+## Additional Non-Admin Network Tests
+
+### Test 11.1: Check Windows Defender Firewall Status
+```powershell
+# Check if Windows Firewall might be blocking
+Get-NetFirewallProfile | Select-Object Name, Enabled | Format-Table -AutoSize
+
+# Check for GitHub-related firewall rules (readable without admin)
+Get-NetFirewallRule -ErrorAction SilentlyContinue |
+    Where-Object {$_.DisplayName -like "*git*" -or $_.DisplayName -like "*electron*" -or $_.DisplayName -like "*node*"} |
+    Select-Object DisplayName, Enabled, Direction, Action -First 10 | Format-Table -AutoSize
+```
+
+### Test 11.2: User Environment Check
+```powershell
+# Get all environment variables that might affect networking
+Write-Host "User Environment Variables:"
+[Environment]::GetEnvironmentVariables("User") | Format-Table -AutoSize
+
+Write-Host "`nHTTP/HTTPS Related Variables:"
+Get-ChildItem env: | Where-Object {
+    $_.Name -match "PROXY|HTTP|CERT|SSL|TLS|NODE|NPM|GIT"
+} | Sort-Object Name | Format-Table Name, Value -AutoSize
+```
+
+### Test 11.3: Check Group Policy Network Settings
+```powershell
+# Try to check group policy settings (some readable without admin)
+try {
+    gpresult /Scope User /v | Select-String -Pattern "proxy|certificate|TLS|802.1x|network" -Context 1,1
+} catch {
+    Write-Host "Cannot read group policy: $_"
+}
+```
+
+---
+
 ## How to Run These Tests
 
-1. Open PowerShell as Administrator
+1. Open PowerShell as **regular user** (NO admin needed)
 2. Copy and run each test command
 3. Save the output from each test
 4. Note any error messages, especially:
@@ -370,5 +465,26 @@ After running these tests, provide:
 2. Whether it succeeded or failed
 3. Any error messages
 4. Any unusual output (like company certificates, internal IPs, etc.)
+
+### Priority Tests (Run These First!)
+
+These are the MOST important tests for diagnosing your issue:
+
+1. **Test 1.1** - Basic PowerShell Download (shows if PowerShell can connect at all)
+2. **Test 1.2** - System Proxy Test (reveals proxy configuration)
+3. **Test 2.1 & 2.2** - Certificate listing (shows available client certificates)
+4. **Test 3.3** - Internet Options Proxy (shows IE proxy which affects many Windows apps)
+5. **Test 3.4** - localhost:8005 check (confirms if WSUS/MSDTC proxy is active)
+6. **Test 10.1** - Full Download Test (simulates exactly what the app does)
+
+### What Tests Can't Run Without Admin
+
+These tests will show limited info without admin:
+- MSDTC configuration details (Test 7.1)
+- Security event log (Test 8.1)
+- Some network adapter details (Test 4.1)
+- NetworkService certificate permissions (original Test 2.3)
+
+However, the alternative commands provided will still give us useful information!
 
 This will help identify the exact layer where the connection is failing.
