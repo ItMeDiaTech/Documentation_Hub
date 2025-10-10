@@ -48,9 +48,9 @@ console.log('[Main] Initializing proxy and TLS configuration...');
 proxyConfig.logConfiguration();
 proxyConfig.configureApp();
 
-// Configure session proxy after app is ready
+// Configure session proxy and network debugging after app is ready
 app.whenReady().then(async () => {
-  console.log('[Main] Configuring session-level proxy...');
+  console.log('[Main] Configuring session-level proxy and network monitoring...');
   try {
     await proxyConfig.configureSessionProxy();
 
@@ -58,9 +58,63 @@ app.whenReady().then(async () => {
     const cleanUA = proxyConfig.getCleanUserAgent();
     session.defaultSession.setUserAgent(cleanUA);
 
-    console.log('[Main] Session proxy configured successfully');
+    // Set up comprehensive network request monitoring
+    session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+      const requestInfo = {
+        timestamp: new Date().toISOString(),
+        url: details.url,
+        method: details.method,
+        resourceType: details.resourceType,
+        referrer: details.referrer
+      };
+
+      // Log network requests (skip data URLs and devtools)
+      if (!details.url.startsWith('data:') && !details.url.includes('devtools://')) {
+        console.log('[Network Request]', requestInfo);
+
+        // Send to renderer for debug console
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('debug-network-request', requestInfo);
+        }
+      }
+
+      callback({});
+    });
+
+    // Monitor response headers for debugging
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      if (details.url.includes('github.com') || details.url.includes('githubusercontent.com')) {
+        console.log('[Network Response]', {
+          url: details.url,
+          statusCode: details.statusCode,
+          statusLine: details.statusLine,
+          headers: details.responseHeaders
+        });
+      }
+      callback({});
+    });
+
+    // Monitor network errors
+    session.defaultSession.webRequest.onErrorOccurred((details) => {
+      const errorInfo = {
+        timestamp: new Date().toISOString(),
+        url: details.url,
+        error: details.error,
+        method: details.method,
+        resourceType: details.resourceType
+      };
+
+      console.error('[Network Error]', errorInfo);
+
+      // Send to renderer for debug console
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('debug-network-error', errorInfo);
+      }
+    });
+
+    console.log('[Main] Session proxy and network monitoring configured successfully');
   } catch (error) {
-    console.error('[Main] Failed to configure session proxy:', error);
+    console.error('[Main] Failed to configure session:', error);
   }
 });
 
@@ -171,18 +225,41 @@ function createWindow() {
   });
 }
 
-// Handle certificate errors globally
+// Enhanced network debugging - log all network events
+if (!isDev) {
+  app.commandLine.appendSwitch('enable-logging', 'stderr');
+  app.commandLine.appendSwitch('v', '1');
+  app.commandLine.appendSwitch('vmodule', 'network_delegate=1');
+}
+
+// Handle certificate errors globally with comprehensive logging
 app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-  // Log the certificate error for debugging
-  console.log('[Certificate Error]', {
+  // Enhanced certificate error logging for debugging
+  const certError = {
+    timestamp: new Date().toISOString(),
     url,
     error,
     certificate: {
       issuerName: certificate.issuerName,
       subjectName: certificate.subjectName,
-      serialNumber: certificate.serialNumber
+      serialNumber: certificate.serialNumber,
+      validStart: certificate.validStart,
+      validExpiry: certificate.validExpiry,
+      fingerprint: certificate.fingerprint
+    },
+    network: {
+      proxy: proxyConfig.getProxyUrl(),
+      zscaler: zscalerConfig.isDetected(),
+      mutualTLS: 'LIKELY' // Based on user's environment
     }
-  });
+  };
+
+  console.log('[Certificate Error - DETAILED]', JSON.stringify(certError, null, 2));
+
+  // Send to renderer for debug console if available
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('debug-cert-error', certError);
+  }
 
   // Prevent the default behavior (which is to reject the certificate)
   event.preventDefault();
@@ -775,6 +852,19 @@ class AutoUpdaterHandler {
     ipcMain.handle('reset-update-fallback', () => {
       this.customUpdater.resetFallbackMode();
       return { success: true };
+    });
+
+    // Open download in browser (manual fallback)
+    ipcMain.handle('open-update-in-browser', async () => {
+      try {
+        await this.customUpdater.openDownloadInBrowser();
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          message: error instanceof Error ? error.message : 'Failed to open download page',
+        };
+      }
     });
   }
 

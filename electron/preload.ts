@@ -128,6 +128,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-status', subscription);
     return () => ipcRenderer.removeListener('update-status', subscription);
   },
+
+  // Manual download
+  openUpdateInBrowser: () => ipcRenderer.invoke('open-update-in-browser'),
+
+  // Debug events
+  onDebugNetworkRequest: (callback: (data: any) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('debug-network-request', subscription);
+    return () => ipcRenderer.removeListener('debug-network-request', subscription);
+  },
+  onDebugCertError: (callback: (data: any) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('debug-cert-error', subscription);
+    return () => ipcRenderer.removeListener('debug-cert-error', subscription);
+  },
+  onDebugNetworkError: (callback: (data: any) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('debug-network-error', subscription);
+    return () => ipcRenderer.removeListener('debug-network-error', subscription);
+  },
+  onDebugTLSError: (callback: (data: any) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('debug-tls-error', subscription);
+    return () => ipcRenderer.removeListener('debug-tls-error', subscription);
+  },
+  onUpdateManualDownload: (callback: (data: { message: string; downloadUrl: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('update-manual-download', subscription);
+    return () => ipcRenderer.removeListener('update-manual-download', subscription);
+  },
 });
 
 export type ElectronAPI = {
@@ -171,6 +201,12 @@ export type ElectronAPI = {
   onUpdateFallbackMode?: (callback: (data: { message: string }) => void) => () => void;
   onUpdateExtracting?: (callback: (data: { message: string }) => void) => () => void;
   onUpdateStatus?: (callback: (data: { message: string }) => void) => () => void;
+  openUpdateInBrowser: () => Promise<{ success: boolean; message?: string }>;
+  onDebugNetworkRequest?: (callback: (data: any) => void) => () => void;
+  onDebugCertError?: (callback: (data: any) => void) => () => void;
+  onDebugNetworkError?: (callback: (data: any) => void) => () => void;
+  onDebugTLSError?: (callback: (data: any) => void) => () => void;
+  onUpdateManualDownload?: (callback: (data: { message: string; downloadUrl: string }) => void) => () => void;
 };
 
 declare global {
