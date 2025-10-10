@@ -9,6 +9,7 @@ import { Header } from '@/components/layout/Header';
 import { CommandPalette } from '@/components/navigation/CommandPalette';
 import { BugReportButton } from '@/components/common/BugReportButton';
 import { UpdateNotification } from '@/components/common/UpdateNotification';
+import { DebugConsole } from '@/components/common/DebugConsole';
 import { Dashboard } from '@/pages/Dashboard';
 import { Settings } from '@/pages/Settings';
 import { CurrentSession } from '@/pages/CurrentSession';
@@ -54,6 +55,8 @@ function Layout() {
       <BugReportButton />
 
       <UpdateNotification />
+
+      <DebugConsole />
     </div>
   );
 }

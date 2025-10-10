@@ -332,27 +332,54 @@ export class CustomUpdater {
   }
 
   /**
-   * PowerShell download fallback for Windows (works better with Zscaler)
+   * PowerShell download fallback for Windows (works with mutual TLS/EAP-TLS)
    */
   private async downloadWithPowerShell(url: string, destPath: string): Promise<void> {
     if (process.platform !== 'win32') {
       throw new Error('PowerShell download only available on Windows');
     }
 
-    console.log('[CustomUpdater] Attempting download with PowerShell (Zscaler-friendly)...');
+    console.log('[CustomUpdater] Attempting download with PowerShell (Mutual TLS/Enterprise network compatible)...');
 
     const psCommand = `
+      # Configure for enterprise networks with mutual TLS
       [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-      [Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+      [Net.ServicePointManager]::Expect100Continue = $false
+      [Net.ServicePointManager]::DefaultConnectionLimit = 10
+
+      # Use system proxy and credentials (important for MSDTC/EAP-TLS)
+      [System.Net.WebRequest]::DefaultWebProxy = [System.Net.WebRequest]::GetSystemWebProxy()
+      [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials
+
+      # Allow certificate validation to use system store
+      [Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+
       $ProgressPreference = 'SilentlyContinue'
+      $ErrorActionPreference = 'Stop'
 
       try {
         $webclient = New-Object System.Net.WebClient
-        $webclient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
+        # Use default credentials for mutual authentication
+        $webclient.UseDefaultCredentials = $true
+
+        # Set proxy with system credentials
+        $webclient.Proxy = [System.Net.WebRequest]::GetSystemWebProxy()
+        $webclient.Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials
+
+        # Headers for better compatibility
+        $webclient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 DocumentationHub/${app.getVersion()}")
+        $webclient.Headers.Add("Accept", "application/octet-stream, application/zip, */*")
+
+        Write-Host "INFO: Starting download from $('${url}'.Substring(0, [Math]::Min(50, '${url}'.Length)))..."
+        Write-Host "INFO: Using system proxy: $($webclient.Proxy.GetProxy('${url}'))"
+
         $webclient.DownloadFile('${url}', '${destPath.replace(/\\/g, '\\\\')}')
         Write-Host "SUCCESS"
       } catch {
-        Write-Host "ERROR: $_"
+        Write-Host "ERROR: $($_.Exception.Message)"
+        Write-Host "DETAIL: $($_.Exception.InnerException)"
+        Write-Host "TYPE: $($_.Exception.GetType().FullName)"
         exit 1
       }
     `.replace(/\n/g, ' ');
@@ -414,14 +441,28 @@ export class CustomUpdater {
     const maxAttempts = 5;
     const retryDelays = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
 
-    // If Zscaler is detected and we've failed once, try PowerShell first
+    // On Windows, try PowerShell FIRST for better certificate handling
+    // This works better with mutual TLS, EAP-TLS, and MSDTC requirements
+    if (process.platform === 'win32' && attempt === 1) {
+      console.log('[CustomUpdater] Windows detected - trying PowerShell download with system certificates...');
+      try {
+        await this.downloadWithPowerShell(url, destPath);
+        console.log('[CustomUpdater] PowerShell download successful!');
+        return; // Success!
+      } catch (error) {
+        console.log('[CustomUpdater] PowerShell download failed:', error);
+        console.log('[CustomUpdater] Falling back to net.request method...');
+      }
+    }
+
+    // If Zscaler is detected and we've failed once, try PowerShell again
     if (zscalerConfig.isDetected() && attempt > 1 && process.platform === 'win32') {
-      console.log('[CustomUpdater] Zscaler detected, trying PowerShell download first...');
+      console.log('[CustomUpdater] Zscaler detected on retry, trying PowerShell download again...');
       try {
         await this.downloadWithPowerShell(url, destPath);
         return; // Success!
       } catch (error) {
-        console.log('[CustomUpdater] PowerShell download failed, falling back to net.request');
+        console.log('[CustomUpdater] PowerShell download failed on retry, continuing with net.request');
       }
     }
 
@@ -766,6 +807,29 @@ export class CustomUpdater {
     }
 
     return false;
+  }
+
+  /**
+   * Open download page in browser as last resort
+   */
+  public async openDownloadInBrowser(): Promise<void> {
+    if (!this.updateInfo) {
+      const githubReleasesUrl = 'https://github.com/ItMeDiaTech/Documentation_Hub/releases/latest';
+      console.log('[CustomUpdater] Opening GitHub releases page in browser');
+      await shell.openExternal(githubReleasesUrl);
+      return;
+    }
+
+    const version = this.updateInfo.version;
+    const downloadUrl = `https://github.com/ItMeDiaTech/Documentation_Hub/releases/download/v${version}/Documentation-Hub-Setup-${version}.exe`;
+
+    console.log('[CustomUpdater] Opening direct download link in browser:', downloadUrl);
+    this.sendToWindow('update-manual-download', {
+      message: 'Opening download in your browser. Please download and install manually.',
+      downloadUrl: downloadUrl
+    });
+
+    await shell.openExternal(downloadUrl);
   }
 
   /**

@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Minus, Square, X } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [platform, setPlatform] = useState<NodeJS.Platform>('win32');
+  const [clickCount, setClickCount] = useState(0);
+  const [showDebugToast, setShowDebugToast] = useState(false);
+  const resetTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
     window.electronAPI.getPlatform().then(setPlatform);
@@ -23,15 +27,63 @@ export function TitleBar() {
   const handleMaximize = () => window.electronAPI.maximizeWindow();
   const handleClose = () => window.electronAPI.closeWindow();
 
+  const handleLogoClick = () => {
+    // Clear existing timeout
+    if (resetTimeoutRef.current) {
+      clearTimeout(resetTimeoutRef.current);
+    }
+
+    // Increment click count
+    const newCount = clickCount + 1;
+    setClickCount(newCount);
+
+    // Check if we've reached 5 clicks
+    if (newCount === 5) {
+      // Open dev tools
+      window.electronAPI.openDevTools();
+
+      // Show toast notification
+      setShowDebugToast(true);
+      setTimeout(() => setShowDebugToast(false), 3000);
+
+      // Reset click count
+      setClickCount(0);
+    } else {
+      // Reset count after 2 seconds of inactivity
+      resetTimeoutRef.current = setTimeout(() => {
+        setClickCount(0);
+      }, 2000);
+    }
+  };
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const isWindows = platform === 'win32';
   const isMac = platform === 'darwin';
 
   return (
-    <div className="h-8 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-between drag-region">
-      <div className="flex items-center gap-2 px-3">
-        <div className="w-4 h-4 rounded bg-primary/20" />
-        <span className="text-xs font-medium text-muted-foreground select-none">Documentation Hub</span>
-      </div>
+    <>
+      <div className="h-8 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-between drag-region relative">
+        <button
+          onClick={handleLogoClick}
+          className="flex items-center gap-2 px-3 no-drag hover:bg-muted/50 transition-colors"
+          title={`Click ${5 - clickCount} more time${5 - clickCount === 1 ? '' : 's'} to open dev tools`}
+        >
+          <div className="w-4 h-4 rounded bg-primary/20" />
+          <span className="text-xs font-medium text-muted-foreground select-none">
+            Documentation Hub
+            {clickCount > 0 && clickCount < 5 && (
+              <span className="ml-1 text-[10px] opacity-50">({clickCount}/5)</span>
+            )}
+          </span>
+        </button>
 
       {isWindows && (
         <div className="flex no-drag">
@@ -88,5 +140,22 @@ export function TitleBar() {
         </div>
       )}
     </div>
+
+    {/* Debug Mode Toast */}
+    <AnimatePresence>
+      {showDebugToast && (
+        <motion.div
+          initial={{ opacity: 0, y: -50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -50 }}
+          className="fixed top-12 left-1/2 transform -translate-x-1/2 z-[9999]"
+        >
+          <div className="bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+            <span className="text-sm font-medium">🔧 Debug Mode Activated</span>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </>
   );
 }
