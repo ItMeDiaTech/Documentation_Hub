@@ -3,6 +3,7 @@
 Run these tests in order and copy the output. This will help identify the exact cause of your TLS/network issues.
 
 ## Prerequisites
+
 - Run PowerShell as regular user (no admin required)
 - Have your Documentation Hub application closed
 - Copy each command exactly as shown
@@ -14,6 +15,7 @@ Run these tests in order and copy the output. This will help identify the exact 
 ## 1. PowerShell Network Tests
 
 ### Test 1.1: Basic PowerShell Download from GitHub
+
 ```powershell
 # Test if PowerShell can download from GitHub at all
 $ProgressPreference = 'SilentlyContinue'
@@ -29,6 +31,7 @@ try {
 ```
 
 ### Test 1.2: PowerShell with System Proxy
+
 ```powershell
 # Test with system proxy explicitly
 try {
@@ -49,6 +52,7 @@ try {
 ```
 
 ### Test 1.3: PowerShell Certificate Callback Test
+
 ```powershell
 # Test with certificate validation callback
 [Net.ServicePointManager]::ServerCertificateValidationCallback = {
@@ -75,6 +79,7 @@ try {
 ## 2. Certificate Store Diagnostics
 
 ### Test 2.1: List Client Certificates
+
 ```powershell
 # Show all client certificates that could be used for mutual TLS
 Get-ChildItem Cert:\CurrentUser\My | Format-Table Subject, Issuer, NotAfter -AutoSize
@@ -82,6 +87,7 @@ Get-ChildItem Cert:\LocalMachine\My | Format-Table Subject, Issuer, NotAfter -Au
 ```
 
 ### Test 2.2: Check for EAP-TLS Certificates
+
 ```powershell
 # Look for EAP-TLS related certificates
 Get-ChildItem Cert:\CurrentUser\My | Where-Object {
@@ -90,6 +96,7 @@ Get-ChildItem Cert:\CurrentUser\My | Where-Object {
 ```
 
 ### Test 2.3: Machine Certificate Check (No Admin)
+
 ```powershell
 # Check machine certificates (readable without admin)
 try {
@@ -115,12 +122,14 @@ $userCerts | Select-Object Subject, Issuer, NotAfter | Format-Table -AutoSize
 ## 3. Proxy Configuration Tests
 
 ### Test 3.1: Check System Proxy Settings
+
 ```powershell
 # Get Windows proxy configuration
 netsh winhttp show proxy
 ```
 
 ### Test 3.2: Check Environment Variables
+
 ```powershell
 # Show proxy-related environment variables
 Get-ChildItem env: | Where-Object {$_.Name -like "*PROXY*" -or $_.Name -like "*proxy*"} | Format-Table Name, Value -AutoSize
@@ -128,12 +137,14 @@ Get-ChildItem env: | Where-Object {$_.Name -like "*CERT*"} | Format-Table Name, 
 ```
 
 ### Test 3.3: Check Internet Options Proxy
+
 ```powershell
 # Check Internet Explorer proxy settings (affects many Windows apps)
 Get-ItemProperty -Path "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings" | Select-Object ProxyEnable, ProxyServer, ProxyOverride, AutoConfigURL
 ```
 
 ### Test 3.4: Test localhost:8005 Connection
+
 ```powershell
 # Check if localhost:8005 is listening
 Test-NetConnection -ComputerName localhost -Port 8005
@@ -144,6 +155,7 @@ Test-NetConnection -ComputerName localhost -Port 8005
 ## 4. Network Configuration
 
 ### Test 4.1: Show Network Adapters with 802.1X
+
 ```powershell
 # Show network adapter authentication (may work without admin)
 try {
@@ -163,6 +175,7 @@ Get-NetAdapter | Select-Object Name, Status, MediaType, LinkSpeed | Format-Table
 ```
 
 ### Test 4.2: Check Active Connections
+
 ```powershell
 # Show current connections and listening ports
 netstat -an | findstr ":8005"
@@ -171,6 +184,7 @@ netstat -an | findstr "ESTABLISHED"
 ```
 
 ### Test 4.3: DNS Resolution Test
+
 ```powershell
 # Test DNS resolution for GitHub
 Resolve-DnsName github.com
@@ -183,18 +197,21 @@ Resolve-DnsName objects.githubusercontent.com
 ## 5. TLS/SSL Testing
 
 ### Test 5.1: OpenSSL TLS Test (if available)
+
 ```bash
 # If you have OpenSSL or Git Bash:
 openssl s_client -connect github.com:443 -tls1_2
 ```
 
 ### Test 5.2: Test TLS with curl (if available)
+
 ```bash
 # In Git Bash or if curl is installed:
 curl -v https://api.github.com/repos/ItMeDiaTech/Documentation_Hub/releases/latest 2>&1 | head -50
 ```
 
 ### Test 5.3: PowerShell TLS Cipher Test
+
 ```powershell
 # Show supported TLS protocols
 [Net.ServicePointManager]::SecurityProtocol
@@ -206,6 +223,7 @@ curl -v https://api.github.com/repos/ItMeDiaTech/Documentation_Hub/releases/late
 ## 6. GitHub-Specific Tests
 
 ### Test 6.1: Test Different GitHub URLs
+
 ```powershell
 $urls = @(
     "https://github.com",
@@ -225,6 +243,7 @@ foreach ($url in $urls) {
 ```
 
 ### Test 6.2: GitHub API with Token (Optional)
+
 ```powershell
 # If you have a GitHub token, test authenticated request
 $token = "ghp_YOUR_TOKEN_HERE"  # Replace with your token if available
@@ -245,6 +264,7 @@ try {
 ## 7. MSDTC and Network Service Tests
 
 ### Test 7.1: Check MSDTC Configuration (Non-Admin)
+
 ```powershell
 # Try to check MSDTC settings (may require admin)
 try {
@@ -270,6 +290,7 @@ Get-Service MSDTC | Select-Object Name, Status, StartType
 ```
 
 ### Test 7.2: Check Windows Services Using Mutual Auth
+
 ```powershell
 # List services running as NetworkService
 Get-WmiObject Win32_Service | Where-Object {$_.StartName -eq "NT AUTHORITY\NetworkService"} | Select-Object Name, State, StartMode | Format-Table -AutoSize
@@ -280,6 +301,7 @@ Get-WmiObject Win32_Service | Where-Object {$_.StartName -eq "NT AUTHORITY\Netwo
 ## 8. Event Log Analysis
 
 ### Test 8.1: Recent Security Events (Non-Admin)
+
 ```powershell
 # Try to check security events (often requires admin)
 try {
@@ -291,6 +313,7 @@ try {
 ```
 
 ### Test 8.2: System and Application Events
+
 ```powershell
 # Check system log for network errors (sometimes accessible)
 try {
@@ -313,31 +336,43 @@ Get-EventLog -LogName Application -Newest 50 |
 ## 9. Node.js/Electron Tests
 
 ### Test 9.1: Node.js HTTPS Test
+
 Save this as `test-node.js` and run with `node test-node.js`:
+
 ```javascript
 const https = require('https');
 
 console.log('Testing Node.js HTTPS to GitHub...');
 console.log('NODE_TLS_REJECT_UNAUTHORIZED:', process.env.NODE_TLS_REJECT_UNAUTHORIZED);
 
-https.get('https://api.github.com/repos/ItMeDiaTech/Documentation_Hub/releases/latest', {
-  headers: { 'User-Agent': 'Node.js Test' }
-}, (res) => {
-  console.log('SUCCESS: Status Code:', res.statusCode);
-  console.log('Headers:', res.headers);
-}).on('error', (err) => {
-  console.error('FAILED:', err.message);
-  console.error('Code:', err.code);
-  console.error('Stack:', err.stack);
-});
+https
+  .get(
+    'https://api.github.com/repos/ItMeDiaTech/Documentation_Hub/releases/latest',
+    {
+      headers: { 'User-Agent': 'Node.js Test' },
+    },
+    (res) => {
+      console.log('SUCCESS: Status Code:', res.statusCode);
+      console.log('Headers:', res.headers);
+    }
+  )
+  .on('error', (err) => {
+    console.error('FAILED:', err.message);
+    console.error('Code:', err.code);
+    console.error('Stack:', err.stack);
+  });
 ```
 
 ### Test 9.2: Check Node.js Certificate Store
+
 ```javascript
 // Save as test-certs.js and run
 const tls = require('tls');
 console.log('Node.js TLS Ciphers:', tls.getCiphers().length, 'available');
-console.log('Default CA Store:', tls.rootCertificates ? tls.rootCertificates.length : 'Not accessible');
+console.log(
+  'Default CA Store:',
+  tls.rootCertificates ? tls.rootCertificates.length : 'Not accessible'
+);
 ```
 
 ---
@@ -345,6 +380,7 @@ console.log('Default CA Store:', tls.rootCertificates ? tls.rootCertificates.len
 ## 10. Comprehensive Connection Test
 
 ### Test 10.1: Full PowerShell Download Test
+
 ```powershell
 # Complete test mimicking what the updater does
 $testUrl = "https://github.com/ItMeDiaTech/Documentation_Hub/releases/download/v1.0.37/latest.yml"
@@ -397,6 +433,7 @@ try {
 ## Additional Non-Admin Network Tests
 
 ### Test 11.1: Check Windows Defender Firewall Status
+
 ```powershell
 # Check if Windows Firewall might be blocking
 Get-NetFirewallProfile | Select-Object Name, Enabled | Format-Table -AutoSize
@@ -408,6 +445,7 @@ Get-NetFirewallRule -ErrorAction SilentlyContinue |
 ```
 
 ### Test 11.2: User Environment Check
+
 ```powershell
 # Get all environment variables that might affect networking
 Write-Host "User Environment Variables:"
@@ -420,6 +458,7 @@ Get-ChildItem env: | Where-Object {
 ```
 
 ### Test 11.3: Check Group Policy Network Settings
+
 ```powershell
 # Try to check group policy settings (some readable without admin)
 try {
@@ -444,7 +483,8 @@ try {
 
 ## What to Look For
 
-### 🔴 Red Flags:
+### 🔴 Red Flags
+
 - "The underlying connection was closed"
 - "Could not establish trust relationship"
 - "Unable to connect to the remote server"
@@ -452,7 +492,8 @@ try {
 - Proxy shows localhost:8005 or similar
 - MSDTC shows "Mutual Authentication Required"
 
-### 🟢 Good Signs:
+### 🟢 Good Signs
+
 - PowerShell can download from GitHub
 - Certificates show "DigiCert" or "GitHub" as issuer
 - No proxy or direct connection to GitHub
@@ -461,6 +502,7 @@ try {
 ## Provide Results
 
 After running these tests, provide:
+
 1. The test number and name
 2. Whether it succeeded or failed
 3. Any error messages
@@ -480,6 +522,7 @@ These are the MOST important tests for diagnosing your issue:
 ### What Tests Can't Run Without Admin
 
 These tests will show limited info without admin:
+
 - MSDTC configuration details (Test 7.1)
 - Security event log (Test 8.1)
 - Some network adapter details (Test 4.1)
