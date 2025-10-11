@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "description": "A modern document processing and session management desktop application",
   "main": "dist/electron/main.js",
   "scripts": {
@@ -25,6 +25,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.14",
     "@types/adm-zip": "^0.5.7",
     "@types/node": "24.5.2",
     "@types/react": "19.1.14",
@@ -92,13 +93,15 @@
       "**/*.node"
     ],
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
       "node_modules/**/*",
       "package.json"
     ],
+    "icon": "build/icon.png",
     "win": {
       "target": [
         "nsis"
@@ -106,6 +109,7 @@
       "publish": [
         "github"
       ],
+      "icon": "build/icon.ico",
       "artifactName": "Documentation-Hub-Setup-${version}.${ext}"
     },
     "nsis": {
@@ -125,6 +129,7 @@
       "publish": [
         "github"
       ],
+      "icon": "build/icon.png",
       "artifactName": "Documentation-Hub-${version}.${ext}"
     },
     "dmg": {
@@ -150,6 +155,7 @@
       "publish": [
         "github"
       ],
+      "icon": "build",
       "artifactName": "Documentation-Hub-${version}.${ext}"
     },
     "publish": {
