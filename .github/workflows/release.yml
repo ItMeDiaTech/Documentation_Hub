@@ -14,7 +14,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [windows-latest]  # Temporarily disabled macos-latest and ubuntu-latest due to icon issues
+        os: [windows-latest, macos-latest, ubuntu-latest]
 
     steps:
       - name: Checkout code
@@ -34,6 +34,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Generate application icons
+        run: node build/create-icon.js
 
       - name: Run TypeScript type check
         run: npm run typecheck

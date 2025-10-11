@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, shell, Menu, dialog, session } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Menu, dialog, session, net } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import * as path from 'path';
 import { join } from 'path';
 import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';
@@ -72,7 +73,7 @@ async function performPreflightCertificateCheck(): Promise<void> {
     const testResult = await new Promise<boolean>((resolve) => {
       let responseReceived = false;
 
-      request.on('response', (response) => {
+      request.on('response', (response: Electron.IncomingMessage) => {
         clearTimeout(timeout);
         responseReceived = true;
         const statusCode = response.statusCode;
@@ -86,7 +87,7 @@ async function performPreflightCertificateCheck(): Promise<void> {
         }
       });
 
-      request.on('error', async (error) => {
+      request.on('error', async (error: Error) => {
         clearTimeout(timeout);
         if (!responseReceived) {
           console.error('[Main] GitHub connection test FAILED:', error);
@@ -1033,7 +1034,7 @@ ipcMain.handle('test-github-connection', async () => {
         resolve({ success: false, error: 'Connection timeout' });
       }, 10000);
 
-      request.on('response', (response) => {
+      request.on('response', (response: Electron.IncomingMessage) => {
         clearTimeout(timeout);
         if (response.statusCode >= 200 && response.statusCode < 400) {
           resolve({ success: true });

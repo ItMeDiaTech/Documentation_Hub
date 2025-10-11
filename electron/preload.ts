@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron';
+import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils, shell } from 'electron';
 import type {
   HyperlinkProcessingOptions,
   HyperlinkProcessingResult,
@@ -132,6 +132,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Manual download
   openUpdateInBrowser: () => ipcRenderer.invoke('open-update-in-browser'),
 
+  // Certificate Management
+  checkZscalerStatus: () => ipcRenderer.invoke('check-zscaler-status'),
+  getCertificatePath: () => ipcRenderer.invoke('get-certificate-path'),
+  getInstalledCertificates: () => ipcRenderer.invoke('get-installed-certificates'),
+  importCertificate: () => ipcRenderer.invoke('import-certificate'),
+  autoDetectCertificates: () => ipcRenderer.invoke('auto-detect-certificates'),
+  removeCertificate: (certPath: string) => ipcRenderer.invoke('remove-certificate', certPath),
+  testGitHubConnection: () => ipcRenderer.invoke('test-github-connection'),
+  openExternal: (url: string) => shell.openExternal(url),
+
+  // Event system helpers
+  on: (channel: string, callback: (...args: any[]) => void) => {
+    const subscription = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);
+    ipcRenderer.on(channel, subscription);
+    return () => ipcRenderer.removeListener(channel, subscription);
+  },
+  removeListener: (channel: string, callback: (event: IpcRendererEvent, ...args: any[]) => void) => {
+    ipcRenderer.removeListener(channel, callback);
+  },
+
   // Debug events
   onDebugNetworkRequest: (callback: (data: any) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
@@ -207,6 +227,23 @@ export type ElectronAPI = {
   onDebugNetworkError?: (callback: (data: any) => void) => () => void;
   onDebugTLSError?: (callback: (data: any) => void) => () => void;
   onUpdateManualDownload?: (callback: (data: { message: string; downloadUrl: string }) => void) => () => void;
+  // Certificate Management
+  checkZscalerStatus: () => Promise<{ detected: boolean; certificatePath: string | null }>;
+  getCertificatePath: () => Promise<string | null>;
+  getInstalledCertificates: () => Promise<Array<{
+    path: string;
+    name: string;
+    isActive: boolean;
+    isZscaler?: boolean;
+  }>>;
+  importCertificate: () => Promise<{ success: boolean; error?: string; name?: string; path?: string }>;
+  autoDetectCertificates: () => Promise<{ success: boolean; error?: string; count?: number | string; path?: string }>;
+  removeCertificate: (certPath: string) => Promise<{ success: boolean; error?: string }>;
+  testGitHubConnection: () => Promise<{ success: boolean; error?: string }>;
+  openExternal: (url: string) => Promise<void>;
+  // Event system helpers
+  on: (channel: string, callback: (...args: any[]) => void) => () => void;
+  removeListener: (channel: string, callback: (event: IpcRendererEvent, ...args: any[]) => void) => void;
 };
 
 declare global {
