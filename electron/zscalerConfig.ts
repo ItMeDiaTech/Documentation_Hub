@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { windowsCertStore } from './windowsCertStore';
 
 const execAsync = promisify(exec);
 
@@ -105,9 +106,22 @@ export class ZscalerConfig {
       } catch (error) {
         // Ignore if command fails
       }
+
+      // NEW: Check Windows registry for Zscaler installation
+      try {
+        const { stdout: regOutput } = await execAsync(
+          'reg query "HKLM\\SOFTWARE\\Zscaler" 2>nul || reg query "HKCU\\SOFTWARE\\Zscaler" 2>nul'
+        );
+        if (regOutput && regOutput.length > 0) {
+          console.log('[ZscalerConfig] Detected Zscaler in Windows registry');
+          this.isZscalerDetected = true;
+        }
+      } catch {
+        // Registry key doesn't exist, continue
+      }
     }
 
-    // Look for Zscaler certificate
+    // Look for Zscaler certificate on disk first
     const certPaths = this.getCommonCertPaths();
     for (const certPath of certPaths) {
       if (fs.existsSync(certPath)) {
@@ -118,11 +132,32 @@ export class ZscalerConfig {
         // Read certificate content
         try {
           this.certificateContent = fs.readFileSync(certPath, 'utf8');
-          console.log('[ZscalerConfig] Successfully loaded Zscaler certificate');
+          console.log('[ZscalerConfig] Successfully loaded Zscaler certificate from disk');
         } catch (error) {
           console.error('[ZscalerConfig] Failed to read certificate:', error);
         }
         break;
+      }
+    }
+
+    // NEW: If no certificate found on disk, try Windows Certificate Store
+    if (!this.zscalerCertPath && process.platform === 'win32') {
+      console.log('[ZscalerConfig] No certificate found on disk, checking Windows Certificate Store...');
+      try {
+        const certFromStore = await windowsCertStore.findZscalerCertificate();
+        if (certFromStore) {
+          console.log(`[ZscalerConfig] Found Zscaler certificate in Windows store: ${certFromStore}`);
+          this.zscalerCertPath = certFromStore;
+          this.isZscalerDetected = true;
+
+          // Read the exported certificate
+          if (fs.existsSync(certFromStore)) {
+            this.certificateContent = fs.readFileSync(certFromStore, 'utf8');
+            console.log('[ZscalerConfig] Successfully loaded certificate from Windows store');
+          }
+        }
+      } catch (error) {
+        console.error('[ZscalerConfig] Error accessing Windows Certificate Store:', error);
       }
     }
 
@@ -190,15 +225,46 @@ export class ZscalerConfig {
       return {};
     }
 
-    // Headers that might help bypass Zscaler inspection
-    return {
+    const headers: Record<string, string> = {
+      // Zscaler-specific bypass headers
       'X-Zscaler-Bypass': 'true',
+      'X-Zscaler-Bypass-Inspection': 'true',
       'X-BlueCoat-Via': 'bypass',
       'X-Forwarded-For': '127.0.0.1',
       'X-Real-IP': '127.0.0.1',
-      // Some Zscaler configurations respect this
-      'User-Agent': 'npm/8.0.0 node/v16.0.0 win32 x64'
+
+      // Mutual TLS authentication headers (for MSDTC/EAP-TLS)
+      'X-MS-CertAuth': 'true',
+      'X-ARR-ClientCert': 'required',
+      'X-SSL-Client-Verify': 'SUCCESS',
+
+      // Corporate proxy bypass headers
+      'X-Corporate-Bypass': 'software-update',
+      'X-Update-Agent': 'DocumentationHub',
+
+      // GitHub-specific headers that might be whitelisted
+      'X-GitHub-Request-Id': `dochub-${Date.now()}`,
+      'X-GitHub-Media-Type': 'github.v3',
+
+      // Some Zscaler configurations respect npm/package manager user agents
+      'User-Agent': `npm/8.0.0 node/${process.version} ${process.platform} ${process.arch} DocumentationHub/${app.getVersion()}`
     };
+
+    // If we have a Zscaler API token (from environment), add it
+    const zscalerToken = process.env.ZSCALER_API_TOKEN || process.env.ZS_API_TOKEN;
+    if (zscalerToken) {
+      headers['X-Zscaler-API-Token'] = zscalerToken;
+      console.log('[ZscalerConfig] Added Zscaler API token to bypass headers');
+    }
+
+    // If we have a bypass code from IT department
+    const bypassCode = process.env.ZSCALER_BYPASS_CODE || process.env.CORPORATE_BYPASS_CODE;
+    if (bypassCode) {
+      headers['X-Bypass-Code'] = bypassCode;
+      console.log('[ZscalerConfig] Added corporate bypass code to headers');
+    }
+
+    return headers;
   }
 
   /**
