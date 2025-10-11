@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "1.0.39",
+  "version": "1.0.40",
   "description": "A modern document processing and session management desktop application",
   "main": "dist/electron/main.js",
   "scripts": {
