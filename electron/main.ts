@@ -48,6 +48,117 @@ console.log('[Main] Initializing proxy and TLS configuration...');
 proxyConfig.logConfiguration();
 proxyConfig.configureApp();
 
+// ============================================================================
+// Pre-flight Certificate Check for GitHub Connectivity
+// ============================================================================
+async function performPreflightCertificateCheck(): Promise<void> {
+  console.log('[Main] Performing pre-flight certificate check for GitHub...');
+
+  try {
+    // Test connection to GitHub API
+    const testUrl = 'https://api.github.com/';
+    const request = net.request({
+      method: 'GET',
+      url: testUrl,
+      session: session.defaultSession,
+    });
+
+    // Set timeout for the test
+    const timeout = setTimeout(() => {
+      request.abort();
+    }, 10000); // 10 second timeout
+
+    // Promise to handle the response
+    const testResult = await new Promise<boolean>((resolve) => {
+      let responseReceived = false;
+
+      request.on('response', (response) => {
+        clearTimeout(timeout);
+        responseReceived = true;
+        const statusCode = response.statusCode;
+
+        if (statusCode >= 200 && statusCode < 400) {
+          console.log('✅ [Main] GitHub connection test PASSED');
+          resolve(true);
+        } else {
+          console.log(`⚠️ [Main] GitHub returned status ${statusCode}`);
+          resolve(false);
+        }
+      });
+
+      request.on('error', async (error) => {
+        clearTimeout(timeout);
+        if (!responseReceived) {
+          console.error('[Main] GitHub connection test FAILED:', error);
+
+          // Check if it's a certificate error
+          const errorMessage = error.message?.toLowerCase() || '';
+          if (errorMessage.includes('certificate') ||
+              errorMessage.includes('ssl') ||
+              errorMessage.includes('tls') ||
+              errorMessage.includes('unable to verify') ||
+              errorMessage.includes('self signed')) {
+
+            console.log('[Main] Certificate error detected, attempting automatic fix...');
+
+            // If Zscaler is detected, try to find and configure its certificate
+            if (zscalerConfig.isDetected() && process.platform === 'win32') {
+              try {
+                const { windowsCertStore } = await import('./windowsCertStore');
+                const certPath = await windowsCertStore.findZscalerCertificate();
+
+                if (certPath) {
+                  console.log('[Main] Found Zscaler certificate, configuring...');
+                  process.env.NODE_EXTRA_CA_CERTS = certPath;
+                  console.log('[Main] Set NODE_EXTRA_CA_CERTS to:', certPath);
+
+                  // Show user dialog about certificate configuration
+                  if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('certificate-configured', {
+                      message: 'Zscaler certificate automatically configured. Updates should work now.',
+                      certPath: certPath
+                    });
+                  }
+                } else {
+                  // Show dialog to user about manual certificate configuration
+                  if (mainWindow && !mainWindow.isDestroyed()) {
+                    const choice = await dialog.showMessageBox(mainWindow, {
+                      type: 'warning',
+                      buttons: ['Open Certificate Guide', 'Continue Anyway'],
+                      defaultId: 0,
+                      title: 'Certificate Configuration Required',
+                      message: 'Zscaler is blocking secure connections to GitHub.',
+                      detail: 'To enable automatic updates:\n\n' +
+                              '1. Export Zscaler certificate from your browser\n' +
+                              '2. Save it as C:\\Zscaler\\ZscalerRootCertificate.pem\n' +
+                              '3. Restart the application\n\n' +
+                              'Or contact your IT department to bypass GitHub.com from SSL inspection.',
+                    });
+
+                    if (choice.response === 0) {
+                      // Open guide in browser
+                      shell.openExternal('https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Zscaler-Certificate-Setup');
+                    }
+                  }
+                }
+              } catch (certError) {
+                console.error('[Main] Failed to configure certificate:', certError);
+              }
+            }
+          }
+          resolve(false);
+        }
+      });
+
+      request.end();
+    });
+
+    return;
+  } catch (error) {
+    console.error('[Main] Pre-flight check error:', error);
+  }
+}
+
 // Configure session proxy and network debugging after app is ready
 app.whenReady().then(async () => {
   console.log('[Main] Configuring session-level proxy and network monitoring...');
@@ -173,7 +284,7 @@ if (!isDev) {
 // This affects all HTTPS requests made by the app
 process.env['NODE_NO_WARNINGS'] = '1'; // Suppress TLS warnings in production
 
-function createWindow() {
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -300,7 +411,15 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
   }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  await createWindow();
+
+  // Perform pre-flight certificate check after window is ready
+  setTimeout(async () => {
+    console.log('[Main] Running pre-flight certificate check...');
+    await performPreflightCertificateCheck();
+  }, 2000); // Wait 2 seconds for window to fully initialize
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -772,6 +891,165 @@ ipcMain.handle('save-export-data', async (...[, request]: [Electron.IpcMainInvok
     return { success: true };
   } catch (error) {
     console.error('Error saving export data:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+// ==============================================================================
+// Certificate Management IPC Handlers
+// ==============================================================================
+
+ipcMain.handle('check-zscaler-status', async () => {
+  return {
+    detected: zscalerConfig.isDetected(),
+    certificatePath: zscalerConfig.getCertPath()
+  };
+});
+
+ipcMain.handle('get-certificate-path', async () => {
+  return process.env.NODE_EXTRA_CA_CERTS || null;
+});
+
+ipcMain.handle('get-installed-certificates', async () => {
+  const certificates = [];
+
+  // Check for Zscaler certificate
+  if (zscalerConfig.getCertPath()) {
+    certificates.push({
+      path: zscalerConfig.getCertPath(),
+      name: 'Zscaler Root Certificate',
+      isActive: process.env.NODE_EXTRA_CA_CERTS === zscalerConfig.getCertPath(),
+      isZscaler: true
+    });
+  }
+
+  // Check for other configured certificates
+  if (process.env.NODE_EXTRA_CA_CERTS && process.env.NODE_EXTRA_CA_CERTS !== zscalerConfig.getCertPath()) {
+    certificates.push({
+      path: process.env.NODE_EXTRA_CA_CERTS,
+      name: path.basename(process.env.NODE_EXTRA_CA_CERTS),
+      isActive: true
+    });
+  }
+
+  return certificates;
+});
+
+ipcMain.handle('import-certificate', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Import Certificate',
+      filters: [
+        { name: 'Certificate Files', extensions: ['pem', 'crt', 'cer', 'ca'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const certPath = result.filePaths[0];
+
+      // Validate it's a certificate file
+      const content = await fsPromises.readFile(certPath, 'utf-8');
+      if (content.includes('BEGIN CERTIFICATE')) {
+        // Set as the NODE_EXTRA_CA_CERTS
+        process.env.NODE_EXTRA_CA_CERTS = certPath;
+
+        return {
+          success: true,
+          name: path.basename(certPath),
+          path: certPath
+        };
+      } else {
+        return {
+          success: false,
+          error: 'Invalid certificate file format'
+        };
+      }
+    }
+
+    return { success: false, error: 'No file selected' };
+  } catch (error) {
+    console.error('Error importing certificate:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('auto-detect-certificates', async () => {
+  if (process.platform !== 'win32') {
+    return { success: false, error: 'Auto-detect only available on Windows' };
+  }
+
+  try {
+    const { windowsCertStore } = await import('./windowsCertStore');
+    const certPath = await windowsCertStore.findZscalerCertificate();
+
+    if (certPath) {
+      process.env.NODE_EXTRA_CA_CERTS = certPath;
+      return { success: true, count: 1, path: certPath };
+    } else {
+      // Try to create a bundle of all corporate certificates
+      const bundlePath = await windowsCertStore.createCombinedBundle();
+      if (bundlePath) {
+        process.env.NODE_EXTRA_CA_CERTS = bundlePath;
+        return { success: true, count: 'multiple', path: bundlePath };
+      }
+    }
+
+    return { success: false, error: 'No certificates found' };
+  } catch (error) {
+    console.error('Error auto-detecting certificates:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('remove-certificate', async (...[, certPath]: [Electron.IpcMainInvokeEvent, string]) => {
+  try {
+    if (process.env.NODE_EXTRA_CA_CERTS === certPath) {
+      delete process.env.NODE_EXTRA_CA_CERTS;
+    }
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('test-github-connection', async () => {
+  try {
+    const testUrl = 'https://api.github.com/';
+    const request = net.request({
+      method: 'GET',
+      url: testUrl,
+      session: session.defaultSession,
+    });
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        request.abort();
+        resolve({ success: false, error: 'Connection timeout' });
+      }, 10000);
+
+      request.on('response', (response) => {
+        clearTimeout(timeout);
+        if (response.statusCode >= 200 && response.statusCode < 400) {
+          resolve({ success: true });
+        } else {
+          resolve({ success: false, error: `HTTP ${response.statusCode}` });
+        }
+      });
+
+      request.on('error', (error) => {
+        clearTimeout(timeout);
+        resolve({ success: false, error: error.message });
+      });
+
+      request.end();
+    });
+  } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
   }
