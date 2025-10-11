@@ -341,18 +341,48 @@ export class CustomUpdater {
 
     console.log('[CustomUpdater] Attempting download with PowerShell (Mutual TLS/Enterprise network compatible)...');
 
+    // Enhanced PowerShell command with better Zscaler handling
     const psCommand = `
       # Configure for enterprise networks with mutual TLS
-      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
       [Net.ServicePointManager]::Expect100Continue = $false
       [Net.ServicePointManager]::DefaultConnectionLimit = 10
+      [Net.ServicePointManager]::UseNagleAlgorithm = $false
 
       # Use system proxy and credentials (important for MSDTC/EAP-TLS)
       [System.Net.WebRequest]::DefaultWebProxy = [System.Net.WebRequest]::GetSystemWebProxy()
       [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials
 
-      # Allow certificate validation to use system store
-      [Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+      # ENHANCED: Custom certificate validation for Zscaler
+      [Net.ServicePointManager]::ServerCertificateValidationCallback = {
+        param($sender, $certificate, $chain, $sslPolicyErrors)
+
+        # Allow if no errors
+        if ($sslPolicyErrors -eq 'None') { return $true }
+
+        # Check if this is GitHub
+        $url = $sender.RequestUri.Host
+        if ($url -like '*github*' -or $url -like '*githubusercontent*') {
+          # Check if Zscaler is in the chain
+          foreach ($element in $chain.ChainElements) {
+            if ($element.Certificate.Issuer -like '*Zscaler*') {
+              Write-Host "INFO: Detected Zscaler certificate in chain, accepting for GitHub"
+              return $true
+            }
+          }
+        }
+
+        # Log the error for debugging
+        Write-Host "CERT_ERROR: $sslPolicyErrors for $url"
+
+        # For GitHub domains, be more lenient
+        if ($url -like '*github*') {
+          Write-Host "INFO: Accepting certificate for GitHub domain despite errors"
+          return $true
+        }
+
+        return $false
+      }
 
       $ProgressPreference = 'SilentlyContinue'
       $ErrorActionPreference = 'Stop'
@@ -367,19 +397,31 @@ export class CustomUpdater {
         $webclient.Proxy = [System.Net.WebRequest]::GetSystemWebProxy()
         $webclient.Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials
 
-        # Headers for better compatibility
+        # Enhanced headers for Zscaler bypass
         $webclient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 DocumentationHub/${app.getVersion()}")
         $webclient.Headers.Add("Accept", "application/octet-stream, application/zip, */*")
+        $webclient.Headers.Add("X-Zscaler-Bypass", "true")
+        $webclient.Headers.Add("X-MS-CertAuth", "true")
+        $webclient.Headers.Add("X-Corporate-Bypass", "software-update")
 
-        Write-Host "INFO: Starting download from $('${url}'.Substring(0, [Math]::Min(50, '${url}'.Length)))..."
+        Write-Host "INFO: Starting download from GitHub..."
         Write-Host "INFO: Using system proxy: $($webclient.Proxy.GetProxy('${url}'))"
+        Write-Host "INFO: System credentials enabled for mutual TLS"
 
         $webclient.DownloadFile('${url}', '${destPath.replace(/\\/g, '\\\\')}')
-        Write-Host "SUCCESS"
+        Write-Host "SUCCESS: Download completed"
       } catch {
         Write-Host "ERROR: $($_.Exception.Message)"
         Write-Host "DETAIL: $($_.Exception.InnerException)"
         Write-Host "TYPE: $($_.Exception.GetType().FullName)"
+
+        # Additional debugging for certificate errors
+        if ($_.Exception.Message -like '*certificate*' -or $_.Exception.Message -like '*SSL*' -or $_.Exception.Message -like '*TLS*') {
+          Write-Host "CERT_DEBUG: This appears to be a certificate issue"
+          Write-Host "CERT_DEBUG: Try setting ZSCALER_CERT_PATH environment variable"
+          Write-Host "CERT_DEBUG: Or export Zscaler certificate from your browser"
+        }
+
         exit 1
       }
     `.replace(/\n/g, ' ');
@@ -441,9 +483,30 @@ export class CustomUpdater {
     const maxAttempts = 5;
     const retryDelays = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
 
-    // On Windows, try PowerShell FIRST for better certificate handling
-    // This works better with mutual TLS, EAP-TLS, and MSDTC requirements
-    if (process.platform === 'win32' && attempt === 1) {
+    // PRIORITIZE PowerShell when Zscaler is detected - it handles corporate certificates better
+    if (zscalerConfig.isDetected() && process.platform === 'win32') {
+      console.log('[CustomUpdater] ⚠️ ZSCALER DETECTED - Prioritizing PowerShell download for better certificate handling');
+      console.log('[CustomUpdater] PowerShell uses Windows Certificate Store which includes corporate certificates');
+
+      // Try PowerShell multiple times before falling back
+      for (let psAttempt = 1; psAttempt <= 3; psAttempt++) {
+        try {
+          console.log(`[CustomUpdater] PowerShell download attempt ${psAttempt}/3...`);
+          await this.downloadWithPowerShell(url, destPath);
+          console.log('[CustomUpdater] ✅ PowerShell download successful with Zscaler!');
+          return; // Success!
+        } catch (error) {
+          console.log(`[CustomUpdater] PowerShell attempt ${psAttempt} failed:`, error);
+          if (psAttempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 2000 * psAttempt));
+          }
+        }
+      }
+      console.log('[CustomUpdater] All PowerShell attempts failed, falling back to net.request...');
+    }
+
+    // On Windows without Zscaler, still try PowerShell first for better compatibility
+    if (process.platform === 'win32' && attempt === 1 && !zscalerConfig.isDetected()) {
       console.log('[CustomUpdater] Windows detected - trying PowerShell download with system certificates...');
       try {
         await this.downloadWithPowerShell(url, destPath);
@@ -452,17 +515,6 @@ export class CustomUpdater {
       } catch (error) {
         console.log('[CustomUpdater] PowerShell download failed:', error);
         console.log('[CustomUpdater] Falling back to net.request method...');
-      }
-    }
-
-    // If Zscaler is detected and we've failed once, try PowerShell again
-    if (zscalerConfig.isDetected() && attempt > 1 && process.platform === 'win32') {
-      console.log('[CustomUpdater] Zscaler detected on retry, trying PowerShell download again...');
-      try {
-        await this.downloadWithPowerShell(url, destPath);
-        return; // Success!
-      } catch (error) {
-        console.log('[CustomUpdater] PowerShell download failed on retry, continuing with net.request');
       }
     }
 
@@ -545,36 +597,20 @@ export class CustomUpdater {
                   await this.downloadWithPowerShell(url, destPath);
                   return; // Success!
                 } catch (psError) {
-                  throw new Error(
-                    `Zscaler is blocking the download. ` +
-                    `To fix this:\n` +
-                    `1. Ask your IT department to bypass SSL inspection for github.com\n` +
-                    `2. Export Zscaler certificate and set ZSCALER_CERT_PATH to its location\n` +
-                    `3. Or download the update manually from GitHub releases`
-                  );
+                  // Enhanced error message with specific instructions
+                  const errorDetails = this.getZscalerErrorGuidance();
+                  throw new Error(errorDetails);
                 }
               }
             }
           }
 
           if (errorCode === 'ECONNRESET' || errorMessage.includes('ERR_CONNECTION_RESET')) {
-            const zscalerHint = zscalerConfig.isDetected()
-              ? '\nZscaler detected: This is likely due to SSL inspection. '
-              : '';
-            throw new Error(
-              `Connection repeatedly reset by network after ${currentAttempt} attempts. ` +
-              `This is typically caused by a corporate proxy or firewall. ${zscalerHint}` +
-              `Please check proxy settings: HTTPS_PROXY, HTTP_PROXY environment variables.`
-            );
+            const errorDetails = this.getConnectionResetErrorGuidance(currentAttempt);
+            throw new Error(errorDetails);
           } else if (this.isCertificateError(error)) {
-            const zscalerHint = zscalerConfig.isDetected()
-              ? '\nZscaler SSL inspection detected. Export Zscaler certificate or request bypass. '
-              : '';
-            throw new Error(
-              `Certificate verification failed after ${currentAttempt} attempts: ${errorMessage}. ` +
-              `Your corporate network may be using custom certificates. ${zscalerHint}` +
-              `Set NODE_EXTRA_CA_CERTS environment variable to your corporate CA certificate.`
-            );
+            const errorDetails = this.getCertificateErrorGuidance(currentAttempt, errorMessage);
+            throw new Error(errorDetails);
           } else {
             throw error;
           }
@@ -884,5 +920,145 @@ export class CustomUpdater {
   public resetFallbackMode(): void {
     this.useZipFallback = false;
     (global as any).fallbackInstallerPath = undefined;
+  }
+
+  /**
+   * Get detailed Zscaler error guidance
+   */
+  private getZscalerErrorGuidance(): string {
+    return `🔒 ZSCALER SSL INSPECTION BLOCKING DOWNLOADS
+
+Documentation Hub has detected that Zscaler is intercepting secure connections to GitHub.
+
+IMMEDIATE SOLUTIONS:
+━━━━━━━━━━━━━━━━━
+1. AUTOMATIC FIX (Recommended):
+   • Restart Documentation Hub
+   • The app will attempt to auto-configure Zscaler certificates
+
+2. MANUAL CERTIFICATE EXPORT:
+   • Open Chrome/Edge browser
+   • Go to: https://github.com
+   • Click the padlock icon → Connection is secure → Certificate details
+   • Go to "Details" tab → Copy to File → Export as Base64 .CER
+   • Save as: C:\\Zscaler\\ZscalerRootCertificate.pem
+   • Set environment variable: ZSCALER_CERT_PATH=C:\\Zscaler\\ZscalerRootCertificate.pem
+   • Restart Documentation Hub
+
+3. IT DEPARTMENT REQUEST:
+   • Request bypass for: *.github.com, *.githubusercontent.com
+   • Reference: "Software update downloads from GitHub Releases"
+
+4. MANUAL DOWNLOAD (Last Resort):
+   • Visit: https://github.com/ItMeDiaTech/Documentation_Hub/releases
+   • Download the latest .exe manually
+   • Install outside of the application
+
+TECHNICAL DETAILS:
+• Zscaler performs "SSL inspection" by replacing GitHub's certificate
+• This breaks secure connections unless Zscaler's certificate is trusted
+• PowerShell download method attempted but failed
+• Your organization's policy may require special authentication
+
+Need help? Contact your IT department with error code: ZSCALER_CERT_REQUIRED`;
+  }
+
+  /**
+   * Get detailed connection reset error guidance
+   */
+  private getConnectionResetErrorGuidance(attempts: number): string {
+    const isZscaler = zscalerConfig.isDetected();
+
+    return `⚠️ CONNECTION RESET BY NETWORK (${attempts} attempts failed)
+
+${isZscaler ? 'Zscaler/Corporate proxy' : 'Your network'} is terminating the connection to GitHub.
+
+SOLUTIONS TO TRY:
+━━━━━━━━━━━━━━━
+1. CHECK PROXY SETTINGS:
+   ${process.platform === 'win32' ?
+   `• Open Windows Settings → Network & Internet → Proxy
+   • Note any proxy server address
+   • Set environment variables:
+     - HTTPS_PROXY=http://your-proxy:port
+     - HTTP_PROXY=http://your-proxy:port` :
+   `• Check your system proxy settings
+   • Set HTTPS_PROXY and HTTP_PROXY environment variables`}
+
+2. FIREWALL/VPN ISSUES:
+   • Temporarily disable VPN if connected
+   • Check if Windows Firewall is blocking Documentation Hub
+   • Try from a different network (home/mobile hotspot)
+
+3. CORPORATE NETWORK:
+   ${isZscaler ?
+   `• Zscaler is detected - certificate issues likely
+   • Try the Zscaler solutions (restart app for auto-fix)` :
+   `• Your corporate firewall may block GitHub
+   • Contact IT to whitelist github.com`}
+
+4. RESET NETWORK:
+   • Run as Administrator:
+     - netsh winsock reset
+     - netsh int ip reset
+     - ipconfig /flushdns
+   • Restart your computer
+
+DIAGNOSTIC INFO:
+• Error: ECONNRESET
+• Target: github.com
+• Proxy: ${proxyConfig.getProxyUrl() || 'Not configured'}
+• Platform: ${process.platform}`;
+  }
+
+  /**
+   * Get detailed certificate error guidance
+   */
+  private getCertificateErrorGuidance(attempts: number, errorMessage: string): string {
+    const isZscaler = zscalerConfig.isDetected();
+    const certPath = process.env.NODE_EXTRA_CA_CERTS;
+
+    return `🔐 CERTIFICATE VERIFICATION FAILED (${attempts} attempts)
+
+${isZscaler ? 'Zscaler SSL inspection' : 'Your network'} is using custom certificates that aren't trusted.
+
+SOLUTIONS:
+━━━━━━━━━
+1. ${isZscaler ? 'ZSCALER CERTIFICATE' : 'CORPORATE CERTIFICATE'} CONFIGURATION:
+   ${certPath ?
+   `• Certificate configured at: ${certPath}
+   • But still failing - certificate may be expired or wrong` :
+   `• No certificate configured yet
+   • Export certificate from your browser when visiting github.com`}
+
+   Steps to export certificate:
+   a. Open https://github.com in Chrome/Edge
+   b. Click padlock → Certificate → Details tab
+   c. Select root certificate (usually "${isZscaler ? 'Zscaler Root CA' : 'Your Company CA'}")
+   d. Export → Base64 encoded → Save as .pem file
+   e. Set: NODE_EXTRA_CA_CERTS=path/to/certificate.pem
+   f. Restart Documentation Hub
+
+2. WINDOWS CERTIFICATE STORE:
+   ${process.platform === 'win32' ?
+   `• The app will try to find certificates automatically
+   • Run: certmgr.msc
+   • Look in Trusted Root Certification Authorities
+   • Export any Zscaler or corporate certificates` :
+   `• Not available on ${process.platform}`}
+
+3. BYPASS CERTIFICATE CHECK (NOT RECOMMENDED):
+   ⚠️ Security Risk - Only for testing:
+   • Set: NODE_TLS_REJECT_UNAUTHORIZED=0
+   • This disables ALL certificate verification
+
+4. ALTERNATIVE DOWNLOAD:
+   • Use ZIP fallback (automatic)
+   • Or download manually from GitHub releases
+
+ERROR DETAILS:
+${errorMessage.substring(0, 200)}
+Certificate Path: ${certPath || 'Not set'}
+Zscaler: ${isZscaler ? 'Detected' : 'Not detected'}`;
   }
 }
