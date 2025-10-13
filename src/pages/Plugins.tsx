@@ -241,7 +241,7 @@ export function Plugins() {
                 <Download className="w-6 h-6 text-green-500" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground mb-1">Installed</p>
+                <p className="text-sm text-foreground mb-1">Installed</p>
                 <p className="text-2xl font-bold">
                   {plugins.filter((p) => p.isInstalled).length}
                 </p>
@@ -257,7 +257,7 @@ export function Plugins() {
                 <Power className="w-6 h-6 text-blue-500" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground mb-1">Active</p>
+                <p className="text-sm text-foreground mb-1">Active</p>
                 <p className="text-2xl font-bold">
                   {plugins.filter((p) => p.isEnabled).length}
                 </p>
@@ -273,7 +273,7 @@ export function Plugins() {
                 <Puzzle className="w-6 h-6 text-purple-500" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground mb-1">Available</p>
+                <p className="text-sm text-foreground mb-1">Available</p>
                 <p className="text-2xl font-bold">{plugins.length}</p>
               </div>
             </div>

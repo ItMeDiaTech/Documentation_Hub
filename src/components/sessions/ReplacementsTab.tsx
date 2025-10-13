@@ -215,11 +215,11 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                             <div className={cn(
                               'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
                               rule.enabled && replaceHyperlinksEnabled
-                                ? 'bg-primary border-primary'
+                                ? 'bg-primary border-primary checkbox-checked'
                                 : 'border-border'
                             )}>
                               {rule.enabled && replaceHyperlinksEnabled && (
-                                <Check className="w-3 h-3 text-white" />
+                                <Check className="w-3 h-3 text-white checkbox-checkmark" />
                               )}
                             </div>
                           </div>
@@ -333,11 +333,11 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                             <div className={cn(
                               'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
                               rule.enabled && replaceTextEnabled
-                                ? 'bg-primary border-primary'
+                                ? 'bg-primary border-primary checkbox-checked'
                                 : 'border-border'
                             )}>
                               {rule.enabled && replaceTextEnabled && (
-                                <Check className="w-3 h-3 text-white" />
+                                <Check className="w-3 h-3 text-white checkbox-checkmark" />
                               )}
                             </div>
                           </div>

@@ -398,11 +398,11 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
               <div className={cn(
                 'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
                 !style.noSpaceBetweenSame
-                  ? 'bg-primary border-primary'
+                  ? 'bg-primary border-primary checkbox-checked'
                   : 'border-border'
               )}>
                 {!style.noSpaceBetweenSame && (
-                  <Check className="w-3 h-3 text-white" />
+                  <Check className="w-3 h-3 text-white checkbox-checkmark" />
                 )}
               </div>
             </div>
@@ -456,11 +456,11 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
               <div className={cn(
                 'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
                 listBulletSettings.enabled
-                  ? 'bg-primary border-primary'
+                  ? 'bg-primary border-primary checkbox-checked'
                   : 'border-border'
               )}>
                 {listBulletSettings.enabled && (
-                  <Check className="w-3 h-3 text-white" />
+                  <Check className="w-3 h-3 text-white checkbox-checkmark" />
                 )}
               </div>
             </div>
@@ -575,11 +575,11 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
               <div className={cn(
                 'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
                 tableUniformitySettings.enabled
-                  ? 'bg-primary border-primary'
+                  ? 'bg-primary border-primary checkbox-checked'
                   : 'border-border'
               )}>
                 {tableUniformitySettings.enabled && (
-                  <Check className="w-3 h-3 text-white" />
+                  <Check className="w-3 h-3 text-white checkbox-checkmark" />
                 )}
               </div>
             </div>
@@ -656,7 +656,7 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                       : 'border-border'
                   )}>
                     {tableUniformitySettings.headerRowBold && (
-                      <Check className="w-3 h-3 text-white" />
+                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
                     )}
                   </div>
                 </div>
@@ -678,7 +678,7 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                       : 'border-border'
                   )}>
                     {tableUniformitySettings.headerRowShaded && (
-                      <Check className="w-3 h-3 text-white" />
+                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
                     )}
                   </div>
                 </div>
@@ -721,7 +721,7 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                       : 'border-border'
                   )}>
                     {tableUniformitySettings.alternatingRowColors && (
-                      <Check className="w-3 h-3 text-white" />
+                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
                     )}
                   </div>
                 </div>
@@ -988,7 +988,7 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                       : 'border-border'
                   )}>
                     {tableUniformitySettings.applyToIfThenPattern && (
-                      <Check className="w-3 h-3 text-white" />
+                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
                     )}
                   </div>
                 </div>
@@ -1010,7 +1010,7 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                       : 'border-border'
                   )}>
                     {tableUniformitySettings.applyToTopRow && (
-                      <Check className="w-3 h-3 text-white" />
+                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
                     )}
                   </div>
                 </div>
@@ -1043,11 +1043,11 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
               <div className={cn(
                 'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
                 tableOfContentsSettings.enabled
-                  ? 'bg-primary border-primary'
+                  ? 'bg-primary border-primary checkbox-checked'
                   : 'border-border'
               )}>
                 {tableOfContentsSettings.enabled && (
-                  <Check className="w-3 h-3 text-white" />
+                  <Check className="w-3 h-3 text-white checkbox-checkmark" />
                 )}
               </div>
             </div>
@@ -1116,7 +1116,7 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                       : 'border-border'
                   )}>
                     {tableOfContentsSettings.showTocTitle && (
-                      <Check className="w-3 h-3 text-white" />
+                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
                     )}
                   </div>
                 </div>
@@ -1166,7 +1166,7 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                       : 'border-border'
                   )}>
                     {tableOfContentsSettings.showPageNumbers && (
-                      <Check className="w-3 h-3 text-white" />
+                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
                     )}
                   </div>
                 </div>
@@ -1190,7 +1190,7 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                     !tableOfContentsSettings.showPageNumbers && 'opacity-50'
                   )}>
                     {tableOfContentsSettings.rightAlignPageNumbers && tableOfContentsSettings.showPageNumbers && (
-                      <Check className="w-3 h-3 text-white" />
+                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
                     )}
                   </div>
                 </div>
@@ -1215,7 +1215,7 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
                       : 'border-border'
                   )}>
                     {tableOfContentsSettings.useHyperlinks && (
-                      <Check className="w-3 h-3 text-white" />
+                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
                     )}
                   </div>
                 </div>

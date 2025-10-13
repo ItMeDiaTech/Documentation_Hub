@@ -121,7 +121,7 @@ export function Documents() {
             <div className="flex items-center gap-3">
               <FileText className="w-8 h-8 text-blue-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Total</p>
+                <p className="text-sm text-foreground">Total</p>
                 <p className="text-2xl font-bold">{allDocuments.length}</p>
               </div>
             </div>
@@ -133,7 +133,7 @@ export function Documents() {
             <div className="flex items-center gap-3">
               <CheckCircle className="w-8 h-8 text-green-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Completed</p>
+                <p className="text-sm text-foreground">Completed</p>
                 <p className="text-2xl font-bold">
                   {allDocuments.filter((d) => d.status === 'completed').length}
                 </p>
@@ -147,7 +147,7 @@ export function Documents() {
             <div className="flex items-center gap-3">
               <Clock className="w-8 h-8 text-yellow-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Pending</p>
+                <p className="text-sm text-foreground">Pending</p>
                 <p className="text-2xl font-bold">
                   {allDocuments.filter((d) => d.status === 'pending').length}
                 </p>
@@ -161,7 +161,7 @@ export function Documents() {
             <div className="flex items-center gap-3">
               <AlertCircle className="w-8 h-8 text-red-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Errors</p>
+                <p className="text-sm text-foreground">Errors</p>
                 <p className="text-2xl font-bold">
                   {allDocuments.filter((d) => d.status === 'error').length}
                 </p>
