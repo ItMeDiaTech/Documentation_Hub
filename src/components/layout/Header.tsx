@@ -107,7 +107,7 @@ export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 text-sm text-muted-foreground">
+          <div className="clock-widget flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 text-sm">
             <Clock className="w-4 h-4" />
             <span className="font-mono">{formatTime(currentTime)}</span>
           </div>

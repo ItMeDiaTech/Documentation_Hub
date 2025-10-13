@@ -25,6 +25,7 @@ import { useUserSettings } from '@/contexts/UserSettingsContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 import { cn } from '@/utils/cn';
+import { getContrastTextColor } from '@/utils/colorConvert';
 
 const settingsSections = [
   {
@@ -283,16 +284,12 @@ export function Settings() {
     setCustomPrimaryColor,
     customBackgroundColor,
     setCustomBackgroundColor,
-    customForegroundColor,
-    setCustomForegroundColor,
     customHeaderColor,
     setCustomHeaderColor,
     customSidebarColor,
     setCustomSidebarColor,
     customBorderColor,
     setCustomBorderColor,
-    customSecondaryFontColor,
-    setCustomSecondaryFontColor,
     useCustomColors,
     setUseCustomColors,
     density,
@@ -447,7 +444,7 @@ export function Settings() {
                   <h3 className="font-medium mb-4">Theme & Display</h3>
                   <div className="flex flex-col lg:flex-row gap-6">
                     <div className="flex-1">
-                      <label className="text-sm text-muted-foreground mb-3 block">Theme Mode</label>
+                      <label className="text-sm text-foreground mb-3 block">Theme Mode</label>
                       <div className="grid grid-cols-3 gap-2">
                         {[
                           {
@@ -504,7 +501,7 @@ export function Settings() {
                     </div>
 
                     <div className="flex-1">
-                      <label className="text-sm text-muted-foreground mb-3 block">
+                      <label className="text-sm text-foreground mb-3 block">
                         Interface Density
                       </label>
                       <div className="grid grid-cols-3 gap-2">
@@ -657,8 +654,8 @@ export function Settings() {
                         onClick={() => setBlur(!blur)}
                         aria-label="Toggle glass morphism effects"
                         className={cn(
-                          'relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
-                          blur ? 'bg-primary' : 'bg-input hover:bg-accent'
+                          'relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2',
+                          blur ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border hover:bg-accent'
                         )}
                       >
                         <motion.span
@@ -680,8 +677,8 @@ export function Settings() {
                         onClick={() => setAnimations(!animations)}
                         aria-label="Toggle smooth animations"
                         className={cn(
-                          'relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
-                          animations ? 'bg-primary' : 'bg-input hover:bg-accent'
+                          'relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2',
+                          animations ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border hover:bg-accent'
                         )}
                       >
                         <motion.span
@@ -707,8 +704,8 @@ export function Settings() {
                       onClick={() => setUseCustomColors(!useCustomColors)}
                       aria-label="Toggle custom theme colors"
                       className={cn(
-                        'relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
-                        useCustomColors ? 'bg-primary' : 'bg-input hover:bg-accent'
+                        'relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2',
+                        useCustomColors ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border hover:bg-accent'
                       )}
                     >
                       <motion.span
@@ -722,7 +719,7 @@ export function Settings() {
                   {useCustomColors && (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                       <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Primary</label>
+                        <label className="text-xs text-foreground mb-1 block">Primary</label>
                         <button
                           aria-label="Select primary color"
                           onClick={() => {
@@ -734,13 +731,16 @@ export function Settings() {
                           {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
-                            style={{ backgroundColor: customPrimaryColor }}
+                            style={{
+                              backgroundColor: customPrimaryColor,
+                              border: `2px solid ${getContrastTextColor(customPrimaryColor)}`
+                            }}
                           />
                         </button>
                       </div>
 
                       <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
+                        <label className="text-xs text-foreground mb-1 block">
                           Background
                         </label>
                         <button
@@ -754,33 +754,20 @@ export function Settings() {
                           {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
-                            style={{ backgroundColor: customBackgroundColor }}
+                            style={{
+                              backgroundColor: customBackgroundColor,
+                              border: `2px solid ${getContrastTextColor(customBackgroundColor)}`
+                            }}
                           />
                         </button>
+                        {/* Visual indicator for calculated text color */}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Text: {getContrastTextColor(customBackgroundColor) === '#FFFFFF' ? '⚪ White' : '⚫ Black'} (auto)
+                        </p>
                       </div>
 
                       <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
-                          Main Text
-                        </label>
-                        <button
-                          aria-label="Select main text color"
-                          onClick={() => {
-                            setTempColor(customForegroundColor);
-                            setActiveColorPicker('foreground');
-                          }}
-                          className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
-                        >
-                          {/* eslint-disable-next-line */}
-                          <div
-                            className="w-6 h-6 rounded"
-                            style={{ backgroundColor: customForegroundColor }}
-                          />
-                        </button>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Header</label>
+                        <label className="text-xs text-foreground mb-1 block">Header</label>
                         <button
                           aria-label="Select header color"
                           onClick={() => {
@@ -792,13 +779,20 @@ export function Settings() {
                           {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
-                            style={{ backgroundColor: customHeaderColor }}
+                            style={{
+                              backgroundColor: customHeaderColor,
+                              border: `2px solid ${getContrastTextColor(customHeaderColor)}`
+                            }}
                           />
                         </button>
+                        {/* Visual indicator for calculated text color */}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Text: {getContrastTextColor(customHeaderColor) === '#FFFFFF' ? '⚪ White' : '⚫ Black'} (auto)
+                        </p>
                       </div>
 
                       <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Sidebar</label>
+                        <label className="text-xs text-foreground mb-1 block">Sidebar</label>
                         <button
                           aria-label="Select sidebar color"
                           onClick={() => {
@@ -810,13 +804,20 @@ export function Settings() {
                           {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
-                            style={{ backgroundColor: customSidebarColor }}
+                            style={{
+                              backgroundColor: customSidebarColor,
+                              border: `2px solid ${getContrastTextColor(customSidebarColor)}`
+                            }}
                           />
                         </button>
+                        {/* Visual indicator for calculated text color */}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Text: {getContrastTextColor(customSidebarColor) === '#FFFFFF' ? '⚪ White' : '⚫ Black'} (auto)
+                        </p>
                       </div>
 
                       <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Borders</label>
+                        <label className="text-xs text-foreground mb-1 block">Borders</label>
                         <button
                           aria-label="Select border color"
                           onClick={() => {
@@ -828,27 +829,10 @@ export function Settings() {
                           {/* eslint-disable-next-line */}
                           <div
                             className="w-6 h-6 rounded"
-                            style={{ backgroundColor: customBorderColor }}
-                          />
-                        </button>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
-                          Secondary Text (Descriptions)
-                        </label>
-                        <button
-                          aria-label="Select secondary text color"
-                          onClick={() => {
-                            setTempColor(customSecondaryFontColor);
-                            setActiveColorPicker('secondaryFont');
-                          }}
-                          className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
-                        >
-                          {/* eslint-disable-next-line */}
-                          <div
-                            className="w-6 h-6 rounded"
-                            style={{ backgroundColor: customSecondaryFontColor }}
+                            style={{
+                              backgroundColor: customBorderColor,
+                              border: `2px solid ${getContrastTextColor(customBorderColor)}`
+                            }}
                           />
                         </button>
                       </div>
@@ -1030,8 +1014,8 @@ export function Settings() {
                   </div>
 
                   <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">Weight</label>
-                    <div className="grid grid-cols-3 gap-1">
+                    <label className="text-sm text-foreground mb-2 block">Weight</label>
+                    <div className="grid grid-cols-2 gap-2">
                       {[
                         { value: '300', label: 'Light' },
                         { value: '400', label: 'Regular' },
@@ -1057,7 +1041,7 @@ export function Settings() {
                   </div>
 
                   <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">Style</label>
+                    <label className="text-sm text-foreground mb-2 block">Style</label>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => setFontStyle('normal')}
@@ -1092,7 +1076,7 @@ export function Settings() {
                   <h3 className="font-medium">Spacing</h3>
 
                   <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">
+                    <label className="text-sm text-foreground mb-2 block">
                       Letter Spacing
                     </label>
                     <div className="flex items-center gap-3">
@@ -1115,7 +1099,7 @@ export function Settings() {
                   </div>
 
                   <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">Line Height</label>
+                    <label className="text-sm text-foreground mb-2 block">Line Height</label>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground">Compact</span>
                       <input
@@ -1293,8 +1277,8 @@ export function Settings() {
                       aria-checked={updateSettingsForm.autoUpdateOnLaunch}
                       onClick={() => setUpdateSettingsForm({ ...updateSettingsForm, autoUpdateOnLaunch: !updateSettingsForm.autoUpdateOnLaunch })}
                       className={cn(
-                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                        updateSettingsForm.autoUpdateOnLaunch ? 'bg-primary' : 'bg-input'
+                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        updateSettingsForm.autoUpdateOnLaunch ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border'
                       )}
                     >
                       <span
@@ -1321,8 +1305,8 @@ export function Settings() {
                       aria-checked={updateSettingsForm.checkForPreReleases}
                       onClick={() => setUpdateSettingsForm({ ...updateSettingsForm, checkForPreReleases: !updateSettingsForm.checkForPreReleases })}
                       className={cn(
-                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                        updateSettingsForm.checkForPreReleases ? 'bg-primary' : 'bg-input'
+                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        updateSettingsForm.checkForPreReleases ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border'
                       )}
                     >
                       <span
@@ -1625,9 +1609,6 @@ Version: ${currentVersion}
             case 'background':
               setCustomBackgroundColor(color);
               break;
-            case 'foreground':
-              setCustomForegroundColor(color);
-              break;
             case 'header':
               setCustomHeaderColor(color);
               break;
@@ -1636,9 +1617,6 @@ Version: ${currentVersion}
               break;
             case 'border':
               setCustomBorderColor(color);
-              break;
-            case 'secondaryFont':
-              setCustomSecondaryFontColor(color);
               break;
           }
           setActiveColorPicker(null);
@@ -1650,17 +1628,13 @@ Version: ${currentVersion}
               ? 'Custom Primary Color'
               : activeColorPicker === 'background'
                 ? 'Custom Background Color'
-                : activeColorPicker === 'foreground'
-                  ? 'Custom Text Color'
-                  : activeColorPicker === 'header'
-                    ? 'Custom Header Color'
-                    : activeColorPicker === 'sidebar'
-                      ? 'Custom Sidebar Color'
-                      : activeColorPicker === 'border'
-                        ? 'Custom Border Color'
-                        : activeColorPicker === 'secondaryFont'
-                          ? 'Secondary Text Color'
-                          : 'Pick a Color'
+                : activeColorPicker === 'header'
+                  ? 'Custom Header Color'
+                  : activeColorPicker === 'sidebar'
+                    ? 'Custom Sidebar Color'
+                    : activeColorPicker === 'border'
+                      ? 'Custom Border Color'
+                      : 'Pick a Color'
         }
       />
     </motion.div>
