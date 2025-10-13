@@ -273,7 +273,7 @@ export function Search() {
 
       {/* Results Summary */}
       <motion.div variants={itemVariants} className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-foreground">
           {filteredDocuments.length} {filteredDocuments.length === 1 ? 'result' : 'results'} found
           {searchQuery && (
             <span className="ml-1">
@@ -322,7 +322,7 @@ export function Search() {
                     {getStatusIcon(doc.status)}
                     <h3 className="font-medium truncate">{doc.name}</h3>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-4 text-sm text-foreground">
                     <span className="flex items-center gap-1">
                       <FolderOpen className="w-3.5 h-3.5" />
                       {doc.sessionName}

@@ -56,6 +56,12 @@ release.ps1
 # Reports (optional - these seem to be development notes)
 reports/
 
+# Security scanning reports
+gitleaks-report.json
+
+# Refactoring and planning files
+refactor/
+
 # Development documentation
 **/CLAUDE.md
 CLAUDE_CSHARP_WPF_MVVM.md

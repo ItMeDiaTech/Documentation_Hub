@@ -74,14 +74,10 @@ export function TitleBar() {
         <button
           onClick={handleLogoClick}
           className="flex items-center gap-2 px-3 no-drag hover:bg-muted/50 transition-colors"
-          title={`Click ${5 - clickCount} more time${5 - clickCount === 1 ? '' : 's'} to open dev tools`}
         >
           <div className="w-4 h-4 rounded bg-primary/20" />
           <span className="text-xs font-medium text-muted-foreground select-none">
             Documentation Hub
-            {clickCount > 0 && clickCount < 5 && (
-              <span className="ml-1 text-[10px] opacity-50">({clickCount}/5)</span>
-            )}
           </span>
         </button>
 

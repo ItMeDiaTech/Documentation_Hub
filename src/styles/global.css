@@ -1,208 +1,307 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind CSS v4 - Modern CSS-First Configuration */
+@import "tailwindcss";
 
+/* Enable class-based dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Base Theme Definition */
+@theme {
+  /* Semantic Colors - Light Mode Defaults */
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(240 10% 4%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(240 10% 4%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(240 10% 4%);
+  --color-primary: hsl(217 91% 60%);
+  --color-primary-foreground: hsl(210 40% 98%);
+  --color-secondary: hsl(210 40% 96%);
+  --color-secondary-foreground: hsl(222 47% 11%);
+  --color-muted: hsl(210 40% 96%);
+  --color-muted-foreground: hsl(215 16% 47%);
+  --color-accent: hsl(210 40% 96%);
+  --color-accent-foreground: hsl(222 47% 11%);
+  --color-destructive: hsl(0 84% 60%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-border: hsl(214 32% 91%);
+  --color-input: hsl(214 32% 91%);
+  --color-ring: hsl(217 91% 60%);
+
+  /* Design Tokens */
+  --radius: 0.5rem;
+  --spacing-unit: 1;
+
+  /* Gradient Colors */
+  --gradient-from: hsl(217 91% 60%);
+  --gradient-to: hsl(258 90% 66%);
+
+  /* Custom Font Settings (defaults) */
+  --custom-font-size: 15px;
+  --custom-font-family: system-ui;
+  --custom-font-weight: 400;
+  --custom-font-style: normal;
+  --custom-letter-spacing: 0;
+  --custom-line-height: 1.5;
+}
+
+/* Theme Variants */
 @layer base {
-  /* Default Blue Theme */
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-
-    /* Gradient colors */
-    --gradient-from: 221.2 83.2% 53.3%;
-    --gradient-to: 271.5 81.3% 55.9%;
-  }
-
+  /* ========================================
+     DARK MODE
+     ======================================== */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --color-background: hsl(240 10% 4%);
+    --color-foreground: hsl(0 0% 98%);
+    --color-card: hsl(240 10% 4%);
+    --color-card-foreground: hsl(0 0% 98%);
+    --color-popover: hsl(240 10% 4%);
+    --color-popover-foreground: hsl(0 0% 98%);
+    --color-primary: hsl(213 94% 68%);
+    --color-primary-foreground: hsl(210 40% 98%);
+    --color-secondary: hsl(240 5% 10%);
+    --color-secondary-foreground: hsl(0 0% 98%);
+    --color-muted: hsl(240 5% 10%);
+    --color-muted-foreground: hsl(240 5% 65%);
+    --color-accent: hsl(240 5% 10%);
+    --color-accent-foreground: hsl(0 0% 98%);
+    --color-destructive: hsl(0 63% 31%);
+    --color-destructive-foreground: hsl(0 0% 98%);
+    --color-border: hsl(240 5% 16%);
+    --color-input: hsl(240 5% 16%);
+    --color-ring: hsl(217 91% 60%);
   }
 
-  /* Purple Accent Theme */
+  /* ========================================
+     ACCENT THEMES
+     ======================================== */
+
+  /* Purple Accent */
   [data-accent='purple'] {
-    --primary: 271.5 81.3% 55.9%;
-    --ring: 271.5 81.3% 55.9%;
-    --gradient-from: 271.5 81.3% 55.9%;
-    --gradient-to: 262.1 83.3% 57.8%;
+    --color-primary: hsl(270 91% 65%);
+    --color-ring: hsl(270 91% 65%);
+    --gradient-from: hsl(270 91% 65%);
+    --gradient-to: hsl(270 91% 57%);
   }
 
   [data-accent='purple'].dark {
-    --primary: 271.5 81.3% 65.9%;
-    --primary-foreground: 210 40% 98%;
-    --ring: 271.5 81.3% 55.9%;
+    --color-primary: hsl(270 91% 76%);
+    --color-primary-foreground: hsl(0 0% 98%);
+    --color-ring: hsl(270 91% 65%);
   }
 
-  /* Green Accent Theme */
+  /* Green Accent */
   [data-accent='green'] {
-    --primary: 142.1 76.2% 36.3%;
-    --ring: 142.1 76.2% 36.3%;
-    --gradient-from: 142.1 76.2% 36.3%;
-    --gradient-to: 142.1 70.6% 45.3%;
+    --color-primary: hsl(142 71% 45%);
+    --color-ring: hsl(142 71% 45%);
+    --gradient-from: hsl(142 71% 45%);
+    --gradient-to: hsl(142 70% 37%);
   }
 
   [data-accent='green'].dark {
-    --primary: 142.1 70.6% 45.3%;
-    --primary-foreground: 210 40% 98%;
-    --ring: 142.1 76.2% 36.3%;
+    --color-primary: hsl(142 71% 65%);
+    --color-primary-foreground: hsl(0 0% 98%);
+    --color-ring: hsl(142 71% 45%);
   }
 
-  /* Orange Accent Theme */
+  /* Orange Accent */
   [data-accent='orange'] {
-    --primary: 24.6 95% 53.1%;
-    --ring: 24.6 95% 53.1%;
-    --gradient-from: 24.6 95% 53.1%;
-    --gradient-to: 20.5 90.2% 48.2%;
+    --color-primary: hsl(25 95% 53%);
+    --color-ring: hsl(25 95% 53%);
+    --gradient-from: hsl(25 95% 53%);
+    --gradient-to: hsl(25 95% 48%);
   }
 
   [data-accent='orange'].dark {
-    --primary: 20.5 90.2% 48.2%;
-    --primary-foreground: 210 40% 98%;
-    --ring: 24.6 95% 53.1%;
+    --color-primary: hsl(25 95% 61%);
+    --color-primary-foreground: hsl(0 0% 98%);
+    --color-ring: hsl(25 95% 53%);
   }
 
-  /* Pink Accent Theme */
+  /* Pink Accent */
   [data-accent='pink'] {
-    --primary: 346.8 77.2% 49.8%;
-    --ring: 346.8 77.2% 49.8%;
-    --gradient-from: 346.8 77.2% 49.8%;
-    --gradient-to: 346.8 77.2% 59.8%;
+    --color-primary: hsl(330 81% 60%);
+    --color-ring: hsl(330 81% 60%);
+    --gradient-from: hsl(330 81% 60%);
+    --gradient-to: hsl(330 81% 50%);
   }
 
   [data-accent='pink'].dark {
-    --primary: 346.8 77.2% 59.8%;
-    --primary-foreground: 210 40% 98%;
-    --ring: 346.8 77.2% 49.8%;
+    --color-primary: hsl(330 81% 70%);
+    --color-primary-foreground: hsl(0 0% 98%);
+    --color-ring: hsl(330 81% 60%);
   }
 
-  /* Cyan Accent Theme */
+  /* Cyan Accent */
   [data-accent='cyan'] {
-    --primary: 188.7 94.5% 42.7%;
-    --ring: 188.7 94.5% 42.7%;
-    --gradient-from: 188.7 94.5% 42.7%;
-    --gradient-to: 198.7 94.5% 52.7%;
+    --color-primary: hsl(189 94% 43%);
+    --color-ring: hsl(189 94% 43%);
+    --gradient-from: hsl(189 94% 43%);
+    --gradient-to: hsl(189 94% 37%);
   }
 
   [data-accent='cyan'].dark {
-    --primary: 188.7 94.5% 52.7%;
-    --primary-foreground: 210 40% 98%;
-    --ring: 188.7 94.5% 42.7%;
+    --color-primary: hsl(189 94% 53%);
+    --color-primary-foreground: hsl(0 0% 98%);
+    --color-ring: hsl(189 94% 43%);
   }
 
-  /* Indigo Accent Theme */
+  /* Indigo Accent */
   [data-accent='indigo'] {
-    --primary: 238.7 83.5% 66.7%;
-    --ring: 238.7 83.5% 66.7%;
-    --gradient-from: 238.7 83.5% 66.7%;
-    --gradient-to: 243.4 75.4% 58.6%;
+    --color-primary: hsl(239 84% 67%);
+    --color-ring: hsl(239 84% 67%);
+    --gradient-from: hsl(239 84% 67%);
+    --gradient-to: hsl(239 84% 59%);
   }
 
   [data-accent='indigo'].dark {
-    --primary: 243.4 75.4% 58.6%;
-    --primary-foreground: 210 40% 98%;
-    --ring: 238.7 83.5% 66.7%;
+    --color-primary: hsl(239 84% 75%);
+    --color-primary-foreground: hsl(0 0% 98%);
+    --color-ring: hsl(239 84% 67%);
   }
 
-  /* Custom Accent Theme */
+  /* Custom Accent (user-defined) */
   [data-accent='custom'] {
-    --primary: var(--custom-accent);
-    --ring: var(--custom-accent);
-    --gradient-from: var(--custom-accent);
-    --gradient-to: var(--custom-accent);
+    --color-primary: hsl(var(--custom-accent));
+    --color-ring: hsl(var(--custom-accent));
+    --gradient-from: hsl(var(--custom-accent));
+    --gradient-to: hsl(var(--custom-accent));
   }
 
   [data-accent='custom'].dark {
-    --primary: var(--custom-accent);
-    --primary-foreground: 210 40% 98%;
-    --ring: var(--custom-accent);
+    --color-primary: hsl(var(--custom-accent));
+    --color-primary-foreground: hsl(0 0% 98%);
+    --color-ring: hsl(var(--custom-accent));
   }
 
-  /* Custom Colors Override */
+  /* ========================================
+     CUSTOM COLORS OVERRIDE
+     ======================================== */
   [data-custom-colors='true'] {
-    --primary: var(--custom-primary) !important;
-    --background: var(--custom-background) !important;
-    --foreground: var(--custom-foreground) !important;
-    --border: var(--custom-border) !important;
-    --card: var(--custom-background) !important;
-    --card-foreground: var(--custom-foreground) !important;
-    --popover: var(--custom-background) !important;
-    --popover-foreground: var(--custom-foreground) !important;
-    --muted-foreground: var(--custom-secondary-font) !important;
-    --secondary-foreground: var(--custom-secondary-font) !important;
+    --color-primary: hsl(var(--custom-primary)) !important;
+    --color-background: hsl(var(--custom-background)) !important;
+    --color-foreground: hsl(var(--custom-foreground)) !important; /* Auto-calculated based on luminance */
+    --color-border: hsl(var(--custom-border)) !important;
+    --color-card: hsl(var(--custom-background)) !important;
+    --color-card-foreground: hsl(var(--custom-foreground)) !important;
+    --color-popover: hsl(var(--custom-background)) !important;
+    --color-popover-foreground: hsl(var(--custom-foreground)) !important;
+    --color-muted-foreground: hsl(var(--custom-secondary-font)) !important;
+    --color-secondary-foreground: hsl(var(--custom-secondary-font)) !important;
   }
 
-  /* Custom header color */
+  /* Custom header with auto-calculated text color */
   [data-custom-colors='true'] .header-bg {
-    --background: var(--custom-header) !important;
+    background-color: hsl(var(--custom-header)) !important;
+    color: hsl(var(--custom-header-text)) !important; /* Auto-calculated for contrast */
   }
 
-  /* Custom sidebar color */
+  /* Force all text elements in header to use the auto-calculated header text color */
+  [data-custom-colors='true'] .header-bg *,
+  [data-custom-colors='true'] .header-bg button,
+  [data-custom-colors='true'] .header-bg span,
+  [data-custom-colors='true'] .header-bg p {
+    color: hsl(var(--custom-header-text)) !important;
+  }
+
+  /* Icons inherit text color */
+  [data-custom-colors='true'] .header-bg svg {
+    color: inherit !important;
+  }
+
+  /* Subtle variation for secondary text (descriptions, muted elements) */
+  [data-custom-colors='true'] .header-bg .text-muted-foreground {
+    opacity: 0.7;
+  }
+
+  /* Clock widget background adapts to custom header color */
+  [data-custom-colors='true'] .header-bg .clock-widget {
+    background-color: color-mix(in srgb, hsl(var(--custom-header)) 85%, hsl(var(--custom-header-text)) 15%) !important;
+  }
+
+  /* Custom sidebar with auto-calculated text color */
   [data-custom-colors='true'] .sidebar-bg {
-    --background: var(--custom-sidebar) !important;
+    background-color: hsl(var(--custom-sidebar)) !important;
+    color: hsl(var(--custom-sidebar-text)) !important; /* Auto-calculated for contrast */
   }
 
-  /* Apply secondary font color to muted elements */
+  /* Force base text elements in sidebar to use the auto-calculated sidebar text color */
+  [data-custom-colors='true'] .sidebar-bg span:not(.text-primary-foreground):not(.text-accent-foreground),
+  [data-custom-colors='true'] .sidebar-bg svg:not(.text-primary):not(.group-hover\\:text-primary) {
+    color: hsl(var(--custom-sidebar-text)) !important;
+  }
+
+  /* Let active and hover states keep their semantic colors */
+  [data-custom-colors='true'] .sidebar-bg .bg-primary,
+  [data-custom-colors='true'] .sidebar-bg .bg-primary * {
+    color: hsl(var(--color-primary-foreground)) !important;
+  }
+
+  /* Apply subtle secondary text color to muted elements */
   [data-custom-colors='true'] .text-muted-foreground {
     color: hsl(var(--custom-secondary-font)) !important;
   }
-}
 
-@layer base {
-  * {
-    border-color: hsl(var(--border));
+  /* Checkbox/toggle with auto-calculated colors for custom theme */
+  [data-custom-colors='true'] .checkbox-checked,
+  [data-custom-colors='true'] .toggle-checked {
+    background-color: hsl(var(--custom-primary)) !important;
+    border-color: hsl(var(--custom-primary)) !important;
   }
 
-  body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-    font-feature-settings:
-      'rlig' 1,
-      'calt' 1;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    font-size: var(--custom-font-size, 15px);
-    font-family: var(--custom-font-family, system-ui);
-    font-weight: var(--custom-font-weight, 400);
-    font-style: var(--custom-font-style, normal);
-    letter-spacing: var(--custom-letter-spacing, 0);
-    line-height: var(--custom-line-height, 1.5);
+  /* Checkmark icon color based on primary color luminance */
+  [data-custom-colors='true'] .checkbox-checkmark {
+    color: hsl(var(--custom-primary-text)) !important;
   }
 
-  /* Density settings */
+  /* ========================================
+     TOGGLE BUTTON STYLING
+     ======================================== */
+  /* Toggle track borders for clear definition (following Radix UI, shadcn/ui patterns) */
+  button[role='switch'],
+  button[aria-label*='Toggle'],
+  button.toggle-checked,
+  .toggle-checked {
+    border: 2px solid var(--color-border);
+  }
+
+  /* Toggle track - On state gets primary border */
+  .toggle-checked,
+  button.toggle-checked,
+  button[role='switch'][aria-checked='true'] {
+    border-color: hsl(var(--color-primary));
+  }
+
+  /* Custom colors: toggle borders adapt with proper contrast */
+  [data-custom-colors='true'] button[role='switch'],
+  [data-custom-colors='true'] button[aria-label*='Toggle'] {
+    border: 2px solid color-mix(in srgb, hsl(var(--custom-foreground)) 50%, transparent) !important;
+  }
+
+  [data-custom-colors='true'] .toggle-checked,
+  [data-custom-colors='true'] button[aria-label*='Toggle'].toggle-checked,
+  [data-custom-colors='true'] button[role='switch'][aria-checked='true'] {
+    border: 2px solid hsl(var(--custom-primary)) !important;
+  }
+
+  /* Toggle knob - subtle border for definition against track (catches both span and motion.span) */
+  /* Fixed vertical alignment: top-0 for perfect centering (track is 24px, border 4px, knob 20px) */
+  button[role='switch'] > span,
+  button[aria-label*='Toggle'] > span {
+    top: 0 !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+  }
+
+  /* Dark mode: lighter knob border */
+  .dark button[role='switch'] > span,
+  .dark button[aria-label*='Toggle'] > span {
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.24) !important;
+  }
+
+  /* ========================================
+     DENSITY MODES
+     ======================================== */
   [data-density='minimal'] {
     --spacing-unit: 0.5;
     --content-max-width: 100%;
@@ -285,6 +384,35 @@
     padding-right: calc(1.5rem * var(--spacing-unit));
   }
 
+  /* ========================================
+     BASE STYLES
+     ======================================== */
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: var(--custom-font-size, 15px);
+    font-family: var(--custom-font-family, system-ui);
+    font-weight: var(--custom-font-weight, 400);
+    font-style: var(--custom-font-style, normal);
+    letter-spacing: var(--custom-letter-spacing, 0);
+    line-height: var(--custom-line-height, 1.5);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* ========================================
+     ANIMATIONS & EFFECTS
+     ======================================== */
+
   /* Disable animations */
   .no-animations * {
     animation: none !important;
@@ -296,35 +424,49 @@
   .no-blur .backdrop-blur-xl,
   .no-blur .backdrop-blur-md {
     backdrop-filter: none !important;
-    background: var(--background) !important;
+    background: var(--color-background) !important;
   }
 
-  html {
-    scroll-behavior: smooth;
-  }
-
+  /* Scrollbar Styling */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
+
   ::-webkit-scrollbar-track {
-    background-color: hsl(var(--muted));
+    background-color: var(--color-muted);
   }
 
   ::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--muted-foreground) / 0.2);
+    background-color: color-mix(in srgb, var(--color-muted-foreground) 20%, transparent);
     border-radius: 0.375rem;
     transition: background-color 0.2s;
   }
+
   ::-webkit-scrollbar-thumb:hover {
-    background-color: hsl(var(--muted-foreground) / 0.3);
+    background-color: color-mix(in srgb, var(--color-muted-foreground) 30%, transparent);
   }
 
+  /* Custom theme scrollbar colors */
+  [data-custom-colors='true'] ::-webkit-scrollbar-track {
+    background-color: color-mix(in srgb, hsl(var(--custom-background)) 90%, hsl(var(--custom-foreground)) 10%);
+  }
+
+  [data-custom-colors='true'] ::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, hsl(var(--custom-foreground)) 20%, transparent);
+  }
+
+  [data-custom-colors='true'] ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, hsl(var(--custom-foreground)) 30%, transparent);
+  }
+
+  /* Selection */
   ::selection {
-    background-color: hsl(var(--primary) / 0.2);
-    color: hsl(var(--primary-foreground));
+    background-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+    color: var(--color-primary-foreground);
   }
 
+  /* Electron Window Controls */
   .drag-region {
     -webkit-app-region: drag;
   }
@@ -333,10 +475,12 @@
     -webkit-app-region: no-drag;
   }
 
+  /* Hide Search Cancel Button */
   input[type='search']::-webkit-search-cancel-button {
     display: none;
   }
 
+  /* Skeleton Loading Animation */
   @keyframes shimmer {
     0% {
       transform: translateX(-100%);
@@ -349,7 +493,7 @@
   .skeleton {
     position: relative;
     overflow: hidden;
-    background-color: hsl(var(--muted));
+    background-color: var(--color-muted);
   }
 
   .skeleton::after {
@@ -360,20 +504,23 @@
     background: linear-gradient(
       90deg,
       transparent,
-      hsl(var(--muted-foreground) / 0.08),
+      color-mix(in srgb, var(--color-muted-foreground) 8%, transparent),
       transparent
     );
     animation: shimmer 1.5s infinite;
   }
 
+  /* ========================================
+     GLASS MORPHISM EFFECTS
+     ======================================== */
   .glass {
-    background-color: hsl(var(--background) / 0.6);
+    background-color: color-mix(in srgb, var(--color-background) 60%, transparent);
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
   }
 
   .glass-heavy {
-    background-color: hsl(var(--background) / 0.3);
+    background-color: color-mix(in srgb, var(--color-background) 30%, transparent);
     -webkit-backdrop-filter: blur(24px);
     backdrop-filter: blur(24px);
     background-image: linear-gradient(
@@ -384,7 +531,7 @@
   }
 
   .glass-light {
-    background-color: hsl(var(--background) / 0.8);
+    background-color: color-mix(in srgb, var(--color-background) 80%, transparent);
     -webkit-backdrop-filter: blur(4px);
     backdrop-filter: blur(4px);
   }
@@ -393,20 +540,24 @@
     .glass,
     .glass-heavy,
     .glass-light {
-      background-color: hsl(var(--background) / 0.95);
+      background-color: color-mix(in srgb, var(--color-background) 95%, transparent);
     }
   }
 
-  /* Lightning dark mode effects */
+  /* ========================================
+     DARK MODE SPECIFIC EFFECTS
+     ======================================== */
   .dark .glow {
     filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.5));
   }
 
   .dark .glow-primary {
-    filter: drop-shadow(0 0 20px hsl(var(--primary) / 0.5));
+    filter: drop-shadow(0 0 20px color-mix(in srgb, var(--color-primary) 50%, transparent));
   }
 
-  /* Interactive cursor effects */
+  /* ========================================
+     INTERACTIVE EFFECTS
+     ======================================== */
   .interactive-hover {
     position: relative;
     overflow: hidden;
@@ -422,9 +573,7 @@
     height: 0;
     border-radius: 50%;
     background: radial-gradient(circle, rgba(255, 255, 255, 0.1), transparent 70%);
-    transition:
-      width 0.3s,
-      height 0.3s;
+    transition: width 0.3s, height 0.3s;
     pointer-events: none;
   }
 
@@ -433,37 +582,41 @@
     height: 200%;
   }
 
+  /* Bento Grid Item */
   .bento-item {
     border-radius: 0.5rem;
-    border: 1px solid hsl(var(--border));
+    border: 1px solid var(--color-border);
     padding: 1rem;
     transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   }
+
   .bento-item:hover {
-    box-shadow:
-      0 10px 15px -3px rgba(0, 0, 0, 0.1),
-      0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
   }
 
-  /* Bento grid layout */
+  /* Bento Grid Layout */
   .bento-grid {
     display: grid;
     gap: 1rem;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   }
 
-  /* Progressive blur */
+  /* Progressive Blur */
   .progressive-blur {
     mask-image: linear-gradient(to bottom, black 60%, transparent);
   }
 }
 
-/* Scrollbar hiding utility */
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+/* Scrollbar Hide Utility */
 .scrollbar-hide {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }
 
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;  /* Chrome, Safari, Opera */
+  display: none; /* Chrome, Safari, Opera */
 }
