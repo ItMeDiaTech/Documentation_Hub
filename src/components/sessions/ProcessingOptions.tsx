@@ -137,13 +137,13 @@ export function ProcessingOptions({ initialOptions, onOptionsChange }: Processin
                 <div className={cn(
                   'w-6 h-6 rounded border-2 flex items-center justify-center transition-all',
                   allEnabled
-                    ? 'bg-primary border-primary'
+                    ? 'bg-primary border-primary checkbox-checked'
                     : someEnabled
                     ? 'bg-primary/50 border-primary'
                     : 'border-border hover:border-primary/50'
                 )}>
                   {(allEnabled || someEnabled) && (
-                    <Check className="w-4 h-4 text-primary-foreground" />
+                    <Check className="w-4 h-4 text-primary-foreground checkbox-checkmark" />
                   )}
                 </div>
                 <h4 className="font-semibold text-base">{groupLabels[group as keyof typeof groupLabels]}</h4>
@@ -165,7 +165,7 @@ export function ProcessingOptions({ initialOptions, onOptionsChange }: Processin
                       <div className={cn(
                         'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
                         option.enabled
-                          ? 'bg-primary border-primary'
+                          ? 'bg-primary border-primary checkbox-checked'
                           : 'border-border group-hover:border-primary/50'
                       )}>
                         {option.enabled && (
@@ -174,7 +174,7 @@ export function ProcessingOptions({ initialOptions, onOptionsChange }: Processin
                             animate={{ scale: 1 }}
                             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                           >
-                            <Check className="w-3 h-3 text-primary-foreground" />
+                            <Check className="w-3 h-3 text-primary-foreground checkbox-checkmark" />
                           </motion.div>
                         )}
                       </div>

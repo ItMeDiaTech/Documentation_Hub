@@ -219,7 +219,7 @@ export function Analytics() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
+                    <p className="text-sm text-foreground mb-1">{stat.title}</p>
                     <p className="text-2xl font-bold">{stat.value}</p>
                   </div>
                   <div className={cn('p-3 rounded-lg', stat.bgColor)}>

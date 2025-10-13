@@ -170,11 +170,11 @@ export function Sessions() {
               <CardContent>
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-2 text-base">
-                    <div className="flex items-center gap-1 text-muted-foreground">
+                    <div className="flex items-center gap-1 text-foreground">
                       <FileText className="w-3 h-3" />
                       <span>{session.documents.length} documents</span>
                     </div>
-                    <div className="flex items-center gap-1 text-muted-foreground">
+                    <div className="flex items-center gap-1 text-foreground">
                       <Clock className="w-3 h-3" />
                       <span>{session.stats.timeSaved}m saved</span>
                     </div>

@@ -4,7 +4,6 @@ import * as path from 'path';
 import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { windowsCertStore } from './windowsCertStore';
 
 const execAsync = promisify(exec);
 
@@ -144,6 +143,8 @@ export class ZscalerConfig {
     if (!this.zscalerCertPath && process.platform === 'win32') {
       console.log('[ZscalerConfig] No certificate found on disk, checking Windows Certificate Store...');
       try {
+        // Dynamically import windowsCertStore to avoid static import warning
+        const { windowsCertStore } = await import('./windowsCertStore');
         const certFromStore = await windowsCertStore.findZscalerCertificate();
         if (certFromStore) {
           console.log(`[ZscalerConfig] Found Zscaler certificate in Windows store: ${certFromStore}`);

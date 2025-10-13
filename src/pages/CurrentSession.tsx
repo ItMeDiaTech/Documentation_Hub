@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -57,7 +57,12 @@ export function CurrentSession() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
   const [showStylesSaveSuccess, setShowStylesSaveSuccess] = useState(false);
-  const [stylesSaveHandler, setStylesSaveHandler] = useState<(() => void) | null>(null);
+
+  // Create a stable callback for the save handler
+  const handleStylesSave = useCallback(() => {
+    // This will trigger the success animation
+    setShowStylesSaveSuccess(true);
+  }, []);
 
   useEffect(() => {
     if (id && !currentSession) {
@@ -494,18 +499,18 @@ export function CurrentSession() {
 
   // Header actions for each tab
   const headerActions: Record<string, React.ReactNode> = {
-    styles: stylesSaveHandler ? (
+    styles: (
       <Button
         variant="default"
         size="sm"
         icon={<Save className="w-4 h-4" />}
-        onClick={stylesSaveHandler}
+        onClick={handleStylesSave}
         showSuccess={showStylesSaveSuccess}
         onSuccess={() => setShowStylesSaveSuccess(false)}
       >
         Save Styles
       </Button>
-    ) : null,
+    ),
   };
 
   // Create tabs configuration
@@ -532,16 +537,10 @@ export function CurrentSession() {
       content: (
         <StylesEditor
           initialStyles={session.styles}
-          onStylesChange={(styles) => updateSessionStyles(session.id, styles)}
-          renderSaveButton={(handleSave, showSuccess, onSuccessComplete) => {
-            // Store the handler on first render
-            if (!stylesSaveHandler) {
-              setStylesSaveHandler(() => () => {
-                handleSave();
-                setShowStylesSaveSuccess(true);
-              });
-            }
-            return null; // Don't render in content area
+          onStylesChange={(styles) => {
+            updateSessionStyles(session.id, styles);
+            // Automatically trigger the save success animation
+            setShowStylesSaveSuccess(true);
           }}
         />
       ),

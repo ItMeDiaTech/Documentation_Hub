@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { hexToHSL } from '@/utils/colorConvert';
+import { hexToHSL, getContrastTextColor, getSecondaryTextColor } from '@/utils/colorConvert';
 
 type Theme = 'light' | 'dark' | 'system';
 type AccentColor = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan' | 'indigo' | 'custom';
@@ -17,16 +17,12 @@ interface ThemeContextType {
   setCustomPrimaryColor: (color: string) => void;
   customBackgroundColor: string;
   setCustomBackgroundColor: (color: string) => void;
-  customForegroundColor: string;
-  setCustomForegroundColor: (color: string) => void;
   customHeaderColor: string;
   setCustomHeaderColor: (color: string) => void;
   customSidebarColor: string;
   setCustomSidebarColor: (color: string) => void;
   customBorderColor: string;
   setCustomBorderColor: (color: string) => void;
-  customSecondaryFontColor: string;
-  setCustomSecondaryFontColor: (color: string) => void;
   useCustomColors: boolean;
   setUseCustomColors: (use: boolean) => void;
   density: Density;
@@ -95,11 +91,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [customBorderColor, setCustomBorderColor] = useState<string>(() => {
     const stored = localStorage.getItem('customBorderColor');
     return stored || '#e2e8f0';
-  });
-
-  const [customSecondaryFontColor, setCustomSecondaryFontColor] = useState<string>(() => {
-    const stored = localStorage.getItem('customSecondaryFontColor');
-    return stored || '#6b7280';
   });
 
   const [useCustomColors, setUseCustomColors] = useState<boolean>(() => {
@@ -211,22 +202,55 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = window.document.documentElement;
 
     if (useCustomColors) {
-      root.setAttribute('data-custom-colors', 'true');
-      // Convert and apply all custom colors
-      root.style.setProperty('--custom-primary', hexToHSL(customPrimaryColor));
-      root.style.setProperty('--custom-background', hexToHSL(customBackgroundColor));
-      root.style.setProperty('--custom-foreground', hexToHSL(customForegroundColor));
-      root.style.setProperty('--custom-header', hexToHSL(customHeaderColor));
-      root.style.setProperty('--custom-sidebar', hexToHSL(customSidebarColor));
-      root.style.setProperty('--custom-border', hexToHSL(customBorderColor));
-      root.style.setProperty('--custom-secondary-font', hexToHSL(customSecondaryFontColor));
+      try {
+        root.setAttribute('data-custom-colors', 'true');
+
+        console.log('[ThemeContext] Applying custom colors...');
+
+        // Calculate optimal text colors based on background colors
+        const foregroundColor = getContrastTextColor(customBackgroundColor);
+        const headerTextColor = getContrastTextColor(customHeaderColor);
+        const sidebarTextColor = getContrastTextColor(customSidebarColor);
+        const primaryTextColor = getContrastTextColor(customPrimaryColor); // For checkmarks!
+        const secondaryFontColor = getSecondaryTextColor(foregroundColor); // Subtle variation of primary text!
+
+        // Convert and apply all custom colors
+        root.style.setProperty('--custom-primary', hexToHSL(customPrimaryColor));
+        root.style.setProperty('--custom-primary-text', hexToHSL(primaryTextColor)); // For checkmarks!
+        root.style.setProperty('--custom-background', hexToHSL(customBackgroundColor));
+        root.style.setProperty('--custom-foreground', hexToHSL(foregroundColor)); // Auto-calculated!
+        root.style.setProperty('--custom-header', hexToHSL(customHeaderColor));
+        root.style.setProperty('--custom-header-text', hexToHSL(headerTextColor)); // Auto-calculated!
+        root.style.setProperty('--custom-sidebar', hexToHSL(customSidebarColor));
+        root.style.setProperty('--custom-sidebar-text', hexToHSL(sidebarTextColor)); // Auto-calculated!
+        root.style.setProperty('--custom-border', hexToHSL(customBorderColor));
+        root.style.setProperty('--custom-secondary-font', hexToHSL(secondaryFontColor)); // Auto-calculated subtle variation!
+
+        console.log('[ThemeContext] Custom colors applied successfully');
+      } catch (error) {
+        console.error('[ThemeContext] Error applying custom colors:', error);
+        console.error('[ThemeContext] Color values:', {
+          customPrimaryColor,
+          customBackgroundColor,
+          customHeaderColor,
+          customSidebarColor,
+          customBorderColor,
+        });
+
+        // Disable custom colors on error to prevent cascading failures
+        setUseCustomColors(false);
+        root.removeAttribute('data-custom-colors');
+      }
     } else {
       root.removeAttribute('data-custom-colors');
       root.style.removeProperty('--custom-primary');
+      root.style.removeProperty('--custom-primary-text');
       root.style.removeProperty('--custom-background');
       root.style.removeProperty('--custom-foreground');
       root.style.removeProperty('--custom-header');
+      root.style.removeProperty('--custom-header-text');
       root.style.removeProperty('--custom-sidebar');
+      root.style.removeProperty('--custom-sidebar-text');
       root.style.removeProperty('--custom-border');
       root.style.removeProperty('--custom-secondary-font');
     }
@@ -235,13 +259,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (useCustomColors) {
       localStorage.setItem('customPrimaryColor', customPrimaryColor);
       localStorage.setItem('customBackgroundColor', customBackgroundColor);
-      localStorage.setItem('customForegroundColor', customForegroundColor);
       localStorage.setItem('customHeaderColor', customHeaderColor);
       localStorage.setItem('customSidebarColor', customSidebarColor);
       localStorage.setItem('customBorderColor', customBorderColor);
-      localStorage.setItem('customSecondaryFontColor', customSecondaryFontColor);
     }
-  }, [useCustomColors, customPrimaryColor, customBackgroundColor, customForegroundColor, customHeaderColor, customSidebarColor, customBorderColor, customSecondaryFontColor]);
+  }, [useCustomColors, customPrimaryColor, customBackgroundColor, customHeaderColor, customSidebarColor, customBorderColor]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -307,16 +329,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         setCustomPrimaryColor,
         customBackgroundColor,
         setCustomBackgroundColor,
-        customForegroundColor,
-        setCustomForegroundColor,
         customHeaderColor,
         setCustomHeaderColor,
         customSidebarColor,
         setCustomSidebarColor,
         customBorderColor,
         setCustomBorderColor,
-        customSecondaryFontColor,
-        setCustomSecondaryFontColor,
         useCustomColors,
         setUseCustomColors,
         density,
