@@ -15,17 +15,6 @@
       </w:pPr>
     </w:pPrDefault>
   </w:docDefaults>
-  <w:style w:type="table" w:styleId="TableNormal" w:default="1">
-    <w:name w:val="TableNormal"/>
-    <w:tblPr>
-      <w:tblCellMar>
-        <w:top w:w="100.0" w:type="dxa"/>
-        <w:left w:w="100.0" w:type="dxa"/>
-        <w:bottom w:w="100.0" w:type="dxa"/>
-        <w:right w:w="100.0" w:type="dxa"/>
-      </w:tblCellMar>
-    </w:tblPr>
-  </w:style>
   <w:style w:type="paragraph" w:styleId="Normal">
     <w:name w:val="Normal"/>
     <w:pPr>
