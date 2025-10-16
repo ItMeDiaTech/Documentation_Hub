@@ -8,6 +8,7 @@ import { WordDocumentProcessor } from '../src/services/document/WordDocumentProc
 import { CustomUpdater } from './customUpdater';
 import { proxyConfig } from './proxyConfig';
 import { zscalerConfig } from './zscalerConfig';
+import { MemoryConfig } from './memoryConfig';
 import type {
   BatchProcessingOptions,
   BatchProcessingResult,
@@ -27,6 +28,12 @@ console.log(`[Main] Electron: v${process.versions.electron}`);
 console.log(`[Main] Node: v${process.versions.node}`);
 console.log(`[Main] Platform: ${process.platform} ${process.arch}`);
 console.log('========================================');
+
+// ============================================================================
+// Memory Configuration (MUST be before app.ready)
+// ============================================================================
+console.log('[Main] Configuring memory and heap size...');
+MemoryConfig.configureApp();
 
 // ============================================================================
 // Proxy, Zscaler, and TLS/Certificate Configuration

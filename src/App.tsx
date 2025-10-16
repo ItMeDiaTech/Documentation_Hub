@@ -10,6 +10,7 @@ import { CommandPalette } from '@/components/navigation/CommandPalette';
 import { BugReportButton } from '@/components/common/BugReportButton';
 import { UpdateNotification } from '@/components/common/UpdateNotification';
 import { DebugConsole } from '@/components/common/DebugConsole';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { useState, lazy, Suspense } from 'react';
 
 // Lazy load pages for code splitting and faster initial load
@@ -110,15 +111,17 @@ const router = createHashRouter(
 
 function App() {
   return (
-    <ThemeProvider>
-      <UserSettingsProvider>
-        <GlobalStatsProvider>
-          <SessionProvider>
-            <RouterProvider router={router} />
-          </SessionProvider>
-        </GlobalStatsProvider>
-      </UserSettingsProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <UserSettingsProvider>
+          <GlobalStatsProvider>
+            <SessionProvider>
+              <RouterProvider router={router} />
+            </SessionProvider>
+          </GlobalStatsProvider>
+        </UserSettingsProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

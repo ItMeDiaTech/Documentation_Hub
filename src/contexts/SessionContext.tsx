@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { Session, Document, SessionStats, SessionContextType, ReplacementRule } from '@/types/session';
 import type { HyperlinkProcessingOptions, BatchProcessingOptions } from '@/types/hyperlink';
 import {
@@ -10,6 +10,7 @@ import {
   truncateSessionChanges
 } from '@/utils/indexedDB';
 import { useGlobalStats } from './GlobalStatsContext';
+import { validateFilePath } from '@/utils/pathValidator';
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
@@ -29,6 +30,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const { updateStats: updateGlobalStats } = useGlobalStats();
+
+  // Ref to store debounce timer
+  const persistTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadSessionsFromStorage = async () => {
     try {
@@ -109,42 +113,59 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     loadSessionsFromStorage();
   }, []);
 
-  // Persist sessions and active sessions whenever they change
-  useEffect(() => {
-    const persistSessions = async () => {
-      try {
-        // Critical: Ensure database size limit to prevent quota exceeded errors
-        await ensureDBSizeLimit(200); // 200MB limit
+  // Debounced persist function to reduce database writes
+  // PERFORMANCE: Debounces by 1 second to batch rapid state updates
+  const debouncedPersistSessions = useCallback(async () => {
+    try {
+      // Critical: Ensure database size limit to prevent quota exceeded errors
+      await ensureDBSizeLimit(200); // 200MB limit
 
-        const serializedSessions: SerializedSession[] = sessions.map((s) => ({
-          ...s,
-          createdAt: s.createdAt.toISOString(),
-          lastModified: s.lastModified.toISOString(),
-          closedAt: s.closedAt ? s.closedAt.toISOString() : undefined,
-          documents: s.documents.map((d) => ({
-            ...d,
-            processedAt: d.processedAt ? d.processedAt.toISOString() : undefined,
-          })),
-        }));
+      const serializedSessions: SerializedSession[] = sessions.map((s) => ({
+        ...s,
+        createdAt: s.createdAt.toISOString(),
+        lastModified: s.lastModified.toISOString(),
+        closedAt: s.closedAt ? s.closedAt.toISOString() : undefined,
+        documents: s.documents.map((d) => ({
+          ...d,
+          processedAt: d.processedAt ? d.processedAt.toISOString() : undefined,
+        })),
+      }));
 
-        // Save each session to IndexedDB with truncated changes
-        for (const session of serializedSessions) {
-          // Truncate large change arrays to prevent excessive storage
-          const truncatedSession = truncateSessionChanges(session, 100);
-          await saveSessionToDB(truncatedSession);
-        }
-
-        // Keep active sessions in localStorage for quick access
-        localStorage.setItem('activeSessions', JSON.stringify(activeSessions.map((s) => s.id)));
-      } catch (err) {
-        console.error('Failed to persist sessions:', err);
+      // Save each session to IndexedDB with truncated changes
+      for (const session of serializedSessions) {
+        // Truncate large change arrays to prevent excessive storage
+        const truncatedSession = truncateSessionChanges(session, 100);
+        await saveSessionToDB(truncatedSession);
       }
-    };
 
-    if (sessions.length > 0) {
-      persistSessions();
+      // Keep active sessions in localStorage for quick access
+      localStorage.setItem('activeSessions', JSON.stringify(activeSessions.map((s) => s.id)));
+    } catch (err) {
+      console.error('Failed to persist sessions:', err);
     }
   }, [sessions, activeSessions]);
+
+  // Persist sessions and active sessions whenever they change (debounced)
+  useEffect(() => {
+    if (sessions.length > 0) {
+      // Clear existing timer
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+      }
+
+      // Set new timer with 1 second debounce
+      persistTimerRef.current = setTimeout(() => {
+        debouncedPersistSessions();
+      }, 1000);
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+      }
+    };
+  }, [sessions, activeSessions, debouncedPersistSessions]);
 
   const createSession = (name: string): Session => {
     const newSession: Session = {
@@ -267,6 +288,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         continue;
       }
 
+      // SECURITY: Validate path to prevent path traversal attacks
+      const validation = validateFilePath(fileWithPath.path);
+      if (!validation.isValid) {
+        console.error(`[addDocuments] File "${file.name}" rejected: ${validation.error}`);
+        invalidFiles.push(`${file.name} (${validation.error})`);
+        continue;
+      }
+
       // Validate path is absolute (contains directory separators)
       const isAbsolutePath = fileWithPath.path.includes('\\') || fileWithPath.path.includes('/');
       if (!isAbsolutePath) {
@@ -350,7 +379,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Update document status to processing
+    // PERFORMANCE: Update document status to processing (first setState)
     setSessions((prev) =>
       prev.map((s) =>
         s.id === sessionId
@@ -485,7 +514,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         processingOptions
       );
 
-      // Update document status and stats
+      // PERFORMANCE: Update document status AND stats in single setState (batched)
+      // This reduces re-renders from 2 to 1 per document
       setSessions((prev) =>
         prev.map((s) =>
           s.id === sessionId
