@@ -120,8 +120,8 @@ export class DocumentXmlProcessor {
   ): void {
     this.ensureParagraphProperties(paragraph);
 
-    // Set the paragraph style
-    paragraph['w:pPr']['w:pStyle'] = {
+    // Set the paragraph style (non-null assertion since we just ensured it exists)
+    paragraph['w:pPr']!['w:pStyle'] = {
       '@_w:val': styleId,
     };
   }
