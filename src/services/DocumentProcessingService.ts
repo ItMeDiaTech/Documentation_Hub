@@ -8,6 +8,7 @@ import {
 } from '@/types/hyperlink';
 import { Document } from '@/types/session';
 import { hyperlinkService } from './HyperlinkService';
+import { MemoryMonitor } from '@/utils/MemoryMonitor';
 
 // Initialize XML parser with options
 const xmlParser = new XMLParser({
@@ -103,6 +104,9 @@ export class DocumentProcessingService {
     processedData: ArrayBuffer;
     result: HyperlinkProcessingResult;
   }> {
+    // Memory checkpoint: Process start
+    MemoryMonitor.logMemoryUsage('ProcessingService Start', `Processing: ${fileName}`);
+
     const startTime = Date.now();
     const result: HyperlinkProcessingResult = {
       success: false,
@@ -120,10 +124,16 @@ export class DocumentProcessingService {
       // Load the .docx file as a zip
       const zip = await JSZip.loadAsync(fileData);
 
+      // Memory checkpoint: After ZIP load
+      MemoryMonitor.logMemoryUsage('After ZIP Load', `${fileName} loaded into memory`);
+
       // Extract and process hyperlinks
       const hyperlinks = await this.extractHyperlinks(zip);
       result.totalHyperlinks = hyperlinks.length;
       console.log(`Found ${hyperlinks.length} hyperlinks in document`);
+
+      // Memory checkpoint: After hyperlink extraction
+      MemoryMonitor.logMemoryUsage('After Hyperlink Extraction', `${hyperlinks.length} hyperlinks extracted`);
 
       if (hyperlinks.length > 0 && (options.fixContentIds || options.updateTitles)) {
         // Process hyperlinks with API if PowerAutomate URL is configured
@@ -158,6 +168,9 @@ export class DocumentProcessingService {
               h.url.includes('thesource.cvshealth.com')
             ).length;
             result.processedLinks = changes;
+
+            // Memory checkpoint: After XML processing
+            MemoryMonitor.logMemoryUsage('After XML Processing', 'Hyperlink fixes applied');
           } else {
             result.errorMessages.push(apiResponse.error || 'API request failed');
           }
@@ -172,8 +185,15 @@ export class DocumentProcessingService {
         result.processedLinks.push(...formattingChanges);
       }
 
+      // Memory checkpoint: Before document generation
+      MemoryMonitor.logMemoryUsage('Before Document Generation', 'Ready to generate processed document');
+
       // Generate the processed document
       const processedData = await zip.generateAsync({ type: 'arraybuffer' });
+
+      // Memory checkpoint: After document generation
+      MemoryMonitor.logMemoryUsage('After Document Generation', 'Document generation complete');
+      MemoryMonitor.compareCheckpoints('ProcessingService Start', 'After Document Generation');
 
       result.success = true;
       result.duration = Date.now() - startTime;
@@ -183,6 +203,10 @@ export class DocumentProcessingService {
         result,
       };
     } catch (error) {
+      // Memory checkpoint: On error
+      MemoryMonitor.logMemoryUsage('ProcessingService Error', `Error: ${error instanceof Error ? error.message : 'Unknown'}`);
+      MemoryMonitor.compareCheckpoints('ProcessingService Start', 'ProcessingService Error');
+
       result.errorMessages.push(error instanceof Error ? error.message : 'Unknown error');
       result.duration = Date.now() - startTime;
 

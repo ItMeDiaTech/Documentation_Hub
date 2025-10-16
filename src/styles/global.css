@@ -232,16 +232,16 @@
 
   /* Force base text elements in sidebar to use the auto-calculated sidebar text color */
   [data-custom-colors='true'] .sidebar-bg span:not(.text-primary-foreground):not(.text-accent-foreground),
-  [data-custom-colors='true'] .sidebar-bg svg:not(.text-primary):not(.group-hover\\:text-primary) {
+  [data-custom-colors='true'] .sidebar-bg svg:not(.text-primary):not([class*="group-hover:text-primary"]) {
     color: hsl(var(--custom-sidebar-text)) !important;
   }
 
   /* Sidebar hover states - adaptive background with proper contrast */
-  [data-custom-colors='true'] .sidebar-bg .hover\\:bg-accent:hover {
+  [data-custom-colors='true'] .sidebar-bg [class*="hover:bg-accent"]:hover {
     background-color: color-mix(in srgb, hsl(var(--custom-sidebar-text)) 12%, hsl(var(--custom-sidebar))) !important;
   }
 
-  [data-custom-colors='true'] .sidebar-bg .hover\\:text-accent-foreground:hover {
+  [data-custom-colors='true'] .sidebar-bg [class*="hover:text-accent-foreground"]:hover {
     color: hsl(var(--custom-sidebar-text)) !important;
   }
 

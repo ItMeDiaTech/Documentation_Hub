@@ -478,10 +478,13 @@ export class CustomUpdater {
 
   /**
    * Download a file using Electron's net module with exponential backoff
+   * PERFORMANCE: Added absolute timeout to prevent infinite retry loops
    */
   private async downloadFile(url: string, destPath: string, attempt: number = 1): Promise<void> {
     const maxAttempts = 5;
     const retryDelays = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
+    const ABSOLUTE_TIMEOUT = 120000; // 2 minutes maximum total time
+    const startTime = Date.now();
 
     // PRIORITIZE PowerShell when Zscaler is detected - it handles corporate certificates better
     if (zscalerConfig.isDetected() && process.platform === 'win32') {
@@ -519,6 +522,17 @@ export class CustomUpdater {
     }
 
     for (let currentAttempt = attempt; currentAttempt <= maxAttempts; currentAttempt++) {
+      // PERFORMANCE: Check absolute timeout before each attempt
+      const elapsedTime = Date.now() - startTime;
+      if (elapsedTime > ABSOLUTE_TIMEOUT) {
+        const errorMsg = `Download timeout: Exceeded maximum time limit (${ABSOLUTE_TIMEOUT / 1000}s)`;
+        console.log(`[CustomUpdater] ${errorMsg}`);
+        this.sendToWindow('update-error', {
+          message: errorMsg + '. Please try manual download or check your network connection.'
+        });
+        throw new Error(errorMsg);
+      }
+
       try {
         // Reset proxy configuration on retry
         if (currentAttempt > 1) {
@@ -568,7 +582,14 @@ export class CustomUpdater {
 
         if (shouldRetry) {
           const delay = retryDelays[currentAttempt - 1] || 16000;
-          console.log(`[CustomUpdater] Retrying in ${delay}ms...`);
+
+          // Check if delay would exceed absolute timeout
+          const timeRemaining = ABSOLUTE_TIMEOUT - (Date.now() - startTime);
+          if (delay > timeRemaining) {
+            throw new Error(`Download timeout: Not enough time remaining for retry (${timeRemaining}ms left)`);
+          }
+
+          console.log(`[CustomUpdater] Retrying in ${delay}ms (${timeRemaining}ms remaining)...`);
 
           // Send status update
           let statusMessage = 'Connection interrupted, retrying...';
