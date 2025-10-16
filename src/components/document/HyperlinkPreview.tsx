@@ -13,6 +13,7 @@ import {
   Hash
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { sanitizeUrl } from '@/utils/urlSanitizer';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 
@@ -318,7 +319,7 @@ export function HyperlinkPreview({
                             </p>
                             <div className="mt-2 flex items-center gap-2">
                               <a
-                                href={change.originalUrl}
+                                href={sanitizeUrl(change.originalUrl)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs text-primary hover:underline flex items-center gap-1"
@@ -327,7 +328,7 @@ export function HyperlinkPreview({
                               </a>
                               {change.newUrl && (
                                 <a
-                                  href={change.newUrl}
+                                  href={sanitizeUrl(change.newUrl)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-xs text-primary hover:underline flex items-center gap-1"
