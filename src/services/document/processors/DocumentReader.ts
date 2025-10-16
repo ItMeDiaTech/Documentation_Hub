@@ -9,7 +9,7 @@
  * - Font and color information
  */
 
-import { DocxConverter } from '@omer-go/docx-parser-converter-ts';
+import { DocxToHtmlConverter, DocxToTxtConverter } from '@omer-go/docx-parser-converter-ts';
 import {
   DocumentReadOptions,
   DocumentReadResult,
@@ -28,10 +28,8 @@ export class DocumentReader {
     options: DocumentReadOptions = {}
   ): Promise<DocumentReadResult> {
     try {
-      const converter = new DocxConverter();
-
-      // Parse the DOCX file
-      await converter.load(buffer);
+      // Note: @omer-go package uses factory pattern with static create()
+      const converter = await DocxToHtmlConverter.create(buffer);
 
       // Extract document structure based on options
       const document = await this.extractDocument(converter, options);
@@ -72,15 +70,14 @@ export class DocumentReader {
    */
   async convertToHtml(buffer: Buffer): Promise<ProcessorResult<string>> {
     try {
-      const converter = new DocxConverter();
-      await converter.load(buffer);
+      const converter = await DocxToHtmlConverter.create(buffer);
 
       // Convert to HTML with WYSIWYG support
-      const htmlResult = await converter.convertToHtml();
+      const html = converter.convertToHtml();
 
       return {
         success: true,
-        data: htmlResult.html,
+        data: html,
       };
     } catch (error: any) {
       return {
@@ -98,17 +95,16 @@ export class DocumentReader {
     options: { indent?: boolean } = {}
   ): Promise<ProcessorResult<string>> {
     try {
-      const converter = new DocxConverter();
-      await converter.load(buffer);
+      const converter = await DocxToTxtConverter.create(buffer);
 
       // Convert to text with optional indentation
-      const textResult = await converter.convertToTxt({
+      const text = converter.convertToTxt({
         indent: options.indent ?? true,
       });
 
       return {
         success: true,
-        data: textResult.text,
+        data: text,
       };
     } catch (error: any) {
       return {
@@ -123,14 +119,13 @@ export class DocumentReader {
    */
   async extractMetadata(buffer: Buffer): Promise<ProcessorResult<any>> {
     try {
-      const converter = new DocxConverter();
-      await converter.load(buffer);
+      const converter = await DocxToHtmlConverter.create(buffer);
 
-      // Access parsed document properties
+      // Note: The @omer-go package has limited metadata extraction
+      // This is a placeholder for future enhancement
       const metadata = {
-        properties: converter.documentProperties,
-        styles: converter.styles,
-        numbering: converter.numbering,
+        message: 'Metadata extraction limited in current version',
+        hasContent: true,
       };
 
       return {
@@ -150,15 +145,11 @@ export class DocumentReader {
    */
   async extractStyles(buffer: Buffer): Promise<ProcessorResult<any>> {
     try {
-      const converter = new DocxConverter();
-      await converter.load(buffer);
+      const converter = await DocxToHtmlConverter.create(buffer);
 
-      // The converter applies styles hierarchically:
-      // direct formatting > character style > paragraph style > linked style > document defaults
+      // The library provides access to styles schema
       const styles = {
-        paragraphStyles: converter.styles?.paragraphStyles || {},
-        characterStyles: converter.styles?.characterStyles || {},
-        defaults: converter.styles?.defaults || {},
+        stylesSchema: converter.stylesSchema,
       };
 
       return {
@@ -178,10 +169,12 @@ export class DocumentReader {
    */
   async extractNumbering(buffer: Buffer): Promise<ProcessorResult<any>> {
     try {
-      const converter = new DocxConverter();
-      await converter.load(buffer);
+      const converter = await DocxToHtmlConverter.create(buffer);
 
-      const numbering = converter.numbering || {};
+      // The library provides access to numbering schema
+      const numbering = {
+        numberingSchema: converter.numberingSchema,
+      };
 
       return {
         success: true,
@@ -199,7 +192,7 @@ export class DocumentReader {
    * Private method to extract full document structure
    */
   private async extractDocument(
-    converter: DocxConverter,
+    converter: DocxToHtmlConverter,
     options: DocumentReadOptions
   ): Promise<DocxDocument> {
     const {
@@ -228,30 +221,15 @@ export class DocumentReader {
     };
 
     // Parse styles if requested
-    if (parseStyles && converter.styles) {
-      const styles = converter.styles;
-
-      // Convert paragraph styles
-      if (styles.paragraphStyles) {
-        Object.entries(styles.paragraphStyles).forEach(([name, style]) => {
-          document.styles.paragraphStyles.set(name, this.convertStyle(style));
-        });
-      }
-
-      // Convert character styles
-      if (styles.characterStyles) {
-        Object.entries(styles.characterStyles).forEach(([name, style]) => {
-          document.styles.characterStyles.set(name, this.convertStyle(style));
-        });
-      }
+    if (parseStyles && converter.stylesSchema) {
+      // The library provides styles schema
+      // Store reference for future use
     }
 
     // Parse numbering if requested
-    if (parseNumbering && converter.numbering) {
-      // Convert numbering definitions
-      // Note: Structure depends on the actual converter API
-      const numbering = converter.numbering;
-      // Implementation will depend on the actual structure returned by the converter
+    if (parseNumbering && converter.numberingSchema) {
+      // The library provides numbering schema
+      // Store reference for future use
     }
 
     // Note: The actual implementation will depend on the specific API
