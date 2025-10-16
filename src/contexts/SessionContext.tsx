@@ -468,6 +468,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         removeWhitespace: session.processingOptions?.enabledOperations?.includes('remove-whitespace'),
         removeItalics: session.processingOptions?.enabledOperations?.includes('remove-italics'),
         assignStyles: session.processingOptions?.enabledOperations?.includes('assign-styles'),
+        listBulletSettings: session.listBulletSettings,
+        tableUniformitySettings: session.tableUniformitySettings,
       } as any;
 
       // Process the document using Electron IPC
@@ -773,6 +775,70 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateSessionListBulletSettings = (sessionId: string, listBulletSettings: any) => {
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              listBulletSettings,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update active sessions
+    setActiveSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              listBulletSettings,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update current session if it's being modified
+    if (currentSession?.id === sessionId) {
+      setCurrentSession((prev) => (prev ? { ...prev, listBulletSettings, lastModified: new Date() } : null));
+    }
+  };
+
+  const updateSessionTableUniformitySettings = (sessionId: string, tableUniformitySettings: any) => {
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              tableUniformitySettings,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update active sessions
+    setActiveSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              tableUniformitySettings,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update current session if it's being modified
+    if (currentSession?.id === sessionId) {
+      setCurrentSession((prev) => (prev ? { ...prev, tableUniformitySettings, lastModified: new Date() } : null));
+    }
+  };
+
   const saveSession = (session: Session) => {
     localStorage.setItem(`session_${session.id}`, JSON.stringify(session));
   };
@@ -816,6 +882,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         updateSessionOptions,
         updateSessionReplacements,
         updateSessionStyles,
+        updateSessionListBulletSettings,
+        updateSessionTableUniformitySettings,
         saveSession,
         loadSessionFromStorage,
       }}
