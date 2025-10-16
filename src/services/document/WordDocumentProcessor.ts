@@ -2423,6 +2423,44 @@ export class WordDocumentProcessor {
    *
    * IMPORTANT: This works with preserveOrder:true structure where rPr is an array
    */
+  /**
+   * Enhanced heading style detection
+   * Recognizes a comprehensive set of heading-related style IDs
+   *
+   * @param styleId - The style ID to check (e.g., "Heading1", "Header2", "Title")
+   * @returns true if the style is a heading/title style, false otherwise
+   */
+  private isHeadingStyle(styleId: string | null): boolean {
+    if (!styleId) return false;
+
+    const lowerStyleId = styleId.toLowerCase();
+
+    // Comprehensive list of heading-related patterns
+    const headingPatterns = [
+      'heading',    // Heading1, Heading2, Heading 1, Heading 2, etc.
+      'header',     // Header1, Header2, Header 1, Header 2, etc.
+      'title',      // Title, Subtitle, etc.
+      'subtitle',   // Subtitle variations
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',  // HTML-style heading IDs
+      'toc',        // Table of Contents headings (TOC Heading, TOCHeading, etc.)
+    ];
+
+    // Check if styleId contains any heading pattern
+    for (const pattern of headingPatterns) {
+      if (lowerStyleId.includes(pattern)) {
+        return true;
+      }
+    }
+
+    // Additional checks for numbered heading styles
+    // e.g., "Heading 1", "Heading 2", "Header 1", "Header 2"
+    if (/^(heading|header|h)\s*\d+$/i.test(styleId)) {
+      return true;
+    }
+
+    return false;
+  }
+
   private clearDirectFormatting(rPr: any, preserveHyperlinks: boolean = true): boolean {
     if (!rPr) return false;
 
@@ -2640,8 +2678,13 @@ export class WordDocumentProcessor {
 
               // Only apply Normal if: paragraph has no style OR has a non-Normal/non-heading style
               // This prevents wasteful re-application and ensures headings are preserved
-              const isHeading = currentStyle && (currentStyle.toLowerCase().includes('heading') || currentStyle.toLowerCase().includes('header'));
+              const isHeading = this.isHeadingStyle(currentStyle);
               const needsNormalStyle = !isHeading && (!currentStyle || currentStyle !== 'Normal');
+
+              // Debug logging for style detection
+              if (this.debugMode && currentStyle) {
+                console.log(`  [Style Check] currentStyle="${currentStyle}" → isHeading=${isHeading}, needsNormalStyle=${needsNormalStyle}`);
+              }
 
               if (needsNormalStyle) {
                 // Set paragraph style to Normal
@@ -2720,8 +2763,13 @@ export class WordDocumentProcessor {
               }
 
               // Only apply Normal if: paragraph has no style OR has a non-Normal/non-heading style
-              const isHeading2 = currentStyle && (currentStyle.toLowerCase().includes('heading') || currentStyle.toLowerCase().includes('header'));
+              const isHeading2 = this.isHeadingStyle(currentStyle);
               const needsNormalStyle2 = !isHeading2 && (!currentStyle || currentStyle !== 'Normal');
+
+              // Debug logging for style detection (non-array format)
+              if (this.debugMode && currentStyle) {
+                console.log(`  [Style Check - Non-Array] currentStyle="${currentStyle}" → isHeading=${isHeading2}, needsNormalStyle=${needsNormalStyle2}`);
+              }
 
               if (needsNormalStyle2) {
                 if (!paragraph['w:pPr']) {
