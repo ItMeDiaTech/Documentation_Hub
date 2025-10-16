@@ -10,15 +10,29 @@ import { CommandPalette } from '@/components/navigation/CommandPalette';
 import { BugReportButton } from '@/components/common/BugReportButton';
 import { UpdateNotification } from '@/components/common/UpdateNotification';
 import { DebugConsole } from '@/components/common/DebugConsole';
-import { Dashboard } from '@/pages/Dashboard';
-import { Settings } from '@/pages/Settings';
-import { CurrentSession } from '@/pages/CurrentSession';
-import { Sessions } from '@/pages/Sessions';
-import { Documents } from '@/pages/Documents';
-import { Analytics } from '@/pages/Analytics';
-import { Search } from '@/pages/Search';
-import { Plugins } from '@/pages/Plugins';
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
+
+// Lazy load pages for code splitting and faster initial load
+const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
+const CurrentSession = lazy(() => import('@/pages/CurrentSession').then(m => ({ default: m.CurrentSession })));
+const Sessions = lazy(() => import('@/pages/Sessions').then(m => ({ default: m.Sessions })));
+const Documents = lazy(() => import('@/pages/Documents').then(m => ({ default: m.Documents })));
+const Analytics = lazy(() => import('@/pages/Analytics').then(m => ({ default: m.Analytics })));
+const Search = lazy(() => import('@/pages/Search').then(m => ({ default: m.Search })));
+const Plugins = lazy(() => import('@/pages/Plugins').then(m => ({ default: m.Plugins })));
+
+// Loading fallback component
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
+}
 
 function EmptyPage({ title }: { title: string }) {
   return (
@@ -45,7 +59,9 @@ function Layout() {
           <Header onCommandPalette={() => setCommandPaletteOpen(true)} />
 
           <main className="flex-1 overflow-auto">
-            <Outlet />
+            <Suspense fallback={<PageLoader />}>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
       </div>
