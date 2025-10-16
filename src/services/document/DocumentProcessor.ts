@@ -24,8 +24,7 @@ import type {
 import { BackupService } from './BackupService';
 import { ValidationEngine } from './ValidationEngine';
 import { HyperlinkManager } from './HyperlinkManager';
-import StylesXmlProcessor from './utils/StylesXmlProcessor';
-import DocumentXmlProcessor from './utils/DocumentXmlProcessor';
+// Note: StylesXmlProcessor and DocumentXmlProcessor removed - migrated to DocXMLater
 
 /**
  * Main document processor class
@@ -35,8 +34,7 @@ export class DocumentProcessor {
   private backupService: BackupService;
   private validationEngine: ValidationEngine;
   private hyperlinkManager: HyperlinkManager;
-  private stylesProcessor: StylesXmlProcessor;
-  private documentProcessor: DocumentXmlProcessor;
+  // Note: stylesProcessor and documentProcessor removed - use DocXMLater
   private processingContext?: ProcessingContext;
   private xmlParser: XMLParser;
   private xmlBuilder: XMLBuilder;
@@ -45,8 +43,7 @@ export class DocumentProcessor {
     this.backupService = new BackupService();
     this.validationEngine = new ValidationEngine();
     this.hyperlinkManager = new HyperlinkManager();
-    this.stylesProcessor = new StylesXmlProcessor();
-    this.documentProcessor = new DocumentXmlProcessor();
+    // Note: Processors removed - use WordDocumentProcessor with DocXMLater instead
 
     // Initialize XML parser and builder
     this.xmlParser = new XMLParser({
@@ -337,76 +334,9 @@ export class DocumentProcessor {
       throw new Error('Document XML not found');
     }
 
-    // Parse styles.xml
-    const stylesParseResult = this.stylesProcessor.parse(stylesXml);
-    if (!stylesParseResult.success || !stylesParseResult.data) {
-      throw new Error(`Failed to parse styles.xml: ${stylesParseResult.error}`);
-    }
-
-    // Parse document.xml
-    const documentParseResult = this.documentProcessor.parse(documentXml);
-    if (!documentParseResult.success || !documentParseResult.data) {
-      throw new Error(`Failed to parse document.xml: ${documentParseResult.error}`);
-    }
-
-    let modifiedStyles = stylesParseResult.data;
-    let modifiedDocument = documentParseResult.data;
-    let stylesChanged = false;
-    let documentChanged = false;
-
-    // Execute style operation based on action
-    switch (operation.action) {
-      case 'apply':
-        // Apply style to paragraphs
-        const applyResult = this.documentProcessor.applyStyleToAll(
-          modifiedDocument,
-          operation.styleName
-        );
-        documentChanged = applyResult.modified > 0;
-
-        const stats = this.processingContext?.statistics;
-        if (stats && typeof stats.stylesApplied === 'number') {
-          stats.stylesApplied += applyResult.modified;
-        }
-        break;
-
-      case 'modify':
-        // Modify style definition
-        if (operation.properties) {
-          modifiedStyles = this.stylesProcessor.setParagraphStyle(
-            modifiedStyles,
-            operation.styleName,
-            operation.styleName,
-            operation.properties as any
-          );
-          stylesChanged = true;
-        }
-        break;
-
-      case 'remove':
-        // Remove style from paragraphs
-        const removeResult = this.documentProcessor.clearAllStyles(modifiedDocument);
-        documentChanged = removeResult.modified > 0;
-        break;
-    }
-
-    // Save modified styles.xml if changed
-    if (stylesChanged) {
-      const stylesBuildResult = this.stylesProcessor.build(modifiedStyles);
-      if (!stylesBuildResult.success || !stylesBuildResult.data) {
-        throw new Error(`Failed to build styles.xml: ${stylesBuildResult.error}`);
-      }
-      zip.file('word/styles.xml', stylesBuildResult.data);
-    }
-
-    // Save modified document.xml if changed
-    if (documentChanged) {
-      const documentBuildResult = this.documentProcessor.build(modifiedDocument);
-      if (!documentBuildResult.success || !documentBuildResult.data) {
-        throw new Error(`Failed to build document.xml: ${documentBuildResult.error}`);
-      }
-      zip.file('word/document.xml', documentBuildResult.data);
-    }
+    // NOTE: Style processors removed - use WordDocumentProcessor with DocXMLater
+    // For style operations, use the new DocXMLater-based WordDocumentProcessor instead
+    throw new Error('Style operations moved to WordDocumentProcessor with DocXMLater. Use that processor instead.');
   }
 
   /**
