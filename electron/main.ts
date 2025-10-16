@@ -540,7 +540,7 @@ class HyperlinkIPCHandler {
         );
 
         // Aggregate results
-        for (const [filePath, result] of processedResults) {
+        for (const { file: filePath, result } of processedResults.results) {
           results.set(filePath, result);
           if (result.success) {
             totalHyperlinksProcessed += result.processedHyperlinks;
