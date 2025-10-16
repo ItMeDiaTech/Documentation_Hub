@@ -232,3 +232,165 @@ export async function getActiveSessionIds(): Promise<string[]> {
     };
   });
 }
+
+/**
+ * Calculate approximate database size in MB
+ * Uses JSON string length as proxy for storage size
+ */
+export async function calculateDBSize(): Promise<number> {
+  try {
+    const sessions = await loadSessions();
+    const jsonString = JSON.stringify(sessions);
+    const sizeInBytes = new Blob([jsonString]).size;
+    const sizeInMB = sizeInBytes / (1024 * 1024);
+
+    console.log(`[IndexedDB] Database size: ${sizeInMB.toFixed(2)}MB (${sessions.length} sessions)`);
+    return sizeInMB;
+  } catch (error) {
+    console.error('[IndexedDB] Failed to calculate database size:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get oldest closed sessions sorted by closedAt date
+ */
+export async function getOldestClosedSessions(limit: number): Promise<any[]> {
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([SESSIONS_STORE], 'readonly');
+    const store = transaction.objectStore(SESSIONS_STORE);
+    const request = store.getAll();
+
+    request.onsuccess = () => {
+      const sessions = request.result || [];
+
+      // Filter closed sessions and sort by closedAt (oldest first)
+      const closedSessions = sessions
+        .filter((s: any) => s.status === 'closed' && s.closedAt)
+        .sort((a: any, b: any) => {
+          const dateA = new Date(a.closedAt).getTime();
+          const dateB = new Date(b.closedAt).getTime();
+          return dateA - dateB; // Oldest first
+        })
+        .slice(0, limit);
+
+      resolve(closedSessions);
+    };
+
+    request.onerror = () => {
+      reject(new Error('Failed to get oldest closed sessions'));
+    };
+
+    transaction.oncomplete = () => {
+      db.close();
+    };
+  });
+}
+
+/**
+ * Delete multiple sessions by their IDs
+ */
+export async function deleteSessions(sessionIds: string[]): Promise<number> {
+  const db = await openDB();
+  let deletedCount = 0;
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
+    const store = transaction.objectStore(SESSIONS_STORE);
+
+    for (const sessionId of sessionIds) {
+      const request = store.delete(sessionId);
+      request.onsuccess = () => {
+        deletedCount++;
+      };
+    }
+
+    transaction.oncomplete = () => {
+      db.close();
+      console.log(`[IndexedDB] Deleted ${deletedCount} session(s)`);
+      resolve(deletedCount);
+    };
+
+    transaction.onerror = () => {
+      reject(new Error('Failed to delete sessions'));
+    };
+  });
+}
+
+/**
+ * Clean up database when it exceeds size limit
+ * Removes oldest closed sessions until under the limit
+ */
+export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> {
+  try {
+    const currentSize = await calculateDBSize();
+
+    if (currentSize <= maxSizeMB) {
+      return; // Within limits
+    }
+
+    console.log(`[IndexedDB] Database size (${currentSize.toFixed(2)}MB) exceeds limit (${maxSizeMB}MB)`);
+    console.log('[IndexedDB] Starting cleanup of oldest closed sessions...');
+
+    // Delete oldest closed sessions in batches until under limit
+    let iterationCount = 0;
+    const maxIterations = 10; // Safety limit
+
+    while (iterationCount < maxIterations) {
+      const oldestSessions = await getOldestClosedSessions(10); // Delete 10 at a time
+
+      if (oldestSessions.length === 0) {
+        console.log('[IndexedDB] No more closed sessions to delete');
+        break;
+      }
+
+      const sessionIds = oldestSessions.map((s: any) => s.id);
+      await deleteSessions(sessionIds);
+
+      const newSize = await calculateDBSize();
+      console.log(`[IndexedDB] Size after cleanup: ${newSize.toFixed(2)}MB`);
+
+      if (newSize <= maxSizeMB) {
+        console.log('[IndexedDB] Database size now under limit');
+        break;
+      }
+
+      iterationCount++;
+    }
+
+    if (iterationCount >= maxIterations) {
+      console.warn('[IndexedDB] Max cleanup iterations reached, size may still exceed limit');
+    }
+
+  } catch (error) {
+    console.error('[IndexedDB] Failed to ensure database size limit:', error);
+  }
+}
+
+/**
+ * Truncate large change arrays in session documents
+ * Prevents excessive storage of tracking data
+ */
+export function truncateSessionChanges(session: any, maxChanges: number = 100): any {
+  if (!session.documents) {
+    return session;
+  }
+
+  return {
+    ...session,
+    documents: session.documents.map((doc: any) => {
+      if (doc.processingResult?.changes && doc.processingResult.changes.length > maxChanges) {
+        return {
+          ...doc,
+          processingResult: {
+            ...doc.processingResult,
+            changes: doc.processingResult.changes.slice(0, maxChanges)
+          }
+        };
+      }
+      return doc;
+    })
+  };
+}
