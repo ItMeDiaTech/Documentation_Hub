@@ -16,6 +16,8 @@ import {
   HyperlinkType
 } from '@/types/hyperlink';
 import { DocXMLaterProcessor } from './DocXMLaterProcessor';
+import { MemoryMonitor } from '@/utils/MemoryMonitor';
+import { logger } from '@/utils/logger';
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -59,28 +61,11 @@ export class WordDocumentProcessor {
   // Debug mode controlled by environment
   private readonly DEBUG = process.env.NODE_ENV !== 'production';
 
+  private log = logger.namespace('WordDocProcessor');
+
   constructor() {
     this.docXMLater = new DocXMLaterProcessor();
-
-    if (this.DEBUG) {
-      console.log('[WordDocumentProcessor] Initialized with DocXMLater');
-    }
-  }
-
-  /**
-   * Conditional logging
-   */
-  private log(...args: any[]): void {
-    if (this.DEBUG) {
-      console.log(...args);
-    }
-  }
-
-  /**
-   * Always log errors
-   */
-  private logError(...args: any[]): void {
-    console.error(...args);
+    this.log.debug('Initialized with DocXMLater');
   }
 
   /**
@@ -91,11 +76,14 @@ export class WordDocumentProcessor {
     filePath: string,
     options: WordProcessingOptions = {}
   ): Promise<WordProcessingResult> {
-    this.log('\n╔═══════════════════════════════════════════════════════════╗');
-    this.log('║  WORD DOCUMENT PROCESSOR - DOCXMLATER                    ║');
-    this.log('╚═══════════════════════════════════════════════════════════╝\n');
-    this.log('File:', filePath);
-    this.log('Options:', JSON.stringify(options, null, 2));
+    this.log.debug('═══════════════════════════════════════════════════════════');
+    this.log.debug('  WORD DOCUMENT PROCESSOR - DOCXMLATER');
+    this.log.debug('═══════════════════════════════════════════════════════════');
+    this.log.debug('File:', filePath);
+    this.log.debug('Options:', JSON.stringify(options, null, 2));
+
+    // Memory checkpoint: Start
+    MemoryMonitor.logMemoryUsage('DocProcessor Start', `Processing: ${path.basename(filePath)}`);
 
     const startTime = performance.now();
     const result: WordProcessingResult = {
@@ -122,45 +110,54 @@ export class WordDocumentProcessor {
       const fileSizeMB = stats.size / (1024 * 1024);
       result.documentSize = stats.size;
 
-      this.log(`File size: ${fileSizeMB.toFixed(2)}MB`);
+      this.log.debug(`File size: ${fileSizeMB.toFixed(2)}MB`);
+
+      // Memory checkpoint: After file validation
+      MemoryMonitor.logMemoryUsage('After File Validation', `${fileSizeMB.toFixed(2)}MB document`);
 
       if (fileSizeMB > (options.maxFileSizeMB || this.MAX_FILE_SIZE_MB)) {
         throw new Error(`File too large: ${fileSizeMB.toFixed(2)}MB exceeds limit`);
       }
 
       // Create backup
-      this.log('\n=== BACKUP CREATION ===');
+      this.log.debug('=== BACKUP CREATION ===');
       const backupPath = await this.createBackup(filePath);
       result.backupPath = backupPath;
       backupCreated = true;
-      this.log(`✓ Backup created: ${backupPath}`);
+      this.log.info(`Backup created: ${backupPath}`);
 
       // Load document using DocXMLater
-      this.log('\n=== LOADING DOCUMENT WITH DOCXMLATER ===');
+      this.log.debug('=== LOADING DOCUMENT WITH DOCXMLATER ===');
       const doc = await Document.load(filePath);
-      this.log('✓ Document loaded successfully');
+      this.log.debug('Document loaded successfully');
+
+      // Memory checkpoint: After document load
+      MemoryMonitor.logMemoryUsage('After Document Load', 'DocXMLater document loaded');
 
       // Extract hyperlinks
-      this.log('\n=== EXTRACTING HYPERLINKS ===');
+      this.log.debug('=== EXTRACTING HYPERLINKS ===');
       const hyperlinks = await this.docXMLater.extractHyperlinks(doc);
       result.totalHyperlinks = hyperlinks.length;
-      this.log(`Found ${hyperlinks.length} hyperlinks`);
+      this.log.info(`Found ${hyperlinks.length} hyperlinks`);
+
+      // Memory checkpoint: After hyperlink extraction
+      MemoryMonitor.logMemoryUsage('After Hyperlink Extraction', `${hyperlinks.length} hyperlinks extracted`);
 
       // Process hyperlinks based on options
       if (options.appendContentId) {
-        this.log('\n=== APPENDING CONTENT IDS ===');
+        this.log.debug('=== APPENDING CONTENT IDS ===');
         const modifiedCount = await this.processContentIdAppending(
           hyperlinks,
           options,
           result
         );
         result.appendedContentIds = modifiedCount;
-        this.log(`✓ Appended content IDs to ${modifiedCount} hyperlinks`);
+        this.log.info(`Appended content IDs to ${modifiedCount} hyperlinks`);
       }
 
       // Custom replacements
       if (options.customReplacements && options.customReplacements.length > 0) {
-        this.log('\n=== APPLYING CUSTOM REPLACEMENTS ===');
+        this.log.debug('=== APPLYING CUSTOM REPLACEMENTS ===');
         await this.processCustomReplacements(
           hyperlinks,
           options.customReplacements,
@@ -168,28 +165,40 @@ export class WordDocumentProcessor {
         );
       }
 
+      // Memory checkpoint: Before save
+      MemoryMonitor.logMemoryUsage('Before Document Save', 'Ready to save document');
+
       // Save document
-      this.log('\n=== SAVING DOCUMENT ===');
+      this.log.debug('=== SAVING DOCUMENT ===');
       await doc.save(filePath);
-      this.log('✓ Document saved successfully');
+      this.log.info('Document saved successfully');
+
+      // Memory checkpoint: After save
+      MemoryMonitor.logMemoryUsage('After Document Save', 'Document saved successfully');
+      MemoryMonitor.compareCheckpoints('DocProcessor Start', 'After Document Save');
 
       // Success
       result.success = true;
       result.duration = performance.now() - startTime;
       result.processingTimeMs = result.duration;
 
-      this.log('\n╔═══════════════════════════════════════════════════════════╗');
-      this.log('║  PROCESSING COMPLETE                                      ║');
-      this.log('╚═══════════════════════════════════════════════════════════╝\n');
-      this.log(`Total hyperlinks: ${result.totalHyperlinks}`);
-      this.log(`Modified: ${result.modifiedHyperlinks}`);
-      this.log(`Appended Content IDs: ${result.appendedContentIds}`);
-      this.log(`Duration: ${result.duration.toFixed(0)}ms`);
+      this.log.debug('═══════════════════════════════════════════════════════════');
+      this.log.debug('  PROCESSING COMPLETE');
+      this.log.debug('═══════════════════════════════════════════════════════════');
+      this.log.info(`Total hyperlinks: ${result.totalHyperlinks}`);
+      this.log.info(`Modified: ${result.modifiedHyperlinks}`);
+      this.log.info(`Appended Content IDs: ${result.appendedContentIds}`);
+      this.log.info(`Duration: ${result.duration.toFixed(0)}ms`);
 
       return result;
 
     } catch (error: any) {
-      this.logError('\n✗ ERROR:', error.message);
+      this.log.error('ERROR:', error.message);
+
+      // Memory checkpoint: On error
+      MemoryMonitor.logMemoryUsage('DocProcessor Error', `Error: ${error.message}`);
+      MemoryMonitor.compareCheckpoints('DocProcessor Start', 'DocProcessor Error');
+
       result.success = false;
       result.errorCount++;
       result.errorMessages.push(error.message);
@@ -197,12 +206,12 @@ export class WordDocumentProcessor {
 
       // Restore from backup on error
       if (backupCreated && result.backupPath) {
-        this.log('\nRestoring from backup...');
+        this.log.warn('Restoring from backup...');
         try {
           await fs.copyFile(result.backupPath, filePath);
-          this.log('✓ Restored from backup');
+          this.log.info('Restored from backup');
         } catch (restoreError: any) {
-          this.logError('✗ Failed to restore backup:', restoreError.message);
+          this.log.error('Failed to restore backup:', restoreError.message);
         }
       }
 
@@ -368,13 +377,13 @@ export class WordDocumentProcessor {
     let successfulFiles = 0;
     let failedFiles = 0;
 
-    this.log(`\n╔═══════════════════════════════════════════════════════════╗`);
-    this.log(`║  BATCH PROCESSING - ${filePaths.length} FILES`);
-    this.log(`╚═══════════════════════════════════════════════════════════╝\n`);
+    this.log.debug('═══════════════════════════════════════════════════════════');
+    this.log.info(`BATCH PROCESSING - ${filePaths.length} FILES`);
+    this.log.debug('═══════════════════════════════════════════════════════════');
 
     const promises = filePaths.map((filePath, index) =>
       limit(async () => {
-        this.log(`[${index + 1}/${filePaths.length}] Processing: ${path.basename(filePath)}`);
+        this.log.info(`[${index + 1}/${filePaths.length}] Processing: ${path.basename(filePath)}`);
 
         try {
           const result = await this.processDocument(filePath, options);
@@ -393,7 +402,7 @@ export class WordDocumentProcessor {
 
           return result;
         } catch (error: any) {
-          this.logError(`Error processing ${filePath}:`, error.message);
+          this.log.error(`Error processing ${filePath}:`, error.message);
           failedFiles++;
 
           const errorResult: WordProcessingResult = {
@@ -425,12 +434,12 @@ export class WordDocumentProcessor {
 
     await Promise.all(promises);
 
-    this.log(`\n╔═══════════════════════════════════════════════════════════╗`);
-    this.log(`║  BATCH PROCESSING COMPLETE`);
-    this.log(`╚═══════════════════════════════════════════════════════════╝\n`);
-    this.log(`Total files: ${filePaths.length}`);
-    this.log(`Successful: ${successfulFiles}`);
-    this.log(`Failed: ${failedFiles}`);
+    this.log.debug('═══════════════════════════════════════════════════════════');
+    this.log.info('BATCH PROCESSING COMPLETE');
+    this.log.debug('═══════════════════════════════════════════════════════════');
+    this.log.info(`Total files: ${filePaths.length}`);
+    this.log.info(`Successful: ${successfulFiles}`);
+    this.log.info(`Failed: ${failedFiles}`);
 
     return {
       totalFiles: filePaths.length,
