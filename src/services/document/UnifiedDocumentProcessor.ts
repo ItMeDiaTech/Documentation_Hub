@@ -18,6 +18,7 @@ import DirectXmlProcessor from './processors/DirectXmlProcessor';
 import StylesXmlProcessor from './utils/StylesXmlProcessor';
 import NumberingXmlProcessor from './utils/NumberingXmlProcessor';
 import FontTableProcessor from './utils/FontTableProcessor';
+import { DocXMLaterProcessor } from './DocXMLaterProcessor'; // NEW: Working processor!
 import {
   DocumentOperation as NewDocumentOperation,
   DocumentReadOptions,
@@ -45,7 +46,10 @@ export class UnifiedDocumentProcessor {
   // Original processor for hyperlink operations
   private hyperlinkProcessor: DocumentProcessor;
 
-  // New processors for advanced formatting
+  // NEW: Working DocXMLater processor for styles, tables, indentation, shading
+  private docXMLater: DocXMLaterProcessor;
+
+  // Old processors (broken - kept for backward compatibility but not recommended)
   private reader: DocumentReader;
   private templateModifier: TemplateModifier;
   private xmlProcessor: DirectXmlProcessor;
@@ -55,6 +59,9 @@ export class UnifiedDocumentProcessor {
 
   constructor() {
     this.hyperlinkProcessor = new DocumentProcessor();
+    this.docXMLater = new DocXMLaterProcessor(); // NEW: Working processor!
+
+    // Old broken processors (kept for backward compatibility)
     this.reader = new DocumentReader();
     this.templateModifier = new TemplateModifier();
     this.xmlProcessor = new DirectXmlProcessor();
@@ -459,6 +466,162 @@ export class UnifiedDocumentProcessor {
     }
   ): Promise<DocumentModifyResult> {
     return await this.xmlProcessor.modifyDocxComplete(buffer, modifications);
+  }
+
+  // ========== NEW WORKING METHODS (Using DocXMLater) ==========
+  // These methods actually work for styles, tables, indentation, and shading!
+
+  /**
+   * NEW: Create a document with working styles
+   * REPLACES: modifyStyles() which is broken
+   */
+  async createDocumentWithWorkingStyle(
+    styleId: string,
+    styleName: string,
+    properties: TextStyle & ParagraphStyle,
+    content?: Array<{ text: string; useStyle: boolean }>
+  ): Promise<DocumentModifyResult> {
+    const docResult = await this.docXMLater.createDocumentWithStyle(styleId, styleName, properties);
+
+    if (!docResult.success || !docResult.data) {
+      return {
+        success: false,
+        error: docResult.error,
+      };
+    }
+
+    const doc = docResult.data;
+
+    // Add content if provided
+    if (content) {
+      for (const item of content) {
+        const para = await this.docXMLater.createParagraph(doc, item.text);
+        if (para.success && para.data && item.useStyle) {
+          para.data.setStyle(styleId);
+        }
+      }
+    }
+
+    return await this.docXMLater.toBuffer(doc);
+  }
+
+  /**
+   * NEW: Create a table with working borders and shading
+   * REPLACES: Broken table operations
+   */
+  async createDocumentWithWorkingTable(
+    rows: number,
+    columns: number,
+    options?: {
+      borders?: boolean;
+      borderColor?: string;
+      borderSize?: number;
+      headerShading?: string;
+      cellData?: string[][];
+    }
+  ): Promise<DocumentModifyResult> {
+    const doc = this.docXMLater.createNewDocument();
+
+    const tableResult = await this.docXMLater.createTable(doc, rows, columns, {
+      borders: options?.borders,
+      borderColor: options?.borderColor,
+      borderSize: options?.borderSize,
+      headerShading: options?.headerShading,
+    });
+
+    if (!tableResult.success || !tableResult.data) {
+      return {
+        success: false,
+        error: tableResult.error,
+      };
+    }
+
+    const table = tableResult.data;
+
+    // Populate cells with data if provided
+    if (options?.cellData) {
+      for (let row = 0; row < Math.min(rows, options.cellData.length); row++) {
+        const rowData = options.cellData[row];
+        for (let col = 0; col < Math.min(columns, rowData.length); col++) {
+          const cell = table.getCell(row, col);
+          if (cell) {
+            await this.docXMLater.addCellContent(cell, rowData[col]);
+          }
+        }
+      }
+    }
+
+    return await this.docXMLater.toBuffer(doc);
+  }
+
+  /**
+   * NEW: Create paragraphs with working indentation
+   * REPLACES: Broken indentation operations
+   */
+  async createDocumentWithWorkingIndentation(
+    paragraphs: Array<{
+      text: string;
+      indentLeft?: number; // in twips
+      indentRight?: number;
+      indentFirstLine?: number;
+      alignment?: 'left' | 'center' | 'right' | 'justify';
+    }>
+  ): Promise<DocumentModifyResult> {
+    const doc = this.docXMLater.createNewDocument();
+
+    for (const paraData of paragraphs) {
+      const result = await this.docXMLater.createParagraph(doc, paraData.text, {
+        indentLeft: paraData.indentLeft,
+        indentRight: paraData.indentRight,
+        indentFirstLine: paraData.indentFirstLine,
+        alignment: paraData.alignment,
+      });
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: `Failed to create paragraph: ${result.error}`,
+        };
+      }
+    }
+
+    return await this.docXMLater.toBuffer(doc);
+  }
+
+  /**
+   * NEW: Modify an existing document (loads, modifies, saves)
+   * This is the MAIN method to use for working document modifications
+   */
+  async modifyDocumentWithDocXMLater(
+    filePath: string,
+    modifications: (doc: any) => Promise<void> | void
+  ): Promise<DocumentModifyResult> {
+    return await this.docXMLater.modifyDocument(filePath, modifications);
+  }
+
+  /**
+   * NEW: Modify a document from buffer (loads, modifies, returns buffer)
+   * This is the MAIN method for buffer-based modifications
+   */
+  async modifyDocumentBufferWithDocXMLater(
+    buffer: Buffer,
+    modifications: (doc: any) => Promise<void> | void
+  ): Promise<DocumentModifyResult> {
+    return await this.docXMLater.modifyDocumentBuffer(buffer, modifications);
+  }
+
+  /**
+   * NEW: Helper to convert inches to twips for indentation
+   */
+  inchesToTwips(inches: number): number {
+    return this.docXMLater.inchesToTwips(inches);
+  }
+
+  /**
+   * NEW: Helper to convert points to twips for spacing
+   */
+  pointsToTwips(points: number): number {
+    return this.docXMLater.pointsToTwips(points);
   }
 }
 
