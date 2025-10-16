@@ -1,15 +1,13 @@
 /**
- * DocumentReader - Reads and parses DOCX files using @omer-go/docx-parser-converter-ts
+ * DocumentReader - DEPRECATED - Stubbed out
  *
- * This processor provides format-preserving DOCX parsing with support for:
- * - Hierarchical style application
- * - WYSIWYG-like format preservation
- * - Bullet points and numbering
- * - Indentation and margins
- * - Font and color information
+ * This processor relied on @omer-go/docx-parser-converter-ts which has been removed.
+ * Use DocXMLaterProcessor instead for working DOCX functionality.
+ * Kept for backward compatibility with UnifiedDocumentProcessor.
  */
 
-import { DocxToHtmlConverter, DocxToTxtConverter } from '@omer-go/docx-parser-converter-ts';
+// DEPRECATED: import removed - package uninstalled
+// import { DocxToHtmlConverter, DocxToTxtConverter } from '@omer-go/docx-parser-converter-ts';
 import {
   DocumentReadOptions,
   DocumentReadResult,

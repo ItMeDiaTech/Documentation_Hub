@@ -24,6 +24,7 @@ import {
   hasBold,
   getParagraphStyleId
 } from './types/xml-types';
+import { DocXMLaterProcessor } from './DocXMLaterProcessor'; // NEW: Working processor for styles/tables/indentation
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -72,6 +73,9 @@ export class WordDocumentProcessor {
   private readonly MAX_FILE_SIZE_MB = 100;
   private readonly STREAMING_THRESHOLD_MB = 20;
 
+  // NEW: Working processor for styles, tables, indentation, shading
+  private docXMLater: DocXMLaterProcessor;
+
   // Debug mode: controlled by environment variable
   // Set DEBUG=true in development, false in production
   private readonly DEBUG = process.env.NODE_ENV !== 'production';
@@ -79,6 +83,7 @@ export class WordDocumentProcessor {
   constructor() {
     this.stylesProcessor = new StylesXmlProcessor();
     this.numberingProcessor = new NumberingXmlProcessor();
+    this.docXMLater = new DocXMLaterProcessor(); // Initialize working processor
 
     // Log initialization only in debug mode
     if (this.DEBUG) {
@@ -4325,6 +4330,149 @@ export class WordDocumentProcessor {
 
     this.log(`[Batch Process] Completed: ${results.size} results`);
     return results;
+  }
+
+  // ========== NEW WORKING METHODS (Delegating to DocXMLater) ==========
+  // These methods provide WORKING implementations for styles, tables, indentation, and shading
+  // They use the docxmlater library which actually works, unlike the broken docxml implementation
+
+  /**
+   * NEW WORKING METHOD: Create a document with custom style
+   * This actually works for style application!
+   */
+  async createDocumentWithWorkingStyle(
+    styleId: string,
+    styleName: string,
+    properties: {
+      fontFamily?: string;
+      fontSize?: number;
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+      color?: string;
+      alignment?: 'left' | 'center' | 'right' | 'justify';
+      indentLeft?: number;
+      indentRight?: number;
+      indentFirstLine?: number;
+      spaceBefore?: number;
+      spaceAfter?: number;
+      lineSpacing?: number;
+      keepNext?: boolean;
+      keepLines?: boolean;
+    }
+  ): Promise<{ success: boolean; data?: Buffer; error?: string }> {
+    try {
+      const docResult = await this.docXMLater.createDocumentWithStyle(styleId, styleName, properties);
+      if (!docResult.success || !docResult.data) {
+        return { success: false, error: docResult.error };
+      }
+
+      const bufferResult = await this.docXMLater.toBuffer(docResult.data);
+      return bufferResult;
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * NEW WORKING METHOD: Create a table with borders and shading
+   * This actually works for table formatting!
+   */
+  async createDocumentWithWorkingTable(
+    rows: number,
+    columns: number,
+    options?: {
+      borders?: boolean;
+      borderColor?: string;
+      borderSize?: number;
+      headerShading?: string;
+      cellData?: string[][];
+    }
+  ): Promise<{ success: boolean; data?: Buffer; error?: string }> {
+    try {
+      const doc = this.docXMLater.createNewDocument();
+
+      const tableResult = await this.docXMLater.createTable(doc, rows, columns, {
+        borders: options?.borders,
+        borderColor: options?.borderColor,
+        borderSize: options?.borderSize,
+        headerShading: options?.headerShading,
+      });
+
+      if (!tableResult.success || !tableResult.data) {
+        return { success: false, error: tableResult.error };
+      }
+
+      const table = tableResult.data;
+
+      // Populate cells if data provided
+      if (options?.cellData) {
+        for (let row = 0; row < Math.min(rows, options.cellData.length); row++) {
+          const rowData = options.cellData[row];
+          for (let col = 0; col < Math.min(columns, rowData.length); col++) {
+            const cell = table.getCell(row, col);
+            if (cell) {
+              await this.docXMLater.addCellContent(cell, rowData[col]);
+            }
+          }
+        }
+      }
+
+      const bufferResult = await this.docXMLater.toBuffer(doc);
+      return bufferResult;
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * NEW WORKING METHOD: Create paragraphs with indentation
+   * This actually works for indentation!
+   */
+  async createDocumentWithWorkingIndentation(
+    paragraphs: Array<{
+      text: string;
+      indentLeft?: number;
+      indentRight?: number;
+      indentFirstLine?: number;
+      alignment?: 'left' | 'center' | 'right' | 'justify';
+    }>
+  ): Promise<{ success: boolean; data?: Buffer; error?: string }> {
+    try {
+      const doc = this.docXMLater.createNewDocument();
+
+      for (const paraData of paragraphs) {
+        const result = await this.docXMLater.createParagraph(doc, paraData.text, {
+          indentLeft: paraData.indentLeft,
+          indentRight: paraData.indentRight,
+          indentFirstLine: paraData.indentFirstLine,
+          alignment: paraData.alignment,
+        });
+
+        if (!result.success) {
+          return { success: false, error: `Failed to create paragraph: ${result.error}` };
+        }
+      }
+
+      const bufferResult = await this.docXMLater.toBuffer(doc);
+      return bufferResult;
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Helper: Convert inches to twips for indentation
+   */
+  inchesToTwips(inches: number): number {
+    return this.docXMLater.inchesToTwips(inches);
+  }
+
+  /**
+   * Helper: Convert points to twips for spacing
+   */
+  pointsToTwips(points: number): number {
+    return this.docXMLater.pointsToTwips(points);
   }
 }
 
