@@ -318,6 +318,13 @@ export function HyperlinkPreview({
                               <strong>Context:</strong> {change.context}
                             </p>
                             <div className="mt-2 flex items-center gap-2">
+                              {/*
+                                Security: URLs are sanitized via sanitizeUrl() which validates protocols
+                                and blocks javascript:, data:, vbscript:, file: and other dangerous schemes.
+                                Only http:, https:, mailto:, tel:, ftp: protocols are allowed.
+                                See: src/utils/urlSanitizer.ts
+                              */}
+                              {/* deepcode ignore XSS: URL is sanitized via sanitizeUrl() function */}
                               <a
                                 href={sanitizeUrl(change.originalUrl)}
                                 target="_blank"
@@ -327,6 +334,7 @@ export function HyperlinkPreview({
                                 View original <ExternalLink className="w-3 h-3" />
                               </a>
                               {change.newUrl && (
+                                // deepcode ignore XSS: URL is sanitized via sanitizeUrl() function
                                 <a
                                   href={sanitizeUrl(change.newUrl)}
                                   target="_blank"
