@@ -272,12 +272,12 @@ export function Analytics() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }}
                   angle={-45}
                   textAnchor="end"
                   height={80}
                 />
-                <YAxis tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'hsl(var(--background))',
@@ -322,12 +322,12 @@ export function Analytics() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }}
                   angle={-45}
                   textAnchor="end"
                   height={80}
                 />
-                <YAxis tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'hsl(var(--background))',
