@@ -5,7 +5,9 @@ import {
   loadSessions,
   saveSession as saveSessionToDB,
   deleteSession as deleteSessionFromDB,
-  migrateFromLocalStorage
+  migrateFromLocalStorage,
+  ensureDBSizeLimit,
+  truncateSessionChanges
 } from '@/utils/indexedDB';
 import { useGlobalStats } from './GlobalStatsContext';
 
@@ -111,6 +113,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const persistSessions = async () => {
       try {
+        // Critical: Ensure database size limit to prevent quota exceeded errors
+        await ensureDBSizeLimit(200); // 200MB limit
+
         const serializedSessions: SerializedSession[] = sessions.map((s) => ({
           ...s,
           createdAt: s.createdAt.toISOString(),
@@ -122,9 +127,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           })),
         }));
 
-        // Save each session to IndexedDB
+        // Save each session to IndexedDB with truncated changes
         for (const session of serializedSessions) {
-          await saveSessionToDB(session);
+          // Truncate large change arrays to prevent excessive storage
+          const truncatedSession = truncateSessionChanges(session, 100);
+          await saveSessionToDB(truncatedSession);
         }
 
         // Keep active sessions in localStorage for quick access
