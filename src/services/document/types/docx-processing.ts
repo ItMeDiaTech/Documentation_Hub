@@ -156,6 +156,29 @@ export interface TemplateData {
   [key: string]: any;
 }
 
+// ========== Style Application ==========
+
+export interface StyleApplication {
+  target: 'all' | 'pattern' | 'indices';
+  styleId: string;
+  pattern?: string | RegExp;
+  indices?: number[];
+}
+
+export interface StyleApplicationResult {
+  appliedCount: number;
+  skippedCount: number;
+  paragraphsModified: number[];
+  totalParagraphs: number;
+}
+
+export interface DefineAndApplyStyleOptions {
+  styleId: string;
+  styleName: string;
+  properties: TextStyle & ParagraphStyle;
+  application: StyleApplication;
+}
+
 // ========== Processor Results ==========
 
 export interface ProcessorResult<T = any> {
@@ -192,8 +215,11 @@ export interface ParagraphXml {
       'w:ilvl': { '@_w:val': string };
       'w:numId': { '@_w:val': string };
     };
+    [key: string]: any; // Allow other properties
   };
-  'w:r'?: RunXml[];
+  'w:r'?: RunXml | RunXml[];
+  'w:hyperlink'?: any | any[];
+  [key: string]: any; // Allow other children (bookmarks, etc.)
 }
 
 export interface RunXml {

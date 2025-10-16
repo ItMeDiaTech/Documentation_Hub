@@ -13,17 +13,21 @@ import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import StylesXmlProcessor from '../utils/StylesXmlProcessor';
 import NumberingXmlProcessor from '../utils/NumberingXmlProcessor';
 import FontTableProcessor from '../utils/FontTableProcessor';
+import DocumentXmlProcessor from '../utils/DocumentXmlProcessor';
 import {
   DocumentModifyResult,
   ProcessorResult,
   DocxProcessingError,
   ErrorCode,
+  StyleApplication,
+  StyleApplicationResult,
 } from '../types/docx-processing';
 
 export class DirectXmlProcessor {
   private stylesProcessor: StylesXmlProcessor;
   private numberingProcessor: NumberingXmlProcessor;
   private fontProcessor: FontTableProcessor;
+  private documentProcessor: DocumentXmlProcessor;
   private parser: XMLParser;
   private builder: XMLBuilder;
 
@@ -31,6 +35,7 @@ export class DirectXmlProcessor {
     this.stylesProcessor = new StylesXmlProcessor();
     this.numberingProcessor = new NumberingXmlProcessor();
     this.fontProcessor = new FontTableProcessor();
+    this.documentProcessor = new DocumentXmlProcessor();
 
     this.parser = new XMLParser({
       ignoreAttributes: false,
@@ -369,6 +374,129 @@ export class DirectXmlProcessor {
       return {
         success: false,
         error: `Document modification failed: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Apply styles to paragraphs in the document
+   */
+  async applyStylesToDocument(
+    buffer: Buffer,
+    styleApplications: StyleApplication[]
+  ): Promise<DocumentModifyResult & { results?: StyleApplicationResult[] }> {
+    try {
+      const loadResult = await this.loadDocx(buffer);
+      if (!loadResult.success || !loadResult.data) {
+        return {
+          success: false,
+          error: loadResult.error,
+        };
+      }
+      const zip = loadResult.data;
+
+      // Get document.xml
+      const documentResult = await this.getXmlFile(zip, 'word/document.xml');
+      if (!documentResult.success || !documentResult.data) {
+        return {
+          success: false,
+          error: documentResult.error,
+        };
+      }
+
+      // Parse document
+      const parseResult = this.documentProcessor.parse(documentResult.data);
+      if (!parseResult.success || !parseResult.data) {
+        return {
+          success: false,
+          error: parseResult.error,
+        };
+      }
+
+      const documentXml = parseResult.data;
+      const results: StyleApplicationResult[] = [];
+
+      // Apply each style application
+      for (const application of styleApplications) {
+        let result: { modified: number; total: number; skipped?: number };
+
+        switch (application.target) {
+          case 'all':
+            result = this.documentProcessor.applyStyleToAll(
+              documentXml,
+              application.styleId
+            );
+            break;
+
+          case 'indices':
+            if (!application.indices || application.indices.length === 0) {
+              results.push({
+                appliedCount: 0,
+                skippedCount: 0,
+                paragraphsModified: [],
+                totalParagraphs: this.documentProcessor.getParagraphs(documentXml).length,
+              });
+              continue;
+            }
+            result = this.documentProcessor.applyStyleToIndices(
+              documentXml,
+              application.styleId,
+              application.indices
+            );
+            break;
+
+          case 'pattern':
+            if (!application.pattern) {
+              results.push({
+                appliedCount: 0,
+                skippedCount: 0,
+                paragraphsModified: [],
+                totalParagraphs: this.documentProcessor.getParagraphs(documentXml).length,
+              });
+              continue;
+            }
+            result = this.documentProcessor.applyStyleByPattern(
+              documentXml,
+              application.styleId,
+              application.pattern
+            );
+            break;
+
+          default:
+            continue;
+        }
+
+        results.push({
+          appliedCount: result.modified,
+          skippedCount: result.skipped || 0,
+          paragraphsModified: application.indices || [],
+          totalParagraphs: result.total,
+        });
+      }
+
+      // Build XML
+      const buildResult = this.documentProcessor.build(documentXml);
+      if (!buildResult.success || !buildResult.data) {
+        return {
+          success: false,
+          error: buildResult.error,
+        };
+      }
+
+      // Update in archive
+      await this.setXmlFile(zip, 'word/document.xml', buildResult.data);
+
+      // Save DOCX
+      const saveResult = await this.saveDocx(zip);
+
+      return {
+        ...saveResult,
+        results,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Style application failed: ${error.message}`,
       };
     }
   }
