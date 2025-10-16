@@ -150,20 +150,29 @@ export class DirectXmlProcessor {
       // Load DOCX
       const loadResult = await this.loadDocx(buffer);
       if (!loadResult.success || !loadResult.data) {
-        return loadResult;
+        return {
+          success: false,
+          error: loadResult.error,
+        };
       }
       const zip = loadResult.data;
 
       // Get styles.xml
       const stylesResult = await this.getXmlFile(zip, 'word/styles.xml');
       if (!stylesResult.success || !stylesResult.data) {
-        return stylesResult;
+        return {
+          success: false,
+          error: stylesResult.error,
+        };
       }
 
       // Parse styles
       const parseResult = this.stylesProcessor.parse(stylesResult.data);
       if (!parseResult.success || !parseResult.data) {
-        return parseResult;
+        return {
+          success: false,
+          error: parseResult.error,
+        };
       }
 
       // Apply modifications
@@ -172,7 +181,10 @@ export class DirectXmlProcessor {
       // Build XML
       const buildResult = this.stylesProcessor.build(modifiedStyles);
       if (!buildResult.success || !buildResult.data) {
-        return buildResult;
+        return {
+          success: false,
+          error: buildResult.error,
+        };
       }
 
       // Update in archive
@@ -198,7 +210,10 @@ export class DirectXmlProcessor {
     try {
       const loadResult = await this.loadDocx(buffer);
       if (!loadResult.success || !loadResult.data) {
-        return loadResult;
+        return {
+          success: false,
+          error: loadResult.error,
+        };
       }
       const zip = loadResult.data;
 
@@ -209,7 +224,10 @@ export class DirectXmlProcessor {
       if (numberingResult.success && numberingResult.data) {
         const parseResult = this.numberingProcessor.parse(numberingResult.data);
         if (!parseResult.success || !parseResult.data) {
-          return parseResult;
+          return {
+            success: false,
+            error: parseResult.error,
+          };
         }
         numberingXml = parseResult.data;
       } else {
@@ -228,7 +246,10 @@ export class DirectXmlProcessor {
       // Build XML
       const buildResult = this.numberingProcessor.build(modifiedNumbering);
       if (!buildResult.success || !buildResult.data) {
-        return buildResult;
+        return {
+          success: false,
+          error: buildResult.error,
+        };
       }
 
       // Update in archive
@@ -254,20 +275,29 @@ export class DirectXmlProcessor {
     try {
       const loadResult = await this.loadDocx(buffer);
       if (!loadResult.success || !loadResult.data) {
-        return loadResult;
+        return {
+          success: false,
+          error: loadResult.error,
+        };
       }
       const zip = loadResult.data;
 
       // Get fontTable.xml
       const fontTableResult = await this.getXmlFile(zip, 'word/fontTable.xml');
       if (!fontTableResult.success || !fontTableResult.data) {
-        return fontTableResult;
+        return {
+          success: false,
+          error: fontTableResult.error,
+        };
       }
 
       // Parse fonts
       const parseResult = this.fontProcessor.parse(fontTableResult.data);
       if (!parseResult.success || !parseResult.data) {
-        return parseResult;
+        return {
+          success: false,
+          error: parseResult.error,
+        };
       }
 
       // Apply modifications
@@ -276,7 +306,10 @@ export class DirectXmlProcessor {
       // Build XML
       const buildResult = this.fontProcessor.build(modifiedFonts);
       if (!buildResult.success || !buildResult.data) {
-        return buildResult;
+        return {
+          success: false,
+          error: buildResult.error,
+        };
       }
 
       // Update in archive
@@ -302,14 +335,20 @@ export class DirectXmlProcessor {
     try {
       const loadResult = await this.loadDocx(buffer);
       if (!loadResult.success || !loadResult.data) {
-        return loadResult;
+        return {
+          success: false,
+          error: loadResult.error,
+        };
       }
       const zip = loadResult.data;
 
       // Get document.xml
       const documentResult = await this.getXmlFile(zip, 'word/document.xml');
       if (!documentResult.success || !documentResult.data) {
-        return documentResult;
+        return {
+          success: false,
+          error: documentResult.error,
+        };
       }
 
       // Parse document
@@ -349,37 +388,63 @@ export class DirectXmlProcessor {
     try {
       const loadResult = await this.loadDocx(buffer);
       if (!loadResult.success || !loadResult.data) {
-        return loadResult;
+        return {
+          success: false,
+          error: loadResult.error,
+        };
       }
       let zip = loadResult.data;
 
       // Apply each modification
+      // Note: Each helper now returns a Buffer, so we need to reload the zip for subsequent modifications
+      let currentBuffer: Buffer | undefined;
+
       if (modifications.styles) {
         const result = await this.applyStylesModification(zip, modifications.styles);
         if (!result.success || !result.data) return result;
-        zip = result.data;
+        currentBuffer = result.data;
+        // Reload zip for next modification
+        const reloadResult = await this.loadDocx(currentBuffer);
+        if (!reloadResult.success || !reloadResult.data) return reloadResult as DocumentModifyResult;
+        zip = reloadResult.data;
       }
 
       if (modifications.numbering) {
         const result = await this.applyNumberingModification(zip, modifications.numbering);
         if (!result.success || !result.data) return result;
-        zip = result.data;
+        currentBuffer = result.data;
+        // Reload zip for next modification
+        const reloadResult = await this.loadDocx(currentBuffer);
+        if (!reloadResult.success || !reloadResult.data) return reloadResult as DocumentModifyResult;
+        zip = reloadResult.data;
       }
 
       if (modifications.fonts) {
         const result = await this.applyFontsModification(zip, modifications.fonts);
         if (!result.success || !result.data) return result;
-        zip = result.data;
+        currentBuffer = result.data;
+        // Reload zip for next modification
+        const reloadResult = await this.loadDocx(currentBuffer);
+        if (!reloadResult.success || !reloadResult.data) return reloadResult as DocumentModifyResult;
+        zip = reloadResult.data;
       }
 
       if (modifications.document) {
         const result = await this.applyDocumentModification(zip, modifications.document);
         if (!result.success || !result.data) return result;
-        zip = result.data;
+        currentBuffer = result.data;
       }
 
-      // Save final DOCX
-      return await this.saveDocx(zip);
+      // If no modifications were applied, save the original zip
+      if (!currentBuffer) {
+        return await this.saveDocx(zip);
+      }
+
+      // Return the final buffer
+      return {
+        success: true,
+        data: currentBuffer,
+      };
     } catch (error: any) {
       return {
         success: false,
@@ -393,30 +458,59 @@ export class DirectXmlProcessor {
   private async applyStylesModification(
     zip: JSZip,
     modifier: (stylesXml: any) => any
-  ): Promise<ProcessorResult<JSZip>> {
+  ): Promise<DocumentModifyResult> {
     const stylesResult = await this.getXmlFile(zip, 'word/styles.xml');
-    if (!stylesResult.success || !stylesResult.data) return stylesResult;
+    if (!stylesResult.success || !stylesResult.data) {
+      return {
+        success: false,
+        error: stylesResult.error,
+      };
+    }
 
     const parseResult = this.stylesProcessor.parse(stylesResult.data);
-    if (!parseResult.success || !parseResult.data) return parseResult;
+    if (!parseResult.success || !parseResult.data) {
+      return {
+        success: false,
+        error: parseResult.error,
+      };
+    }
 
     const modified = modifier(parseResult.data);
     const buildResult = this.stylesProcessor.build(modified);
-    if (!buildResult.success || !buildResult.data) return buildResult;
+    if (!buildResult.success || !buildResult.data) {
+      return {
+        success: false,
+        error: buildResult.error,
+      };
+    }
 
-    return await this.setXmlFile(zip, 'word/styles.xml', buildResult.data);
+    const setResult = await this.setXmlFile(zip, 'word/styles.xml', buildResult.data);
+    if (!setResult.success) {
+      return {
+        success: false,
+        error: setResult.error,
+      };
+    }
+
+    // Convert JSZip to Buffer
+    return await this.saveDocx(setResult.data!);
   }
 
   private async applyNumberingModification(
     zip: JSZip,
     modifier: (numberingXml: any) => any
-  ): Promise<ProcessorResult<JSZip>> {
+  ): Promise<DocumentModifyResult> {
     const numberingResult = await this.getXmlFile(zip, 'word/numbering.xml');
     let numberingXml: any;
 
     if (numberingResult.success && numberingResult.data) {
       const parseResult = this.numberingProcessor.parse(numberingResult.data);
-      if (!parseResult.success || !parseResult.data) return parseResult;
+      if (!parseResult.success || !parseResult.data) {
+        return {
+          success: false,
+          error: parseResult.error,
+        };
+      }
       numberingXml = parseResult.data;
     } else {
       numberingXml = { 'w:numbering': { 'w:abstractNum': [], 'w:num': [] } };
@@ -424,40 +518,92 @@ export class DirectXmlProcessor {
 
     const modified = modifier(numberingXml);
     const buildResult = this.numberingProcessor.build(modified);
-    if (!buildResult.success || !buildResult.data) return buildResult;
+    if (!buildResult.success || !buildResult.data) {
+      return {
+        success: false,
+        error: buildResult.error,
+      };
+    }
 
-    return await this.setXmlFile(zip, 'word/numbering.xml', buildResult.data);
+    const setResult = await this.setXmlFile(zip, 'word/numbering.xml', buildResult.data);
+    if (!setResult.success) {
+      return {
+        success: false,
+        error: setResult.error,
+      };
+    }
+
+    // Convert JSZip to Buffer
+    return await this.saveDocx(setResult.data!);
   }
 
   private async applyFontsModification(
     zip: JSZip,
     modifier: (fontTableXml: any) => any
-  ): Promise<ProcessorResult<JSZip>> {
+  ): Promise<DocumentModifyResult> {
     const fontResult = await this.getXmlFile(zip, 'word/fontTable.xml');
-    if (!fontResult.success || !fontResult.data) return fontResult;
+    if (!fontResult.success || !fontResult.data) {
+      return {
+        success: false,
+        error: fontResult.error,
+      };
+    }
 
     const parseResult = this.fontProcessor.parse(fontResult.data);
-    if (!parseResult.success || !parseResult.data) return parseResult;
+    if (!parseResult.success || !parseResult.data) {
+      return {
+        success: false,
+        error: parseResult.error,
+      };
+    }
 
     const modified = modifier(parseResult.data);
     const buildResult = this.fontProcessor.build(modified);
-    if (!buildResult.success || !buildResult.data) return buildResult;
+    if (!buildResult.success || !buildResult.data) {
+      return {
+        success: false,
+        error: buildResult.error,
+      };
+    }
 
-    return await this.setXmlFile(zip, 'word/fontTable.xml', buildResult.data);
+    const setResult = await this.setXmlFile(zip, 'word/fontTable.xml', buildResult.data);
+    if (!setResult.success) {
+      return {
+        success: false,
+        error: setResult.error,
+      };
+    }
+
+    // Convert JSZip to Buffer
+    return await this.saveDocx(setResult.data!);
   }
 
   private async applyDocumentModification(
     zip: JSZip,
     modifier: (documentXml: any) => any
-  ): Promise<ProcessorResult<JSZip>> {
+  ): Promise<DocumentModifyResult> {
     const documentResult = await this.getXmlFile(zip, 'word/document.xml');
-    if (!documentResult.success || !documentResult.data) return documentResult;
+    if (!documentResult.success || !documentResult.data) {
+      return {
+        success: false,
+        error: documentResult.error,
+      };
+    }
 
     const documentXml = this.parser.parse(documentResult.data);
     const modified = modifier(documentXml);
     const xml = this.builder.build(modified);
 
-    return await this.setXmlFile(zip, 'word/document.xml', xml as string);
+    const setResult = await this.setXmlFile(zip, 'word/document.xml', xml as string);
+    if (!setResult.success) {
+      return {
+        success: false,
+        error: setResult.error,
+      };
+    }
+
+    // Convert JSZip to Buffer
+    return await this.saveDocx(setResult.data!);
   }
 }
 
