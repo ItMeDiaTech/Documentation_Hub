@@ -1,0 +1,32 @@
+# Snyk (https://snyk.io) policy file
+
+version: v1.25.0
+
+# Ignore specific vulnerabilities
+ignore:
+  # DOM-based XSS in HyperlinkPreview.tsx
+  # Reason: URLs are sanitized via sanitizeUrl() function before rendering
+  # The sanitizeUrl function validates protocols and blocks dangerous schemes:
+  # - Blocks: javascript:, data:, vbscript:, file:, about:, blob:
+  # - Allows: http:, https:, mailto:, tel:, ftp:, ftps:
+  # See: src/utils/urlSanitizer.ts for implementation
+  'SNYK-JS-REACT-2321672':
+    - 'src/components/document/HyperlinkPreview.tsx':
+        reason: 'URLs sanitized with custom sanitizeUrl() function'
+        expires: '2026-12-31T00:00:00.000Z'
+        created: '2025-01-16T00:00:00.000Z'
+
+# Patch configuration
+patch: {}
+
+# Language-specific settings
+language-settings:
+  javascript:
+    # Register custom sanitization functions
+    sanitizers:
+      - name: 'sanitizeUrl'
+        path: 'src/utils/urlSanitizer'
+        description: 'Validates and sanitizes URLs to prevent XSS attacks'
+      - name: 'isSafeUrl'
+        path: 'src/utils/urlSanitizer'
+        description: 'Checks if a URL is safe without modifying it'
