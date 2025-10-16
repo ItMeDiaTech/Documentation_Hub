@@ -24,6 +24,8 @@ import type {
 import { BackupService } from './BackupService';
 import { ValidationEngine } from './ValidationEngine';
 import { HyperlinkManager } from './HyperlinkManager';
+import StylesXmlProcessor from './utils/StylesXmlProcessor';
+import DocumentXmlProcessor from './utils/DocumentXmlProcessor';
 
 /**
  * Main document processor class
@@ -33,6 +35,8 @@ export class DocumentProcessor {
   private backupService: BackupService;
   private validationEngine: ValidationEngine;
   private hyperlinkManager: HyperlinkManager;
+  private stylesProcessor: StylesXmlProcessor;
+  private documentProcessor: DocumentXmlProcessor;
   private processingContext?: ProcessingContext;
   private xmlParser: XMLParser;
   private xmlBuilder: XMLBuilder;
@@ -41,6 +45,8 @@ export class DocumentProcessor {
     this.backupService = new BackupService();
     this.validationEngine = new ValidationEngine();
     this.hyperlinkManager = new HyperlinkManager();
+    this.stylesProcessor = new StylesXmlProcessor();
+    this.documentProcessor = new DocumentXmlProcessor();
 
     // Initialize XML parser and builder
     this.xmlParser = new XMLParser({
@@ -315,7 +321,7 @@ export class DocumentProcessor {
     operation: DocumentOperation & { type: 'style' },
     zip: JSZip
   ): Promise<void> {
-    // Style operation implementation
+    // Get styles.xml
     const stylesXml = await zip.file('word/styles.xml')?.async('string');
     if (!stylesXml) {
       this.processingContext?.warnings.push({
@@ -325,13 +331,81 @@ export class DocumentProcessor {
       return;
     }
 
-    const stylesParsed = this.xmlParser.parse(stylesXml);
+    // Get document.xml
+    const documentXml = await zip.file('word/document.xml')?.async('string');
+    if (!documentXml) {
+      throw new Error('Document XML not found');
+    }
 
-    // Apply style operations here
-    // This is a placeholder for style operations
+    // Parse styles.xml
+    const stylesParseResult = this.stylesProcessor.parse(stylesXml);
+    if (!stylesParseResult.success || !stylesParseResult.data) {
+      throw new Error(`Failed to parse styles.xml: ${stylesParseResult.error}`);
+    }
 
-    const updatedStylesXml = this.xmlBuilder.build(stylesParsed);
-    zip.file('word/styles.xml', updatedStylesXml);
+    // Parse document.xml
+    const documentParseResult = this.documentProcessor.parse(documentXml);
+    if (!documentParseResult.success || !documentParseResult.data) {
+      throw new Error(`Failed to parse document.xml: ${documentParseResult.error}`);
+    }
+
+    let modifiedStyles = stylesParseResult.data;
+    let modifiedDocument = documentParseResult.data;
+    let stylesChanged = false;
+    let documentChanged = false;
+
+    // Execute style operation based on action
+    switch (operation.action) {
+      case 'apply':
+        // Apply style to paragraphs
+        const applyResult = this.documentProcessor.applyStyleToAll(
+          modifiedDocument,
+          operation.styleName
+        );
+        documentChanged = applyResult.modified > 0;
+
+        if (this.processingContext) {
+          this.processingContext.statistics.stylesApplied += applyResult.modified;
+        }
+        break;
+
+      case 'modify':
+        // Modify style definition
+        if (operation.properties) {
+          modifiedStyles = this.stylesProcessor.setParagraphStyle(
+            modifiedStyles,
+            operation.styleName,
+            operation.styleName,
+            operation.properties as any
+          );
+          stylesChanged = true;
+        }
+        break;
+
+      case 'remove':
+        // Remove style from paragraphs
+        const removeResult = this.documentProcessor.clearAllStyles(modifiedDocument);
+        documentChanged = removeResult.modified > 0;
+        break;
+    }
+
+    // Save modified styles.xml if changed
+    if (stylesChanged) {
+      const stylesBuildResult = this.stylesProcessor.build(modifiedStyles);
+      if (!stylesBuildResult.success || !stylesBuildResult.data) {
+        throw new Error(`Failed to build styles.xml: ${stylesBuildResult.error}`);
+      }
+      zip.file('word/styles.xml', stylesBuildResult.data);
+    }
+
+    // Save modified document.xml if changed
+    if (documentChanged) {
+      const documentBuildResult = this.documentProcessor.build(modifiedDocument);
+      if (!documentBuildResult.success || !documentBuildResult.data) {
+        throw new Error(`Failed to build document.xml: ${documentBuildResult.error}`);
+      }
+      zip.file('word/document.xml', documentBuildResult.data);
+    }
   }
 
   /**

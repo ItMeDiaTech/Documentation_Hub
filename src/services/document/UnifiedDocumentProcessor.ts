@@ -28,6 +28,9 @@ import {
   TextStyle,
   ParagraphStyle,
   NumberingStyle,
+  StyleApplication,
+  StyleApplicationResult,
+  DefineAndApplyStyleOptions,
 } from './types/docx-processing';
 import type {
   DocumentProcessingOptions,
@@ -173,6 +176,97 @@ export class UnifiedDocumentProcessor {
     return await this.xmlProcessor.modifyStyles(buffer, (stylesXml) => {
       return this.stylesProcessor.setDefaultParagraphStyle(stylesXml, properties);
     });
+  }
+
+  // ========== Style Application Operations ==========
+
+  /**
+   * Apply a style to all paragraphs in the document
+   */
+  async applyStyleToAll(
+    buffer: Buffer,
+    styleId: string
+  ): Promise<DocumentModifyResult & { results?: StyleApplicationResult[] }> {
+    return await this.xmlProcessor.applyStylesToDocument(buffer, [
+      {
+        target: 'all',
+        styleId,
+      },
+    ]);
+  }
+
+  /**
+   * Apply a style to paragraphs containing specific text
+   */
+  async applyStyleByContent(
+    buffer: Buffer,
+    styleId: string,
+    textPattern: string | RegExp
+  ): Promise<DocumentModifyResult & { results?: StyleApplicationResult[] }> {
+    return await this.xmlProcessor.applyStylesToDocument(buffer, [
+      {
+        target: 'pattern',
+        styleId,
+        pattern: textPattern,
+      },
+    ]);
+  }
+
+  /**
+   * Apply a style to specific paragraph indices (0-based)
+   */
+  async applyStyleByIndices(
+    buffer: Buffer,
+    styleId: string,
+    indices: number[]
+  ): Promise<DocumentModifyResult & { results?: StyleApplicationResult[] }> {
+    return await this.xmlProcessor.applyStylesToDocument(buffer, [
+      {
+        target: 'indices',
+        styleId,
+        indices,
+      },
+    ]);
+  }
+
+  /**
+   * Apply multiple styles at once
+   */
+  async applyStyles(
+    buffer: Buffer,
+    applications: StyleApplication[]
+  ): Promise<DocumentModifyResult & { results?: StyleApplicationResult[] }> {
+    return await this.xmlProcessor.applyStylesToDocument(buffer, applications);
+  }
+
+  /**
+   * Complete workflow: Define a style in styles.xml and apply it to paragraphs
+   */
+  async defineAndApplyStyle(
+    buffer: Buffer,
+    options: DefineAndApplyStyleOptions
+  ): Promise<DocumentModifyResult & { results?: StyleApplicationResult[] }> {
+    // Step 1: Define the style in styles.xml
+    const styleResult = await this.modifyStyles(buffer, [
+      {
+        action: 'add',
+        styleId: options.styleId,
+        styleName: options.styleName,
+        properties: options.properties,
+      },
+    ]);
+
+    if (!styleResult.success || !styleResult.data) {
+      return styleResult as DocumentModifyResult & { results?: StyleApplicationResult[] };
+    }
+
+    // Step 2: Apply the style to paragraphs
+    const applyResult = await this.xmlProcessor.applyStylesToDocument(
+      styleResult.data,
+      [options.application]
+    );
+
+    return applyResult;
   }
 
   // ========== Bullet & Numbering Operations ==========
