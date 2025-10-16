@@ -364,8 +364,9 @@ export class DocumentProcessor {
         );
         documentChanged = applyResult.modified > 0;
 
-        if (this.processingContext) {
-          this.processingContext.statistics.stylesApplied += applyResult.modified;
+        const stats = this.processingContext?.statistics;
+        if (stats && typeof stats.stylesApplied === 'number') {
+          stats.stylesApplied += applyResult.modified;
         }
         break;
 
