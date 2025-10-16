@@ -45,127 +45,137 @@ function openDB(): Promise<IDBDatabase> {
 
 /**
  * Save a session to IndexedDB
+ * Fixed: Always closes database connection, even on error
  */
 export async function saveSession(session: any): Promise<void> {
   const db = await openDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
-    const store = transaction.objectStore(SESSIONS_STORE);
-    const request = store.put(session);
+  try {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(SESSIONS_STORE);
+      const request = store.put(session);
 
-    request.onsuccess = () => {
-      resolve();
-    };
+      request.onsuccess = () => {
+        resolve();
+      };
 
-    request.onerror = () => {
-      reject(new Error(`Failed to save session: ${session.id}`));
-    };
-
-    transaction.oncomplete = () => {
-      db.close();
-    };
-  });
+      request.onerror = () => {
+        reject(new Error(`Failed to save session: ${session.id}`));
+      };
+    });
+  } finally {
+    // Always close database connection to prevent memory leaks
+    db.close();
+  }
 }
 
 /**
  * Load all sessions from IndexedDB
+ * Fixed: Always closes database connection, even on error
  */
 export async function loadSessions(): Promise<any[]> {
   const db = await openDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([SESSIONS_STORE], 'readonly');
-    const store = transaction.objectStore(SESSIONS_STORE);
-    const request = store.getAll();
+  try {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([SESSIONS_STORE], 'readonly');
+      const store = transaction.objectStore(SESSIONS_STORE);
+      const request = store.getAll();
 
-    request.onsuccess = () => {
-      resolve(request.result || []);
-    };
+      request.onsuccess = () => {
+        resolve(request.result || []);
+      };
 
-    request.onerror = () => {
-      reject(new Error('Failed to load sessions'));
-    };
-
-    transaction.oncomplete = () => {
-      db.close();
-    };
-  });
+      request.onerror = () => {
+        reject(new Error('Failed to load sessions'));
+      };
+    });
+  } finally {
+    // Always close database connection to prevent memory leaks
+    db.close();
+  }
 }
 
 /**
  * Load a single session by ID from IndexedDB
+ * Fixed: Always closes database connection, even on error
  */
 export async function loadSessionById(sessionId: string): Promise<any | null> {
   const db = await openDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([SESSIONS_STORE], 'readonly');
-    const store = transaction.objectStore(SESSIONS_STORE);
-    const request = store.get(sessionId);
+  try {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([SESSIONS_STORE], 'readonly');
+      const store = transaction.objectStore(SESSIONS_STORE);
+      const request = store.get(sessionId);
 
-    request.onsuccess = () => {
-      resolve(request.result || null);
-    };
+      request.onsuccess = () => {
+        resolve(request.result || null);
+      };
 
-    request.onerror = () => {
-      reject(new Error(`Failed to load session: ${sessionId}`));
-    };
-
-    transaction.oncomplete = () => {
-      db.close();
-    };
-  });
+      request.onerror = () => {
+        reject(new Error(`Failed to load session: ${sessionId}`));
+      };
+    });
+  } finally {
+    // Always close database connection to prevent memory leaks
+    db.close();
+  }
 }
 
 /**
  * Delete a session from IndexedDB
+ * Fixed: Always closes database connection, even on error
  */
 export async function deleteSession(sessionId: string): Promise<void> {
   const db = await openDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
-    const store = transaction.objectStore(SESSIONS_STORE);
-    const request = store.delete(sessionId);
+  try {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(SESSIONS_STORE);
+      const request = store.delete(sessionId);
 
-    request.onsuccess = () => {
-      resolve();
-    };
+      request.onsuccess = () => {
+        resolve();
+      };
 
-    request.onerror = () => {
-      reject(new Error(`Failed to delete session: ${sessionId}`));
-    };
-
-    transaction.oncomplete = () => {
-      db.close();
-    };
-  });
+      request.onerror = () => {
+        reject(new Error(`Failed to delete session: ${sessionId}`));
+      };
+    });
+  } finally {
+    // Always close database connection to prevent memory leaks
+    db.close();
+  }
 }
 
 /**
  * Delete all sessions from IndexedDB
+ * Fixed: Always closes database connection, even on error
  */
 export async function clearAllSessions(): Promise<void> {
   const db = await openDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
-    const store = transaction.objectStore(SESSIONS_STORE);
-    const request = store.clear();
+  try {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(SESSIONS_STORE);
+      const request = store.clear();
 
-    request.onsuccess = () => {
-      resolve();
-    };
+      request.onsuccess = () => {
+        resolve();
+      };
 
-    request.onerror = () => {
-      reject(new Error('Failed to clear sessions'));
-    };
-
-    transaction.oncomplete = () => {
-      db.close();
-    };
-  });
+      request.onerror = () => {
+        reject(new Error('Failed to clear sessions'));
+      };
+    });
+  } finally {
+    // Always close database connection to prevent memory leaks
+    db.close();
+  }
 }
 
 /**
@@ -209,28 +219,30 @@ export async function migrateFromLocalStorage(): Promise<void> {
 
 /**
  * Get active session IDs from IndexedDB
+ * Fixed: Always closes database connection, even on error
  */
 export async function getActiveSessionIds(): Promise<string[]> {
   const db = await openDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([SESSIONS_STORE], 'readonly');
-    const store = transaction.objectStore(SESSIONS_STORE);
-    const index = store.index('status');
-    const request = index.getAllKeys('active');
+  try {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([SESSIONS_STORE], 'readonly');
+      const store = transaction.objectStore(SESSIONS_STORE);
+      const index = store.index('status');
+      const request = index.getAllKeys('active');
 
-    request.onsuccess = () => {
-      resolve(request.result as string[]);
-    };
+      request.onsuccess = () => {
+        resolve(request.result as string[]);
+      };
 
-    request.onerror = () => {
-      reject(new Error('Failed to get active session IDs'));
-    };
-
-    transaction.oncomplete = () => {
-      db.close();
-    };
-  });
+      request.onerror = () => {
+        reject(new Error('Failed to get active session IDs'));
+      };
+    });
+  } finally {
+    // Always close database connection to prevent memory leaks
+    db.close();
+  }
 }
 
 /**
@@ -254,69 +266,76 @@ export async function calculateDBSize(): Promise<number> {
 
 /**
  * Get oldest closed sessions sorted by closedAt date
+ * Fixed: Always closes database connection, even on error
  */
 export async function getOldestClosedSessions(limit: number): Promise<any[]> {
   const db = await openDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([SESSIONS_STORE], 'readonly');
-    const store = transaction.objectStore(SESSIONS_STORE);
-    const request = store.getAll();
+  try {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([SESSIONS_STORE], 'readonly');
+      const store = transaction.objectStore(SESSIONS_STORE);
+      const request = store.getAll();
 
-    request.onsuccess = () => {
-      const sessions = request.result || [];
+      request.onsuccess = () => {
+        const sessions = request.result || [];
 
-      // Filter closed sessions and sort by closedAt (oldest first)
-      const closedSessions = sessions
-        .filter((s: any) => s.status === 'closed' && s.closedAt)
-        .sort((a: any, b: any) => {
-          const dateA = new Date(a.closedAt).getTime();
-          const dateB = new Date(b.closedAt).getTime();
-          return dateA - dateB; // Oldest first
-        })
-        .slice(0, limit);
+        // Filter closed sessions and sort by closedAt (oldest first)
+        const closedSessions = sessions
+          .filter((s: any) => s.status === 'closed' && s.closedAt)
+          .sort((a: any, b: any) => {
+            const dateA = new Date(a.closedAt).getTime();
+            const dateB = new Date(b.closedAt).getTime();
+            return dateA - dateB; // Oldest first
+          })
+          .slice(0, limit);
 
-      resolve(closedSessions);
-    };
+        resolve(closedSessions);
+      };
 
-    request.onerror = () => {
-      reject(new Error('Failed to get oldest closed sessions'));
-    };
-
-    transaction.oncomplete = () => {
-      db.close();
-    };
-  });
+      request.onerror = () => {
+        reject(new Error('Failed to get oldest closed sessions'));
+      };
+    });
+  } finally {
+    // Always close database connection to prevent memory leaks
+    db.close();
+  }
 }
 
 /**
  * Delete multiple sessions by their IDs
+ * Fixed: Always closes database connection, even on error
  */
 export async function deleteSessions(sessionIds: string[]): Promise<number> {
   const db = await openDB();
   let deletedCount = 0;
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
-    const store = transaction.objectStore(SESSIONS_STORE);
+  try {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(SESSIONS_STORE);
 
-    for (const sessionId of sessionIds) {
-      const request = store.delete(sessionId);
-      request.onsuccess = () => {
-        deletedCount++;
+      for (const sessionId of sessionIds) {
+        const request = store.delete(sessionId);
+        request.onsuccess = () => {
+          deletedCount++;
+        };
+      }
+
+      transaction.oncomplete = () => {
+        console.log(`[IndexedDB] Deleted ${deletedCount} session(s)`);
+        resolve(deletedCount);
       };
-    }
 
-    transaction.oncomplete = () => {
-      db.close();
-      console.log(`[IndexedDB] Deleted ${deletedCount} session(s)`);
-      resolve(deletedCount);
-    };
-
-    transaction.onerror = () => {
-      reject(new Error('Failed to delete sessions'));
-    };
-  });
+      transaction.onerror = () => {
+        reject(new Error('Failed to delete sessions'));
+      };
+    });
+  } finally {
+    // Always close database connection to prevent memory leaks
+    db.close();
+  }
 }
 
 /**
