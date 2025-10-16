@@ -35,10 +35,13 @@ import { ProcessingOptions, ProcessingOption, defaultOptions } from '@/component
 import { StylesEditor } from '@/components/sessions/StylesEditor';
 import { ReplacementsTab } from '@/components/sessions/ReplacementsTab';
 import { TrackedChanges } from '@/components/sessions/TrackedChanges';
+import { useToast } from '@/hooks/useToast';
+import { Toaster } from '@/components/common/Toast';
 
 export function CurrentSession() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { toasts, toast, dismiss } = useToast();
   const {
     sessions,
     currentSession,
@@ -196,10 +199,23 @@ export function CurrentSession() {
       // Log summary
       if (invalidFiles.length > 0) {
         console.warn(`[Drag-Drop] Rejected ${invalidFiles.length} file(s) due to invalid paths:`, invalidFiles);
-        // TODO: Show toast notification to user
+
+        // Show toast notification to user
+        toast({
+          title: 'Some files could not be added',
+          description: `${invalidFiles.length} file(s) rejected: ${invalidFiles.slice(0, 3).join(', ')}${invalidFiles.length > 3 ? '...' : ''}`,
+          variant: 'destructive',
+        });
       }
       if (validFiles.length > 0) {
         console.log(`[Drag-Drop] Successfully added ${validFiles.length} file(s)`);
+
+        // Show success toast
+        toast({
+          title: 'Files added successfully',
+          description: `${validFiles.length} file(s) added to session`,
+          variant: 'success',
+        });
       }
     }
   };
@@ -567,6 +583,9 @@ export function CurrentSession() {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Toast notifications */}
+      <Toaster toasts={toasts} onDismiss={dismiss} />
+
       {/* Sticky Header Section */}
       <div className="sticky top-0 z-30 bg-background p-6 pb-0 max-w-6xl mx-auto w-full">
         {/* Title Edit */}
