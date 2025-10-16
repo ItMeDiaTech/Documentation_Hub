@@ -17,6 +17,13 @@ import {
 import StylesXmlProcessor from './utils/StylesXmlProcessor';
 import NumberingXmlProcessor from './utils/NumberingXmlProcessor';
 import type { ListBulletSettings, TableUniformitySettings } from '@/types/session';
+import {
+  isRunProperties,
+  isParagraphProperties,
+  getFontSize,
+  hasBold,
+  getParagraphStyleId
+} from './types/xml-types';
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
