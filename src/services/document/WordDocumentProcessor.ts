@@ -13,6 +13,9 @@ import {
   HyperlinkProcessingResult,
   HyperlinkType
 } from '@/types/hyperlink';
+import StylesXmlProcessor from './utils/StylesXmlProcessor';
+import NumberingXmlProcessor from './utils/NumberingXmlProcessor';
+import type { ListBulletSettings, TableUniformitySettings } from '@/types/session';
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -29,8 +32,10 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   customStyleSpacing?: {
     header1?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
     header2?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
-    normal?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
+    normal?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number; noSpaceBetweenSame?: boolean };
   };
+  listBulletSettings?: ListBulletSettings;
+  tableUniformitySettings?: TableUniformitySettings;
 }
 
 export interface WordProcessingResult extends HyperlinkProcessingResult {
@@ -54,9 +59,13 @@ export class WordDocumentProcessor {
   private xmlParser: XMLParser;
   private xmlBuilder: XMLBuilder;
   private hyperlinkCache: Map<string, HyperlinkData>;
+  private stylesProcessor: StylesXmlProcessor;
+  private numberingProcessor: NumberingXmlProcessor;
   private readonly MAX_FILE_SIZE_MB = 100;
 
   constructor() {
+    this.stylesProcessor = new StylesXmlProcessor();
+    this.numberingProcessor = new NumberingXmlProcessor();
     // Initialize XML parser with settings optimized for Office Open XML
     // CRITICAL: preserveOrder MUST be true to prevent document corruption
     this.xmlParser = new XMLParser({
@@ -228,10 +237,23 @@ export class WordDocumentProcessor {
         }
       }
 
-      // Assign Normal styles
+      // Update style definitions FIRST (styles.xml)
+      // Then assign style IDs (document.xml)
       let stylesAssigned = false;
       if (options.assignStyles) {
-        console.log('\n=== STYLE ASSIGNMENT ===');
+        console.log('\n=== STYLE PROCESSING ===');
+
+        // PHASE 1: Update style definitions in styles.xml
+        console.log('Phase 1: Updating style definitions...');
+        const styleDefsUpdated = await this.updateStyleDefinitions(zip, options);
+        if (styleDefsUpdated) {
+          console.log('✓ Style definitions updated in styles.xml');
+        } else {
+          console.log('⚠ No style definitions were updated (using defaults)');
+        }
+
+        // PHASE 2: Assign style IDs and clear direct formatting in document.xml
+        console.log('\nPhase 2: Assigning style IDs and clearing direct formatting...');
         const stylesResult = await this.assignNormalStyles(zip, options);
         stylesAssigned = stylesResult.modified;
         if (stylesAssigned) {
@@ -265,8 +287,42 @@ export class WordDocumentProcessor {
         }
       }
 
+      // Process list formatting (bullets and numbered lists)
+      let listFormattingProcessed = false;
+      if (options.listBulletSettings?.enabled) {
+        console.log('\n=== LIST FORMATTING PROCESSING ===');
+        const listResult = await this.processListFormatting(zip, options.listBulletSettings);
+        listFormattingProcessed = listResult.modified;
+        if (listFormattingProcessed) {
+          result.modifiedHyperlinks++; // Count as modification for save logic
+          result.processedLinks.push(...listResult.changes);
+        }
+
+        // Also process indentation if there are indentation levels configured
+        if (options.listBulletSettings.indentationLevels && options.listBulletSettings.indentationLevels.length > 0) {
+          const indentResult = await this.standardizeListIndentation(zip, options.listBulletSettings);
+          if (indentResult.modified) {
+            listFormattingProcessed = true;
+            result.modifiedHyperlinks++;
+            result.processedLinks.push(...indentResult.changes);
+          }
+        }
+      }
+
+      // Process table shading
+      let tableShadingProcessed = false;
+      if (options.tableUniformitySettings?.enabled) {
+        console.log('\n=== TABLE SHADING PROCESSING ===');
+        const tableResult = await this.processTableShading(zip, options.tableUniformitySettings);
+        tableShadingProcessed = tableResult.modified;
+        if (tableShadingProcessed) {
+          result.modifiedHyperlinks++; // Count as modification for save logic
+          result.processedLinks.push(...tableResult.changes);
+        }
+      }
+
       // Save the modified document
-      if (processedData.modifiedCount > 0 || keywordsProcessed || textReplacementsProcessed || customSpacingProcessed) {
+      if (processedData.modifiedCount > 0 || keywordsProcessed || textReplacementsProcessed || customSpacingProcessed || listFormattingProcessed || tableShadingProcessed) {
         console.log('\n=== SAVING DOCUMENT ===');
         console.log(`Saving ${processedData.modifiedCount} modifications...`);
 
@@ -1693,46 +1749,60 @@ export class WordDocumentProcessor {
             // preserveOrder: true format - run is an array
             let rPrItem = run.find((el: any) => el['w:rPr']);
 
-            // Log before state
-            const hadRPr = !!rPrItem;
-            const oldColor = hadRPr && rPrItem['w:rPr'] ?
-              (Array.isArray(rPrItem['w:rPr']) ? rPrItem['w:rPr'][0]?.['w:color'] : rPrItem['w:rPr']?.['w:color'])
-              : null;
-
             if (!rPrItem) {
               // Create new run properties
-              rPrItem = { 'w:rPr': [{}] };
+              rPrItem = { 'w:rPr': [] };
               run.unshift(rPrItem);
             }
 
-            const rPr = Array.isArray(rPrItem['w:rPr']) ? rPrItem['w:rPr'][0] : rPrItem['w:rPr'];
+            // rPrItem['w:rPr'] is an array of elements
+            const rPrArray = rPrItem['w:rPr'];
+            if (Array.isArray(rPrArray)) {
+              // Add/update w:color element in the array
+              const colorElement = {
+                'w:color': [],
+                ':@': {
+                  '@_w:val': '0000FF'
+                }
+              };
 
-            // Set color to blue - using both formats for compatibility
-            rPr['w:color'] = [{
-              ':@': {
-                '@_w:val': '0000FF'
+              // Find existing w:color or add new one
+              const colorIdx = rPrArray.findIndex((el: any) => el['w:color'] !== undefined);
+              if (colorIdx >= 0) {
+                rPrArray[colorIdx] = colorElement;
+              } else {
+                rPrArray.push(colorElement);
               }
-            }];
+            }
 
-            console.log(`      Run (array): ${hadRPr ? 'had rPr' : 'created rPr'}, old color:`, oldColor, '→ new: 0000FF');
             count++;
           } else if (run && typeof run === 'object') {
             // Non-array format
-            const hadRPr = !!run['w:rPr'];
-            const oldColor = run['w:rPr'] ?
-              (Array.isArray(run['w:rPr']) ? run['w:rPr'][0]?.['w:color'] : run['w:rPr']?.['w:color'])
-              : null;
-
             if (!run['w:rPr']) {
-              run['w:rPr'] = {};
+              run['w:rPr'] = [];
             }
 
-            const rPr = Array.isArray(run['w:rPr']) ? run['w:rPr'][0] : run['w:rPr'];
+            // Handle both array and object formats for w:rPr
+            if (Array.isArray(run['w:rPr'])) {
+              // preserveOrder format
+              const colorElement = {
+                'w:color': [],
+                ':@': {
+                  '@_w:val': '0000FF'
+                }
+              };
 
-            // Set color using simpler format for non-array
-            rPr['w:color'] = { '@_w:val': '0000FF' };
+              const colorIdx = run['w:rPr'].findIndex((el: any) => el['w:color'] !== undefined);
+              if (colorIdx >= 0) {
+                run['w:rPr'][colorIdx] = colorElement;
+              } else {
+                run['w:rPr'].push(colorElement);
+              }
+            } else {
+              // Object format
+              run['w:rPr']['w:color'] = { '@_w:val': '0000FF' };
+            }
 
-            console.log(`      Run (object): ${hadRPr ? 'had rPr' : 'created rPr'}, old color:`, oldColor, '→ new: 0000FF');
             count++;
           }
         }
@@ -2021,23 +2091,273 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Update style definitions in styles.xml based on StylesEditor settings
+   * This synchronizes the style definitions with user-configured settings
+   */
+  private async updateStyleDefinitions(zip: JSZip, options?: any): Promise<boolean> {
+    try {
+      console.log('Updating style definitions in styles.xml...');
+
+      // Get styles from session/options
+      const configuredStyles = options?.styles && Array.isArray(options.styles)
+        ? options.styles
+        : [];
+
+      if (configuredStyles.length === 0) {
+        console.log('No styles configured in StylesEditor, skipping style definition updates');
+        return false;
+      }
+
+      // Load styles.xml
+      const stylesXmlFile = zip.file('word/styles.xml');
+      if (!stylesXmlFile) {
+        console.log('No styles.xml found, cannot update style definitions');
+        return false;
+      }
+
+      const stylesXml = await stylesXmlFile.async('text');
+
+      // Parse styles.xml using the non-preserveOrder parser for easier manipulation
+      const simpleParser = new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: '@_',
+        textNodeName: '#text',
+        preserveOrder: false, // Easier to work with for styles.xml
+      });
+
+      const stylesData = simpleParser.parse(stylesXml);
+      const parseResult = this.stylesProcessor.parse(stylesXml);
+
+      if (!parseResult.success || !parseResult.data) {
+        console.log('Failed to parse styles.xml');
+        return false;
+      }
+
+      let stylesObj = parseResult.data;
+      let modified = false;
+
+      // Update each configured style
+      for (const configStyle of configuredStyles) {
+        if (!configStyle.id || !configStyle.name) continue;
+
+        console.log(`  Updating style: ${configStyle.name} (${configStyle.id})`);
+
+        // Map StylesEditor format to DOCX format
+        const styleProperties: any = {};
+
+        // Text properties
+        if (configStyle.fontFamily) styleProperties.fontFamily = configStyle.fontFamily;
+        if (configStyle.fontSize) styleProperties.fontSize = configStyle.fontSize;
+        if (configStyle.bold !== undefined) styleProperties.bold = configStyle.bold;
+        if (configStyle.italic !== undefined) styleProperties.italic = configStyle.italic;
+        if (configStyle.underline !== undefined) styleProperties.underline = configStyle.underline;
+        if (configStyle.color) styleProperties.color = configStyle.color.replace('#', '');
+
+        // Paragraph properties
+        if (configStyle.alignment) styleProperties.alignment = configStyle.alignment;
+        // Convert spacing from points to twips (1 point = 20 twips)
+        if (configStyle.spaceBefore !== undefined) styleProperties.spaceBefore = configStyle.spaceBefore * 20;
+        if (configStyle.spaceAfter !== undefined) styleProperties.spaceAfter = configStyle.spaceAfter * 20;
+        if (configStyle.lineSpacing !== undefined) {
+          // Convert line spacing multiplier to twips (1/20th of a point)
+          // 1.0 = 240 twips, 1.15 = 276 twips, 1.5 = 360 twips, 2.0 = 480 twips
+          styleProperties.lineSpacing = Math.round(configStyle.lineSpacing * 240);
+        }
+
+        // Map style ID to Word style ID
+        let wordStyleId = configStyle.id;
+        let wordStyleName = configStyle.name;
+
+        if (configStyle.id === 'header1') {
+          wordStyleId = 'Heading1';
+          wordStyleName = 'Heading 1';
+        } else if (configStyle.id === 'header2') {
+          wordStyleId = 'Heading2';
+          wordStyleName = 'Heading 2';
+        } else if (configStyle.id === 'normal') {
+          wordStyleId = 'Normal';
+          wordStyleName = 'Normal';
+        }
+
+        // Update the style definition
+        stylesObj = this.stylesProcessor.setParagraphStyle(
+          stylesObj,
+          wordStyleId,
+          wordStyleName,
+          styleProperties
+        );
+
+        modified = true;
+      }
+
+      if (modified) {
+        // Build updated styles.xml
+        const buildResult = this.stylesProcessor.build(stylesObj);
+        if (buildResult.success && buildResult.data) {
+          // Ensure XML declaration
+          const xmlWithDeclaration = buildResult.data.startsWith('<?xml')
+            ? buildResult.data
+            : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + buildResult.data;
+
+          zip.file('word/styles.xml', xmlWithDeclaration);
+          console.log(`✓ Updated ${configuredStyles.length} style definitions in styles.xml`);
+          return true;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Error updating style definitions:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Helper: Find element in preserveOrder array by element name
+   * Returns the item and its index, or null if not found
+   */
+  private findInPreserveOrderArray(arr: any[], elementName: string): { item: any; index: number } | null {
+    if (!Array.isArray(arr)) return null;
+
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i][elementName] !== undefined) {
+        return { item: arr[i], index: i };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Helper: Remove elements from preserveOrder array by element names
+   * Returns true if any elements were removed
+   */
+  private removeFromPreserveOrderArray(arr: any[], elementNames: string[]): boolean {
+    if (!Array.isArray(arr)) return false;
+
+    const originalLength = arr.length;
+
+    // Filter out elements that match any of the names to remove
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const keys = Object.keys(arr[i]).filter(k => k !== ':@');
+      if (keys.length > 0 && elementNames.includes(keys[0])) {
+        arr.splice(i, 1);
+      }
+    }
+
+    return arr.length < originalLength;
+  }
+
+  /**
+   * Helper: Add or update element in preserveOrder array
+   * If element exists, replaces it; otherwise adds at the beginning
+   */
+  private setInPreserveOrderArray(arr: any[], elementName: string, value: any): void {
+    if (!Array.isArray(arr)) return;
+
+    const found = this.findInPreserveOrderArray(arr, elementName);
+    const newElement = { [elementName]: value };
+
+    if (found) {
+      arr[found.index] = newElement;
+    } else {
+      arr.unshift(newElement);
+    }
+  }
+
+  /**
+   * Clear direct formatting from run properties that conflicts with style definitions
+   * Removes w:rPr properties so that style-based formatting can take effect
+   *
+   * IMPORTANT: This works with preserveOrder:true structure where rPr is an array
+   */
+  private clearDirectFormatting(rPr: any, preserveHyperlinks: boolean = true): boolean {
+    if (!rPr) return false;
+
+    // Handle both array (preserveOrder:true) and object formats
+    if (Array.isArray(rPr)) {
+      // preserveOrder:true format - rPr is an array of elements
+      // Check if this is a hyperlink - we want to preserve hyperlink styling
+      if (preserveHyperlinks) {
+        const rStyleItem = this.findInPreserveOrderArray(rPr, 'w:rStyle');
+        if (rStyleItem) {
+          const attrs = rStyleItem.item[':@'];
+          if (attrs && String(attrs['@_w:val']).toLowerCase().includes('hyperlink')) {
+            return false; // Don't clear hyperlink formatting
+          }
+        }
+      }
+
+      // Properties to remove (these should come from style definitions instead)
+      const propsToRemove = [
+        'w:rFonts',  // Font family
+        'w:sz',      // Font size
+        'w:szCs',    // Complex script font size
+        'w:color',   // Text color
+        'w:b',       // Bold
+        'w:bCs',     // Complex script bold
+        'w:i',       // Italic
+        'w:iCs',     // Complex script italic
+        'w:u',       // Underline
+      ];
+
+      return this.removeFromPreserveOrderArray(rPr, propsToRemove);
+    } else if (typeof rPr === 'object') {
+      // Object format (non-preserveOrder) - original logic
+      let cleared = false;
+
+      const isHyperlink = preserveHyperlinks && (
+        rPr['w:rStyle'] &&
+        (String(rPr['w:rStyle']).toLowerCase().includes('hyperlink') ||
+         (rPr['w:rStyle'][':@'] && String(rPr['w:rStyle'][':@']['@_w:val']).toLowerCase().includes('hyperlink')))
+      );
+
+      if (isHyperlink) {
+        return false;
+      }
+
+      const propsToRemove = [
+        'w:rFonts', 'w:sz', 'w:szCs', 'w:color',
+        'w:b', 'w:bCs', 'w:i', 'w:iCs', 'w:u'
+      ];
+
+      for (const prop of propsToRemove) {
+        if (rPr[prop]) {
+          delete rPr[prop];
+          cleared = true;
+        }
+      }
+
+      return cleared;
+    }
+
+    return false;
+  }
+
+  /**
    * Assign Normal style to paragraphs and apply formatting from styles editor
    */
   private async assignNormalStyles(zip: JSZip, options?: any): Promise<{ modified: boolean; changes: any[] }> {
     let modified = false;
     let stylesApplied = 0;
-    let formattingApplied = 0;
+    let formattingCleared = 0;
     const changes: any[] = [];
 
     try {
-      console.log('Starting Normal style assignment...');
+      console.log('Starting style-based formatting (assigning style IDs and clearing direct formatting)...');
 
-      // Get Normal style settings from editor
+      // Get Normal style settings from editor (for logging purposes)
       const normalStyle = options?.styles && Array.isArray(options.styles)
         ? options.styles.find((s: any) => s.id === 'normal')
         : null;
 
-      console.log('Normal style from editor:', normalStyle);
+      if (normalStyle) {
+        console.log('Normal style configured:', {
+          font: normalStyle.fontFamily,
+          size: normalStyle.fontSize + 'pt',
+          color: normalStyle.color
+        });
+        console.log('NOTE: Formatting will be applied via style definitions, not direct formatting');
+      }
 
       // Parse main document
       const documentXmlFile = zip.file('word/document.xml');
@@ -2048,61 +2368,6 @@ export class WordDocumentProcessor {
 
       const documentXml = await documentXmlFile.async('text');
       const documentData = this.xmlParser.parse(documentXml);
-
-      // Helper function to apply Normal style formatting from editor
-      const applyNormalFormatting = (rPr: any): boolean => {
-        if (!normalStyle) return false;
-
-        let applied = false;
-
-        // Apply font family
-        if (normalStyle.fontFamily) {
-          rPr['w:rFonts'] = [{
-            ':@': {
-              '@_w:ascii': normalStyle.fontFamily,
-              '@_w:hAnsi': normalStyle.fontFamily
-            }
-          }];
-          applied = true;
-        }
-
-        // Apply font size (convert points to half-points)
-        if (normalStyle.fontSize) {
-          const halfPoints = normalStyle.fontSize * 2;
-          rPr['w:sz'] = [{
-            ':@': {
-              '@_w:val': halfPoints.toString()
-            }
-          }];
-          rPr['w:szCs'] = [{
-            ':@': {
-              '@_w:val': halfPoints.toString()
-            }
-          }];
-          applied = true;
-        }
-
-        // Apply color (strip # if present)
-        if (normalStyle.color) {
-          const colorVal = normalStyle.color.replace('#', '').toUpperCase();
-          rPr['w:color'] = [{
-            ':@': {
-              '@_w:val': colorVal
-            }
-          }];
-          applied = true;
-        }
-
-        // Remove unwanted formatting
-        const propsToRemove = ['w:b', 'w:i', 'w:u'];
-        for (const prop of propsToRemove) {
-          if (rPr[prop]) {
-            delete rPr[prop];
-          }
-        }
-
-        return applied;
-      };
 
       // Find all paragraphs and apply Normal style if needed
       this.traverseElement(documentData, (element: any) => {
@@ -2140,68 +2405,149 @@ export class WordDocumentProcessor {
                 }
               }
 
-              // If no style or style is not a heading, apply Normal
-              if (!currentStyle || (!currentStyle.toLowerCase().includes('heading') && !currentStyle.toLowerCase().includes('header'))) {
+              // DETECT AND ASSIGN HEADING STYLES FIRST
+              if (!currentStyle) {
+                // Paragraph has no style - check if it should be a heading
+                let detectedHeadingStyle: string | null = null;
+
+                // Analyze run properties to detect heading characteristics
+                for (const run of runs) {
+                  if (Array.isArray(run)) {
+                    const rPrItem = run.find((el: any) => el['w:rPr']);
+                    if (rPrItem && rPrItem['w:rPr']) {
+                      const rPr = Array.isArray(rPrItem['w:rPr']) ? rPrItem['w:rPr'][0] : rPrItem['w:rPr'];
+                      const rPrArray = Array.isArray(rPr) ? rPr : [rPr];
+
+                      // Check for font size
+                      const szItem = rPrArray.find((el: any) => el['w:sz']);
+                      if (szItem && szItem['w:sz']) {
+                        const sz = Array.isArray(szItem['w:sz']) ? szItem['w:sz'][0] : szItem['w:sz'];
+                        const sizeVal = sz?.[':@']?.['@_w:val'] || sz?.['@_w:val'];
+                        if (sizeVal) {
+                          const fontSize = parseInt(sizeVal) / 2; // Convert half-points to points
+
+                          // Check for bold
+                          const hasBold = rPrArray.some((el: any) => el['w:b']);
+
+                          // Heading detection rules:
+                          // - 18pt + bold = Heading1
+                          // - 14pt + bold = Heading2
+                          if (fontSize >= 17 && fontSize <= 20 && hasBold) {
+                            detectedHeadingStyle = 'Heading1';
+                            break;
+                          } else if (fontSize >= 13 && fontSize <= 15 && hasBold) {
+                            detectedHeadingStyle = 'Heading2';
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                // If heading detected, assign appropriate style
+                if (detectedHeadingStyle) {
+                  console.log(`  Detected ${detectedHeadingStyle} by formatting - assigning style ID`);
+
+                  if (!pPrItem) {
+                    pPrItem = { 'w:pPr': [] };
+                    paragraph.unshift(pPrItem);
+                  }
+
+                  const pPrArray = pPrItem['w:pPr'];
+                  if (Array.isArray(pPrArray)) {
+                    const pStyleElement = {
+                      'w:pStyle': [],
+                      ':@': {
+                        '@_w:val': detectedHeadingStyle
+                      }
+                    };
+
+                    const pStyleIdx = pPrArray.findIndex((el: any) => el['w:pStyle'] !== undefined);
+                    if (pStyleIdx >= 0) {
+                      pPrArray[pStyleIdx] = pStyleElement;
+                    } else {
+                      pPrArray.unshift(pStyleElement);
+                    }
+                  }
+
+                  // Update currentStyle so it won't get Normal applied
+                  currentStyle = detectedHeadingStyle;
+                  modified = true;
+                  stylesApplied++;
+
+                  changes.push({
+                    type: 'style',
+                    description: `Detected and assigned ${detectedHeadingStyle} style`,
+                    before: 'No style',
+                    after: detectedHeadingStyle
+                  });
+                }
+              }
+
+              // Only apply Normal if: paragraph has no style OR has a non-Normal/non-heading style
+              // This prevents wasteful re-application and ensures headings are preserved
+              const isHeading = currentStyle && (currentStyle.toLowerCase().includes('heading') || currentStyle.toLowerCase().includes('header'));
+              const needsNormalStyle = !isHeading && (!currentStyle || currentStyle !== 'Normal');
+
+              if (needsNormalStyle) {
                 // Set paragraph style to Normal
                 if (!pPrItem) {
-                  pPrItem = { 'w:pPr': [{}] };
+                  pPrItem = { 'w:pPr': [] };
                   paragraph.unshift(pPrItem);
                 }
 
-                const pPr = Array.isArray(pPrItem['w:pPr']) ? pPrItem['w:pPr'][0] : pPrItem['w:pPr'];
-                pPr['w:pStyle'] = [{
-                  ':@': {
-                    '@_w:val': 'Normal'
+                // pPrItem['w:pPr'] is an array of elements (preserveOrder format)
+                const pPrArray = pPrItem['w:pPr'];
+                if (Array.isArray(pPrArray)) {
+                  // Add/update w:pStyle element in the array
+                  const pStyleElement = {
+                    'w:pStyle': [],
+                    ':@': {
+                      '@_w:val': 'Normal'
+                    }
+                  };
+
+                  // Find existing w:pStyle or add new one
+                  const pStyleIdx = pPrArray.findIndex((el: any) => el['w:pStyle'] !== undefined);
+                  if (pStyleIdx >= 0) {
+                    pPrArray[pStyleIdx] = pStyleElement;
+                  } else {
+                    pPrArray.unshift(pStyleElement);
                   }
-                }];
+                }
 
                 modified = true;
                 stylesApplied++;
 
-                // Apply Normal style formatting from editor to runs (unless in hyperlink)
+                // Clear direct formatting from runs to let style definitions take effect
                 for (const run of runs) {
                   if (Array.isArray(run)) {
-                    // Find or create run properties
+                    // Find run properties
                     let rPrItem = run.find((el: any) => el['w:rPr']);
 
-                    if (!rPrItem) {
-                      rPrItem = { 'w:rPr': [{}] };
-                      run.unshift(rPrItem);
-                    }
-
-                    const rPrArray = Array.isArray(rPrItem['w:rPr']) ? rPrItem['w:rPr'] : [rPrItem['w:rPr']];
-                    for (const rPr of rPrArray) {
-                      if (rPr && typeof rPr === 'object') {
-                        // Check if this run is inside a hyperlink
-                        const hasHyperlinkStyle = rPr['w:rStyle'] &&
-                          (String(rPr['w:rStyle']).toLowerCase().includes('hyperlink'));
-
-                        if (!hasHyperlinkStyle && applyNormalFormatting(rPr)) {
-                          formattingApplied++;
-                        }
+                    if (rPrItem && rPrItem['w:rPr']) {
+                      // Pass rPr directly - clearDirectFormatting handles both array and object
+                      if (this.clearDirectFormatting(rPrItem['w:rPr'])) {
+                        formattingCleared++;
                       }
                     }
                   } else if (run && typeof run === 'object') {
                     // Non-array format
-                    if (!run['w:rPr']) {
-                      run['w:rPr'] = {};
-                    }
-
-                    const rPr = Array.isArray(run['w:rPr']) ? run['w:rPr'][0] : run['w:rPr'];
-                    const hasHyperlinkStyle = rPr['w:rStyle'] &&
-                      (String(rPr['w:rStyle']).toLowerCase().includes('hyperlink'));
-
-                    if (!hasHyperlinkStyle && applyNormalFormatting(rPr)) {
-                      formattingApplied++;
+                    if (run['w:rPr']) {
+                      // Pass rPr directly - clearDirectFormatting handles both array and object
+                      if (this.clearDirectFormatting(run['w:rPr'])) {
+                        formattingCleared++;
+                      }
                     }
                   }
                 }
 
                 changes.push({
                   type: 'style',
-                  description: 'Applied Normal style and removed direct formatting',
+                  description: 'Applied Normal style and cleared direct formatting',
                   before: currentStyle || 'No style',
-                  after: 'Normal (formatting removed)',
+                  after: 'Normal (style-based)',
                   runsAffected: runs.length
                 });
               }
@@ -2220,38 +2566,55 @@ export class WordDocumentProcessor {
                 runs = Array.isArray(paragraph['w:r']) ? paragraph['w:r'] : [paragraph['w:r']];
               }
 
-              // If no style or style is not a heading, apply Normal
-              if (!currentStyle || (!currentStyle.toLowerCase().includes('heading') && !currentStyle.toLowerCase().includes('header'))) {
+              // Only apply Normal if: paragraph has no style OR has a non-Normal/non-heading style
+              const isHeading2 = currentStyle && (currentStyle.toLowerCase().includes('heading') || currentStyle.toLowerCase().includes('header'));
+              const needsNormalStyle2 = !isHeading2 && (!currentStyle || currentStyle !== 'Normal');
+
+              if (needsNormalStyle2) {
                 if (!paragraph['w:pPr']) {
-                  paragraph['w:pPr'] = {};
+                  paragraph['w:pPr'] = [];
                 }
 
-                const pPr = Array.isArray(paragraph['w:pPr']) ? paragraph['w:pPr'][0] : paragraph['w:pPr'];
-                pPr['w:pStyle'] = { '@_w:val': 'Normal' };
+                // Handle both array (preserveOrder) and object formats
+                if (Array.isArray(paragraph['w:pPr'])) {
+                  // preserveOrder format - pPr is array of elements
+                  const pPrArray = paragraph['w:pPr'];
+                  const pStyleElement = {
+                    'w:pStyle': [],
+                    ':@': {
+                      '@_w:val': 'Normal'
+                    }
+                  };
+
+                  const pStyleIdx = pPrArray.findIndex((el: any) => el['w:pStyle'] !== undefined);
+                  if (pStyleIdx >= 0) {
+                    pPrArray[pStyleIdx] = pStyleElement;
+                  } else {
+                    pPrArray.unshift(pStyleElement);
+                  }
+                } else {
+                  // Object format
+                  paragraph['w:pPr']['w:pStyle'] = { '@_w:val': 'Normal' };
+                }
 
                 modified = true;
                 stylesApplied++;
 
-                // Apply Normal style formatting from editor to runs
+                // Clear direct formatting from runs to let style definitions take effect
                 for (const run of runs) {
-                  if (!run['w:rPr']) {
-                    run['w:rPr'] = {};
-                  }
-
-                  const rPr = Array.isArray(run['w:rPr']) ? run['w:rPr'][0] : run['w:rPr'];
-                  const hasHyperlinkStyle = rPr['w:rStyle'] &&
-                    (String(rPr['w:rStyle']).toLowerCase().includes('hyperlink'));
-
-                  if (!hasHyperlinkStyle && applyNormalFormatting(rPr)) {
-                    formattingApplied++;
+                  if (run['w:rPr']) {
+                    // Pass the rPr directly - clearDirectFormatting handles both array and object
+                    if (this.clearDirectFormatting(run['w:rPr'])) {
+                      formattingCleared++;
+                    }
                   }
                 }
 
                 changes.push({
                   type: 'style',
-                  description: 'Applied Normal style with editor formatting',
+                  description: 'Applied Normal style and cleared direct formatting',
                   before: currentStyle || 'No style',
-                  after: `Normal (${normalStyle ? normalStyle.fontFamily + ' ' + normalStyle.fontSize + 'pt' : 'style applied'})`
+                  after: `Normal (style-based)`
                 });
               }
             }
@@ -2260,10 +2623,11 @@ export class WordDocumentProcessor {
       });
 
       if (modified) {
-        console.log(`✓ Applied Normal style to ${stylesApplied} paragraphs`);
-        console.log(`✓ Applied editor formatting to ${formattingApplied} runs`);
+        console.log(`✓ Applied Normal style ID to ${stylesApplied} paragraphs`);
+        console.log(`✓ Cleared direct formatting from ${formattingCleared} runs`);
+        console.log('  Formatting will now be controlled by style definitions in styles.xml');
         if (normalStyle) {
-          console.log(`  Font: ${normalStyle.fontFamily}, Size: ${normalStyle.fontSize}pt, Color: ${normalStyle.color}`);
+          console.log(`  Style properties: ${normalStyle.fontFamily}, ${normalStyle.fontSize}pt, ${normalStyle.color}`);
         }
 
         // Save modified document
@@ -2766,6 +3130,949 @@ export class WordDocumentProcessor {
 
     if (debug) console.log('    ❌ No style value found after checking all items');
     return null;
+  }
+
+  /**
+   * Process list formatting (bullets and numbered lists)
+   * Applies uniform bullet/numbering formatting based on settings
+   */
+  private async processListFormatting(
+    zip: JSZip,
+    settings: ListBulletSettings
+  ): Promise<{ modified: boolean; changes: any[]; listsProcessed: number }> {
+    if (!settings.enabled) {
+      return { modified: false, changes: [], listsProcessed: 0 };
+    }
+
+    console.log('\n=== LIST FORMATTING ===');
+    console.log('List settings:', JSON.stringify(settings, null, 2));
+
+    const changes: any[] = [];
+    let modified = false;
+    let listsProcessed = 0;
+
+    try {
+      // Read document.xml
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        console.log('⚠️  word/document.xml not found');
+        return { modified: false, changes: [], listsProcessed: 0 };
+      }
+
+      const documentXmlContent = await documentXmlFile.async('string');
+      const documentData = this.xmlParser.parse(documentXmlContent);
+
+      // Read or create numbering.xml
+      let numberingXmlFile = zip.file('word/numbering.xml');
+      let numberingXmlContent: string;
+      let numberingExists = false;
+
+      if (numberingXmlFile) {
+        numberingXmlContent = await numberingXmlFile.async('string');
+        numberingExists = true;
+        console.log('✓ Found existing numbering.xml');
+      } else {
+        // Create minimal numbering.xml structure
+        numberingXmlContent = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+</w:numbering>`;
+        console.log('✓ Created new numbering.xml structure');
+      }
+
+      // Parse numbering.xml using NumberingXmlProcessor
+      const parseResult = this.numberingProcessor.parse(numberingXmlContent);
+      if (!parseResult.success || !parseResult.data) {
+        console.error('Failed to parse numbering.xml');
+        return { modified: false, changes: [], listsProcessed: 0 };
+      }
+
+      let numberingXml = parseResult.data;
+
+      // Get next available IDs
+      const abstractNumId = this.numberingProcessor.getNextAbstractNumId(numberingXml);
+      const numId = this.numberingProcessor.getNextNumId(numberingXml);
+
+      console.log(`Creating new bullet list definition: abstractNumId=${abstractNumId}, numId=${numId}`);
+
+      // Create bullet list definition with configured settings
+      numberingXml = this.numberingProcessor.createBulletList(
+        numberingXml,
+        abstractNumId,
+        settings.indentationLevels[0]?.bulletChar || '●',
+        settings.indentationLevels.length
+      );
+
+      // Update each level with configured indentation and bullet characters
+      for (let i = 0; i < settings.indentationLevels.length; i++) {
+        const levelSettings = settings.indentationLevels[i];
+        const indentTwips = levelSettings.indentation * 20; // Convert points to twips
+        const hangingTwips = 360; // Standard hanging indent (0.25 inch)
+
+        numberingXml = this.numberingProcessor.updateLevel(
+          numberingXml,
+          abstractNumId,
+          i,
+          {
+            level: i,
+            text: levelSettings.bulletChar || '●',
+            format: 'bullet',
+            alignment: 'left',
+            indentLeft: indentTwips,
+            indentHanging: hangingTwips
+          }
+        );
+
+        console.log(`  Level ${i + 1}: ${levelSettings.bulletChar}, indent=${levelSettings.indentation}pt`);
+      }
+
+      // Create numbering instance
+      numberingXml = this.numberingProcessor.createNumberingInstance(
+        numberingXml,
+        numId,
+        abstractNumId
+      );
+
+      console.log('✓ Created bullet list definitions in numbering.xml');
+
+      // Apply numbering to detected list paragraphs
+      if (documentData && documentData.length > 1 && documentData[1]['w:document']) {
+        const docElement = documentData[1]['w:document'];
+        const bodyArray = Array.isArray(docElement) ? docElement : [docElement];
+        const bodyItem = bodyArray.find(el => el['w:body']);
+
+        if (bodyItem && bodyItem['w:body']) {
+          const body = Array.isArray(bodyItem['w:body']) ? bodyItem['w:body'][0] : bodyItem['w:body'];
+          const paragraphs = body['w:p'];
+
+          if (paragraphs) {
+            const pArray = Array.isArray(paragraphs) ? paragraphs : [paragraphs];
+            console.log(`Found ${pArray.length} paragraphs to scan for lists`);
+
+            for (const paragraph of pArray) {
+              if (Array.isArray(paragraph)) {
+                // Check for w:numPr (numbering properties) in paragraph properties
+                const pPrItem = paragraph.find(el => el['w:pPr']);
+                if (pPrItem && pPrItem['w:pPr']) {
+                  const pPr = Array.isArray(pPrItem['w:pPr']) ? pPrItem['w:pPr'] : [pPrItem['w:pPr']];
+                  const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
+
+                  // Check if this paragraph has list formatting
+                  const numPrItem = pPrArray.find((el: any) => el['w:numPr']);
+                  if (numPrItem && numPrItem['w:numPr']) {
+                    // Update existing list item to use our new numbering definition
+                    const numPr = Array.isArray(numPrItem['w:numPr']) ? numPrItem['w:numPr'] : [numPrItem['w:numPr']];
+                    const numPrArray = Array.isArray(numPr) ? numPr : [numPr];
+
+                    // Update w:numId to reference our bullet list
+                    const numIdItem = numPrArray.find((el: any) => el['w:numId']);
+                    if (numIdItem) {
+                      numIdItem['w:numId'] = [{
+                        ':@': { '@_w:val': numId }
+                      }];
+                    } else {
+                      numPrArray.push({
+                        'w:numId': [{
+                          ':@': { '@_w:val': numId }
+                        }]
+                      });
+                    }
+
+                    listsProcessed++;
+                    console.log(`  Applied bullet formatting to list item #${listsProcessed}`);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`✓ Applied bullet formatting to ${listsProcessed} list items`);
+
+      if (listsProcessed > 0) {
+        modified = true;
+        changes.push({
+          type: 'list',
+          description: `Applied bullet formatting to ${listsProcessed} list items with custom settings`,
+          count: listsProcessed
+        });
+
+        // Save numbering.xml
+        const buildResult = this.numberingProcessor.build(numberingXml);
+        if (buildResult.success && buildResult.data) {
+          zip.file('word/numbering.xml', buildResult.data);
+          console.log('✓ Saved numbering.xml with bullet list definitions');
+        }
+
+        // Save updated document.xml
+        const documentXmlOutput = this.xmlBuilder.build(documentData);
+        zip.file('word/document.xml', documentXmlOutput);
+        console.log('✓ Saved document.xml with updated list references');
+
+        // If we created new numbering.xml, update content types and relationships
+        if (!numberingExists) {
+          await this.addNumberingRelationships(zip);
+        }
+      }
+
+      return { modified, changes, listsProcessed };
+    } catch (error: any) {
+      console.error('Error processing list formatting:', error);
+      return { modified: false, changes: [], listsProcessed: 0 };
+    }
+  }
+
+  /**
+   * Add numbering.xml to document relationships if it doesn't exist
+   */
+  private async addNumberingRelationships(zip: JSZip): Promise<void> {
+    // Add to [Content_Types].xml
+    const contentTypesFile = zip.file('[Content_Types].xml');
+    if (contentTypesFile) {
+      const content = await contentTypesFile.async('string');
+      const contentTypes = this.xmlParser.parse(content);
+
+      // Check if numbering override already exists
+      const types = contentTypes[1]['Types'];
+      const overrides = types.find((el: any) => el['Override'])?.['Override'] || [];
+      const overrideArray = Array.isArray(overrides) ? overrides : [overrides];
+
+      const hasNumbering = overrideArray.some((o: any) =>
+        o[':@']?.['@_PartName'] === '/word/numbering.xml'
+      );
+
+      if (!hasNumbering) {
+        overrideArray.push({
+          'Override': [],
+          ':@': {
+            '@_PartName': '/word/numbering.xml',
+            '@_ContentType': 'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml'
+          }
+        });
+        const output = this.xmlBuilder.build(contentTypes);
+        zip.file('[Content_Types].xml', output);
+        console.log('✓ Added numbering.xml to [Content_Types].xml');
+      }
+    }
+
+    // Add to word/_rels/document.xml.rels
+    const relsFile = zip.file('word/_rels/document.xml.rels');
+    if (relsFile) {
+      const content = await relsFile.async('string');
+      const rels = this.xmlParser.parse(content);
+
+      const relationships = rels[1]['Relationships'];
+      const relArray = relationships.find((el: any) => el['Relationship'])?.['Relationship'] || [];
+      const relationshipArray = Array.isArray(relArray) ? relArray : [relArray];
+
+      const hasNumbering = relationshipArray.some((r: any) =>
+        r[':@']?.['@_Target'] === 'numbering.xml'
+      );
+
+      if (!hasNumbering) {
+        // Find next available rId
+        const maxId = relationshipArray.reduce((max: number, r: any) => {
+          const id = r[':@']?.['@_Id'];
+          if (id && id.startsWith('rId')) {
+            const num = parseInt(id.substring(3));
+            return Math.max(max, num);
+          }
+          return max;
+        }, 0);
+
+        relationshipArray.push({
+          'Relationship': [],
+          ':@': {
+            '@_Id': `rId${maxId + 1}`,
+            '@_Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering',
+            '@_Target': 'numbering.xml'
+          }
+        });
+
+        const output = this.xmlBuilder.build(rels);
+        zip.file('word/_rels/document.xml.rels', output);
+        console.log('✓ Added numbering.xml to document relationships');
+      }
+    }
+  }
+
+  /**
+   * Standardize list indentation across all list items
+   */
+  private async standardizeListIndentation(
+    zip: JSZip,
+    settings: ListBulletSettings
+  ): Promise<{ modified: boolean; changes: any[]; itemsUpdated: number }> {
+    if (!settings.enabled || !settings.indentationLevels || settings.indentationLevels.length === 0) {
+      return { modified: false, changes: [], itemsUpdated: 0 };
+    }
+
+    console.log('\n=== LIST INDENTATION UNIFORMITY ===');
+    console.log('Indentation levels:', settings.indentationLevels);
+
+    const changes: any[] = [];
+    let modified = false;
+    let itemsUpdated = 0;
+
+    try {
+      // Read document.xml
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        return { modified: false, changes: [], itemsUpdated: 0 };
+      }
+
+      const documentXmlContent = await documentXmlFile.async('string');
+      const documentData = this.xmlParser.parse(documentXmlContent);
+
+      // Process paragraphs with list formatting
+      if (documentData && documentData.length > 1 && documentData[1]['w:document']) {
+        const docElement = documentData[1]['w:document'];
+        const bodyArray = Array.isArray(docElement) ? docElement : [docElement];
+        const bodyItem = bodyArray.find(el => el['w:body']);
+
+        if (bodyItem && bodyItem['w:body']) {
+          const body = Array.isArray(bodyItem['w:body']) ? bodyItem['w:body'][0] : bodyItem['w:body'];
+          const paragraphs = body['w:p'];
+
+          if (paragraphs) {
+            const pArray = Array.isArray(paragraphs) ? paragraphs : [paragraphs];
+
+            for (const paragraph of pArray) {
+              if (Array.isArray(paragraph)) {
+                const pPrItem = paragraph.find(el => el['w:pPr']);
+                if (pPrItem && pPrItem['w:pPr']) {
+                  const pPr = Array.isArray(pPrItem['w:pPr']) ? pPrItem['w:pPr'] : [pPrItem['w:pPr']];
+                  const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
+
+                  // Find w:numPr (list properties)
+                  const numPrItem = pPrArray.find((el: any) => el['w:numPr']);
+                  if (numPrItem && numPrItem['w:numPr']) {
+                    const numPr = Array.isArray(numPrItem['w:numPr']) ? numPrItem['w:numPr'] : [numPrItem['w:numPr']];
+                    const numPrArray = Array.isArray(numPr) ? numPr : [numPr];
+
+                    // Get the indentation level (ilvl)
+                    const ilvlItem = numPrArray.find((el: any) => el['w:ilvl']);
+                    if (ilvlItem && ilvlItem[':@']?.['@_w:val']) {
+                      const level = parseInt(ilvlItem[':@']['@_w:val']);
+                      const indentSettings = settings.indentationLevels[level];
+
+                      if (indentSettings) {
+                        // Find or create w:ind (indentation) element
+                        let indItem = pPrArray.find((el: any) => el['w:ind']);
+                        if (!indItem) {
+                          indItem = { 'w:ind': [], ':@': {} };
+                          pPrArray.push(indItem);
+                        }
+
+                        // Update indentation values (convert points to twips: 1pt = 20 twips)
+                        const leftTwips = (indentSettings.indentation * 20).toString();
+                        indItem[':@']['@_w:left'] = leftTwips;
+                        indItem[':@']['@_w:hanging'] = '360'; // Standard hanging indent (0.25 inch)
+
+                        itemsUpdated++;
+                        modified = true;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (modified) {
+        // Save updated document.xml
+        const documentXmlOutput = this.xmlBuilder.build(documentData);
+        zip.file('word/document.xml', documentXmlOutput);
+        console.log(`✓ Updated indentation for ${itemsUpdated} list items`);
+
+        changes.push({
+          type: 'indentation',
+          description: `Standardized indentation for ${itemsUpdated} list items`,
+          count: itemsUpdated
+        });
+      }
+
+      return { modified, changes, itemsUpdated };
+    } catch (error: any) {
+      console.error('Error standardizing list indentation:', error);
+      return { modified: false, changes: [], itemsUpdated: 0 };
+    }
+  }
+
+  /**
+   * Process table shading and uniformity
+   * Applies all table formatting: borders, shading, fonts, conditional formatting
+   */
+  private async processTableShading(
+    zip: JSZip,
+    settings: TableUniformitySettings
+  ): Promise<{ modified: boolean; changes: any[]; tablesProcessed: number }> {
+    if (!settings.enabled) {
+      return { modified: false, changes: [], tablesProcessed: 0 };
+    }
+
+    console.log('\n=== TABLE UNIFORMITY ===');
+    console.log('Table settings:', JSON.stringify(settings, null, 2));
+
+    const changes: any[] = [];
+    let modified = false;
+    let tablesProcessed = 0;
+
+    try {
+      // Read document.xml
+      const documentXmlFile = zip.file('word/document.xml');
+      if (!documentXmlFile) {
+        return { modified: false, changes: [], tablesProcessed: 0 };
+      }
+
+      const documentXmlContent = await documentXmlFile.async('string');
+      const documentData = this.xmlParser.parse(documentXmlContent);
+
+      // Process tables in document
+      if (documentData && documentData.length > 1 && documentData[1]['w:document']) {
+        const docElement = documentData[1]['w:document'];
+        const bodyArray = Array.isArray(docElement) ? docElement : [docElement];
+        const bodyItem = bodyArray.find(el => el['w:body']);
+
+        if (bodyItem && bodyItem['w:body']) {
+          const body = Array.isArray(bodyItem['w:body']) ? bodyItem['w:body'][0] : bodyItem['w:body'];
+          const tables = body['w:tbl'];
+
+          if (tables) {
+            const tableArray = Array.isArray(tables) ? tables : [tables];
+            console.log(`Found ${tableArray.length} tables to process`);
+
+            for (const table of tableArray) {
+              if (Array.isArray(table)) {
+                tablesProcessed++;
+                console.log(`  Processing table #${tablesProcessed}`);
+
+                // Count rows and columns to determine if 1x1
+                const rows = table.filter(el => el['w:tr']);
+                const rowCount = rows.length;
+                const colCount = rows[0] && rows[0]['w:tr'] ?
+                  (Array.isArray(rows[0]['w:tr'][0]) ? rows[0]['w:tr'][0] : rows[0]['w:tr'])
+                    .filter((el: any) => el['w:tc']).length : 0;
+
+                const is1x1 = rowCount === 1 && colCount === 1;
+                console.log(`    Table dimensions: ${rowCount}x${colCount} ${is1x1 ? '(1x1 single cell)' : ''}`);
+
+                // Apply table-level properties (borders)
+                if (settings.borderStyle && settings.borderStyle !== 'none') {
+                  const tblPrItem = table.find(el => el['w:tblPr']);
+                  if (tblPrItem && tblPrItem['w:tblPr']) {
+                    const tblPr = Array.isArray(tblPrItem['w:tblPr']) ? tblPrItem['w:tblPr'] : [tblPrItem['w:tblPr']];
+                    const tblPrArray = Array.isArray(tblPr[0]) ? tblPr[0] : tblPr;
+                    this.applyTableBorders(tblPrArray, settings.borderStyle, settings.borderWidth);
+                    modified = true;
+                  }
+                }
+
+                let rowIndex = 0;
+                for (const rowItem of rows) {
+                  if (rowItem['w:tr']) {
+                    const row = Array.isArray(rowItem['w:tr']) ? rowItem['w:tr'] : [rowItem['w:tr']];
+                    const rowArray = Array.isArray(row[0]) ? row[0] : row;
+                    const cells = rowArray.filter((el: any) => el['w:tc']);
+
+                    for (const cellItem of cells) {
+                      if (cellItem['w:tc']) {
+                        const cell = Array.isArray(cellItem['w:tc']) ? cellItem['w:tc'] : [cellItem['w:tc']];
+                        const cellArray = Array.isArray(cell[0]) ? cell[0] : cell;
+
+                        if (is1x1) {
+                          // Single cell table - check for Header 2 style
+                          const hasHeader2 = this.cellHasHeader2Style(cellArray);
+                          if (hasHeader2) {
+                            console.log('    Detected Header 2 in 1x1 table cell');
+                            this.applyTableCellShading(cellArray, settings.header2In1x1CellShading);
+                            this.applyTableCellAlignment(cellArray, settings.header2In1x1Alignment);
+                            modified = true;
+                          }
+                        } else {
+                          // Multi-cell table
+                          const isHeaderRow = rowIndex === 0;
+                          const isTopRow = rowIndex === 0 && settings.applyToTopRow;
+                          const isAlternatingRow = rowIndex > 0 && settings.alternatingRowColors && rowIndex % 2 === 1;
+                          const hasIfThenPattern = settings.applyToIfThenPattern && this.cellContainsIfThenPattern(cellArray);
+
+                          // Header row shading
+                          if (isHeaderRow && settings.headerRowShaded) {
+                            this.applyTableCellShading(cellArray, settings.headerRowShadingColor);
+                            modified = true;
+                          }
+
+                          // Header row bold
+                          if (isHeaderRow && settings.headerRowBold) {
+                            this.applyTableCellBold(cellArray, true);
+                            modified = true;
+                          }
+
+                          // Alternating row colors
+                          if (isAlternatingRow) {
+                            this.applyTableCellShading(cellArray, '#F0F0F0');
+                            modified = true;
+                          }
+
+                          // Large table conditional formatting
+                          if (hasIfThenPattern || isTopRow) {
+                            console.log(`    Applying large table formatting (${hasIfThenPattern ? 'If...Then' : 'top row'})`);
+                            this.applyTableCellFormatting(cellArray, settings.largeTableSettings);
+                            modified = true;
+                          }
+
+                          // Cell padding for all cells
+                          if (settings.cellPadding) {
+                            this.applyTableCellPadding(cellArray, settings.cellPadding);
+                            modified = true;
+                          }
+                        }
+                      }
+                    }
+
+                    rowIndex++;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`✓ Applied table uniformity to ${tablesProcessed} tables`);
+
+      if (modified) {
+        changes.push({
+          type: 'table',
+          description: `Applied table uniformity to ${tablesProcessed} tables (borders, shading, fonts, conditional formatting)`,
+          count: tablesProcessed
+        });
+
+        // Save document.xml
+        const documentXmlOutput = this.xmlBuilder.build(documentData);
+        zip.file('word/document.xml', documentXmlOutput);
+        console.log('✓ Saved document.xml with updated table formatting');
+      }
+
+      return { modified, changes, tablesProcessed };
+    } catch (error: any) {
+      console.error('Error processing table uniformity:', error);
+      return { modified: false, changes: [], tablesProcessed: 0 };
+    }
+  }
+
+  /**
+   * Apply shading to a table cell
+   */
+  private applyTableCellShading(cellArray: any[], color: string): void {
+    // Find or create w:tcPr (table cell properties)
+    let tcPrItem = cellArray.find(el => el['w:tcPr']);
+    if (!tcPrItem) {
+      tcPrItem = { 'w:tcPr': [] };
+      cellArray.unshift(tcPrItem);
+    }
+
+    const tcPr = Array.isArray(tcPrItem['w:tcPr']) ? tcPrItem['w:tcPr'] : [tcPrItem['w:tcPr']];
+    const tcPrArray = Array.isArray(tcPr) ? tcPr : [tcPr];
+
+    // Remove existing shading if present
+    const shdIndex = tcPrArray.findIndex((el: any) => el['w:shd']);
+    if (shdIndex >= 0) {
+      tcPrArray.splice(shdIndex, 1);
+    }
+
+    // Add new shading element
+    const colorHex = color.startsWith('#') ? color.substring(1) : color;
+    tcPrArray.push({
+      'w:shd': [],
+      ':@': {
+        '@_w:val': 'clear',
+        '@_w:color': 'auto',
+        '@_w:fill': colorHex
+      }
+    });
+
+    console.log(`    ✓ Applied shading color: ${color}`);
+  }
+
+  /**
+   * Check if cell has Header 2 style applied
+   */
+  private cellHasHeader2Style(cellArray: any[]): boolean {
+    // Look for paragraphs in the cell
+    for (const item of cellArray) {
+      if (item['w:p']) {
+        const paragraphs = Array.isArray(item['w:p']) ? item['w:p'] : [item['w:p']];
+        for (const p of paragraphs) {
+          const pArray = Array.isArray(p) ? p : [p];
+          for (const pItem of pArray) {
+            if (pItem['w:pPr']) {
+              const pPr = Array.isArray(pItem['w:pPr']) ? pItem['w:pPr'][0] : pItem['w:pPr'];
+              const pPrArray = Array.isArray(pPr) ? pPr : [pPr];
+
+              for (const prop of pPrArray) {
+                if (prop['w:pStyle']) {
+                  const pStyle = Array.isArray(prop['w:pStyle']) ? prop['w:pStyle'][0] : prop['w:pStyle'];
+                  const styleVal = pStyle?.[':@']?.['@_w:val'] || pStyle?.['@_w:val'];
+                  if (styleVal === 'Heading2' || styleVal === 'Heading 2' || styleVal === 'Header2') {
+                    return true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if cell contains "If...Then" pattern
+   */
+  private cellContainsIfThenPattern(cellArray: any[]): boolean {
+    // Extract text from cell
+    let cellText = '';
+    for (const item of cellArray) {
+      if (item['w:p']) {
+        const paragraphs = Array.isArray(item['w:p']) ? item['w:p'] : [item['w:p']];
+        for (const p of paragraphs) {
+          const pArray = Array.isArray(p) ? p : [p];
+          for (const pItem of pArray) {
+            if (pItem['w:r']) {
+              const runs = Array.isArray(pItem['w:r']) ? pItem['w:r'] : [pItem['w:r']];
+              for (const run of runs) {
+                const runArray = Array.isArray(run) ? run : [run];
+                for (const rItem of runArray) {
+                  if (rItem['w:t']) {
+                    const textItems = Array.isArray(rItem['w:t']) ? rItem['w:t'] : [rItem['w:t']];
+                    for (const t of textItems) {
+                      const text = typeof t === 'string' ? t : (t['#text'] || '');
+                      cellText += text;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Check for "If...Then" pattern (case insensitive)
+    return /if\s+.+\s+then/i.test(cellText);
+  }
+
+  /**
+   * Apply borders to table properties
+   */
+  private applyTableBorders(tblPrArray: any[], borderStyle: string, borderWidth: number): void {
+    // Remove existing borders
+    const bordersIndex = tblPrArray.findIndex((el: any) => el['w:tblBorders']);
+    if (bordersIndex >= 0) {
+      tblPrArray.splice(bordersIndex, 1);
+    }
+
+    // Map border style to Word values
+    const borderValMap: Record<string, string> = {
+      'single': 'single',
+      'double': 'double',
+      'dashed': 'dashed',
+      'dotted': 'dotted'
+    };
+
+    const borderVal = borderValMap[borderStyle] || 'single';
+    const borderSz = Math.round(borderWidth * 8); // Convert points to eighths of a point
+
+    // Add new borders
+    tblPrArray.push({
+      'w:tblBorders': [{
+        'w:top': [{
+          ':@': {
+            '@_w:val': borderVal,
+            '@_w:sz': borderSz.toString(),
+            '@_w:space': '0',
+            '@_w:color': 'auto'
+          }
+        }],
+        'w:left': [{
+          ':@': {
+            '@_w:val': borderVal,
+            '@_w:sz': borderSz.toString(),
+            '@_w:space': '0',
+            '@_w:color': 'auto'
+          }
+        }],
+        'w:bottom': [{
+          ':@': {
+            '@_w:val': borderVal,
+            '@_w:sz': borderSz.toString(),
+            '@_w:space': '0',
+            '@_w:color': 'auto'
+          }
+        }],
+        'w:right': [{
+          ':@': {
+            '@_w:val': borderVal,
+            '@_w:sz': borderSz.toString(),
+            '@_w:space': '0',
+            '@_w:color': 'auto'
+          }
+        }],
+        'w:insideH': [{
+          ':@': {
+            '@_w:val': borderVal,
+            '@_w:sz': borderSz.toString(),
+            '@_w:space': '0',
+            '@_w:color': 'auto'
+          }
+        }],
+        'w:insideV': [{
+          ':@': {
+            '@_w:val': borderVal,
+            '@_w:sz': borderSz.toString(),
+            '@_w:space': '0',
+            '@_w:color': 'auto'
+          }
+        }]
+      }]
+    });
+
+    console.log(`    ✓ Applied ${borderStyle} borders (${borderWidth}pt)`);
+  }
+
+  /**
+   * Apply cell padding
+   */
+  private applyTableCellPadding(cellArray: any[], padding: number): void {
+    // Find or create w:tcPr (table cell properties)
+    let tcPrItem = cellArray.find(el => el['w:tcPr']);
+    if (!tcPrItem) {
+      tcPrItem = { 'w:tcPr': [] };
+      cellArray.unshift(tcPrItem);
+    }
+
+    const tcPr = Array.isArray(tcPrItem['w:tcPr']) ? tcPrItem['w:tcPr'] : [tcPrItem['w:tcPr']];
+    const tcPrArray = Array.isArray(tcPr[0]) ? tcPr[0] : tcPr;
+
+    // Remove existing cell margins
+    const marginIndex = tcPrArray.findIndex((el: any) => el['w:tcMar']);
+    if (marginIndex >= 0) {
+      tcPrArray.splice(marginIndex, 1);
+    }
+
+    // Add cell margins (convert points to twips)
+    const paddingTwips = Math.round(padding * 20);
+    tcPrArray.push({
+      'w:tcMar': [{
+        'w:top': [{ ':@': { '@_w:w': paddingTwips.toString(), '@_w:type': 'dxa' } }],
+        'w:left': [{ ':@': { '@_w:w': paddingTwips.toString(), '@_w:type': 'dxa' } }],
+        'w:bottom': [{ ':@': { '@_w:w': paddingTwips.toString(), '@_w:type': 'dxa' } }],
+        'w:right': [{ ':@': { '@_w:w': paddingTwips.toString(), '@_w:type': 'dxa' } }]
+      }]
+    });
+  }
+
+  /**
+   * Apply bold to cell text
+   */
+  private applyTableCellBold(cellArray: any[], bold: boolean): void {
+    // Find all runs in cell paragraphs
+    for (const item of cellArray) {
+      if (item['w:p']) {
+        const paragraphs = Array.isArray(item['w:p']) ? item['w:p'] : [item['w:p']];
+        for (const p of paragraphs) {
+          const pArray = Array.isArray(p) ? p : [p];
+          for (const pItem of pArray) {
+            if (pItem['w:r']) {
+              const runs = Array.isArray(pItem['w:r']) ? pItem['w:r'] : [pItem['w:r']];
+              for (const run of runs) {
+                const runArray = Array.isArray(run) ? run : [run];
+                for (const rItem of runArray) {
+                  // Find or create w:rPr (run properties)
+                  let rPrItem = rItem['w:rPr'];
+                  if (!rPrItem) {
+                    rPrItem = [];
+                    rItem['w:rPr'] = rPrItem;
+                  }
+
+                  const rPr = Array.isArray(rPrItem) ? rPrItem : [rPrItem];
+
+                  // Remove existing bold
+                  const boldIndex = rPr.findIndex((el: any) => el['w:b']);
+                  if (boldIndex >= 0) {
+                    rPr.splice(boldIndex, 1);
+                  }
+
+                  // Add bold if requested
+                  if (bold) {
+                    rPr.push({ 'w:b': [] });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Apply alignment to cell
+   */
+  private applyTableCellAlignment(cellArray: any[], alignment: string): void {
+    // Find all paragraphs in cell
+    for (const item of cellArray) {
+      if (item['w:p']) {
+        const paragraphs = Array.isArray(item['w:p']) ? item['w:p'] : [item['w:p']];
+        for (const p of paragraphs) {
+          const pArray = Array.isArray(p) ? p : [p];
+          for (const pItem of pArray) {
+            // Find or create w:pPr (paragraph properties)
+            let pPrItem = pArray.find((el: any) => el['w:pPr']);
+            if (!pPrItem) {
+              pPrItem = { 'w:pPr': [] };
+              pArray.unshift(pPrItem);
+            }
+
+            const pPr = Array.isArray(pPrItem['w:pPr']) ? pPrItem['w:pPr'] : [pPrItem['w:pPr']];
+            const pPrArray = Array.isArray(pPr[0]) ? pPr[0] : pPr;
+
+            // Remove existing alignment
+            const jcIndex = pPrArray.findIndex((el: any) => el['w:jc']);
+            if (jcIndex >= 0) {
+              pPrArray.splice(jcIndex, 1);
+            }
+
+            // Add alignment
+            pPrArray.push({
+              'w:jc': [{
+                ':@': { '@_w:val': alignment }
+              }]
+            });
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Apply comprehensive cell formatting (font, size, bold, italic, underline, alignment, padding)
+   */
+  private applyTableCellFormatting(cellArray: any[], formatting: {
+    fontFamily?: string;
+    fontSize?: number;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    alignment?: string;
+    cellPadding?: number;
+  }): void {
+    // Apply cell-level properties
+    if (formatting.cellPadding) {
+      this.applyTableCellPadding(cellArray, formatting.cellPadding);
+    }
+
+    if (formatting.alignment) {
+      this.applyTableCellAlignment(cellArray, formatting.alignment);
+    }
+
+    // Apply run-level formatting to all text
+    for (const item of cellArray) {
+      if (item['w:p']) {
+        const paragraphs = Array.isArray(item['w:p']) ? item['w:p'] : [item['w:p']];
+        for (const p of paragraphs) {
+          const pArray = Array.isArray(p) ? p : [p];
+          for (const pItem of pArray) {
+            if (pItem['w:r']) {
+              const runs = Array.isArray(pItem['w:r']) ? pItem['w:r'] : [pItem['w:r']];
+              for (const run of runs) {
+                const runArray = Array.isArray(run) ? run : [run];
+                for (const rItem of runArray) {
+                  // Find or create w:rPr (run properties)
+                  let rPrItem = rItem['w:rPr'];
+                  if (!rPrItem) {
+                    rPrItem = [];
+                    rItem['w:rPr'] = rPrItem;
+                  }
+
+                  const rPr = Array.isArray(rPrItem) ? rPrItem : [rPrItem];
+
+                  // Apply font family
+                  if (formatting.fontFamily) {
+                    const fontIndex = rPr.findIndex((el: any) => el['w:rFonts']);
+                    if (fontIndex >= 0) {
+                      rPr.splice(fontIndex, 1);
+                    }
+                    rPr.push({
+                      'w:rFonts': [{
+                        ':@': {
+                          '@_w:ascii': formatting.fontFamily,
+                          '@_w:hAnsi': formatting.fontFamily
+                        }
+                      }]
+                    });
+                  }
+
+                  // Apply font size (convert to half-points)
+                  if (formatting.fontSize) {
+                    const sizeIndex = rPr.findIndex((el: any) => el['w:sz']);
+                    if (sizeIndex >= 0) {
+                      rPr.splice(sizeIndex, 1);
+                    }
+                    const sizeHalfPt = (formatting.fontSize * 2).toString();
+                    rPr.push({
+                      'w:sz': [{
+                        ':@': { '@_w:val': sizeHalfPt }
+                      }]
+                    });
+                  }
+
+                  // Apply bold
+                  if (formatting.bold !== undefined) {
+                    const boldIndex = rPr.findIndex((el: any) => el['w:b']);
+                    if (boldIndex >= 0) {
+                      rPr.splice(boldIndex, 1);
+                    }
+                    if (formatting.bold) {
+                      rPr.push({ 'w:b': [] });
+                    }
+                  }
+
+                  // Apply italic
+                  if (formatting.italic !== undefined) {
+                    const italicIndex = rPr.findIndex((el: any) => el['w:i']);
+                    if (italicIndex >= 0) {
+                      rPr.splice(italicIndex, 1);
+                    }
+                    if (formatting.italic) {
+                      rPr.push({ 'w:i': [] });
+                    }
+                  }
+
+                  // Apply underline
+                  if (formatting.underline !== undefined) {
+                    const uIndex = rPr.findIndex((el: any) => el['w:u']);
+                    if (uIndex >= 0) {
+                      rPr.splice(uIndex, 1);
+                    }
+                    if (formatting.underline) {
+                      rPr.push({
+                        'w:u': [{
+                          ':@': { '@_w:val': 'single' }
+                        }]
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   /**

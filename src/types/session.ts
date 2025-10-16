@@ -175,6 +175,8 @@ export interface SessionContextType {
   updateSessionOptions: (sessionId: string, processingOptions: Session['processingOptions']) => void;
   updateSessionReplacements: (sessionId: string, replacements: ReplacementRule[]) => void;
   updateSessionStyles: (sessionId: string, styles: any[]) => void;
+  updateSessionListBulletSettings: (sessionId: string, listBulletSettings: ListBulletSettings) => void;
+  updateSessionTableUniformitySettings: (sessionId: string, tableUniformitySettings: TableUniformitySettings) => void;
 
   // Persistence
   saveSession: (session: Session) => void;

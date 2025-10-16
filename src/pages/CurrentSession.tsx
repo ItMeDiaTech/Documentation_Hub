@@ -50,6 +50,8 @@ export function CurrentSession() {
     updateSessionName,
     updateSessionOptions,
     updateSessionStyles,
+    updateSessionListBulletSettings,
+    updateSessionTableUniformitySettings,
   } = useSession();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -541,6 +543,12 @@ export function CurrentSession() {
             updateSessionStyles(session.id, styles);
             // Automatically trigger the save success animation
             setShowStylesSaveSuccess(true);
+          }}
+          onListBulletSettingsChange={(settings) => {
+            updateSessionListBulletSettings(session.id, settings);
+          }}
+          onTableUniformitySettingsChange={(settings) => {
+            updateSessionTableUniformitySettings(session.id, settings);
           }}
         />
       ),
