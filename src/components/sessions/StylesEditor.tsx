@@ -152,10 +152,12 @@ const defaultTableOfContentsSettings: TableOfContentsSettings = {
 interface StylesEditorProps {
   initialStyles?: any[];
   onStylesChange?: (styles: StyleDefinition[]) => void;
+  onListBulletSettingsChange?: (settings: ListBulletSettings) => void;
+  onTableUniformitySettingsChange?: (settings: TableUniformitySettings) => void;
   renderSaveButton?: (handleSave: () => void, showSuccess: boolean, onSuccessComplete: () => void) => React.ReactNode;
 }
 
-export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }: StylesEditorProps) {
+export function StylesEditor({ initialStyles, onStylesChange, onListBulletSettingsChange, onTableUniformitySettingsChange, renderSaveButton }: StylesEditorProps) {
   // Convert session styles to StyleDefinition format or use defaults
   const convertToStyleDefinitions = (sessionStyles?: any[]): StyleDefinition[] => {
     if (!sessionStyles || sessionStyles.length === 0) {
@@ -431,8 +433,10 @@ export function StylesEditor({ initialStyles, onStylesChange, renderSaveButton }
   };
 
   const handleSaveStyles = () => {
-    // Save styles logic here
+    // Save all three configuration objects
     onStylesChange?.(styles);
+    onListBulletSettingsChange?.(listBulletSettings);
+    onTableUniformitySettingsChange?.(tableUniformitySettings);
     setShowSuccess(true);
   };
 
