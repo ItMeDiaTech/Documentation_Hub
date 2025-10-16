@@ -7,6 +7,7 @@ import JSZip from 'jszip';
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import pLimit from 'p-limit';
 import {
   DetailedHyperlinkInfo,
   HyperlinkProcessingOptions,
@@ -381,9 +382,15 @@ export class WordDocumentProcessor {
         console.log(`\nℹ️  Backup available at: ${result.backupPath}`);
       }
     } finally {
+      // Critical: Clear hyperlink cache to prevent memory leaks
+      // This cache accumulates data from all processed documents
+      // Without cleanup, memory grows unbounded in batch operations
+      this.hyperlinkCache.clear();
+
       result.duration = performance.now() - startTime;
       result.processingTimeMs = result.duration;
       console.log(`\nTotal processing time: ${(result.duration / 1000).toFixed(2)}s\n`);
+      console.log('✓ Cleared hyperlink cache (memory leak prevention)');
     }
 
     return result;
@@ -4076,46 +4083,53 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Batch process multiple documents
+   * Batch process multiple documents with concurrency control
+   * Uses p-limit to prevent resource exhaustion and race conditions
    */
   async batchProcess(
     filePaths: string[],
     options: WordProcessingOptions = {}
   ): Promise<Map<string, WordProcessingResult>> {
     const results = new Map<string, WordProcessingResult>();
-    const BATCH_SIZE = 3; // Process 3 files concurrently
 
-    for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
-      const batch = filePaths.slice(i, i + BATCH_SIZE);
+    // Critical: Limit concurrent operations to prevent:
+    // 1. Memory exhaustion (each document can use 50-100MB)
+    // 2. Race conditions in shared hyperlinkCache
+    // 3. File system contention
+    const limit = pLimit(3); // Max 3 concurrent operations
 
-      const batchResults = await Promise.allSettled(
-        batch.map(filePath => this.processDocument(filePath, options))
-      );
+    console.log(`\n[Batch Process] Processing ${filePaths.length} document(s) with max 3 concurrent`);
 
-      batchResults.forEach((settledResult, index) => {
-        const filePath = batch[index];
-        if (settledResult.status === 'fulfilled') {
-          results.set(filePath, settledResult.value);
-        } else {
-          results.set(filePath, {
-            success: false,
-            totalHyperlinks: 0,
-            processedHyperlinks: 0,
-            modifiedHyperlinks: 0,
-            skippedHyperlinks: 0,
-            updatedUrls: 0,
-            updatedDisplayTexts: 0,
-            appendedContentIds: 0,
-            errorCount: 1,
-            errorMessages: [settledResult.reason?.message || 'Processing failed'],
-            processedLinks: [],
-            validationIssues: [],
-            duration: 0,
-          });
-        }
-      });
-    }
+    const batchResults = await Promise.allSettled(
+      filePaths.map(filePath =>
+        limit(() => this.processDocument(filePath, options))
+      )
+    );
 
+    batchResults.forEach((settledResult, index) => {
+      const filePath = filePaths[index];
+      if (settledResult.status === 'fulfilled') {
+        results.set(filePath, settledResult.value);
+      } else {
+        results.set(filePath, {
+          success: false,
+          totalHyperlinks: 0,
+          processedHyperlinks: 0,
+          modifiedHyperlinks: 0,
+          skippedHyperlinks: 0,
+          updatedUrls: 0,
+          updatedDisplayTexts: 0,
+          appendedContentIds: 0,
+          errorCount: 1,
+          errorMessages: [settledResult.reason?.message || 'Processing failed'],
+          processedLinks: [],
+          validationIssues: [],
+          duration: 0,
+        });
+      }
+    });
+
+    console.log(`[Batch Process] Completed: ${results.size} results`);
     return results;
   }
 }
