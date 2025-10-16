@@ -9,6 +9,7 @@ A decentralized plugin system using GitHub as the distribution platform, similar
 ## 1. Plugin Structure & Manifest
 
 ### **plugin.json** (Plugin Manifest)
+
 ```json
 {
   "id": "dochub-pdf-export",
@@ -37,6 +38,7 @@ A decentralized plugin system using GitHub as the distribution platform, similar
 ```
 
 ### **GitHub Repository Structure**
+
 ```
 dochub-plugin-pdf-export/
 ├── src/
@@ -56,7 +58,9 @@ dochub-plugin-pdf-export/
 ## 2. Plugin Registry System
 
 ### **Central Registry (GitHub Repo)**
+
 Create `DocHub-Plugin-Registry` repository with structure:
+
 ```
 DocHub-Plugin-Registry/
 ├── plugins/
@@ -74,6 +78,7 @@ DocHub-Plugin-Registry/
 ```
 
 ### **Plugin Entry Format** (pdf-export.json)
+
 ```json
 {
   "id": "dochub-pdf-export",
@@ -103,6 +108,7 @@ DocHub-Plugin-Registry/
 ### **A. New Files to Create**
 
 #### **src/types/plugin.ts** - Type Definitions
+
 ```typescript
 export interface PluginManifest {
   id: string;
@@ -194,6 +200,7 @@ export interface SessionAPI {
 ```
 
 #### **src/services/PluginService.ts** - Core Plugin Logic
+
 ```typescript
 import { PluginManifest, PluginRegistryEntry, InstalledPlugin } from '@/types/plugin';
 import { promises as fs } from 'fs';
@@ -348,11 +355,13 @@ export class PluginService {
   /**
    * Check for updates
    */
-  async checkForUpdates(installedPlugins: InstalledPlugin[]): Promise<Array<{
-    plugin: InstalledPlugin;
-    latestVersion: string;
-    hasUpdate: boolean;
-  }>> {
+  async checkForUpdates(installedPlugins: InstalledPlugin[]): Promise<
+    Array<{
+      plugin: InstalledPlugin;
+      latestVersion: string;
+      hasUpdate: boolean;
+    }>
+  > {
     const updates = [];
 
     for (const plugin of installedPlugins) {
@@ -395,6 +404,7 @@ export class PluginService {
 ```
 
 #### **src/contexts/PluginContext.tsx** - State Management
+
 ```typescript
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { PluginService } from '@/services/PluginService';
@@ -547,6 +557,7 @@ export function usePlugins() {
 ```
 
 #### **electron/plugin-loader.ts** - Secure Plugin Execution
+
 ```typescript
 import { PluginManifest, PluginInstance, DocHubAPI } from '../src/types/plugin';
 import { readFile } from 'fs/promises';
@@ -670,7 +681,7 @@ ipcMain.handle('plugins:install', async (event, { repositoryUrl, version }) => {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Installation failed'
+      error: error instanceof Error ? error.message : 'Installation failed',
     };
   }
 });
@@ -689,7 +700,7 @@ ipcMain.handle('plugins:uninstall', async (event, { pluginId }) => {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Uninstallation failed'
+      error: error instanceof Error ? error.message : 'Uninstallation failed',
     };
   }
 });
@@ -706,7 +717,7 @@ ipcMain.handle('plugins:enable', async (event, { pluginId }) => {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to enable plugin'
+      error: error instanceof Error ? error.message : 'Failed to enable plugin',
     };
   }
 });
@@ -721,7 +732,7 @@ ipcMain.handle('plugins:disable', async (event, { pluginId }) => {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to disable plugin'
+      error: error instanceof Error ? error.message : 'Failed to disable plugin',
     };
   }
 });
@@ -784,6 +795,7 @@ function createDocHubAPI(): DocHubAPI {
 Create separate npm package for plugin developers:
 
 #### **package.json**
+
 ```json
 {
   "name": "@dochub/plugin-sdk",
@@ -802,6 +814,7 @@ Create separate npm package for plugin developers:
 ```
 
 #### **src/index.ts**
+
 ```typescript
 export interface DocHubAPI {
   document: {
@@ -874,29 +887,34 @@ export interface StatusBarItem {
 ### **User Journey**
 
 1. **Browse Plugins** → Plugins page fetches registry from GitHub
+
    ```typescript
    const plugins = await fetch('https://raw.githubusercontent.com/.../plugins/document/');
    ```
 
 2. **Click Install** → Downloads latest release from GitHub
+
    ```typescript
    const release = await fetch('https://api.github.com/repos/.../releases/latest');
-   const asset = release.assets.find(a => a.name === 'plugin.zip');
+   const asset = release.assets.find((a) => a.name === 'plugin.zip');
    ```
 
 3. **Validate** → Check manifest, permissions, compatibility
+
    ```typescript
    validateManifest(manifest);
    checkCompatibility(manifest.minAppVersion, appVersion);
    ```
 
 4. **Extract** → Unzip to `~/.dochub/plugins/{plugin-id}/`
+
    ```typescript
    const zip = new AdmZip(buffer);
    zip.extractAllTo(pluginDir, true);
    ```
 
 5. **Load** → Execute plugin in sandboxed environment
+
    ```typescript
    const vm = new VM({ sandbox: { dochub: api } });
    const plugin = vm.run(pluginCode);
@@ -910,6 +928,7 @@ export interface StatusBarItem {
 ### **Update Flow**
 
 1. **Check for Updates** → Compare local version with GitHub release
+
    ```typescript
    const latest = await fetch('.../releases/latest');
    const hasUpdate = compareVersions(installed.version, latest.tag_name) < 0;
@@ -926,14 +945,15 @@ export interface StatusBarItem {
 ## 5. Security & Sandboxing
 
 ### **Permission System**
+
 ```typescript
 const PERMISSION_LEVELS = {
-  'filesystem': {
+  filesystem: {
     label: 'Access local files',
     risk: 'high',
     description: 'Can read and write files on your computer',
   },
-  'network': {
+  network: {
     label: 'Make network requests',
     risk: 'medium',
     description: 'Can send data over the internet',
@@ -962,6 +982,7 @@ const PERMISSION_LEVELS = {
 ```
 
 ### **Sandboxing Strategy**
+
 - ✅ Use Node.js `vm2` module for script isolation
 - ✅ Whitelist allowed Node APIs based on permissions
 - ✅ Deny direct filesystem access (use permission-based proxies)
@@ -975,6 +996,7 @@ const PERMISSION_LEVELS = {
 ## 6. GitHub Actions Workflow (For Plugin Repos)
 
 ### **.github/workflows/release.yml**
+
 ```yaml
 name: Build and Release Plugin
 
@@ -1026,6 +1048,7 @@ jobs:
 ## 7. Implementation Steps
 
 ### **Phase 1: Infrastructure** (Week 1-2)
+
 1. ✅ Create `src/types/plugin.ts` with all plugin types (~500 lines)
 2. ✅ Create `src/services/PluginService.ts` with core logic (~800 lines)
 3. ✅ Create `src/contexts/PluginContext.tsx` for state (~400 lines)
@@ -1034,6 +1057,7 @@ jobs:
 6. ✅ Install dependencies: `adm-zip`, `vm2`
 
 ### **Phase 2: Registry** (Week 3)
+
 1. ✅ Create `DocHub-Plugin-Registry` GitHub repo
 2. ✅ Populate with initial plugin entries (5-10 plugins)
 3. ✅ Create `verified.json` for official plugins
@@ -1041,6 +1065,7 @@ jobs:
 5. ✅ Create registry fetching logic
 
 ### **Phase 3: UI Updates** (Week 4)
+
 1. ✅ Update `src/pages/Plugins.tsx` to use real data from PluginContext
 2. ✅ Add plugin detail modal with permissions display
 3. ✅ Add plugin settings drawer (per-plugin configuration)
@@ -1048,6 +1073,7 @@ jobs:
 5. ✅ Add loading states and error handling
 
 ### **Phase 4: Plugin SDK** (Week 5)
+
 1. ✅ Create `@dochub/plugin-sdk` npm package
 2. ✅ Document plugin development guide (README)
 3. ✅ Create starter template repository (`dochub-plugin-template`)
@@ -1055,6 +1081,7 @@ jobs:
 5. ✅ Create example plugin (Hello World)
 
 ### **Phase 5: Security** (Week 6)
+
 1. ✅ Implement permission system with user approval
 2. ✅ Add plugin sandboxing with vm2
 3. ✅ Add code signing verification (optional)
@@ -1062,6 +1089,7 @@ jobs:
 5. ✅ Create security documentation
 
 ### **Phase 6: First Official Plugins** (Week 7-8)
+
 1. ✅ **PDF Export plugin** - Export documents to PDF
 2. ✅ **Cloud Sync plugin** - Sync to Dropbox/Google Drive
 3. ✅ **Theme Builder plugin** - Custom theme creation
@@ -1196,12 +1224,13 @@ External Repositories:
 ## 10. Dependencies to Add
 
 ### **package.json**
+
 ```json
 {
   "dependencies": {
-    "adm-zip": "^0.5.10",        // ZIP extraction
-    "vm2": "^3.9.19",             // Sandboxing
-    "semver": "^7.5.4"            // Version comparison
+    "adm-zip": "^0.5.10", // ZIP extraction
+    "vm2": "^3.9.19", // Sandboxing
+    "semver": "^7.5.4" // Version comparison
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.5"
@@ -1214,6 +1243,7 @@ External Repositories:
 ## 11. Security Considerations
 
 ### **Permission Approval UI**
+
 When a plugin requests permissions, show a dialog:
 
 ```
@@ -1231,11 +1261,13 @@ When a plugin requests permissions, show a dialog:
 ```
 
 ### **Code Signing (Optional)**
+
 - Verified plugins signed with DocHub private key
 - Display "Verified" badge for signed plugins
 - Warn users about unsigned plugins
 
 ### **Rate Limiting**
+
 ```typescript
 class RateLimiter {
   private requests = new Map<string, number[]>();
@@ -1245,7 +1277,7 @@ class RateLimiter {
     const windowMs = 60000; // 1 minute
 
     const timestamps = this.requests.get(pluginId) || [];
-    const recent = timestamps.filter(t => now - t < windowMs);
+    const recent = timestamps.filter((t) => now - t < windowMs);
 
     if (recent.length >= limit) {
       throw new Error('Rate limit exceeded');
@@ -1264,18 +1296,21 @@ class RateLimiter {
 ## 12. Testing Strategy
 
 ### **Unit Tests**
+
 - PluginService: Download, install, uninstall, updates
 - PluginLoader: Load, sandbox, activate, deactivate
 - Manifest validation
 - Version comparison
 
 ### **Integration Tests**
+
 - Full installation flow
 - Plugin activation/deactivation
 - Permission system
 - API access from plugins
 
 ### **Security Tests**
+
 - Sandbox escape attempts
 - Unauthorized file access
 - Network abuse
@@ -1288,41 +1323,47 @@ class RateLimiter {
 ### **For Plugin Developers**
 
 #### **Quick Start Guide**
+
 ```markdown
 # Creating a DocHub Plugin
 
 ## 1. Clone the template
+
 git clone https://github.com/DocHub/dochub-plugin-template my-plugin
 cd my-plugin
 
 ## 2. Update plugin.json
+
 {
-  "id": "my-plugin",
-  "name": "My Plugin",
-  "version": "1.0.0",
-  ...
+"id": "my-plugin",
+"name": "My Plugin",
+"version": "1.0.0",
+...
 }
 
 ## 3. Implement the plugin
+
 // src/index.ts
 import { Plugin, DocHubAPI } from '@dochub/plugin-sdk';
 
 export default class MyPlugin extends Plugin {
-  async activate(api: DocHubAPI) {
-    api.ui.showNotification('My Plugin activated!');
-  }
+async activate(api: DocHubAPI) {
+api.ui.showNotification('My Plugin activated!');
+}
 
-  async deactivate() {
-    console.log('Deactivating...');
-  }
+async deactivate() {
+console.log('Deactivating...');
+}
 }
 
 ## 4. Build and test
+
 npm install
 npm run build
 npm test
 
 ## 5. Publish
+
 git tag v1.0.0
 git push origin v1.0.0
 ```
@@ -1330,6 +1371,7 @@ git push origin v1.0.0
 ### **For Users**
 
 #### **Installing Plugins**
+
 ```markdown
 # How to Install Plugins
 
@@ -1346,17 +1388,17 @@ git push origin v1.0.0
 
 ## 14. Estimated Implementation Time
 
-| Phase | Duration | Team Size |
-|-------|----------|-----------|
-| Infrastructure | 2 weeks | 1 developer |
-| Registry | 1 week | 1 developer |
-| UI Updates | 1 week | 1 developer |
-| Plugin SDK | 1 week | 1 developer |
-| Security | 1 week | 1 developer |
-| Official Plugins | 2 weeks | 2 developers |
-| Testing & QA | 1 week | 2 developers |
-| Documentation | 1 week | 1 developer |
-| **Total** | **10 weeks** | **1-2 developers** |
+| Phase            | Duration     | Team Size          |
+| ---------------- | ------------ | ------------------ |
+| Infrastructure   | 2 weeks      | 1 developer        |
+| Registry         | 1 week       | 1 developer        |
+| UI Updates       | 1 week       | 1 developer        |
+| Plugin SDK       | 1 week       | 1 developer        |
+| Security         | 1 week       | 1 developer        |
+| Official Plugins | 2 weeks      | 2 developers       |
+| Testing & QA     | 1 week       | 2 developers       |
+| Documentation    | 1 week       | 1 developer        |
+| **Total**        | **10 weeks** | **1-2 developers** |
 
 ---
 

@@ -1,0 +1,68 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "docxml": {
+      "name": "docxml",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "jszip"
+      ],
+      "effects": [],
+      "range": "*",
+      "nodes": [
+        "node_modules/docxml"
+      ],
+      "fixAvailable": false
+    },
+    "jszip": {
+      "name": "jszip",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1100538,
+          "name": "jszip",
+          "dependency": "jszip",
+          "title": "JSZip contains Path Traversal via loadAsync",
+          "url": "https://github.com/advisories/GHSA-36fh-84j7-cv5h",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-22"
+          ],
+          "cvss": {
+            "score": 7.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L"
+          },
+          "range": "<3.8.0"
+        }
+      ],
+      "effects": [
+        "docxml"
+      ],
+      "range": "<3.8.0",
+      "nodes": [
+        "node_modules/docxml/node_modules/jszip"
+      ],
+      "fixAvailable": false
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 2,
+      "high": 0,
+      "critical": 0,
+      "total": 2
+    },
+    "dependencies": {
+      "prod": 216,
+      "dev": 678,
+      "optional": 98,
+      "peer": 6,
+      "peerOptional": 0,
+      "total": 893
+    }
+  }
+}
