@@ -18,12 +18,35 @@ const DOCUMENT_ID_PATTERN = /docid=([a-zA-Z0-9-]+)(?:[^a-zA-Z0-9-]|$)/i;
 const THE_SOURCE_PATTERN = /thesource\.cvshealth\.com/i;
 
 /**
+ * Cached hyperlink data for performance optimization
+ */
+interface HyperlinkCacheEntry {
+  url: string;
+  relationshipId: string;
+  displayText: string;
+  type: HyperlinkType;
+  lastModified: number;
+  processCount: number;
+}
+
+/**
+ * Cache statistics for monitoring
+ */
+interface CacheStats {
+  totalEntries: number;
+  hits: number;
+  misses: number;
+  hitRate: number;
+}
+
+/**
  * Manages hyperlink operations in Word documents
  */
 export class HyperlinkManager {
   private relationshipCounter = 1;
-  // TODO: Implement hyperlink caching/tracking
-  // private processedHyperlinks = new Map<string, HyperlinkData>();
+  private processedHyperlinks = new Map<string, HyperlinkCacheEntry>();
+  private cacheHits = 0;
+  private cacheMisses = 0;
 
   /**
    * Scan and extract all hyperlinks from document
@@ -44,11 +67,40 @@ export class HyperlinkManager {
           : [element['w:hyperlink']];
 
         for (const hyperlink of hyperlinkElements) {
-          const hyperlinkInfo = this.extractHyperlinkInfo(
-            hyperlink,
-            relationships,
-            path
-          );
+          const relationshipId = hyperlink['r:id'];
+
+          // Check cache first for performance
+          let hyperlinkInfo: DetailedHyperlinkInfo | null = null;
+          const cached = this.getCachedHyperlink(relationshipId);
+
+          if (cached) {
+            // Reconstruct hyperlinkInfo from cache
+            hyperlinkInfo = {
+              id: cached.relationshipId,
+              relationshipId: cached.relationshipId,
+              element: hyperlink,
+              containingPart: 'document.xml',
+              url: cached.url,
+              displayText: cached.displayText,
+              type: cached.type,
+              isInternal: cached.type === 'internal' || cached.type === 'bookmark',
+              isValid: true,
+              validationMessage: '',
+              context: path,
+            };
+          } else {
+            // Not in cache, extract from XML
+            hyperlinkInfo = this.extractHyperlinkInfo(
+              hyperlink,
+              relationships,
+              path
+            );
+
+            // Cache the extracted info for future use
+            if (hyperlinkInfo) {
+              this.cacheHyperlink(hyperlinkInfo);
+            }
+          }
 
           if (hyperlinkInfo && this.shouldProcessHyperlink(hyperlinkInfo, options)) {
             hyperlinks.push(hyperlinkInfo);
@@ -571,5 +623,103 @@ export class HyperlinkManager {
    */
   generateRelationshipId(): string {
     return `rId${this.relationshipCounter++}`;
+  }
+
+  // ============================================================================
+  // CACHE MANAGEMENT METHODS
+  // ============================================================================
+
+  /**
+   * Get cached hyperlink data
+   */
+  getCachedHyperlink(relationshipId: string): HyperlinkCacheEntry | null {
+    const entry = this.processedHyperlinks.get(relationshipId);
+    if (entry) {
+      this.cacheHits++;
+      return entry;
+    }
+    this.cacheMisses++;
+    return null;
+  }
+
+  /**
+   * Cache hyperlink data for future lookups
+   */
+  cacheHyperlink(hyperlinkInfo: DetailedHyperlinkInfo): void {
+    const entry: HyperlinkCacheEntry = {
+      url: hyperlinkInfo.url,
+      relationshipId: hyperlinkInfo.relationshipId,
+      displayText: hyperlinkInfo.displayText,
+      type: hyperlinkInfo.type,
+      lastModified: Date.now(),
+      processCount: 1,
+    };
+
+    const existing = this.processedHyperlinks.get(hyperlinkInfo.relationshipId);
+    if (existing) {
+      entry.processCount = existing.processCount + 1;
+    }
+
+    this.processedHyperlinks.set(hyperlinkInfo.relationshipId, entry);
+  }
+
+  /**
+   * Check if hyperlink is cached
+   */
+  isCached(relationshipId: string): boolean {
+    return this.processedHyperlinks.has(relationshipId);
+  }
+
+  /**
+   * Clear all cached hyperlinks
+   */
+  clearCache(): void {
+    this.processedHyperlinks.clear();
+    this.cacheHits = 0;
+    this.cacheMisses = 0;
+  }
+
+  /**
+   * Remove specific hyperlink from cache
+   */
+  removeCached(relationshipId: string): boolean {
+    return this.processedHyperlinks.delete(relationshipId);
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): CacheStats {
+    const totalRequests = this.cacheHits + this.cacheMisses;
+    return {
+      totalEntries: this.processedHyperlinks.size,
+      hits: this.cacheHits,
+      misses: this.cacheMisses,
+      hitRate: totalRequests > 0 ? (this.cacheHits / totalRequests) * 100 : 0,
+    };
+  }
+
+  /**
+   * Get all cached hyperlinks
+   */
+  getAllCached(): Map<string, HyperlinkCacheEntry> {
+    return new Map(this.processedHyperlinks);
+  }
+
+  /**
+   * Prune old cache entries (older than maxAgeMs)
+   */
+  pruneCache(maxAgeMs: number = 3600000): number {
+    const now = Date.now();
+    let prunedCount = 0;
+
+    for (const [id, entry] of this.processedHyperlinks.entries()) {
+      if (now - entry.lastModified > maxAgeMs) {
+        this.processedHyperlinks.delete(id);
+        prunedCount++;
+      }
+    }
+
+    return prunedCount;
   }
 }
