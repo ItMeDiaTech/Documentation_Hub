@@ -187,6 +187,12 @@
     --color-popover-foreground: hsl(var(--custom-foreground)) !important;
     --color-muted-foreground: hsl(var(--custom-secondary-font)) !important;
     --color-secondary-foreground: hsl(var(--custom-secondary-font)) !important;
+
+    /* Adaptive hover state colors - ensures readability with any custom color scheme */
+    --color-accent: color-mix(in srgb, hsl(var(--custom-foreground)) 12%, hsl(var(--custom-background))) !important;
+    --color-accent-foreground: hsl(var(--custom-foreground)) !important;
+    --color-muted: color-mix(in srgb, hsl(var(--custom-foreground)) 8%, hsl(var(--custom-background))) !important;
+    --color-secondary: color-mix(in srgb, hsl(var(--custom-foreground)) 6%, hsl(var(--custom-background))) !important;
   }
 
   /* Custom header with auto-calculated text color */
@@ -227,6 +233,15 @@
   /* Force base text elements in sidebar to use the auto-calculated sidebar text color */
   [data-custom-colors='true'] .sidebar-bg span:not(.text-primary-foreground):not(.text-accent-foreground),
   [data-custom-colors='true'] .sidebar-bg svg:not(.text-primary):not(.group-hover\\:text-primary) {
+    color: hsl(var(--custom-sidebar-text)) !important;
+  }
+
+  /* Sidebar hover states - adaptive background with proper contrast */
+  [data-custom-colors='true'] .sidebar-bg .hover\\:bg-accent:hover {
+    background-color: color-mix(in srgb, hsl(var(--custom-sidebar-text)) 12%, hsl(var(--custom-sidebar))) !important;
+  }
+
+  [data-custom-colors='true'] .sidebar-bg .hover\\:text-accent-foreground:hover {
     color: hsl(var(--custom-sidebar-text)) !important;
   }
 
