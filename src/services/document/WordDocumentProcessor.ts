@@ -64,9 +64,19 @@ export class WordDocumentProcessor {
   private numberingProcessor: NumberingXmlProcessor;
   private readonly MAX_FILE_SIZE_MB = 100;
 
+  // Debug mode: controlled by environment variable
+  // Set DEBUG=true in development, false in production
+  private readonly DEBUG = process.env.NODE_ENV !== 'production';
+
   constructor() {
     this.stylesProcessor = new StylesXmlProcessor();
     this.numberingProcessor = new NumberingXmlProcessor();
+
+    // Log initialization only in debug mode
+    if (this.DEBUG) {
+      console.log('[WordDocumentProcessor] Initialized in DEBUG mode');
+    }
+
     // Initialize XML parser with settings optimized for Office Open XML
     // CRITICAL: preserveOrder MUST be true to prevent document corruption
     this.xmlParser = new XMLParser({
@@ -99,17 +109,34 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Conditional logging based on DEBUG mode
+   * Only logs in development (NODE_ENV !== 'production')
+   */
+  private log(...args: any[]): void {
+    if (this.DEBUG) {
+      console.log(...args);
+    }
+  }
+
+  /**
+   * Always log errors regardless of DEBUG mode
+   */
+  private logError(...args: any[]): void {
+    console.error(...args);
+  }
+
+  /**
    * Process a Word document with advanced hyperlink manipulation
    */
   async processDocument(
     filePath: string,
     options: WordProcessingOptions = {}
   ): Promise<WordProcessingResult> {
-    console.log('\n╔═══════════════════════════════════════════════════════════╗');
-    console.log('║  WORD DOCUMENT PROCESSOR - STARTING                      ║');
-    console.log('╚═══════════════════════════════════════════════════════════╝\n');
-    console.log('File:', filePath);
-    console.log('Options:', JSON.stringify(options, null, 2));
+    this.log('\n╔═══════════════════════════════════════════════════════════╗');
+    this.log('║  WORD DOCUMENT PROCESSOR - STARTING                      ║');
+    this.log('╚═══════════════════════════════════════════════════════════╝\n');
+    this.log('File:', filePath);
+    this.log('Options:', JSON.stringify(options, null, 2));
 
     const startTime = performance.now();
     const result: WordProcessingResult = {
@@ -132,25 +159,25 @@ export class WordDocumentProcessor {
 
     try {
       // Validate file exists and size
-      console.log('\n=== FILE VALIDATION ===');
+      this.log('\n=== FILE VALIDATION ===');
       const stats = await fs.stat(filePath);
       const fileSizeMB = stats.size / (1024 * 1024);
       result.documentSize = stats.size;
 
-      console.log(`File size: ${fileSizeMB.toFixed(2)}MB`);
-      console.log(`File modified: ${stats.mtime}`);
+      this.log(`File size: ${fileSizeMB.toFixed(2)}MB`);
+      this.log(`File modified: ${stats.mtime}`);
 
       if (fileSizeMB > (options.maxFileSizeMB || this.MAX_FILE_SIZE_MB)) {
         throw new Error(`File too large: ${fileSizeMB.toFixed(2)}MB exceeds limit of ${options.maxFileSizeMB || this.MAX_FILE_SIZE_MB}MB`);
       }
 
       // ALWAYS create backup for safety (override user option)
-      console.log('\n=== BACKUP CREATION ===');
-      console.log('Creating backup (MANDATORY for safety)...');
+      this.log('\n=== BACKUP CREATION ===');
+      this.log('Creating backup (MANDATORY for safety)...');
       const backupPath = await this.createBackup(filePath);
       result.backupPath = backupPath;
       backupCreated = true;
-      console.log(`✓ Backup created: ${backupPath}`);
+      this.log(`✓ Backup created: ${backupPath}`);
 
       // Load the document
       const zip = await this.loadDocument(filePath);
@@ -178,7 +205,7 @@ export class WordDocumentProcessor {
       // Process keywords (bold specific keywords at line start)
       let keywordsProcessed = false;
       if (options.operations?.fixKeywords) {
-        console.log('\n=== KEYWORD PROCESSING ===');
+        this.log('\n=== KEYWORD PROCESSING ===');
         const keywordResult = await this.processKeywords(zip);
         keywordsProcessed = keywordResult.modified;
         if (keywordsProcessed) {
@@ -190,7 +217,7 @@ export class WordDocumentProcessor {
       // Process text replacements
       let textReplacementsProcessed = false;
       if (options.textReplacements && options.textReplacements.length > 0) {
-        console.log('\n=== TEXT REPLACEMENT PROCESSING ===');
+        this.log('\n=== TEXT REPLACEMENT PROCESSING ===');
         const textReplacements = options.textReplacements.filter(r => r.type === 'text' && r.enabled);
         if (textReplacements.length > 0) {
           const textReplacementResult = await this.processTextReplacements(zip, textReplacements);
@@ -205,7 +232,7 @@ export class WordDocumentProcessor {
       // Standardize hyperlink colors
       let hyperlinkColorsStandardized = false;
       if (options.operations?.standardizeHyperlinkColor) {
-        console.log('\n=== HYPERLINK COLOR STANDARDIZATION ===');
+        this.log('\n=== HYPERLINK COLOR STANDARDIZATION ===');
         const colorResult = await this.standardizeHyperlinkColors(zip);
         hyperlinkColorsStandardized = colorResult.modified;
         if (hyperlinkColorsStandardized) {
@@ -217,7 +244,7 @@ export class WordDocumentProcessor {
       // Remove extra whitespace
       let whitespaceRemoved = false;
       if (options.removeWhitespace) {
-        console.log('\n=== WHITESPACE REMOVAL ===');
+        this.log('\n=== WHITESPACE REMOVAL ===');
         const whitespaceResult = await this.removeExtraWhitespace(zip);
         whitespaceRemoved = whitespaceResult.modified;
         if (whitespaceRemoved) {
@@ -229,7 +256,7 @@ export class WordDocumentProcessor {
       // Remove all italics
       let italicsRemoved = false;
       if (options.removeItalics) {
-        console.log('\n=== ITALICS REMOVAL ===');
+        this.log('\n=== ITALICS REMOVAL ===');
         const italicsResult = await this.removeAllItalics(zip);
         italicsRemoved = italicsResult.modified;
         if (italicsRemoved) {
@@ -242,15 +269,15 @@ export class WordDocumentProcessor {
       // Then assign style IDs (document.xml)
       let stylesAssigned = false;
       if (options.assignStyles) {
-        console.log('\n=== STYLE PROCESSING ===');
+        this.log('\n=== STYLE PROCESSING ===');
 
         // PHASE 1: Update style definitions in styles.xml
-        console.log('Phase 1: Updating style definitions...');
+        this.log('Phase 1: Updating style definitions...');
         const styleDefsUpdated = await this.updateStyleDefinitions(zip, options);
         if (styleDefsUpdated) {
-          console.log('✓ Style definitions updated in styles.xml');
+          this.log('✓ Style definitions updated in styles.xml');
         } else {
-          console.log('⚠ No style definitions were updated (using defaults)');
+          this.log('⚠ No style definitions were updated (using defaults)');
         }
 
         // PHASE 2: Assign style IDs and clear direct formatting in document.xml
@@ -369,17 +396,17 @@ export class WordDocumentProcessor {
       }
 
       result.success = true;
-      console.log('\n✓✓✓ PROCESSING COMPLETED SUCCESSFULLY ✓✓✓\n');
+      this.log('\n✓✓✓ PROCESSING COMPLETED SUCCESSFULLY ✓✓✓\n');
 
     } catch (error) {
-      console.error('\n✗✗✗ PROCESSING FAILED ✗✗✗');
-      console.error('Error:', error);
+      this.logError('\n✗✗✗ PROCESSING FAILED ✗✗✗');
+      this.logError('Error:', error);
       result.errorMessages.push(error instanceof Error ? error.message : 'Unknown error');
       result.errorCount++;
 
       // If backup exists and error occurred, inform user
       if (backupCreated && result.backupPath) {
-        console.log(`\nℹ️  Backup available at: ${result.backupPath}`);
+        this.log(`\nℹ️  Backup available at: ${result.backupPath}`);
       }
     } finally {
       // Critical: Clear hyperlink cache to prevent memory leaks
@@ -389,8 +416,8 @@ export class WordDocumentProcessor {
 
       result.duration = performance.now() - startTime;
       result.processingTimeMs = result.duration;
-      console.log(`\nTotal processing time: ${(result.duration / 1000).toFixed(2)}s\n`);
-      console.log('✓ Cleared hyperlink cache (memory leak prevention)');
+      this.log(`\nTotal processing time: ${(result.duration / 1000).toFixed(2)}s\n`);
+      this.log('✓ Cleared hyperlink cache (memory leak prevention)');
     }
 
     return result;
@@ -4098,7 +4125,7 @@ export class WordDocumentProcessor {
     // 3. File system contention
     const limit = pLimit(3); // Max 3 concurrent operations
 
-    console.log(`\n[Batch Process] Processing ${filePaths.length} document(s) with max 3 concurrent`);
+    this.log(`\n[Batch Process] Processing ${filePaths.length} document(s) with max 3 concurrent`);
 
     const batchResults = await Promise.allSettled(
       filePaths.map(filePath =>
@@ -4129,7 +4156,7 @@ export class WordDocumentProcessor {
       }
     });
 
-    console.log(`[Batch Process] Completed: ${results.size} results`);
+    this.log(`[Batch Process] Completed: ${results.size} results`);
     return results;
   }
 }
