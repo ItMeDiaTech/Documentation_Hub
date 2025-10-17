@@ -67,7 +67,8 @@ export class HyperlinkManager {
           : [element['w:hyperlink']];
 
         for (const hyperlink of hyperlinkElements) {
-          const relationshipId = hyperlink['r:id'];
+          // CRITICAL: Use correct attribute accessor with @_ prefix (OOXML_HYPERLINK_ARCHITECTURE.md)
+          const relationshipId = hyperlink['@_r:id'];
 
           // Check cache first for performance
           let hyperlinkInfo: DetailedHyperlinkInfo | null = null;
@@ -131,14 +132,19 @@ export class HyperlinkManager {
         : [relsXml.Relationships.Relationship];
 
       for (const rel of rels) {
-        if (rel.Type?.includes('hyperlink') && rel.Target) {
-          const url = rel.Target;
+        // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+        if (rel['@_Type']?.includes('hyperlink') && rel['@_Target']) {
+          const url = rel['@_Target'];
 
           // Check if this is a theSource URL that needs Content ID
           if (this.shouldAppendContentId(url, targetPattern)) {
             // Append content ID if not already present
             if (!url.includes(contentId)) {
-              rel.Target = url + contentId;
+              rel['@_Target'] = url + contentId;
+              // CRITICAL: Ensure TargetMode is set for external URLs
+              if (url.startsWith('http')) {
+                rel['@_TargetMode'] = 'External';
+              }
               modifiedCount++;
             }
           }
@@ -166,9 +172,14 @@ export class HyperlinkManager {
         : [relsXml.Relationships.Relationship];
 
       for (const rel of rels) {
-        if (rel.Type?.includes('hyperlink') && rel.Target) {
-          if (targetPattern.test(rel.Target)) {
-            rel.Target = rel.Target.replace(targetPattern, replacement);
+        // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+        if (rel['@_Type']?.includes('hyperlink') && rel['@_Target']) {
+          if (targetPattern.test(rel['@_Target'])) {
+            rel['@_Target'] = rel['@_Target'].replace(targetPattern, replacement);
+            // Ensure TargetMode is set for external URLs
+            if (rel['@_Target'].startsWith('http')) {
+              rel['@_TargetMode'] = 'External';
+            }
             modifiedCount++;
           }
         }
@@ -191,8 +202,9 @@ export class HyperlinkManager {
 
     // Find all used relationship IDs in document
     this.traverseElement(documentXml, (element: any) => {
-      if (element['w:hyperlink']?.['r:id']) {
-        usedRelationships.add(element['w:hyperlink']['r:id']);
+      // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+      if (element['w:hyperlink']?.['@_r:id']) {
+        usedRelationships.add(element['w:hyperlink']['@_r:id']);
       }
     });
 
@@ -261,9 +273,10 @@ export class HyperlinkManager {
 
       for (let i = 0; i < rels.length; i++) {
         const rel = rels[i];
-        if (rel.Type?.includes('hyperlink') && rel.Target) {
-          if (targetPattern.test(rel.Target)) {
-            toRemove.push(rel.Id);
+        // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+        if (rel['@_Type']?.includes('hyperlink') && rel['@_Target']) {
+          if (targetPattern.test(rel['@_Target'])) {
+            toRemove.push(rel['@_Id']);
             removedCount++;
           }
         }
@@ -271,7 +284,7 @@ export class HyperlinkManager {
 
       // Remove marked relationships
       relsXml.Relationships.Relationship = rels.filter(
-        (rel: any) => !toRemove.includes(rel.Id)
+        (rel: any) => !toRemove.includes(rel['@_Id'])
       );
     }
 
@@ -294,14 +307,24 @@ export class HyperlinkManager {
     let updated = false;
 
     this.traverseElement(documentXml, (element: any) => {
-      if (element['w:hyperlink']?.['r:id'] === relationshipId) {
+      // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+      if (element['w:hyperlink']?.['@_r:id'] === relationshipId) {
         // Find text runs within hyperlink
         const runs = element['w:hyperlink']['w:r'];
         if (runs) {
           const runArray = Array.isArray(runs) ? runs : [runs];
           for (const run of runArray) {
             if (run['w:t']) {
-              run['w:t'] = newText;
+              // Preserve xml:space attribute according to OOXML_HYPERLINK_ARCHITECTURE.md
+              if (typeof run['w:t'] === 'string') {
+                run['w:t'] = {
+                  '@_xml:space': 'preserve',
+                  '#text': newText
+                };
+              } else if (run['w:t']['#text'] !== undefined) {
+                run['w:t']['#text'] = newText;
+                // Keep existing attributes like '@_xml:space'
+              }
               updated = true;
               break; // Update only first text run
             }
@@ -325,8 +348,9 @@ export class HyperlinkManager {
 
     // Find all used relationship IDs
     this.traverseElement(documentXml, (element: any) => {
-      if (element['w:hyperlink']?.['r:id']) {
-        usedRelationships.add(element['w:hyperlink']['r:id']);
+      // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+      if (element['w:hyperlink']?.['@_r:id']) {
+        usedRelationships.add(element['w:hyperlink']['@_r:id']);
       }
     });
 
@@ -337,7 +361,8 @@ export class HyperlinkManager {
         : [relsXml.Relationships.Relationship];
 
       relsXml.Relationships.Relationship = rels.filter((rel: any) => {
-        if (rel.Type?.includes('hyperlink') && !usedRelationships.has(rel.Id)) {
+        // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+        if (rel['@_Type']?.includes('hyperlink') && !usedRelationships.has(rel['@_Id'])) {
           removedCount++;
           return false;
         }
@@ -365,10 +390,11 @@ export class HyperlinkManager {
         : [relsXml.Relationships.Relationship];
 
       for (const rel of rels) {
-        if (rel.Type?.includes('hyperlink') && rel.Target) {
-          const url = rel.Target;
+        // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+        if (rel['@_Type']?.includes('hyperlink') && rel['@_Target']) {
+          const url = rel['@_Target'];
           const ids = urlMap.get(url) || [];
-          ids.push(rel.Id);
+          ids.push(rel['@_Id']);
           urlMap.set(url, ids);
         }
       }
@@ -384,7 +410,7 @@ export class HyperlinkManager {
 
           // Remove duplicate relationships
           relsXml.Relationships.Relationship = rels.filter(
-            (rel: any) => !removeIds.includes(rel.Id)
+            (rel: any) => !removeIds.includes(rel['@_Id'])
           );
         }
       }
@@ -425,10 +451,11 @@ export class HyperlinkManager {
         : [relsXml.Relationships.Relationship];
 
       for (const rel of rels) {
-        relationships.set(rel.Id, {
-          type: rel.Type,
-          target: rel.Target,
-          targetMode: rel.TargetMode
+        // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+        relationships.set(rel['@_Id'], {
+          type: rel['@_Type'],
+          target: rel['@_Target'],
+          targetMode: rel['@_TargetMode']
         });
       }
     }
@@ -444,7 +471,8 @@ export class HyperlinkManager {
     relationships: Map<string, any>,
     path: string
   ): DetailedHyperlinkInfo | null {
-    const relationshipId = hyperlink['r:id'];
+    // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+    const relationshipId = hyperlink['@_r:id'];
     if (!relationshipId) return null;
 
     const rel = relationships.get(relationshipId);
@@ -591,7 +619,8 @@ export class HyperlinkManager {
           : [element['w:hyperlink']];
 
         element['w:hyperlink'] = hyperlinks.filter(
-          (h: any) => !idSet.has(h['r:id'])
+          // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+          (h: any) => !idSet.has(h['@_r:id'])
         );
 
         if (element['w:hyperlink'].length === 0) {
@@ -612,8 +641,9 @@ export class HyperlinkManager {
     const oldIdSet = new Set(oldIds);
 
     this.traverseElement(documentXml, (element: any) => {
-      if (element['w:hyperlink']?.['r:id'] && oldIdSet.has(element['w:hyperlink']['r:id'])) {
-        element['w:hyperlink']['r:id'] = newId;
+      // Use proper @_ prefix for attributes (OOXML_HYPERLINK_ARCHITECTURE.md)
+      if (element['w:hyperlink']?.['@_r:id'] && oldIdSet.has(element['w:hyperlink']['@_r:id'])) {
+        element['w:hyperlink']['@_r:id'] = newId;
       }
     });
   }

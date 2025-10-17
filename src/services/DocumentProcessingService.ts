@@ -10,6 +10,7 @@ import { Document } from '@/types/session';
 import { hyperlinkService } from './HyperlinkService';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
 import { logger } from '@/utils/logger';
+import { sanitizeUrl } from '@/utils/urlHelpers';
 
 // Initialize XML parser with options
 const xmlParser = new XMLParser({
@@ -81,6 +82,54 @@ function pointsToTwips(points: number): number {
   return points * 20;
 }
 
+/**
+ * Safely get XML attribute value (matches parser config @_ prefix)
+ * @param element - Parsed XML element
+ * @param attrName - Attribute name (e.g., 'r:id', 'w:val')
+ * @returns Attribute value or undefined
+ */
+function getAttr(element: any, attrName: string): string | undefined {
+  return element?.[`@_${attrName}`];
+}
+
+/**
+ * Safely set XML attribute value
+ * @param element - Parsed XML element
+ * @param attrName - Attribute name (e.g., 'r:id', 'w:val')
+ * @param value - New attribute value
+ */
+function setAttr(element: any, attrName: string, value: string): void {
+  if (!element) return;
+  element[`@_${attrName}`] = value;
+}
+
+/**
+ * Safely get text node value (matches parser config #text)
+ * @param textNode - Parsed text node
+ * @returns Text content or empty string
+ */
+function getText(textNode: any): string {
+  if (typeof textNode === 'string') return textNode;
+  return textNode?.['#text'] || '';
+}
+
+/**
+ * Safely set text node value, preserving attributes like xml:space
+ * @param textNode - Parsed text node (will be modified)
+ * @param newText - New text content
+ */
+function setText(textNode: any, newText: string): void {
+  if (!textNode) return;
+
+  if (typeof textNode === 'string') {
+    // Can't modify string directly - caller must replace the whole node
+    throw new Error('Cannot modify string text node - use object with #text property');
+  }
+
+  // Update text content, preserve attributes like '@_xml:space'
+  textNode['#text'] = newText;
+}
+
 export class DocumentProcessingService {
   private static instance: DocumentProcessingService;
   private log = logger.namespace('DocumentProcessor');
@@ -140,9 +189,12 @@ export class DocumentProcessingService {
       if (hyperlinks.length > 0 && (options.fixContentIds || options.updateTitles)) {
         // Process hyperlinks with API if PowerAutomate URL is configured
         if (powerAutomateUrl) {
-          this.log.debug('Processing hyperlinks with PowerAutomate API:', powerAutomateUrl);
+          // Sanitize the URL to fix encoding issues (critical for Azure Logic Apps URLs)
+          const sanitizedUrl = sanitizeUrl(powerAutomateUrl);
+          this.log.debug('Processing hyperlinks with PowerAutomate API:', sanitizedUrl);
+
           const apiSettings = {
-            apiUrl: powerAutomateUrl,
+            apiUrl: sanitizedUrl,
             timeout: 30000,
             retryAttempts: 3,
             retryDelay: 1000,
@@ -185,6 +237,29 @@ export class DocumentProcessingService {
       if (options.removeWhitespace || options.removeParagraphLines || options.removeItalics) {
         const formattingChanges = await this.applyTextFormatting(zip, options);
         result.processedLinks.push(...formattingChanges);
+      }
+
+      // CRITICAL: Validate hyperlink integrity before saving to prevent corruption
+      // According to OOXML_HYPERLINK_ARCHITECTURE.md, we must ensure all relationships are valid
+      if (hyperlinks.length > 0) {
+        const documentXml = await this.getXmlContent(zip, 'word/document.xml');
+        const relsXml = await this.getXmlContent(zip, 'word/_rels/document.xml.rels');
+
+        if (documentXml && relsXml) {
+          const validation = await this.validateHyperlinkIntegrity(documentXml, relsXml);
+
+          if (!validation.valid) {
+            this.log.error('Hyperlink validation failed:', validation.issues);
+            result.errorMessages.push(...validation.issues.filter(i => i.includes('CRITICAL')));
+
+            // Log warnings but don't fail the process for non-critical issues
+            validation.issues
+              .filter(i => !i.includes('CRITICAL'))
+              .forEach(warning => this.log.warn(warning));
+          } else {
+            this.log.info('Hyperlink validation passed');
+          }
+        }
       }
 
       // Memory checkpoint: Before document generation
@@ -286,8 +361,8 @@ export class DocumentProcessingService {
           : [obj['w:hyperlink']];
 
         for (const h of hyperlinkElem) {
-          if (h.$ && h.$['r:id']) {
-            const relationshipId = h.$['r:id'];
+          if (h['@_r:id']) {
+            const relationshipId = h['@_r:id'];
 
             // Extract display text
             let displayText = '';
@@ -297,8 +372,8 @@ export class DocumentProcessingService {
                 for (const t of texts) {
                   if (typeof t === 'string') {
                     displayText += t;
-                  } else if (t._) {
-                    displayText += t._;
+                  } else if (t['#text']) {
+                    displayText += t['#text'];
                   }
                 }
               }
@@ -350,9 +425,9 @@ export class DocumentProcessingService {
         : [relsXml.Relationships.Relationship];
 
       for (const rel of relationships) {
-        if (rel.$ && rel.$.Type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink') {
-          const id = rel.$.Id;
-          const target = rel.$.Target;
+        if (rel['@_Type'] === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink') {
+          const id = rel['@_Id'];
+          const target = rel['@_Target'];
 
           // Find matching hyperlink and update URL
           const hyperlink = hyperlinks.find(h => h.relationshipId === id);
@@ -363,6 +438,88 @@ export class DocumentProcessingService {
         }
       }
     }
+  }
+
+  /**
+   * Validate hyperlink relationship integrity to prevent corruption
+   * Based on OOXML_HYPERLINK_ARCHITECTURE.md validation checklist
+   */
+  private async validateHyperlinkIntegrity(
+    documentXml: any,
+    relsXml: any
+  ): Promise<{ valid: boolean; issues: string[] }> {
+    const issues: string[] = [];
+
+    // Extract all hyperlink relationship IDs from document
+    const hyperlinks: string[] = [];
+    const findHyperlinkIds = (obj: any): void => {
+      if (!obj) return;
+
+      if (obj['w:hyperlink']) {
+        const hyperlinkElems = Array.isArray(obj['w:hyperlink'])
+          ? obj['w:hyperlink']
+          : [obj['w:hyperlink']];
+
+        for (const h of hyperlinkElems) {
+          // Use correct attribute accessor according to parser config
+          const rId = h['@_r:id'];
+          if (rId) {
+            hyperlinks.push(rId);
+          }
+        }
+      }
+
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+          findHyperlinkIds(obj[key]);
+        }
+      }
+    };
+
+    findHyperlinkIds(documentXml);
+    const documentRIds = new Set(hyperlinks);
+
+    // Extract all relationship IDs from .rels file
+    const relsIds = new Set<string>();
+    if (relsXml.Relationships?.Relationship) {
+      const relationships = Array.isArray(relsXml.Relationships.Relationship)
+        ? relsXml.Relationships.Relationship
+        : [relsXml.Relationships.Relationship];
+
+      for (const rel of relationships) {
+        if (rel['@_Type'] === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink') {
+          const id = rel['@_Id'];
+          if (id) {
+            relsIds.add(id);
+
+            // Check for required TargetMode on external URLs
+            const target = rel['@_Target'];
+            if (target && target.startsWith('http') && rel['@_TargetMode'] !== 'External') {
+              issues.push(`Relationship ${id}: External URL missing TargetMode="External"`);
+            }
+          }
+        }
+      }
+    }
+
+    // Check for missing relationships (referenced but not defined)
+    for (const docId of documentRIds) {
+      if (!relsIds.has(docId)) {
+        issues.push(`CRITICAL: Hyperlink references ${docId} but relationship not found in .rels file`);
+      }
+    }
+
+    // Check for orphaned relationships (defined but not referenced)
+    for (const relsId of relsIds) {
+      if (!documentRIds.has(relsId)) {
+        issues.push(`Warning: Relationship ${relsId} exists but is not referenced in document`);
+      }
+    }
+
+    return {
+      valid: issues.filter(i => i.includes('CRITICAL')).length === 0,
+      issues
+    };
   }
 
   /**
@@ -428,16 +585,22 @@ export class DocumentProcessingService {
       : [relsXml.Relationships.Relationship];
 
     for (const rel of relationships) {
-      if (rel.$ && rel.$.Type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink') {
-        const hyperlink = hyperlinks.find(h => h.relationshipId === rel.$.Id);
+      if (rel['@_Type'] === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink') {
+        const hyperlink = hyperlinks.find(h => h.relationshipId === rel['@_Id']);
         if (hyperlink) {
           // Find matching API result
           const apiResult = this.findMatchingApiResult(hyperlink.url, apiResults);
           if (apiResult && apiResult.Document_ID) {
-            const oldUrl = rel.$.Target;
+            const oldUrl = rel['@_Target'];
             const newUrl = `https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=${apiResult.Document_ID.trim()}`;
             // Update URL to the new format
-            rel.$.Target = newUrl;
+            rel['@_Target'] = newUrl;
+
+            // CRITICAL: According to OOXML_HYPERLINK_ARCHITECTURE.md, external URLs MUST have TargetMode="External"
+            // This prevents corruption when Word tries to load the hyperlink
+            if (newUrl.startsWith('http')) {
+              rel['@_TargetMode'] = 'External';
+            }
           }
         }
       }
@@ -499,40 +662,107 @@ export class DocumentProcessingService {
 
   /**
    * Update text within a hyperlink element
+   * Safely handles text updates to prevent XML corruption
    */
   private updateHyperlinkText(hyperlinkElem: any, newText: string): void {
     if (!hyperlinkElem) return;
+
+    // Ensure text doesn't contain any XML markup that could cause corruption
+    const safeText = this.sanitizeTextForXml(newText);
 
     // Find and update text runs
     const updateText = (elem: any): void => {
       if (elem['w:r']) {
         const runs = Array.isArray(elem['w:r']) ? elem['w:r'] : [elem['w:r']];
-        // Update first text run with new text, remove others
+        // Update first text run with new text, clear others
         let firstRun = true;
         for (const run of runs) {
           if (run['w:t']) {
             if (firstRun) {
-              const texts = Array.isArray(run['w:t']) ? run['w:t'] : [run['w:t']];
-              if (texts.length > 0) {
-                if (typeof texts[0] === 'string') {
-                  texts[0] = newText;
+              // Get the first text element
+              const textElements = Array.isArray(run['w:t']) ? run['w:t'] : [run['w:t']];
+
+              if (textElements.length > 0) {
+                const firstTextElem = textElements[0];
+
+                // Preserve xml:space attribute if it exists
+                if (typeof firstTextElem === 'object' && firstTextElem !== null) {
+                  // It's an object with #text property and possibly attributes
+                  firstTextElem['#text'] = safeText;
+                  // Keep the object structure with attributes intact
+                  run['w:t'] = firstTextElem;
                 } else {
-                  texts[0]._ = newText;
+                  // It's a plain string - create object with text and preserve space
+                  run['w:t'] = {
+                    '#text': safeText,
+                    '@_xml:space': 'preserve'
+                  };
                 }
-                // Remove extra text elements
-                run['w:t'] = texts[0];
+              } else {
+                // No text elements, create new one
+                run['w:t'] = {
+                  '#text': safeText,
+                  '@_xml:space': 'preserve'
+                };
               }
               firstRun = false;
             } else {
-              // Clear additional text runs
-              delete run['w:t'];
+              // Clear additional text runs to avoid duplicate text - PRESERVE xml:space attribute
+              // According to OOXML_HYPERLINK_ARCHITECTURE.md, we must not delete the node
+              // Instead, clear the text content while preserving structure
+              if (run['w:t']) {
+                if (typeof run['w:t'] === 'string') {
+                  run['w:t'] = {
+                    '@_xml:space': 'preserve',
+                    '#text': ''
+                  };
+                } else if (run['w:t']['#text'] !== undefined) {
+                  run['w:t']['#text'] = '';
+                  // Preserve any existing attributes like '@_xml:space'
+                }
+              }
             }
+          } else if (firstRun) {
+            // No text in this run, add it
+            run['w:t'] = {
+              '#text': safeText,
+              '@_xml:space': 'preserve'
+            };
+            firstRun = false;
           }
+        }
+
+        // If no runs had text, ensure at least one run has the text
+        if (firstRun && runs.length > 0) {
+          runs[0]['w:t'] = {
+            '#text': safeText,
+            '@_xml:space': 'preserve'
+          };
         }
       }
     };
 
     updateText(hyperlinkElem);
+  }
+
+  /**
+   * Sanitize text to prevent XML corruption
+   * Removes any XML-like markup and ensures clean text
+   */
+  private sanitizeTextForXml(text: string): string {
+    // Remove any XML tags that might have been accidentally included
+    let sanitized = text.replace(/<[^>]*>/g, '');
+
+    // Ensure we don't have any XML entity codes that could cause issues
+    // These will be properly encoded by the XML builder
+    sanitized = sanitized
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&');
+
+    return sanitized;
   }
 
   /**
@@ -751,7 +981,7 @@ export class DocumentProcessingService {
       if (pPr && pPr['w:pStyle']) {
         const pStyle = Array.isArray(pPr['w:pStyle']) ? pPr['w:pStyle'][0] : pPr['w:pStyle'];
         if (pStyle) {
-          return pStyle['@_w:val'] || pStyle.$ || null;
+          return pStyle['@_w:val'] || null;
         }
       }
     }
@@ -958,9 +1188,9 @@ export class DocumentProcessingService {
               });
               obj['w:t'] = cleaned;
             }
-          } else if (t._) {
-            original = t._;
-            cleaned = t._.replace(/\s+/g, ' ').trim();
+          } else if (t['#text']) {
+            original = t['#text'];
+            cleaned = t['#text'].replace(/\s+/g, ' ').trim();
             if (original !== cleaned) {
               changes.push({
                 type: 'text',
@@ -968,7 +1198,7 @@ export class DocumentProcessingService {
                 before: original,
                 after: cleaned
               });
-              t._ = cleaned;
+              t['#text'] = cleaned;
             }
           }
         }
@@ -1003,7 +1233,7 @@ export class DocumentProcessingService {
         if (obj['w:t']) {
           const texts = Array.isArray(obj['w:t']) ? obj['w:t'] : [obj['w:t']];
           for (const t of texts) {
-            const text = typeof t === 'string' ? t : (t._ || t['#text'] || '');
+            const text = typeof t === 'string' ? t : (t['#text'] || '');
             if (text.trim().length > 0) return true;
           }
         }
@@ -1134,7 +1364,7 @@ export class DocumentProcessingService {
       if (obj['w:t']) {
         const texts = Array.isArray(obj['w:t']) ? obj['w:t'] : [obj['w:t']];
         for (const t of texts) {
-          text += typeof t === 'string' ? t : (t._ || t['#text'] || '');
+          text += typeof t === 'string' ? t : (t['#text'] || '');
         }
       }
 
