@@ -19,6 +19,7 @@ import {
 import { Document } from '@/types/session';
 import { UserSettings } from '@/types/settings';
 import { logger } from '@/utils/logger';
+import { sanitizeUrl, validatePowerAutomateUrl } from '@/utils/urlHelpers';
 
 export class HyperlinkService {
   private static instance: HyperlinkService;
@@ -39,12 +40,26 @@ export class HyperlinkService {
    */
   public initialize(settings: UserSettings): void {
     if (settings.apiConnections.powerAutomateUrl) {
+      // Sanitize the API URL to fix encoding issues
+      const sanitizedUrl = sanitizeUrl(settings.apiConnections.powerAutomateUrl);
+
+      // Validate URL format
+      const validation = validatePowerAutomateUrl(sanitizedUrl);
+      if (!validation.valid) {
+        this.log.error('Invalid PowerAutomate URL configuration:', validation.issues);
+        // Still set it but log the errors - let API call handle the failure
+      } else if (validation.warnings.length > 0) {
+        this.log.warn('PowerAutomate URL warnings:', validation.warnings);
+      }
+
       this.apiSettings = {
-        apiUrl: settings.apiConnections.powerAutomateUrl,
+        apiUrl: sanitizedUrl,
         timeout: 30000,
         retryAttempts: 3,
         retryDelay: 1000,
       };
+
+      this.log.debug('Initialized API settings with sanitized URL:', sanitizedUrl);
     }
   }
 
@@ -512,6 +527,26 @@ export class HyperlinkService {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
+      // Sanitize the API URL to fix any encoding issues
+      // This is critical for Azure Logic Apps URLs which often have encoded query parameters
+      const sanitizedUrl = sanitizeUrl(settings.apiUrl);
+
+      this.log.debug('Original API URL:', settings.apiUrl);
+      if (sanitizedUrl !== settings.apiUrl) {
+        this.log.info('URL sanitized - Fixed encoding issues:', {
+          original: settings.apiUrl.substring(0, 100) + '...',
+          sanitized: sanitizedUrl.substring(0, 100) + '...',
+        });
+      }
+
+      // Validate the URL before using it
+      const validation = validatePowerAutomateUrl(sanitizedUrl);
+      if (!validation.valid) {
+        const errorMsg = `Invalid PowerAutomate URL: ${validation.issues.join(', ')}`;
+        this.log.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+
       // Add retry logic from Feature implementation
       let lastError: Error | null = null;
       const maxRetries = settings.retryAttempts || 3;
@@ -521,12 +556,13 @@ export class HyperlinkService {
           if (attempt > 0) {
             // Exponential backoff
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+            this.log.info(`Retry attempt ${attempt} of ${maxRetries}`);
           }
 
-          this.log.debug('Sending API request to:', settings.apiUrl);
+          this.log.debug('Sending API request to:', sanitizedUrl);
           this.log.debug('Request body:', JSON.stringify(request));
 
-          const response = await fetch(settings.apiUrl, {
+          const response = await fetch(sanitizedUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -546,20 +582,26 @@ export class HyperlinkService {
           const data = await response.json();
           this.log.info('API Response:', data);
 
-          // Parse response according to specification
-          // Response format: { StatusCode, Headers, Body: { Results, Version, Changes } }
+          // Parse response - support multiple formats:
+          // Format 1 (wrapped): { StatusCode, Headers, Body: { Results, Version, Changes } }
+          // Format 2 (direct): { Results, Version, Changes }
+          // The actual API uses Format 2, so we check for Results array presence
           const apiResponse: HyperlinkApiResponse = {
-            success: data.StatusCode === '200' || data.StatusCode === 200,
+            // Success if HTTP 200 AND we have Results array (in either format)
+            success: response.ok && (Array.isArray(data.Results) || Array.isArray(data.Body?.Results)),
             timestamp: new Date(),
             statusCode: parseInt(data.StatusCode) || response.status,
           };
 
-          if (data.Body) {
+          // Handle both wrapped (data.Body) and direct (data) response formats
+          const responseBody = data.Body || data;
+
+          if (responseBody.Results) {
             // Cache results for efficient lookup
             const resultsMap = new Map<string, any>();
 
             apiResponse.body = {
-              results: data.Body.Results?.map((result: any) => {
+              results: responseBody.Results?.map((result: any) => {
                 // Trim whitespace from all fields as specified
                 const processed = {
                   url: '',  // Will be constructed from Document_ID
