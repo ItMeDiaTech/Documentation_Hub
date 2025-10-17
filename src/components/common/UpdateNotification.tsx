@@ -16,6 +16,12 @@ export function UpdateNotification() {
   const [errorCount, setErrorCount] = useState(0);
 
   useEffect(() => {
+    // Safely check if electronAPI is available (may not be in browser-only mode)
+    if (typeof window.electronAPI === 'undefined') {
+      console.warn('UpdateNotification: electronAPI not available (running in browser mode?)');
+      return;
+    }
+
     // Listen for update available
     const unsubAvailable = window.electronAPI.onUpdateAvailable((info) => {
       setUpdateInfo(info);
@@ -112,14 +118,14 @@ export function UpdateNotification() {
     setDownloadError(false); // Reset error state when retrying
     setErrorCount(0); // Reset error count
     try {
-      await window.electronAPI.downloadUpdate();
+      await window.electronAPI?.downloadUpdate();
     } catch (error) {
       setIsDownloading(false);
     }
   };
 
   const handleInstall = () => {
-    window.electronAPI.installUpdate();
+    window.electronAPI?.installUpdate();
   };
 
   const handleDismiss = () => {
@@ -129,7 +135,7 @@ export function UpdateNotification() {
   const handleManualDownload = async () => {
     try {
       // Use the new IPC handler to open download in system browser
-      await window.electronAPI.openUpdateInBrowser();
+      await window.electronAPI?.openUpdateInBrowser();
     } catch (error) {
       // Fallback to direct window.open if IPC fails
       const releaseUrl = updateInfo?.version
