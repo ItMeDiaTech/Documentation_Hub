@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { AlertCircle, CheckCircle2, Upload, Shield, Download, Info, Trash2 } from 'lucide-react';
+import logger from '@/utils/logger';
 
 interface Certificate {
   path: string;
@@ -54,7 +55,7 @@ export function CertificateManager() {
         setCertificateStatus('not-configured');
       }
     } catch (error) {
-      console.error('Error checking certificate status:', error);
+      logger.error('Error checking certificate status:', error);
       setCertificateStatus('error');
     }
   };
@@ -64,7 +65,7 @@ export function CertificateManager() {
       const certs = await window.electronAPI.getInstalledCertificates();
       setCertificates(certs);
     } catch (error) {
-      console.error('Error loading certificates:', error);
+      logger.error('Error loading certificates:', error);
     }
   };
 
@@ -103,7 +104,7 @@ export function CertificateManager() {
       // Open instructions in browser
       await window.electronAPI.openExternal('https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Export-Certificate-From-Browser');
     } catch (error) {
-      console.error('Error opening browser guide:', error);
+      logger.error('Error opening browser guide:', error);
     }
   };
 
@@ -145,7 +146,7 @@ export function CertificateManager() {
         loadExistingCertificates();
       }
     } catch (error) {
-      console.error('Error removing certificate:', error);
+      logger.error('Error removing certificate:', error);
     }
   };
 

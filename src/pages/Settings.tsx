@@ -26,6 +26,7 @@ import { useSession } from '@/contexts/SessionContext';
 import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 import { cn } from '@/utils/cn';
 import { getContrastTextColor } from '@/utils/colorConvert';
+import logger from '@/utils/logger';
 
 const settingsSections = [
   {
@@ -92,7 +93,7 @@ export function Settings() {
         const version = await window.electronAPI.getCurrentVersion();
         setCurrentVersion(version);
       } catch (error) {
-        console.error('Failed to get version:', error);
+        logger.error('Failed to get version:', error);
       }
     };
     getVersion();
@@ -233,10 +234,10 @@ export function Settings() {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2000);
       } else {
-        console.error('Failed to save export data:', saveResult.error);
+        logger.error('Failed to save export data:', saveResult.error);
       }
     } catch (error) {
-      console.error('Export failed:', error);
+      logger.error('Export failed:', error);
     }
   };
 
@@ -251,7 +252,7 @@ export function Settings() {
 
       // Validate import data
       if (!result.data?.version || !result.data?.data) {
-        console.error('Invalid import file format');
+        logger.error('Invalid import file format');
         return;
       }
 
@@ -269,7 +270,7 @@ export function Settings() {
       // Reload page to apply all changes
       window.location.reload();
     } catch (error) {
-      console.error('Import failed:', error);
+      logger.error('Import failed:', error);
     }
   };
 
@@ -659,7 +660,7 @@ export function Settings() {
                         )}
                       >
                         <motion.span
-                          className="absolute top-0.5 w-5 h-5 bg-background rounded-full shadow-sm"
+                          className="absolute top-0.5 w-5 h-5 bg-background rounded-full shadow-xs"
                           animate={{ left: blur ? '1.25rem' : '0.125rem' }}
                           transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                         />
@@ -682,7 +683,7 @@ export function Settings() {
                         )}
                       >
                         <motion.span
-                          className="absolute top-0.5 w-5 h-5 bg-background rounded-full shadow-sm"
+                          className="absolute top-0.5 w-5 h-5 bg-background rounded-full shadow-xs"
                           animate={{ left: animations ? '1.25rem' : '0.125rem' }}
                           transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                         />
@@ -709,7 +710,7 @@ export function Settings() {
                       )}
                     >
                       <motion.span
-                        className="absolute top-0.5 w-5 h-5 bg-background rounded-full shadow-sm"
+                        className="absolute top-0.5 w-5 h-5 bg-background rounded-full shadow-xs"
                         animate={{ left: useCustomColors ? '1.25rem' : '0.125rem' }}
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                       />
@@ -1518,7 +1519,7 @@ Version: ${currentVersion}
                           alert('Failed to submit idea. Please try again.');
                         }
                       } catch (error) {
-                        console.error('Error submitting idea:', error);
+                        logger.error('Error submitting idea:', error);
                         alert('Failed to submit idea. Please check your API configuration.');
                       }
                     }}

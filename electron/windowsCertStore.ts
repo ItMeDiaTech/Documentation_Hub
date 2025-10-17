@@ -4,8 +4,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
 import * as crypto from 'crypto';
+import { logger } from '../src/utils/logger';
 
 const execAsync = promisify(exec);
+const log = logger.namespace('WindowsCertStore');
 
 /**
  * Windows Certificate Store Integration
@@ -27,7 +29,7 @@ export class WindowsCertStore {
   private ensureCertDirectory(): void {
     if (!fs.existsSync(this.tempCertDir)) {
       fs.mkdirSync(this.tempCertDir, { recursive: true });
-      console.log('[WindowsCertStore] Created certificate directory:', this.tempCertDir);
+      log.info('[ZscalerConfig] Created certificate directory:', this.tempCertDir);
     }
   }
 
@@ -36,11 +38,11 @@ export class WindowsCertStore {
    */
   public async findZscalerCertificate(): Promise<string | null> {
     if (process.platform !== 'win32') {
-      console.log('[WindowsCertStore] Not on Windows, skipping certificate store search');
+      log.info('[ZscalerConfig] Not on Windows, skipping certificate store search');
       return null;
     }
 
-    console.log('[WindowsCertStore] Searching for Zscaler certificate in Windows store...');
+    log.info('[ZscalerConfig] Searching for Zscaler certificate in Windows store...');
 
     try {
       // PowerShell script to find and export Zscaler certificate
@@ -141,7 +143,7 @@ export class WindowsCertStore {
 
       // Parse the output
       if (stdout.includes('-----BEGIN CERTIFICATE-----')) {
-        console.log('[WindowsCertStore] Found Zscaler certificate in Windows store');
+        log.info('[ZscalerConfig] Found Zscaler certificate in Windows store');
 
         // Extract certificate info
         const lines = stdout.split('\n');
@@ -171,23 +173,23 @@ export class WindowsCertStore {
           }
         }
 
-        console.log('[WindowsCertStore] Certificate info:', certInfo);
+        log.info('[ZscalerConfig] Certificate info:', certInfo);
 
         // Save certificate to file
         const certPath = path.join(this.tempCertDir, 'zscaler-root.pem');
         fs.writeFileSync(certPath, certPEM);
-        console.log('[WindowsCertStore] Saved certificate to:', certPath);
+        log.info('[ZscalerConfig] Saved certificate to:', certPath);
 
         // Cache the certificate
         this.certificateCache.set('zscaler', certPath);
 
         return certPath;
       } else {
-        console.log('[WindowsCertStore] No Zscaler certificate found in Windows store');
+        log.info('[ZscalerConfig] No Zscaler certificate found in Windows store');
         return null;
       }
     } catch (error) {
-      console.error('[WindowsCertStore] Error searching for certificate:', error);
+      log.error('[ZscalerConfig] Error searching for certificate:', error);
       return null;
     }
   }
@@ -200,7 +202,7 @@ export class WindowsCertStore {
       return null;
     }
 
-    console.log('[WindowsCertStore] Exporting trusted root certificates...');
+    log.info('[ZscalerConfig] Exporting trusted root certificates...');
 
     try {
       const psScript = `
@@ -257,14 +259,14 @@ export class WindowsCertStore {
         }
 
         fs.writeFileSync(bundlePath, bundle);
-        console.log('[WindowsCertStore] Exported Windows CA bundle to:', bundlePath);
+        log.info('[ZscalerConfig] Exported Windows CA bundle to:', bundlePath);
 
         return bundlePath;
       }
 
       return null;
     } catch (error) {
-      console.error('[WindowsCertStore] Error exporting certificates:', error);
+      log.error('[ZscalerConfig] Error exporting certificates:', error);
       return null;
     }
   }
@@ -312,7 +314,7 @@ export class WindowsCertStore {
 
       return null;
     } catch (error) {
-      console.error('[WindowsCertStore] Error finding certificate by thumbprint:', error);
+      log.error('[ZscalerConfig] Error finding certificate by thumbprint:', error);
       return null;
     }
   }
@@ -386,13 +388,13 @@ export class WindowsCertStore {
 
       if (combinedBundle) {
         fs.writeFileSync(bundlePath, combinedBundle);
-        console.log('[WindowsCertStore] Created combined certificate bundle:', bundlePath);
+        log.info('[ZscalerConfig] Created combined certificate bundle:', bundlePath);
         return bundlePath;
       }
 
       return null;
     } catch (error) {
-      console.error('[WindowsCertStore] Error creating combined bundle:', error);
+      log.error('[ZscalerConfig] Error creating combined bundle:', error);
       return null;
     }
   }
@@ -412,11 +414,11 @@ export class WindowsCertStore {
 
         if (age > daysOld) {
           fs.unlinkSync(filePath);
-          console.log(`[WindowsCertStore] Cleaned up old certificate: ${file}`);
+          log.info(` Cleaned up old certificate: ${file}`);
         }
       }
     } catch (error) {
-      console.error('[WindowsCertStore] Error cleaning up certificates:', error);
+      log.error('[ZscalerConfig] Error cleaning up certificates:', error);
     }
   }
 }

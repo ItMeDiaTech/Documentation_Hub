@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { hexToHSL, getContrastTextColor, getSecondaryTextColor } from '@/utils/colorConvert';
+import { logger } from '@/utils/logger';
 
 type Theme = 'light' | 'dark' | 'system';
 type AccentColor = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan' | 'indigo' | 'custom';
@@ -48,6 +49,7 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const log = logger.namespace('ThemeContext');
   const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem('theme') as Theme;
     return stored || 'system';
@@ -205,7 +207,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       try {
         root.setAttribute('data-custom-colors', 'true');
 
-        console.log('[ThemeContext] Applying custom colors...');
+        log.debug('[ThemeContext] Applying custom colors...');
 
         // Calculate optimal text colors based on background colors
         const foregroundColor = getContrastTextColor(customBackgroundColor);
@@ -226,10 +228,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         root.style.setProperty('--custom-border', hexToHSL(customBorderColor));
         root.style.setProperty('--custom-secondary-font', hexToHSL(secondaryFontColor)); // Auto-calculated subtle variation!
 
-        console.log('[ThemeContext] Custom colors applied successfully');
+        log.debug('[ThemeContext] Custom colors applied successfully');
       } catch (error) {
-        console.error('[ThemeContext] Error applying custom colors:', error);
-        console.error('[ThemeContext] Color values:', {
+        log.error('[ThemeContext] Error applying custom colors:', error);
+        log.error('[ThemeContext] Color values:', {
           customPrimaryColor,
           customBackgroundColor,
           customHeaderColor,

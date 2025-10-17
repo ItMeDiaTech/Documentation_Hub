@@ -12,6 +12,8 @@
  * @module urlSanitizer
  */
 
+import logger from './logger';
+
 /**
  * List of allowed URL protocols that are safe for href attributes
  */
@@ -126,7 +128,7 @@ export function sanitizeUrl(url: string | null | undefined): string {
 
   } catch (error) {
     // If any error occurs during parsing, return safe fallback
-    console.warn('[URL Sanitizer] Failed to parse URL:', url, error);
+    logger.warn('[URL Sanitizer] Failed to parse URL:', url, error);
     return '#';
   }
 }

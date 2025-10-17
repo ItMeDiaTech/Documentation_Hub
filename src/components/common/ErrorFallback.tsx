@@ -8,6 +8,7 @@
 import React, { ErrorInfo } from 'react';
 import { AlertTriangle, RefreshCw, Home, Bug } from 'lucide-react';
 import { Button } from './Button';
+import logger from '@/utils/logger';
 
 interface ErrorFallbackProps {
   error: Error | null;
@@ -32,7 +33,7 @@ export function ErrorFallback({ error, errorInfo, onReset }: ErrorFallbackProps)
       componentStack: errorInfo?.componentStack,
     };
 
-    console.log('Bug Report Details:', errorDetails);
+    logger.debug('Bug Report Details:', errorDetails);
     // You could integrate with your bug tracking system here
   };
 

@@ -4,6 +4,7 @@
  */
 
 import { createHash } from 'crypto';
+import { logger } from '@/utils/logger';
 
 /**
  * Service for managing document backups
@@ -12,6 +13,7 @@ export class BackupService {
   private backupDir: string;
   private maxBackupAge: number = 7 * 24 * 60 * 60 * 1000; // 7 days
   private maxBackupsPerDocument: number = 5;
+  private log = logger.namespace('BackupService');
 
   constructor() {
     // Use app data directory for backups
@@ -124,7 +126,7 @@ export class BackupService {
       // Sort by creation date (newest first)
       return backups.sort((a, b) => b.created.getTime() - a.created.getTime());
     } catch (error) {
-      console.error('Failed to list backups:', error);
+      this.log.error('Failed to list backups:', error);
       return [];
     }
   }
@@ -204,7 +206,7 @@ export class BackupService {
 
       return deletedCount;
     } catch (error) {
-      console.error('Failed to cleanup old backups:', error);
+      this.log.error('Failed to cleanup old backups:', error);
       return 0;
     }
   }
@@ -288,7 +290,7 @@ export class BackupService {
     try {
       await fs.mkdir(this.backupDir, { recursive: true });
     } catch (error) {
-      console.error('Failed to create backup directory:', error);
+      this.log.error('Failed to create backup directory:', error);
     }
   }
 
@@ -313,7 +315,7 @@ export class BackupService {
     try {
       await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
     } catch (error) {
-      console.error('Failed to save backup metadata:', error);
+      this.log.error('Failed to save backup metadata:', error);
     }
   }
 

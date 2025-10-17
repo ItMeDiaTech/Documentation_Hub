@@ -9,6 +9,7 @@ import { CustomUpdater } from './customUpdater';
 import { proxyConfig } from './proxyConfig';
 import { zscalerConfig } from './zscalerConfig';
 import { MemoryConfig } from './memoryConfig';
+import { logger, initializeLogging } from '../src/utils/logger';
 import type {
   BatchProcessingOptions,
   BatchProcessingResult,
@@ -19,20 +20,28 @@ import type {
 let mainWindow: BrowserWindow | null = null;
 const isDev = !app.isPackaged;
 
+// Create namespaced logger for main process
+const log = logger.namespace('Main');
+
+// ============================================================================
+// Initialize Logging System (MUST be first)
+// ============================================================================
+initializeLogging();
+
 // ============================================================================
 // Application Startup and Version Information
 // ============================================================================
-console.log('========================================');
-console.log(`[Main] Documentation Hub v${app.getVersion()} starting...`);
-console.log(`[Main] Electron: v${process.versions.electron}`);
-console.log(`[Main] Node: v${process.versions.node}`);
-console.log(`[Main] Platform: ${process.platform} ${process.arch}`);
-console.log('========================================');
+log.info('========================================');
+log.info(`Documentation Hub v${app.getVersion()} starting...`);
+log.info(`Electron: v${process.versions.electron}`);
+log.info(`Node: v${process.versions.node}`);
+log.info(`Platform: ${process.platform} ${process.arch}`);
+log.info('========================================');
 
 // ============================================================================
 // Memory Configuration (MUST be before app.ready)
 // ============================================================================
-console.log('[Main] Configuring memory and heap size...');
+log.info('Configuring memory and heap size...');
 MemoryConfig.configureApp();
 
 // ============================================================================
@@ -40,19 +49,19 @@ MemoryConfig.configureApp();
 // ============================================================================
 
 // Configure Zscaler detection and setup before anything else
-console.log('[Main] Initializing Zscaler detection...');
+log.info('Initializing Zscaler detection...');
 zscalerConfig.logConfiguration();
 zscalerConfig.configureApp();
 
 // Log Zscaler status prominently
 if (zscalerConfig.isDetected()) {
-  console.log('⚠️  [Main] ZSCALER DETECTED - Using enhanced certificate handling and fallback methods');
+  log.warn('⚠️  ZSCALER DETECTED - Using enhanced certificate handling and fallback methods');
 } else {
-  console.log('✓ [Main] No Zscaler detected - Using standard network configuration');
+  log.info('✓ No Zscaler detected - Using standard network configuration');
 }
 
 // Configure proxy settings
-console.log('[Main] Initializing proxy and TLS configuration...');
+log.info('Initializing proxy and TLS configuration...');
 proxyConfig.logConfiguration();
 proxyConfig.configureApp();
 
@@ -60,7 +69,7 @@ proxyConfig.configureApp();
 // Pre-flight Certificate Check for GitHub Connectivity
 // ============================================================================
 async function performPreflightCertificateCheck(): Promise<void> {
-  console.log('[Main] Performing pre-flight certificate check for GitHub...');
+  log.info('Performing pre-flight certificate check for GitHub...');
 
   try {
     // Test connection to GitHub API
@@ -86,10 +95,10 @@ async function performPreflightCertificateCheck(): Promise<void> {
         const statusCode = response.statusCode;
 
         if (statusCode >= 200 && statusCode < 400) {
-          console.log('✅ [Main] GitHub connection test PASSED');
+          log.info('✅ GitHub connection test PASSED');
           resolve(true);
         } else {
-          console.log(`⚠️ [Main] GitHub returned status ${statusCode}`);
+          log.warn(`⚠️ GitHub returned status ${statusCode}`);
           resolve(false);
         }
       });
@@ -97,7 +106,7 @@ async function performPreflightCertificateCheck(): Promise<void> {
       request.on('error', async (error: Error) => {
         clearTimeout(timeout);
         if (!responseReceived) {
-          console.error('[Main] GitHub connection test FAILED:', error);
+          log.error('GitHub connection test FAILED:', error);
 
           // Check if it's a certificate error
           const errorMessage = error.message?.toLowerCase() || '';
@@ -107,7 +116,7 @@ async function performPreflightCertificateCheck(): Promise<void> {
               errorMessage.includes('unable to verify') ||
               errorMessage.includes('self signed')) {
 
-            console.log('[Main] Certificate error detected, attempting automatic fix...');
+            log.info('Certificate error detected, attempting automatic fix...');
 
             // If Zscaler is detected, try to find and configure its certificate
             if (zscalerConfig.isDetected() && process.platform === 'win32') {
@@ -116,9 +125,9 @@ async function performPreflightCertificateCheck(): Promise<void> {
                 const certPath = await windowsCertStore.findZscalerCertificate();
 
                 if (certPath) {
-                  console.log('[Main] Found Zscaler certificate, configuring...');
+                  log.info('Found Zscaler certificate, configuring...');
                   process.env.NODE_EXTRA_CA_CERTS = certPath;
-                  console.log('[Main] Set NODE_EXTRA_CA_CERTS to:', certPath);
+                  log.info('Set NODE_EXTRA_CA_CERTS to:', certPath);
 
                   // Show user dialog about certificate configuration
                   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -150,7 +159,7 @@ async function performPreflightCertificateCheck(): Promise<void> {
                   }
                 }
               } catch (certError) {
-                console.error('[Main] Failed to configure certificate:', certError);
+                log.error('Failed to configure certificate:', certError);
               }
             }
           }
@@ -163,13 +172,13 @@ async function performPreflightCertificateCheck(): Promise<void> {
 
     return;
   } catch (error) {
-    console.error('[Main] Pre-flight check error:', error);
+    log.error('Pre-flight check error:', error);
   }
 }
 
 // Configure session proxy and network debugging after app is ready
 app.whenReady().then(async () => {
-  console.log('[Main] Configuring session-level proxy and network monitoring...');
+  log.info('Configuring session-level proxy and network monitoring...');
   try {
     await proxyConfig.configureSessionProxy();
 
@@ -189,7 +198,7 @@ app.whenReady().then(async () => {
 
       // Log network requests (skip data URLs and devtools)
       if (!details.url.startsWith('data:') && !details.url.includes('devtools://')) {
-        console.log('[Network Request]', requestInfo);
+        log.debug('[Network Request]', requestInfo);
 
         // Send to renderer for debug console
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -203,7 +212,7 @@ app.whenReady().then(async () => {
     // Monitor response headers for debugging
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
       if (details.url.includes('github.com') || details.url.includes('githubusercontent.com')) {
-        console.log('[Network Response]', {
+        log.debug('[Network Response]', {
           url: details.url,
           statusCode: details.statusCode,
           statusLine: details.statusLine,
@@ -223,7 +232,7 @@ app.whenReady().then(async () => {
         resourceType: details.resourceType
       };
 
-      console.error('[Network Error]', errorInfo);
+      log.error('[Network Error]', errorInfo);
 
       // Send to renderer for debug console
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -231,15 +240,15 @@ app.whenReady().then(async () => {
       }
     });
 
-    console.log('[Main] Session proxy and network monitoring configured successfully');
+    log.info('Session proxy and network monitoring configured successfully');
   } catch (error) {
-    console.error('[Main] Failed to configure session:', error);
+    log.error('Failed to configure session:', error);
   }
 });
 
 // Enhanced login handler for proxy authentication
 app.on('login', async (event, webContents, details, authInfo, callback) => {
-  console.log('[Main] Login event received:', {
+  log.info('Login event received:', {
     isProxy: authInfo.isProxy,
     scheme: authInfo.scheme,
     host: authInfo.host,
@@ -252,7 +261,7 @@ app.on('login', async (event, webContents, details, authInfo, callback) => {
 
     const proxyAuth = proxyConfig.getProxyAuth();
     if (proxyAuth) {
-      console.log('[Main] Providing proxy authentication from configuration');
+      log.info('Providing proxy authentication from configuration');
       callback(proxyAuth.username, proxyAuth.password);
     } else {
       // Try to get credentials from environment or prompt user
@@ -260,10 +269,10 @@ app.on('login', async (event, webContents, details, authInfo, callback) => {
       const password = process.env.PROXY_PASS || process.env.proxy_pass;
 
       if (username && password) {
-        console.log('[Main] Providing proxy authentication from environment');
+        log.info('Providing proxy authentication from environment');
         callback(username, password);
       } else {
-        console.log('[Main] No proxy credentials available, cancelling authentication');
+        log.warn('No proxy credentials available, cancelling authentication');
         callback('', ''); // Cancel authentication
       }
     }
@@ -273,13 +282,13 @@ app.on('login', async (event, webContents, details, authInfo, callback) => {
 // Configure TLS settings for corporate proxies and firewalls
 // This helps with certificate issues like "unable to get local issuer certificate"
 if (!isDev) {
-  console.log('[Main] Configuring global TLS settings for corporate environments...');
+  log.info('Configuring global TLS settings for corporate environments...');
 
   // Note: We're being more selective with certificate errors now
   // Only ignore for known GitHub domains to maintain security
 
   // Log the configuration
-  console.log('[Main] TLS Configuration:', {
+  log.info('TLS Configuration:', {
     platform: process.platform,
     nodeVersion: process.version,
     electronVersion: process.versions.electron,
@@ -373,7 +382,7 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
     }
   };
 
-  console.log('[Certificate Error - DETAILED]', JSON.stringify(certError, null, 2));
+  log.warn('[Certificate Error - DETAILED]', JSON.stringify(certError, null, 2));
 
   // Send to renderer for debug console if available
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -385,13 +394,13 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 
   // Check if this is a Zscaler-related error
   if (zscalerConfig.isDetected()) {
-    console.log('[Certificate Error] Zscaler detected - checking if this is a Zscaler certificate issue');
+    log.info('[Certificate Error] Zscaler detected - checking if this is a Zscaler certificate issue');
 
     // Check if the certificate issuer contains Zscaler
     if (certificate.issuerName?.includes('Zscaler') ||
         certificate.subjectName?.includes('Zscaler') ||
         zscalerConfig.isZscalerError({ message: error })) {
-      console.log('[Certificate Error] Detected Zscaler certificate - trusting it');
+      log.info('[Certificate Error] Detected Zscaler certificate - trusting it');
       callback(true); // Trust Zscaler certificates
       return;
     }
@@ -408,13 +417,13 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
   const urlHost = new URL(url).hostname.toLowerCase();
 
   if (trustedHosts.some(host => urlHost.includes(host))) {
-    console.log(`[Certificate Error] Trusting certificate for known host: ${urlHost}`);
+    log.info(`[Certificate Error] Trusting certificate for known host: ${urlHost}`);
     if (zscalerConfig.isDetected()) {
-      console.log('[Certificate Error] Note: Zscaler is performing SSL inspection on this connection');
+      log.info('[Certificate Error] Note: Zscaler is performing SSL inspection on this connection');
     }
     callback(true); // Trust the certificate
   } else {
-    console.log(`[Certificate Error] Rejecting certificate for unknown host: ${urlHost}`);
+    log.warn(`[Certificate Error] Rejecting certificate for unknown host: ${urlHost}`);
     callback(false); // Don't trust unknown certificates
   }
 });
@@ -424,7 +433,7 @@ app.whenReady().then(async () => {
 
   // Perform pre-flight certificate check after window is ready
   setTimeout(async () => {
-    console.log('[Main] Running pre-flight certificate check...');
+    log.info('Running pre-flight certificate check...');
     await performPreflightCertificateCheck();
   }, 2000); // Wait 2 seconds for window to fully initialize
 });
@@ -751,7 +760,7 @@ ipcMain.handle('show-in-folder', async (...[, path]: [Electron.IpcMainInvokeEven
     // Show the file in the system file explorer
     shell.showItemInFolder(path);
   } catch (error) {
-    console.error('Error showing file in folder:', error);
+    log.error('Error showing file in folder:', error);
     throw error;
   }
 });
@@ -779,7 +788,7 @@ ipcMain.handle('get-file-stats', async (...[, filePath]: [Electron.IpcMainInvoke
       isDirectory: stats.isDirectory(),
     };
   } catch (error) {
-    console.error('Error getting file stats:', error);
+    log.error('Error getting file stats:', error);
     throw error;
   }
 });
@@ -809,9 +818,9 @@ ipcMain.handle('restore-from-backup', async (...[, request]: [Electron.IpcMainIn
     // Copy backup to target location, overwriting existing file
     await fsPromises.copyFile(request.backupPath, request.targetPath);
 
-    console.log(`[Restore] Successfully restored ${request.targetPath} from backup ${request.backupPath}`);
+    log.info(`[Restore] Successfully restored ${request.targetPath} from backup ${request.backupPath}`);
   } catch (error) {
-    console.error('Error restoring from backup:', error);
+    log.error('Error restoring from backup:', error);
     throw error;
   }
 });
@@ -857,7 +866,7 @@ ipcMain.handle('export-settings', async () => {
 
     return { success: false, canceled: true };
   } catch (error) {
-    console.error('Error showing export dialog:', error);
+    log.error('Error showing export dialog:', error);
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
   }
@@ -887,7 +896,7 @@ ipcMain.handle('import-settings', async () => {
 
     return { success: false, canceled: true };
   } catch (error) {
-    console.error('Error importing settings:', error);
+    log.error('Error importing settings:', error);
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
   }
@@ -898,7 +907,7 @@ ipcMain.handle('save-export-data', async (...[, request]: [Electron.IpcMainInvok
     await fsPromises.writeFile(request.filePath, JSON.stringify(request.data, null, 2), 'utf-8');
     return { success: true };
   } catch (error) {
-    console.error('Error saving export data:', error);
+    log.error('Error saving export data:', error);
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
   }
@@ -979,7 +988,7 @@ ipcMain.handle('import-certificate', async () => {
 
     return { success: false, error: 'No file selected' };
   } catch (error) {
-    console.error('Error importing certificate:', error);
+    log.error('Error importing certificate:', error);
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
   }
@@ -1008,7 +1017,7 @@ ipcMain.handle('auto-detect-certificates', async () => {
 
     return { success: false, error: 'No certificates found' };
   } catch (error) {
-    console.error('Error auto-detecting certificates:', error);
+    log.error('Error auto-detecting certificates:', error);
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
   }

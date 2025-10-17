@@ -6,6 +6,7 @@ import { useSession } from '@/contexts/SessionContext';
 import { defaultOptions } from './ProcessingOptions';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Button } from '@/components/common/Button';
+import logger from '@/utils/logger';
 
 interface Change {
   id: string;
@@ -124,7 +125,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
       setRevertAllDialogOpen(false);
       setDocumentToRevertAll(null);
     } catch (error) {
-      console.error('Failed to revert all changes:', error);
+      logger.error('Failed to revert all changes:', error);
       alert(`Failed to revert changes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
@@ -242,7 +243,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
                         className={cn(
                           'p-3 rounded-lg border transition-all',
                           selectedChange === change.id
-                            ? 'border-primary shadow-sm'
+                            ? 'border-primary shadow-xs'
                             : 'border-border hover:border-muted-foreground'
                         )}
                       >
