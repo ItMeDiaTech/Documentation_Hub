@@ -221,42 +221,48 @@ export class ValidationEngine {
       const usedIds = new Set<string>();
 
       for (const rel of rels) {
+        // CRITICAL: Use @_ prefix for attributes per OOXML_HYPERLINK_ARCHITECTURE.md
+        const relId = rel['@_Id'];
+        const relType = rel['@_Type'];
+        const relTarget = rel['@_Target'];
+        const relTargetMode = rel['@_TargetMode'];
+
         // Check for duplicate IDs
-        if (usedIds.has(rel.Id)) {
+        if (usedIds.has(relId)) {
           issues.push({
             severity: 'error',
             code: 'DUPLICATE_RELATIONSHIP_ID',
-            message: `Duplicate relationship ID: ${rel.Id}`,
-            element: rel.Id,
+            message: `Duplicate relationship ID: ${relId}`,
+            element: relId,
             fixable: true,
             autoFix: async () => {
               // Generate new unique ID
             }
           });
         }
-        usedIds.add(rel.Id);
+        usedIds.add(relId);
 
         // Validate relationship targets
-        if (rel.Type?.includes('hyperlink') && rel.TargetMode === 'External') {
+        if (relType?.includes('hyperlink') && relTargetMode === 'External') {
           // External hyperlinks should have valid URLs
-          if (!this.isValidUrl(rel.Target)) {
+          if (!this.isValidUrl(relTarget)) {
             issues.push({
               severity: 'warning',
               code: 'INVALID_HYPERLINK_URL',
-              message: `Invalid hyperlink URL: ${rel.Target}`,
-              element: rel.Id,
+              message: `Invalid hyperlink URL: ${relTarget}`,
+              element: relId,
               fixable: false
             });
           }
-        } else if (rel.TargetMode !== 'External') {
+        } else if (relTargetMode !== 'External') {
           // Internal targets should exist
-          const targetPath = `word/${rel.Target}`;
-          if (!zip.file(targetPath) && !rel.Type?.includes('hyperlink')) {
+          const targetPath = `word/${relTarget}`;
+          if (!zip.file(targetPath) && !relType?.includes('hyperlink')) {
             issues.push({
               severity: 'error',
               code: 'MISSING_RELATIONSHIP_TARGET',
-              message: `Relationship target not found: ${rel.Target}`,
-              element: rel.Id,
+              message: `Relationship target not found: ${relTarget}`,
+              element: relId,
               location: targetPath,
               fixable: false
             });
@@ -390,11 +396,12 @@ export class ValidationEngine {
       }
 
       const rels = Array.isArray(relationships) ? relationships : [relationships];
-      const hyperlinkRels = rels.filter((r: any) => r.Type?.includes('hyperlink'));
+      // CRITICAL: Use @_ prefix for attributes per OOXML_HYPERLINK_ARCHITECTURE.md
+      const hyperlinkRels = rels.filter((r: any) => r['@_Type']?.includes('hyperlink'));
 
       // Check for missing hyperlink relationships
       for (const id of hyperlinkIds) {
-        const found = hyperlinkRels.find((r: any) => r.Id === id);
+        const found = hyperlinkRels.find((r: any) => r['@_Id'] === id);
         if (!found) {
           issues.push({
             severity: 'error',
@@ -408,13 +415,28 @@ export class ValidationEngine {
 
       // Validate hyperlink URLs
       for (const rel of hyperlinkRels) {
-        if (!this.isValidUrl(rel.Target)) {
+        const relTarget = rel['@_Target'];
+        const relId = rel['@_Id'];
+        const relTargetMode = rel['@_TargetMode'];
+
+        if (!this.isValidUrl(relTarget)) {
           issues.push({
             severity: 'warning',
             code: 'INVALID_URL',
-            message: `Invalid URL format: ${rel.Target}`,
-            element: rel.Id,
+            message: `Invalid URL format: ${relTarget}`,
+            element: relId,
             fixable: false
+          });
+        }
+
+        // Check for missing TargetMode on external URLs
+        if (relTarget?.startsWith('http') && relTargetMode !== 'External') {
+          issues.push({
+            severity: 'error',
+            code: 'MISSING_TARGET_MODE',
+            message: `External URL missing TargetMode="External": ${relId}`,
+            element: relId,
+            fixable: true
           });
         }
       }
