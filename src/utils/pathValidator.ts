@@ -9,16 +9,76 @@
  * - Validates paths are within allowed directories
  * - Sanitizes file names
  * - Prevents access to system files
+ *
+ * Note: Browser-compatible implementation without Node.js path module
  */
 
-import * as path from 'path';
+/**
+ * Browser-compatible path utilities
+ */
+const pathUtils = {
+  normalize(p: string): string {
+    // Replace backslashes with forward slashes for consistency
+    let normalized = p.replace(/\\/g, '/');
+
+    // Remove duplicate slashes
+    normalized = normalized.replace(/\/+/g, '/');
+
+    // Handle . and .. segments
+    const parts = normalized.split('/');
+    const result: string[] = [];
+
+    for (const part of parts) {
+      if (part === '..' && result.length > 0 && result[result.length - 1] !== '..') {
+        result.pop();
+      } else if (part !== '.' && part !== '') {
+        result.push(part);
+      }
+    }
+
+    return result.join('/');
+  },
+
+  resolve(...paths: string[]): string {
+    let resolved = '';
+    let isAbsolute = false;
+
+    for (let i = paths.length - 1; i >= 0 && !isAbsolute; i--) {
+      const p = paths[i];
+      if (!p) continue;
+
+      resolved = p + '/' + resolved;
+      isAbsolute = /^([a-zA-Z]:)?\//.test(p);
+    }
+
+    resolved = this.normalize(resolved);
+    return resolved || '.';
+  },
+
+  basename(p: string): string {
+    const normalized = p.replace(/\\/g, '/');
+    const parts = normalized.split('/');
+    return parts[parts.length - 1] || '';
+  },
+
+  dirname(p: string): string {
+    const normalized = p.replace(/\\/g, '/');
+    const parts = normalized.split('/');
+    parts.pop();
+    return parts.join('/') || '.';
+  },
+
+  join(...paths: string[]): string {
+    return this.normalize(paths.join('/'));
+  }
+};
 
 /**
  * Checks if a path contains path traversal attempts
  */
 export function hasPathTraversal(filePath: string): boolean {
   // Normalize path to resolve any .. or . segments
-  const normalized = path.normalize(filePath);
+  const normalized = pathUtils.normalize(filePath);
 
   // Check for parent directory references
   if (normalized.includes('..')) {
@@ -26,7 +86,8 @@ export function hasPathTraversal(filePath: string): boolean {
   }
 
   // Check for absolute path attempts on Windows
-  if (process.platform === 'win32') {
+  const isWindows = navigator.userAgent.includes('Windows');
+  if (isWindows) {
     // Check for drive letter changes (C:, D:, etc.)
     const driveLetter = filePath.match(/^[a-zA-Z]:/);
     const normalizedDrive = normalized.match(/^[a-zA-Z]:/);
@@ -45,11 +106,12 @@ export function hasPathTraversal(filePath: string): boolean {
  * Checks if a path is within an allowed directory
  */
 export function isWithinDirectory(filePath: string, allowedDir: string): boolean {
-  const resolvedPath = path.resolve(filePath);
-  const resolvedAllowedDir = path.resolve(allowedDir);
+  const resolvedPath = pathUtils.resolve(filePath);
+  const resolvedAllowedDir = pathUtils.resolve(allowedDir);
 
   // On Windows, compare case-insensitively
-  if (process.platform === 'win32') {
+  const isWindows = navigator.userAgent.includes('Windows');
+  if (isWindows) {
     return resolvedPath.toLowerCase().startsWith(resolvedAllowedDir.toLowerCase());
   }
 
@@ -93,7 +155,7 @@ export function validateFilePath(
   }
 
   // Check for dangerous characters in filename
-  const fileName = path.basename(filePath);
+  const fileName = pathUtils.basename(filePath);
   const dangerousChars = /[<>:"|?*]/;
 
   if (dangerousChars.test(fileName)) {
@@ -126,9 +188,10 @@ export function validateFilePath(
     'C:\\Program Files',
   ];
 
-  const resolvedPath = path.resolve(filePath);
+  const resolvedPath = pathUtils.resolve(filePath);
+  const isWindows = navigator.userAgent.includes('Windows');
   const isSystemPath = systemPaths.some((sysPath) => {
-    if (process.platform === 'win32') {
+    if (isWindows) {
       return resolvedPath.toLowerCase().startsWith(sysPath.toLowerCase());
     }
     return resolvedPath.startsWith(sysPath);
@@ -147,38 +210,13 @@ export function validateFilePath(
 
 /**
  * Gets common allowed directories for document operations
- * Uses Electron's app.getPath() when available
+ * Note: Browser environment doesn't have access to environment variables
+ * This function returns empty array in browser, should use IPC in Electron
  */
 export function getDefaultAllowedDirectories(): string[] {
-  const allowedDirs: string[] = [];
-
-  // User's home directory
-  if (process.env.HOME) {
-    allowedDirs.push(process.env.HOME);
-  }
-
-  if (process.env.USERPROFILE) {
-    allowedDirs.push(process.env.USERPROFILE);
-  }
-
-  // Common document directories
-  if (process.platform === 'win32') {
-    const userProfile = process.env.USERPROFILE;
-    if (userProfile) {
-      allowedDirs.push(path.join(userProfile, 'Documents'));
-      allowedDirs.push(path.join(userProfile, 'Desktop'));
-      allowedDirs.push(path.join(userProfile, 'Downloads'));
-    }
-  } else {
-    const home = process.env.HOME;
-    if (home) {
-      allowedDirs.push(path.join(home, 'Documents'));
-      allowedDirs.push(path.join(home, 'Desktop'));
-      allowedDirs.push(path.join(home, 'Downloads'));
-    }
-  }
-
-  return allowedDirs;
+  // In browser context, we can't access environment variables or filesystem
+  // This function should be called from Electron main process via IPC
+  return [];
 }
 
 /**
@@ -196,12 +234,12 @@ export function validateAndSanitizePath(
   }
 
   // Resolve to absolute path to prevent any relative path tricks
-  const absolutePath = path.resolve(filePath);
+  const absolutePath = pathUtils.resolve(filePath);
 
   // Sanitize the filename
-  const dir = path.dirname(absolutePath);
-  const fileName = path.basename(absolutePath);
+  const dir = pathUtils.dirname(absolutePath);
+  const fileName = pathUtils.basename(absolutePath);
   const sanitizedFileName = sanitizeFileName(fileName);
 
-  return path.join(dir, sanitizedFileName);
+  return pathUtils.join(dir, sanitizedFileName);
 }

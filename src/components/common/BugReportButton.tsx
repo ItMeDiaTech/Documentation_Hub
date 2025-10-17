@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Bug } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useUserSettings } from '@/contexts/UserSettingsContext';
+import logger from '@/utils/logger';
 
 export function BugReportButton() {
   const { settings } = useUserSettings();
@@ -69,7 +70,7 @@ Additional context:
         alert('Failed to submit bug report. Please try again.');
       }
     } catch (error) {
-      console.error('Error submitting bug report:', error);
+      logger.error('Error submitting bug report:', error);
       alert('Failed to submit bug report. Please check your API configuration.');
     }
   };

@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Button } from './Button';
 import { X } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import logger from '@/utils/logger';
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -35,7 +36,7 @@ export function ConfirmDialog({
       await onConfirm();
       onOpenChange(false);
     } catch (error) {
-      console.error('Confirmation action failed:', error);
+      logger.error('Confirmation action failed:', error);
     } finally {
       setIsProcessing(false);
     }
@@ -44,7 +45,7 @@ export function ConfirmDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 z-50" />
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 z-50" />
         <Dialog.Content
           className={cn(
             'fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%]',
@@ -61,7 +62,7 @@ export function ConfirmDialog({
             <Dialog.Title className="text-lg font-semibold text-foreground">
               {title}
             </Dialog.Title>
-            <Dialog.Close className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+            <Dialog.Close className="rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
               <X className="h-4 w-4" />
               <span className="sr-only">Close</span>
             </Dialog.Close>

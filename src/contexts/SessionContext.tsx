@@ -10,7 +10,7 @@ import {
   truncateSessionChanges
 } from '@/utils/indexedDB';
 import { useGlobalStats } from './GlobalStatsContext';
-import { validateFilePath } from '@/utils/pathValidator';
+import { logger } from '@/utils/logger';
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
@@ -26,6 +26,7 @@ type SerializedSession = Omit<Session, 'createdAt' | 'lastModified' | 'closedAt'
 };
 
 export function SessionProvider({ children }: { children: ReactNode }) {
+  const log = logger.namespace('SessionContext');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
@@ -39,7 +40,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Check if localStorage has sessions that need migration
       const hasLocalStorageSessions = localStorage.getItem('sessions');
       if (hasLocalStorageSessions) {
-        console.log('[Session] Found sessions in localStorage, migrating to IndexedDB...');
+        log.info('[Session] Found sessions in localStorage, migrating to IndexedDB...');
         await migrateFromLocalStorage();
         // Clear localStorage after migration
         localStorage.removeItem('sessions');
@@ -77,7 +78,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             if (!shouldKeep) {
               // Remove from IndexedDB as well
               deleteSessionFromDB(s.id).catch(err =>
-                console.error(`Failed to delete old session ${s.id}:`, err)
+                log.error(`Failed to delete old session ${s.id}:`, err)
               );
             }
             return shouldKeep;
@@ -90,7 +91,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Log cleanup if any sessions were removed
         const removedCount = restored.length - cleanedSessions.length;
         if (removedCount > 0) {
-          console.log(`[Session] Cleaned up ${removedCount} old session(s) (>30 days)`);
+          log.info(`[Session] Cleaned up ${removedCount} old session(s) (>30 days)`);
         }
 
         setSessions(cleanedSessions);
@@ -104,7 +105,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (err) {
-      console.error('Failed to load sessions from storage', err);
+      log.error('Failed to load sessions from storage', err);
     }
   };
 
@@ -141,7 +142,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Keep active sessions in localStorage for quick access
       localStorage.setItem('activeSessions', JSON.stringify(activeSessions.map((s) => s.id)));
     } catch (err) {
-      console.error('Failed to persist sessions:', err);
+      log.error('Failed to persist sessions:', err);
     }
   }, [sessions, activeSessions]);
 
@@ -231,7 +232,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     // Log session closure
     if (session) {
-      console.log('[Session] Closed:', {
+      log.info('[Session] Closed:', {
         id: session.id,
         name: session.name,
         closedAt: closedAt.toISOString(),
@@ -256,7 +257,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     // Log session deletion
     if (session) {
-      console.log('[Session] Deleted:', {
+      log.info('[Session] Deleted:', {
         id: session.id,
         name: session.name,
         status: session.status,
@@ -283,23 +284,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // STRICT VALIDATION: Only accept files with valid filesystem paths
       // This is critical for Electron processing which requires absolute paths
       if (!fileWithPath.path || fileWithPath.path.trim() === '') {
-        console.error(`[addDocuments] File "${file.name}" rejected: no path property`);
+        log.error(`[addDocuments] File "${file.name}" rejected: no path property`);
         invalidFiles.push(file.name);
         continue;
       }
 
-      // SECURITY: Validate path to prevent path traversal attacks
-      const validation = validateFilePath(fileWithPath.path);
-      if (!validation.isValid) {
-        console.error(`[addDocuments] File "${file.name}" rejected: ${validation.error}`);
-        invalidFiles.push(`${file.name} (${validation.error})`);
-        continue;
-      }
-
       // Validate path is absolute (contains directory separators)
+      // Note: Detailed security validation happens in the main process
       const isAbsolutePath = fileWithPath.path.includes('\\') || fileWithPath.path.includes('/');
       if (!isAbsolutePath) {
-        console.error(`[addDocuments] File "${file.name}" rejected: invalid path "${fileWithPath.path}"`);
+        log.error(`[addDocuments] File "${file.name}" rejected: invalid path "${fileWithPath.path}"`);
         invalidFiles.push(file.name);
         continue;
       }
@@ -318,15 +312,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     // Log results
     if (invalidFiles.length > 0) {
-      console.warn(`[addDocuments] Rejected ${invalidFiles.length} file(s) with invalid paths:`, invalidFiles);
+      log.warn(`[addDocuments] Rejected ${invalidFiles.length} file(s) with invalid paths:`, invalidFiles);
     }
     if (newDocuments.length > 0) {
-      console.log(`[addDocuments] Adding ${newDocuments.length} valid document(s) to session ${sessionId}`);
+      log.info(`[addDocuments] Adding ${newDocuments.length} valid document(s) to session ${sessionId}`);
     }
 
     // Only update state if we have valid documents
     if (newDocuments.length === 0) {
-      console.warn('[addDocuments] No valid documents to add');
+      log.warn('[addDocuments] No valid documents to add');
       return;
     }
 
@@ -375,7 +369,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const document = session?.documents.find((d) => d.id === documentId);
 
     if (!session || !document || !document.path) {
-      console.error('Session, document, or document path not found');
+      log.error('Session, document, or document path not found');
       return;
     }
 
@@ -399,12 +393,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const userSettings = localStorage.getItem('userSettings');
       const settings = userSettings ? JSON.parse(userSettings) : { apiConnections: { powerAutomateUrl: '' } };
 
-      console.log('Processing document with PowerAutomate URL:', settings.apiConnections.powerAutomateUrl);
+      log.debug('Processing document with PowerAutomate URL:', settings.apiConnections.powerAutomateUrl);
 
       // Convert session processing options to hyperlink processing options
       // Extract style spacing from session styles
-      console.log('\n=== SESSION CONTEXT: Extracting Style Spacing ===');
-      console.log('session.styles:', session.styles);
+      log.debug('\n=== SESSION CONTEXT: Extracting Style Spacing ===');
+      log.debug('session.styles:', session.styles);
 
       // Default style spacing (applied when session.styles is undefined/empty)
       const defaultStyleSpacing = {
@@ -429,19 +423,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const hasSessionStyles = session.styles && session.styles.length > 0;
 
       if (!hasSessionStyles) {
-        console.log('⚠️  No styles configured in session - using default spacing values');
-        console.log('   Default Header 1: 0pt before, 12pt after, 1.0 line spacing');
-        console.log('   Default Header 2: 6pt before, 6pt after, 1.0 line spacing');
-        console.log('   Default Normal: 3pt before, 3pt after, 1.15 line spacing');
+        log.debug('⚠️  No styles configured in session - using default spacing values');
+        log.debug('   Default Header 1: 0pt before, 12pt after, 1.0 line spacing');
+        log.debug('   Default Header 2: 6pt before, 6pt after, 1.0 line spacing');
+        log.debug('   Default Normal: 3pt before, 3pt after, 1.15 line spacing');
       }
 
       const header1Style = session.styles?.find((s: any) => s.id === 'header1');
       const header2Style = session.styles?.find((s: any) => s.id === 'header2');
       const normalStyle = session.styles?.find((s: any) => s.id === 'normal');
 
-      console.log('Found header1Style:', header1Style);
-      console.log('Found header2Style:', header2Style);
-      console.log('Found normalStyle:', normalStyle);
+      log.debug('Found header1Style:', header1Style);
+      log.debug('Found header2Style:', header2Style);
+      log.debug('Found normalStyle:', normalStyle);
 
       const customStyleSpacing: any = {};
 
@@ -452,10 +446,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           spaceAfter: header1Style.spaceAfter ?? 0,
           lineSpacing: header1Style.lineSpacing ?? 1.0
         };
-        console.log('✓ Added header1 spacing from session:', customStyleSpacing.header1);
+        log.debug('✓ Added header1 spacing from session:', customStyleSpacing.header1);
       } else if (!hasSessionStyles) {
         customStyleSpacing.header1 = defaultStyleSpacing.header1;
-        console.log('✓ Added header1 spacing from defaults:', customStyleSpacing.header1);
+        log.debug('✓ Added header1 spacing from defaults:', customStyleSpacing.header1);
       }
 
       // Header 2 spacing (use session style or default)
@@ -465,10 +459,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           spaceAfter: header2Style.spaceAfter ?? 0,
           lineSpacing: header2Style.lineSpacing ?? 1.0
         };
-        console.log('✓ Added header2 spacing from session:', customStyleSpacing.header2);
+        log.debug('✓ Added header2 spacing from session:', customStyleSpacing.header2);
       } else if (!hasSessionStyles) {
         customStyleSpacing.header2 = defaultStyleSpacing.header2;
-        console.log('✓ Added header2 spacing from defaults:', customStyleSpacing.header2);
+        log.debug('✓ Added header2 spacing from defaults:', customStyleSpacing.header2);
       }
 
       // Normal spacing (use session style or default)
@@ -478,14 +472,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           spaceAfter: normalStyle.spaceAfter ?? 0,
           lineSpacing: normalStyle.lineSpacing ?? 1.15
         };
-        console.log('✓ Added normal spacing from session:', customStyleSpacing.normal);
+        log.debug('✓ Added normal spacing from session:', customStyleSpacing.normal);
       } else if (!hasSessionStyles) {
         customStyleSpacing.normal = defaultStyleSpacing.normal;
-        console.log('✓ Added normal spacing from defaults:', customStyleSpacing.normal);
+        log.debug('✓ Added normal spacing from defaults:', customStyleSpacing.normal);
       }
 
-      console.log('Final customStyleSpacing object:', customStyleSpacing);
-      console.log('Will pass to processor:', Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined);
+      log.debug('Final customStyleSpacing object:', customStyleSpacing);
+      log.debug('Will pass to processor:', Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined);
 
       const processingOptions: HyperlinkProcessingOptions = {
         apiEndpoint: settings.apiConnections.powerAutomateUrl || '',
@@ -560,7 +554,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (error) {
-      console.error('Error processing document:', error);
+      log.error('Error processing document:', error);
 
       // Update document status to error
       setSessions((prev) =>
@@ -591,7 +585,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const document = session?.documents.find((d) => d.id === documentId);
 
     if (!session || !document) {
-      console.error('Session or document not found');
+      log.error('Session or document not found');
       return;
     }
 
@@ -618,7 +612,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       )
     );
 
-    console.log(`[Session] Reverted change ${changeId} from document ${documentId}`);
+    log.info(`[Session] Reverted change ${changeId} from document ${documentId}`);
   };
 
   const revertAllChanges = async (sessionId: string, documentId: string): Promise<void> => {
@@ -626,13 +620,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const document = session?.documents.find((d) => d.id === documentId);
 
     if (!session || !document || !document.path) {
-      console.error('Session, document, or document path not found');
+      log.error('Session, document, or document path not found');
       return;
     }
 
     const backupPath = document.processingResult?.backupPath;
     if (!backupPath) {
-      console.error('No backup path found for document');
+      log.error('No backup path found for document');
       throw new Error('No backup available for this document');
     }
 
@@ -663,9 +657,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         )
       );
 
-      console.log(`[Session] Reverted all changes for document ${documentId} from backup ${backupPath}`);
+      log.info(`[Session] Reverted all changes for document ${documentId} from backup ${backupPath}`);
     } catch (error) {
-      console.error('Error reverting all changes:', error);
+      log.error('Error reverting all changes:', error);
       throw error;
     }
   };

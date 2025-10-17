@@ -10,7 +10,7 @@ export interface CardProps extends HTMLMotionProps<'div'> {
 const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant = 'default', interactive = false, children, ...props }, ref) => {
     const variants = {
-      default: 'bg-card text-card-foreground shadow-sm',
+      default: 'bg-card text-card-foreground shadow-xs',
       bordered: 'border border-border bg-card text-card-foreground',
       ghost: 'bg-transparent',
       glass: 'glass border border-white/10 shadow-lg',

@@ -12,6 +12,7 @@ import {
   createEmptyMonthlyStats,
 } from '@/types/globalStats';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { logger } from '@/utils/logger';
 
 interface GlobalStatsDB extends DBSchema {
   stats: {
@@ -28,6 +29,7 @@ const STATS_KEY = 'global';
 const GlobalStatsContext = createContext<GlobalStatsContextType | undefined>(undefined);
 
 export function GlobalStatsProvider({ children }: { children: ReactNode }) {
+  const log = logger.namespace('GlobalStats');
   const [stats, setStats] = useState<GlobalStats>(createDefaultGlobalStats());
   const [isLoading, setIsLoading] = useState(true);
   const [db, setDb] = useState<IDBPDatabase<GlobalStatsDB> | null>(null);
@@ -64,7 +66,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
           setStats(defaultStats);
         }
       } catch (error) {
-        console.error('Failed to initialize GlobalStats IndexedDB:', error);
+        log.error('Failed to initialize GlobalStats IndexedDB:', error);
       } finally {
         setIsLoading(false);
       }
@@ -188,7 +190,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
 
         // Persist to IndexedDB
         db.put(STATS_STORE, updatedStats, STATS_KEY).catch((error: Error) =>
-          console.error('Failed to save stats:', error)
+          log.error('Failed to save stats:', error)
         );
 
         return updatedStats;

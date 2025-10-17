@@ -221,7 +221,7 @@ export function Sessions() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                className="fixed inset-0 bg-background/80 backdrop-blur-xs z-50 flex items-center justify-center p-4"
                 onClick={() => setShowDeleteConfirm(null)}
               >
                 <motion.div
