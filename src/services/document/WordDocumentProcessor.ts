@@ -216,6 +216,24 @@ export class WordDocumentProcessor {
 
               const apiResults = apiResponse.body.results;
 
+              // Build lookup Map for O(1) performance (instead of O(n) array.find)
+              // Index by both Content_ID and Document_ID for flexible matching
+              this.log.debug('Building API results lookup map...');
+              const apiResultsMap = new Map<string, any>();
+              for (const result of apiResults) {
+                // Index by Content_ID if present (e.g., TSRC-ABC-123456)
+                if (result.contentId) {
+                  apiResultsMap.set(result.contentId.trim(), result);
+                  this.log.debug(`  Index: Content_ID=${result.contentId.trim()}`);
+                }
+                // Index by Document_ID if present (e.g., UUID from docid parameter)
+                if (result.documentId) {
+                  apiResultsMap.set(result.documentId.trim(), result);
+                  this.log.debug(`  Index: Document_ID=${result.documentId.trim()}`);
+                }
+              }
+              this.log.info(`Indexed ${apiResultsMap.size} API results for O(1) lookup`);
+
               // Phase 3: Collect URL updates for batch application
               const urlUpdateMap = new Map<string, string>();
 
@@ -224,8 +242,8 @@ export class WordDocumentProcessor {
                 const hyperlink = hyperlinks[i];
                 const hyperlinkInfo = hyperlinkInfos[i];
 
-                // Find matching API result for this hyperlink
-                const apiResult = this.findMatchingApiResult(hyperlinkInfo.url, apiResults);
+                // Find matching API result for this hyperlink (now using Map-based lookup)
+                const apiResult = this.findMatchingApiResult(hyperlinkInfo.url, apiResultsMap);
 
                 // Track changes
                 let finalDisplayText = hyperlinkInfo.displayText;
@@ -293,7 +311,10 @@ export class WordDocumentProcessor {
                   this.log.warn(`No API result for hyperlink: ${hyperlinkInfo.url}`);
 
                   if (options.operations?.updateTitles) {
-                    const notFoundText = `${hyperlinkInfo.displayText} - Not Found`;
+                    // CRITICAL: Sanitize display text to ensure no XML markup is included
+                    // The displayText might contain XML structure from getText() that needs to be cleaned
+                    const cleanDisplayText = this.sanitizeTextContent(hyperlinkInfo.displayText);
+                    const notFoundText = `${cleanDisplayText} - Not Found`;
                     hyperlink.hyperlink.setText(notFoundText);
                     result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
                   }
@@ -387,10 +408,18 @@ export class WordDocumentProcessor {
         });
       }
 
-      // Save document to file
+      // CRITICAL FIX: Save the CORRECTED buffer, not the original document!
+      // This is the key fix - we must use the validated/corrected buffer returned by the validator
       this.log.debug('=== SAVING DOCUMENT ===');
-      await doc.save(filePath);
-      this.log.info('Document saved successfully with OOXML validation');
+      if (validationResult.correctedBuffer) {
+        // Use the corrected buffer that includes all OOXML fixes
+        await fs.writeFile(filePath, Buffer.from(validationResult.correctedBuffer));
+        this.log.info('Document saved successfully with OOXML corrections applied');
+      } else {
+        // Fallback to original save if validation didn't return a buffer
+        await doc.save(filePath);
+        this.log.info('Document saved (validation completed, no OOXML fixes needed)');
+      }
 
       // Memory checkpoint: After save
       MemoryMonitor.logMemoryUsage('After Document Save', 'Document saved successfully');
@@ -722,40 +751,102 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Find matching API result for a URL
-   * Matches based on Content_ID or Document_ID patterns
+   * Extract Content_ID from URL
+   * Matches patterns like: TSRC-ABC-123456 or CMS-XYZ-789012
+   *
+   * @param url - The hyperlink URL to parse
+   * @returns The extracted Content_ID or null if not found
+   */
+  private extractContentId(url: string): string | null {
+    if (!url) return null;
+    // Pattern matches Content_ID like: TSRC-ABC-123456 or CMS-XYZ-789012
+    const match = url.match(/((?:TSRC|CMS)-[A-Za-z0-9]+-\d{6})/i);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Extract Document_ID from URL
+   * Only matches "docid=" (theSource URLs) - NOT "documentId=" (external policy URLs)
+   *
+   * Example: https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=8f2f198d-df40-4667-b72c-6f2d2141a91c
+   *
+   * @param url - The hyperlink URL to parse
+   * @returns The extracted Document_ID (UUID format) or null if not found
+   */
+  private extractDocumentId(url: string): string | null {
+    if (!url) return null;
+    // Match UUID format in docid parameter: docid=<uuid>
+    // Pattern: docid=<alphanumeric-with-hyphens> followed by non-alphanumeric or end of string
+    const match = url.match(/docid=([A-Za-z0-9\-]+)(?:[^A-Za-z0-9\-]|$)/i);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Find matching API result for a URL using Map-based lookup
+   * Two-step approach: extract ID, then lookup in Map for O(1) performance
    *
    * @param url - The hyperlink URL to match
-   * @param apiResults - Array of API results from PowerAutomate
+   * @param apiResultsMap - Map of Content_ID/Document_ID -> API result
    * @returns Matching API result or null if not found
    */
-  private findMatchingApiResult(url: string, apiResults: any[]): any {
-    if (!url || !apiResults) return null;
+  private findMatchingApiResult(url: string, apiResultsMap: Map<string, any>): any {
+    if (!url || !apiResultsMap || apiResultsMap.size === 0) {
+      return null;
+    }
 
-    // Extract Content_ID pattern: TSRC-ABC-123456 or CMS-XYZ-789012
-    // Improved pattern from Feature implementation
-    const contentIdMatch = url.match(/([TC][SM][RS]C?-[A-Za-z0-9]+-\d{6})/i);
-
-    // Extract Document_ID pattern: docid=abc-123-def
-    // Improved pattern to handle edge cases
-    const docIdMatch = url.match(/docid=([A-Za-z0-9\-]+)(?:[^A-Za-z0-9\-]|$)/i);
-
-    return apiResults.find(result => {
-      const resultContentId = result.contentId?.trim();
-      const resultDocId = result.documentId?.trim();
-
-      // Match by Content_ID
-      if (contentIdMatch && resultContentId === contentIdMatch[1]) {
-        return true;
+    // Try Content_ID match first (more specific)
+    const contentId = this.extractContentId(url);
+    if (contentId) {
+      const result = apiResultsMap.get(contentId);
+      if (result) {
+        this.log.debug(`  ✓ Matched by Content_ID: ${contentId}`);
+        return result;
       }
+    }
 
-      // Match by Document_ID
-      if (docIdMatch && resultDocId === docIdMatch[1]) {
-        return true;
+    // Try Document_ID match (UUID in docid parameter)
+    const documentId = this.extractDocumentId(url);
+    if (documentId) {
+      const result = apiResultsMap.get(documentId);
+      if (result) {
+        this.log.debug(`  ✓ Matched by Document_ID: ${documentId}`);
+        return result;
       }
+    }
 
-      return false;
-    });
+    // No match found
+    if (this.DEBUG) {
+      this.log.debug(`  ✗ No API match for URL: ${url.substring(0, 80)}${url.length > 80 ? '...' : ''}`);
+    }
+    return null;
+  }
+
+  /**
+   * Sanitize text content by removing any XML markup
+   * This prevents escaped XML from being injected into hyperlink text
+   * CRITICAL: Protects against corruption from getText() returning XML structure
+   */
+  private sanitizeTextContent(text: string): string {
+    if (!text) return '';
+
+    // Remove XML markup patterns that might have been captured by getText()
+    // Match patterns like <w:t>, </w:t>, &lt;, &gt;, &quot;, etc.
+    let cleaned = text
+      // Remove actual XML tags
+      .replace(/<[^>]*>/g, '')
+      // Unescape XML entities that might appear as strings
+      .replace(/&lt;/g, '')
+      .replace(/&gt;/g, '')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&')
+      // Clean up any remaining escaped sequences
+      .replace(/\\x[0-9a-fA-F]{2}/g, '')
+      .trim();
+
+    // If the text becomes empty after cleaning, return the original
+    // to avoid losing all display text
+    return cleaned.length === 0 ? text : cleaned;
   }
 
   /**
