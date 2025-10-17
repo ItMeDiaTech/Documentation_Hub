@@ -16,6 +16,8 @@ import type {
   HyperlinkProcessingOptions,
   HyperlinkProcessingResult,
 } from '../src/types/hyperlink';
+import { BackupService } from './services/BackupService';
+import type { BackupInfo, StorageInfo, BackupConfig } from './services/BackupService';
 
 let mainWindow: BrowserWindow | null = null;
 const isDev = !app.isPackaged;
@@ -306,6 +308,53 @@ if (!isDev) {
 // This affects all HTTPS requests made by the app
 process.env['NODE_NO_WARNINGS'] = '1'; // Suppress TLS warnings in production
 
+// ============================================================================
+// CRITICAL SECURITY CONFIGURATION - DO NOT MODIFY
+// ============================================================================
+/**
+ * These Electron security settings are MANDATORY and must never be changed.
+ *
+ * WHY THESE SETTINGS MATTER:
+ *
+ * 1. nodeIntegration: false (REQUIRED)
+ *    - Prevents renderer process from accessing Node.js APIs
+ *    - Critical security protection against XSS attacks
+ *    - If enabled: malicious websites/content can access your filesystem, spawn processes, etc.
+ *
+ * 2. contextIsolation: true (REQUIRED)
+ *    - Isolates preload script context from web page context
+ *    - Required for React to work properly (lazy loading, Context API, Router)
+ *    - Enables secure IPC communication via contextBridge
+ *    - If disabled: Causes BLACK SCREEN in production builds
+ *
+ * WHAT BREAKS WHEN CHANGED:
+ * - contextIsolation: false → Black screen, React won't load
+ * - nodeIntegration: true → Security vulnerability + preload API breaks
+ *
+ * HISTORICAL INCIDENTS:
+ * - 2025-10-17: Commit 159f47b - Restored after accidental change caused black screen
+ * - 2025-10-16: Commit 290ee59 - Fixed TypeScript errors causing black screen
+ * - 2024-12-xx: Commit 7575ba6 - Fixed production build black screen
+ *
+ * This configuration is protected by:
+ * - TypeScript const assertion (compile-time)
+ * - Runtime validation in development mode
+ * - Git pre-commit hooks
+ * - CI/CD validation checks
+ *
+ * If you need to expose new APIs to the renderer:
+ * → Add them to electron/preload.ts via contextBridge.exposeInMainWorld()
+ * → NEVER enable nodeIntegration or disable contextIsolation
+ *
+ * @see https://www.electronjs.org/docs/latest/tutorial/security
+ * @see https://www.electronjs.org/docs/latest/tutorial/context-isolation
+ */
+const REQUIRED_SECURITY_SETTINGS = {
+  preload: join(__dirname, 'preload.js'),
+  nodeIntegration: false, // MUST be false for security
+  contextIsolation: true, // MUST be true for React to work
+} as const;
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -315,15 +364,7 @@ async function createWindow() {
     frame: false,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0a0a0a',
-    webPreferences: {
-      preload: join(__dirname, 'preload.js'),
-      // CRITICAL: Do NOT change these security settings!
-      // nodeIntegration: false - Prevents Node.js API access from renderer (security)
-      // contextIsolation: true - Required for React to work properly + security
-      // Changing these will cause black screen and security vulnerabilities
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
+    webPreferences: REQUIRED_SECURITY_SETTINGS,
     // Icon will be set by electron-builder during packaging
   });
 
@@ -360,6 +401,74 @@ async function createWindow() {
   mainWindow.on('leave-full-screen', () => {
     mainWindow?.webContents.send('window-unfullscreen');
   });
+
+  // ============================================================================
+  // Runtime Security Validation (Development Only)
+  // ============================================================================
+  if (isDev) {
+    // Validate security settings at runtime to catch accidental changes
+    const prefs = mainWindow.webContents.session.getPreloads();
+    const webPrefs = (mainWindow as any).webContents.getWebPreferences();
+
+    // Validate nodeIntegration
+    if (webPrefs.nodeIntegration !== false) {
+      const errorMsg = `
+╔════════════════════════════════════════════════════════════════════════════╗
+║                     🚨 SECURITY VIOLATION DETECTED 🚨                      ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║                                                                            ║
+║  nodeIntegration is enabled! This is a CRITICAL security vulnerability.   ║
+║                                                                            ║
+║  Current value: ${webPrefs.nodeIntegration}                                              ║
+║  Required value: false                                                     ║
+║                                                                            ║
+║  This setting MUST be 'false' to:                                         ║
+║  - Prevent XSS attacks from accessing Node.js APIs                        ║
+║  - Protect filesystem and system resources                                ║
+║  - Maintain secure IPC communication                                      ║
+║                                                                            ║
+║  Fix: Set nodeIntegration: false in REQUIRED_SECURITY_SETTINGS            ║
+║  Location: electron/main.ts line 352-356                                  ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+      `;
+      log.error(errorMsg);
+      throw new Error('SECURITY VIOLATION: nodeIntegration must be false');
+    }
+
+    // Validate contextIsolation
+    if (webPrefs.contextIsolation !== true) {
+      const errorMsg = `
+╔════════════════════════════════════════════════════════════════════════════╗
+║                     🚨 CONFIGURATION ERROR DETECTED 🚨                     ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║                                                                            ║
+║  contextIsolation is disabled! This will cause a BLACK SCREEN.            ║
+║                                                                            ║
+║  Current value: ${webPrefs.contextIsolation}                                             ║
+║  Required value: true                                                      ║
+║                                                                            ║
+║  This setting MUST be 'true' for:                                         ║
+║  - React to render properly (lazy loading, Context API)                   ║
+║  - Router navigation to work                                              ║
+║  - Secure preload script execution                                        ║
+║  - Dynamic imports to load                                                ║
+║                                                                            ║
+║  Fix: Set contextIsolation: true in REQUIRED_SECURITY_SETTINGS            ║
+║  Location: electron/main.ts line 352-356                                  ║
+║                                                                            ║
+║  Historical incidents: 159f47b, 290ee59, 7575ba6                          ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+      `;
+      log.error(errorMsg);
+      throw new Error('CONFIGURATION ERROR: contextIsolation must be true (causes black screen)');
+    }
+
+    log.info('✅ Security validation passed - All settings correct');
+    log.info('   - nodeIntegration: false ✓');
+    log.info('   - contextIsolation: true ✓');
+  }
 }
 
 // Enhanced network debugging - log all network events
@@ -930,6 +1039,157 @@ ipcMain.handle(
     } catch (error) {
       log.error('Error saving export data:', error);
       const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  }
+);
+
+// ==============================================================================
+// Backup Service IPC Handlers
+// ==============================================================================
+
+// Initialize backup service (singleton instance)
+const backupService = new BackupService();
+
+// Create backup
+ipcMain.handle('backup:create', async (...[, documentPath]: [Electron.IpcMainInvokeEvent, string]) => {
+  try {
+    if (!documentPath || typeof documentPath !== 'string') {
+      throw new Error('Invalid document path');
+    }
+
+    const backupPath = await backupService.createBackup(documentPath);
+    return { success: true, backupPath };
+  } catch (error) {
+    log.error('[Backup] Create backup failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to create backup';
+    return { success: false, error: message };
+  }
+});
+
+// Restore from backup
+ipcMain.handle(
+  'backup:restore',
+  async (
+    ...[, request]: [Electron.IpcMainInvokeEvent, { backupPath: string; targetPath: string }]
+  ) => {
+    try {
+      if (!request.backupPath || !request.targetPath) {
+        throw new Error('Both backupPath and targetPath are required');
+      }
+
+      await backupService.restoreBackup(request.backupPath, request.targetPath);
+      return { success: true };
+    } catch (error) {
+      log.error('[Backup] Restore backup failed:', error);
+      const message = error instanceof Error ? error.message : 'Failed to restore backup';
+      return { success: false, error: message };
+    }
+  }
+);
+
+// List backups for document
+ipcMain.handle('backup:list', async (...[, documentPath]: [Electron.IpcMainInvokeEvent, string]) => {
+  try {
+    if (!documentPath || typeof documentPath !== 'string') {
+      throw new Error('Invalid document path');
+    }
+
+    const backups = await backupService.listBackups(documentPath);
+    return { success: true, backups };
+  } catch (error) {
+    log.error('[Backup] List backups failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to list backups';
+    return { success: false, error: message, backups: [] };
+  }
+});
+
+// Delete specific backup
+ipcMain.handle('backup:delete', async (...[, backupPath]: [Electron.IpcMainInvokeEvent, string]) => {
+  try {
+    if (!backupPath || typeof backupPath !== 'string') {
+      throw new Error('Invalid backup path');
+    }
+
+    await backupService.deleteBackup(backupPath);
+    return { success: true };
+  } catch (error) {
+    log.error('[Backup] Delete backup failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to delete backup';
+    return { success: false, error: message };
+  }
+});
+
+// Cleanup old backups for document
+ipcMain.handle('backup:cleanup', async (...[, documentPath]: [Electron.IpcMainInvokeEvent, string]) => {
+  try {
+    if (!documentPath || typeof documentPath !== 'string') {
+      throw new Error('Invalid document path');
+    }
+
+    const deletedCount = await backupService.cleanupOldBackups(documentPath);
+    return { success: true, deletedCount };
+  } catch (error) {
+    log.error('[Backup] Cleanup backups failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to cleanup backups';
+    return { success: false, error: message, deletedCount: 0 };
+  }
+});
+
+// Cleanup all old backups
+ipcMain.handle('backup:cleanup-all', async () => {
+  try {
+    const deletedCount = await backupService.cleanupAllOldBackups();
+    return { success: true, deletedCount };
+  } catch (error) {
+    log.error('[Backup] Cleanup all backups failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to cleanup all backups';
+    return { success: false, error: message, deletedCount: 0 };
+  }
+});
+
+// Verify backup integrity
+ipcMain.handle('backup:verify', async (...[, backupPath]: [Electron.IpcMainInvokeEvent, string]) => {
+  try {
+    if (!backupPath || typeof backupPath !== 'string') {
+      throw new Error('Invalid backup path');
+    }
+
+    const isValid = await backupService.verifyBackup(backupPath);
+    return { success: true, isValid };
+  } catch (error) {
+    log.error('[Backup] Verify backup failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to verify backup';
+    return { success: false, error: message, isValid: false };
+  }
+});
+
+// Get backup storage info
+ipcMain.handle('backup:storage-info', async () => {
+  try {
+    const storageInfo = await backupService.getBackupStorageInfo();
+    return { success: true, storageInfo };
+  } catch (error) {
+    log.error('[Backup] Get storage info failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get storage info';
+    return { success: false, error: message };
+  }
+});
+
+// Set backup configuration
+ipcMain.handle(
+  'backup:set-config',
+  async (...[, config]: [Electron.IpcMainInvokeEvent, Partial<BackupConfig>]) => {
+    try {
+      if (!config || typeof config !== 'object') {
+        throw new Error('Invalid backup configuration');
+      }
+
+      backupService.setConfig(config);
+      return { success: true };
+    } catch (error) {
+      log.error('[Backup] Set config failed:', error);
+      const message = error instanceof Error ? error.message : 'Failed to set backup configuration';
       return { success: false, error: message };
     }
   }
