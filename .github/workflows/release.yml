@@ -20,6 +20,35 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate Electron Security Settings
+        run: |
+          echo "🔒 Validating Electron security settings..."
+
+          # Check for nodeIntegration: true (SECURITY VIOLATION)
+          if grep -E "nodeIntegration.*:.*true" electron/main.ts; then
+            echo "❌ ERROR: nodeIntegration is set to true!"
+            echo "This is a CRITICAL security vulnerability."
+            echo "Required: nodeIntegration: false"
+            exit 1
+          fi
+
+          # Check for contextIsolation: false (CAUSES BLACK SCREEN)
+          if grep -E "contextIsolation.*:.*false" electron/main.ts; then
+            echo "❌ ERROR: contextIsolation is set to false!"
+            echo "This will cause a BLACK SCREEN in production."
+            echo "Required: contextIsolation: true"
+            exit 1
+          fi
+
+          # Verify REQUIRED_SECURITY_SETTINGS exists
+          if ! grep -q "REQUIRED_SECURITY_SETTINGS" electron/main.ts; then
+            echo "⚠️  WARNING: REQUIRED_SECURITY_SETTINGS constant not found!"
+            echo "Security protection may have been removed."
+          fi
+
+          echo "✅ Security validation passed!"
+        shell: bash
+
       - name: Set version from tag
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
