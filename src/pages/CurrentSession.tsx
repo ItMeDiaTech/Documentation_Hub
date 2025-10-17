@@ -37,6 +37,7 @@ import { ReplacementsTab } from '@/components/sessions/ReplacementsTab';
 import { TrackedChanges } from '@/components/sessions/TrackedChanges';
 import { useToast } from '@/hooks/useToast';
 import { Toaster } from '@/components/common/Toast';
+import logger from '@/utils/logger';
 
 export function CurrentSession() {
   const { id } = useParams<{ id: string }>();
@@ -109,7 +110,7 @@ export function CurrentSession() {
             const stats = await window.electronAPI.getFileStats(filePath);
             fileSize = stats.size;
           } catch (error) {
-            console.error('Failed to get file stats for', filePath, error);
+            logger.error('Failed to get file stats for', filePath, error);
             // Size will remain 0 if stats retrieval fails
           }
 
@@ -157,7 +158,7 @@ export function CurrentSession() {
 
           // Validate path exists and is absolute
           if (!path || path.trim() === '') {
-            console.error(`[Drag-Drop] File "${file.name}" has no accessible path`);
+            logger.error(`[Drag-Drop] File "${file.name}" has no accessible path`);
             invalidFiles.push(file.name);
             continue;
           }
@@ -165,7 +166,7 @@ export function CurrentSession() {
           // Check if path is absolute (contains directory separators)
           const isAbsolutePath = path.includes('\\') || path.includes('/');
           if (!isAbsolutePath) {
-            console.error(`[Drag-Drop] File "${file.name}" has invalid path: "${path}"`);
+            logger.error(`[Drag-Drop] File "${file.name}" has invalid path: "${path}"`);
             invalidFiles.push(file.name);
             continue;
           }
@@ -182,12 +183,12 @@ export function CurrentSession() {
               type: file.type
             } as any as File & { path: string });
           } catch (error) {
-            console.error(`[Drag-Drop] Failed to access file "${file.name}" at path "${path}":`, error);
+            logger.error(`[Drag-Drop] Failed to access file "${file.name}" at path "${path}":`, error);
             invalidFiles.push(file.name);
           }
         }
       } catch (error) {
-        console.error('[Drag-Drop] Failed to get file paths:', error);
+        logger.error('[Drag-Drop] Failed to get file paths:', error);
         return;
       }
 
@@ -198,7 +199,7 @@ export function CurrentSession() {
 
       // Log summary
       if (invalidFiles.length > 0) {
-        console.warn(`[Drag-Drop] Rejected ${invalidFiles.length} file(s) due to invalid paths:`, invalidFiles);
+        logger.warn(`[Drag-Drop] Rejected ${invalidFiles.length} file(s) due to invalid paths:`, invalidFiles);
 
         // Show toast notification to user
         toast({
@@ -208,7 +209,7 @@ export function CurrentSession() {
         });
       }
       if (validFiles.length > 0) {
-        console.log(`[Drag-Drop] Successfully added ${validFiles.length} file(s)`);
+        logger.info(`[Drag-Drop] Successfully added ${validFiles.length} file(s)`);
 
         // Show success toast
         toast({
@@ -473,7 +474,7 @@ export function CurrentSession() {
                               try {
                                 await window.electronAPI.showInFolder(doc.path!);
                               } catch (err) {
-                                console.error('Failed to open file location:', err);
+                                logger.error('Failed to open file location:', err);
                               }
                             }}
                             className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-background"

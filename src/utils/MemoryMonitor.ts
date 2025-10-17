@@ -5,6 +5,8 @@
  * like document processing.
  */
 
+import logger from './logger';
+
 export interface MemoryStats {
   heapUsed: number;
   heapTotal: number;
@@ -85,14 +87,14 @@ export class MemoryMonitor {
     // Log with appropriate level
     if (warning) {
       if (warning.level === 'critical') {
-        console.error('🚨', logParts.join(' '), '- CRITICAL MEMORY USAGE!');
+        logger.error('🚨', logParts.join(' '), '- CRITICAL MEMORY USAGE!');
       } else if (warning.level === 'warning') {
-        console.warn('⚠️', logParts.join(' '), '- High memory usage');
+        logger.warn('⚠️', logParts.join(' '), '- High memory usage');
       } else {
-        console.log('ℹ️', logParts.join(' '));
+        logger.info('ℹ️', logParts.join(' '));
       }
     } else {
-      console.log('✓', logParts.join(' '));
+      logger.debug('✓', logParts.join(' '));
     }
 
     return stats;
@@ -133,7 +135,7 @@ export class MemoryMonitor {
     const end = this.checkpoints.get(endLabel);
 
     if (!start || !end) {
-      console.warn(`[Memory] Cannot compare: checkpoint ${!start ? startLabel : endLabel} not found`);
+      logger.warn(`[Memory] Cannot compare: checkpoint ${!start ? startLabel : endLabel} not found`);
       return;
     }
 
@@ -142,7 +144,7 @@ export class MemoryMonitor {
     const sign = delta >= 0 ? '+' : '-';
     const duration = end.timestamp - start.timestamp;
 
-    console.log(`[Memory] Delta (${startLabel} → ${endLabel}): ${sign}${deltaFormatted} in ${duration}ms`);
+    logger.debug(`[Memory] Delta (${startLabel} → ${endLabel}): ${sign}${deltaFormatted} in ${duration}ms`);
   }
 
   /**
@@ -150,15 +152,15 @@ export class MemoryMonitor {
    */
   static forceGC(): boolean {
     if (global.gc) {
-      console.log('[Memory] Forcing garbage collection...');
+      logger.debug('[Memory] Forcing garbage collection...');
       const before = this.getMemoryStats();
       global.gc();
       const after = this.getMemoryStats();
       const freed = before.heapUsed - after.heapUsed;
-      console.log(`[Memory] GC freed ${this.formatBytes(freed)}`);
+      logger.info(`[Memory] GC freed ${this.formatBytes(freed)}`);
       return true;
     } else {
-      console.warn('[Memory] Garbage collection not available (run with --expose-gc)');
+      logger.warn('[Memory] Garbage collection not available (run with --expose-gc)');
       return false;
     }
   }
@@ -186,7 +188,7 @@ export class MemoryMonitor {
 
     // Critical level - don't proceed
     if (warning && warning.level === 'critical') {
-      console.error('🚨 [Memory] Cannot process document safely. Memory usage critical:', warning.message);
+      logger.error('🚨 [Memory] Cannot process document safely. Memory usage critical:', warning.message);
       return false;
     }
 
@@ -196,7 +198,7 @@ export class MemoryMonitor {
       const needsHeadroom = requiredBytes * 1.5; // 50% safety margin
 
       if (available < needsHeadroom) {
-        console.warn(`⚠️ [Memory] Insufficient memory. Need ${this.formatBytes(needsHeadroom)}, have ${this.formatBytes(available)}`);
+        logger.warn(`⚠️ [Memory] Insufficient memory. Need ${this.formatBytes(needsHeadroom)}, have ${this.formatBytes(available)}`);
         return false;
       }
     }

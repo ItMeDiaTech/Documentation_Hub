@@ -13,7 +13,7 @@ import {
   DetailedHyperlinkInfo,
   HyperlinkProcessingOptions,
   HyperlinkProcessingResult,
-  HyperlinkType
+  HyperlinkType,
 } from '@/types/hyperlink';
 import { DocXMLaterProcessor } from './DocXMLaterProcessor';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
@@ -41,7 +41,12 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   customStyleSpacing?: {
     header1?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
     header2?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
-    normal?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number; noSpaceBetweenSame?: boolean };
+    normal?: {
+      spaceBefore: number;
+      spaceAfter: number;
+      lineSpacing?: number;
+      noSpaceBetweenSame?: boolean;
+    };
   };
 }
 
@@ -141,16 +146,15 @@ export class WordDocumentProcessor {
       this.log.info(`Found ${hyperlinks.length} hyperlinks`);
 
       // Memory checkpoint: After hyperlink extraction
-      MemoryMonitor.logMemoryUsage('After Hyperlink Extraction', `${hyperlinks.length} hyperlinks extracted`);
+      MemoryMonitor.logMemoryUsage(
+        'After Hyperlink Extraction',
+        `${hyperlinks.length} hyperlinks extracted`
+      );
 
       // Process hyperlinks based on options
       if (options.appendContentId) {
         this.log.debug('=== APPENDING CONTENT IDS ===');
-        const modifiedCount = await this.processContentIdAppending(
-          hyperlinks,
-          options,
-          result
-        );
+        const modifiedCount = await this.processContentIdAppending(hyperlinks, options, result);
         result.appendedContentIds = modifiedCount;
         this.log.info(`Appended content IDs to ${modifiedCount} hyperlinks`);
       }
@@ -158,11 +162,7 @@ export class WordDocumentProcessor {
       // Custom replacements
       if (options.customReplacements && options.customReplacements.length > 0) {
         this.log.debug('=== APPLYING CUSTOM REPLACEMENTS ===');
-        await this.processCustomReplacements(
-          hyperlinks,
-          options.customReplacements,
-          result
-        );
+        await this.processCustomReplacements(hyperlinks, options.customReplacements, result);
       }
 
       // Memory checkpoint: Before save
@@ -191,7 +191,6 @@ export class WordDocumentProcessor {
       this.log.info(`Duration: ${result.duration.toFixed(0)}ms`);
 
       return result;
-
     } catch (error: any) {
       this.log.error('ERROR:', error.message);
 
@@ -238,7 +237,7 @@ export class WordDocumentProcessor {
     // Patterns for theSource URLs
     const theSourcePattern = /thesource\.caci\.com/i;
     const hasContentIdPattern = /#content$/i;
-    const docIdPattern = /docid=([A-Za-z0-9\-]+)/i;
+    const docIdPattern = /docid=([A-Za-z0-9-]+)/i;
     const contentIdPattern = /Content_ID=([TCMS]{1,2}[CRS]{1,2}C?-[A-Za-z0-9]+-\d{6})/i;
 
     for (const { hyperlink, url } of hyperlinks) {
@@ -295,7 +294,12 @@ export class WordDocumentProcessor {
       url?: string;
       text: string;
     }>,
-    replacements: Array<{ find: string; replace: string; matchType: 'contains' | 'exact' | 'startsWith'; applyTo: 'url' | 'text' | 'both' }>,
+    replacements: Array<{
+      find: string;
+      replace: string;
+      matchType: 'contains' | 'exact' | 'startsWith';
+      applyTo: 'url' | 'text' | 'both';
+    }>,
     result: WordProcessingResult
   ): Promise<void> {
     for (const { hyperlink, url, text } of hyperlinks) {
@@ -332,7 +336,11 @@ export class WordDocumentProcessor {
   /**
    * Pattern matching helper
    */
-  private matchesPattern(text: string, pattern: string, matchType: 'contains' | 'exact' | 'startsWith'): boolean {
+  private matchesPattern(
+    text: string,
+    pattern: string,
+    matchType: 'contains' | 'exact' | 'startsWith'
+  ): boolean {
     switch (matchType) {
       case 'exact':
         return text === pattern;

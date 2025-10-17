@@ -157,7 +157,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
               )}
             >
               <motion.div
-                className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm"
+                className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-xs"
                 animate={{ x: replaceHyperlinksEnabled ? 24 : 2 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 30 }}
               />
@@ -275,7 +275,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
               )}
             >
               <motion.div
-                className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm"
+                className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-xs"
                 animate={{ x: replaceTextEnabled ? 24 : 2 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 30 }}
               />

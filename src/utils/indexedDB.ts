@@ -3,6 +3,8 @@
  * Provides a simple interface for storing and retrieving session data
  */
 
+import logger from './logger';
+
 const DB_NAME = 'DocHubDB';
 const DB_VERSION = 1;
 const SESSIONS_STORE = 'sessions';
@@ -187,32 +189,32 @@ export async function migrateFromLocalStorage(): Promise<void> {
     const storedSessions = localStorage.getItem('sessions');
 
     if (!storedSessions) {
-      console.log('[IndexedDB] No sessions found in localStorage to migrate');
+      logger.debug('[IndexedDB] No sessions found in localStorage to migrate');
       return;
     }
 
     const sessions = JSON.parse(storedSessions);
 
     if (!Array.isArray(sessions) || sessions.length === 0) {
-      console.log('[IndexedDB] No valid sessions to migrate');
+      logger.debug('[IndexedDB] No valid sessions to migrate');
       return;
     }
 
-    console.log(`[IndexedDB] Migrating ${sessions.length} session(s) from localStorage...`);
+    logger.info(`[IndexedDB] Migrating ${sessions.length} session(s) from localStorage...`);
 
     // Save all sessions to IndexedDB
     for (const session of sessions) {
       await saveSession(session);
     }
 
-    console.log('[IndexedDB] Migration completed successfully');
+    logger.info('[IndexedDB] Migration completed successfully');
 
     // Optionally remove from localStorage after successful migration
     // Uncomment the following line if you want to remove old data
     // localStorage.removeItem('sessions');
 
   } catch (error) {
-    console.error('[IndexedDB] Migration failed:', error);
+    logger.error('[IndexedDB] Migration failed:', error);
     throw error;
   }
 }
@@ -256,10 +258,10 @@ export async function calculateDBSize(): Promise<number> {
     const sizeInBytes = new Blob([jsonString]).size;
     const sizeInMB = sizeInBytes / (1024 * 1024);
 
-    console.log(`[IndexedDB] Database size: ${sizeInMB.toFixed(2)}MB (${sessions.length} sessions)`);
+    logger.debug(`[IndexedDB] Database size: ${sizeInMB.toFixed(2)}MB (${sessions.length} sessions)`);
     return sizeInMB;
   } catch (error) {
-    console.error('[IndexedDB] Failed to calculate database size:', error);
+    logger.error('[IndexedDB] Failed to calculate database size:', error);
     return 0;
   }
 }
@@ -324,7 +326,7 @@ export async function deleteSessions(sessionIds: string[]): Promise<number> {
       }
 
       transaction.oncomplete = () => {
-        console.log(`[IndexedDB] Deleted ${deletedCount} session(s)`);
+        logger.info(`[IndexedDB] Deleted ${deletedCount} session(s)`);
         resolve(deletedCount);
       };
 
@@ -350,8 +352,8 @@ export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> 
       return; // Within limits
     }
 
-    console.log(`[IndexedDB] Database size (${currentSize.toFixed(2)}MB) exceeds limit (${maxSizeMB}MB)`);
-    console.log('[IndexedDB] Starting cleanup of oldest closed sessions...');
+    logger.warn(`[IndexedDB] Database size (${currentSize.toFixed(2)}MB) exceeds limit (${maxSizeMB}MB)`);
+    logger.info('[IndexedDB] Starting cleanup of oldest closed sessions...');
 
     // Delete oldest closed sessions in batches until under limit
     let iterationCount = 0;
@@ -361,7 +363,7 @@ export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> 
       const oldestSessions = await getOldestClosedSessions(10); // Delete 10 at a time
 
       if (oldestSessions.length === 0) {
-        console.log('[IndexedDB] No more closed sessions to delete');
+        logger.debug('[IndexedDB] No more closed sessions to delete');
         break;
       }
 
@@ -369,10 +371,10 @@ export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> 
       await deleteSessions(sessionIds);
 
       const newSize = await calculateDBSize();
-      console.log(`[IndexedDB] Size after cleanup: ${newSize.toFixed(2)}MB`);
+      logger.debug(`[IndexedDB] Size after cleanup: ${newSize.toFixed(2)}MB`);
 
       if (newSize <= maxSizeMB) {
-        console.log('[IndexedDB] Database size now under limit');
+        logger.info('[IndexedDB] Database size now under limit');
         break;
       }
 
@@ -380,11 +382,11 @@ export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> 
     }
 
     if (iterationCount >= maxIterations) {
-      console.warn('[IndexedDB] Max cleanup iterations reached, size may still exceed limit');
+      logger.warn('[IndexedDB] Max cleanup iterations reached, size may still exceed limit');
     }
 
   } catch (error) {
-    console.error('[IndexedDB] Failed to ensure database size limit:', error);
+    logger.error('[IndexedDB] Failed to ensure database size limit:', error);
   }
 }
 

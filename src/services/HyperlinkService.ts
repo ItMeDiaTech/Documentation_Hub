@@ -18,10 +18,12 @@ import {
 } from '@/types/hyperlink';
 import { Document } from '@/types/session';
 import { UserSettings } from '@/types/settings';
+import { logger } from '@/utils/logger';
 
 export class HyperlinkService {
   private static instance: HyperlinkService;
   private apiSettings: HyperlinkApiSettings | null = null;
+  private log = logger.namespace('HyperlinkService');
 
   private constructor() {}
 
@@ -55,7 +57,7 @@ export class HyperlinkService {
 
     // In a real implementation, this would parse the document
     // For now, we'll simulate extraction
-    console.log(`Extracting hyperlinks from document: ${document.name}`);
+    this.log.debug(`Extracting hyperlinks from document: ${document.name}`);
 
     // Simulate finding hyperlinks
     const mockHyperlinks: DetailedHyperlinkInfo[] = [
@@ -521,8 +523,8 @@ export class HyperlinkService {
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
           }
 
-          console.log('Sending API request to:', settings.apiUrl);
-          console.log('Request body:', JSON.stringify(request));
+          this.log.debug('Sending API request to:', settings.apiUrl);
+          this.log.debug('Request body:', JSON.stringify(request));
 
           const response = await fetch(settings.apiUrl, {
             method: 'POST',
@@ -537,12 +539,12 @@ export class HyperlinkService {
 
           if (!response.ok) {
             const errorText = await response.text().catch(() => 'No error details');
-            console.error('API Error Response:', errorText);
+            this.log.error('API Error Response:', errorText);
             throw new Error(`API returned status ${response.status} ${response.statusText}. Details: ${errorText}`);
           }
 
           const data = await response.json();
-          console.log('API Response:', data);
+          this.log.info('API Response:', data);
 
           // Parse response according to specification
           // Response format: { StatusCode, Headers, Body: { Results, Version, Changes } }
