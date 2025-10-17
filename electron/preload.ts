@@ -4,10 +4,21 @@ import type {
   HyperlinkProcessingResult,
   BatchProcessingOptions,
   BatchProcessingResult,
-  BatchProgress
+  BatchProgress,
 } from '../src/types/hyperlink';
+import type {
+  BackupCreateResponse,
+  BackupRestoreResponse,
+  BackupListResponse,
+  BackupDeleteResponse,
+  BackupCleanupResponse,
+  BackupVerifyResponse,
+  BackupStorageInfoResponse,
+  BackupSetConfigResponse,
+  BackupConfig,
+} from '../src/types/backup';
 
-contextBridge.exposeInMainWorld('electronAPI', {
+const electronAPI = {
   minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window-maximize'),
   closeWindow: () => ipcRenderer.invoke('window-close'),
@@ -25,10 +36,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   restoreFromBackup: (backupPath: string, targetPath: string) =>
     ipcRenderer.invoke('restore-from-backup', { backupPath, targetPath }),
 
-  // Drag-and-drop file path extraction (Electron v32+ compatible)
-  // webUtils.getPathForFile() must be called in preload context
   getPathsForFiles: (files: File[]) => {
-    return files.map(file => webUtils.getPathForFile(file));
+    return files.map((file) => webUtils.getPathForFile(file));
   },
 
   // Hyperlink processing
@@ -37,8 +46,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('hyperlink:process-document', { filePath, options }),
   batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) =>
     ipcRenderer.invoke('hyperlink:batch-process', { filePaths, options }),
-  validateApi: (apiUrl: string) =>
-    ipcRenderer.invoke('hyperlink:validate-api', { apiUrl }),
+  validateApi: (apiUrl: string) => ipcRenderer.invoke('hyperlink:validate-api', { apiUrl }),
   cancelOperation: (operationId: string) =>
     ipcRenderer.invoke('hyperlink:cancel-operation', { operationId }),
   onBatchProgress: (callback: (progress: BatchProgress) => void) => {
@@ -74,7 +82,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Export/Import
   exportSettings: () => ipcRenderer.invoke('export-settings'),
   importSettings: () => ipcRenderer.invoke('import-settings'),
-  saveExportData: (filePath: string, data: any) => ipcRenderer.invoke('save-export-data', { filePath, data }),
+  saveExportData: (filePath: string, data: any) =>
+    ipcRenderer.invoke('save-export-data', { filePath, data }),
+
+  // Backup operations
+  backup: {
+    create: (documentPath: string): Promise<BackupCreateResponse> =>
+      ipcRenderer.invoke('backup:create', documentPath),
+    restore: (backupPath: string, targetPath: string): Promise<BackupRestoreResponse> =>
+      ipcRenderer.invoke('backup:restore', { backupPath, targetPath }),
+    list: (documentPath: string): Promise<BackupListResponse> =>
+      ipcRenderer.invoke('backup:list', documentPath),
+    delete: (backupPath: string): Promise<BackupDeleteResponse> =>
+      ipcRenderer.invoke('backup:delete', backupPath),
+    cleanup: (documentPath: string): Promise<BackupCleanupResponse> =>
+      ipcRenderer.invoke('backup:cleanup', documentPath),
+    cleanupAll: (): Promise<BackupCleanupResponse> =>
+      ipcRenderer.invoke('backup:cleanup-all'),
+    verify: (backupPath: string): Promise<BackupVerifyResponse> =>
+      ipcRenderer.invoke('backup:verify', backupPath),
+    getStorageInfo: (): Promise<BackupStorageInfoResponse> =>
+      ipcRenderer.invoke('backup:storage-info'),
+    setConfig: (config: Partial<BackupConfig>): Promise<BackupSetConfigResponse> =>
+      ipcRenderer.invoke('backup:set-config', config),
+  },
 
   // Auto-updater
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
@@ -88,7 +119,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-checking', subscription);
     return () => ipcRenderer.removeListener('update-checking', subscription);
   },
-  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string; releaseNotes: string }) => void) => {
+  onUpdateAvailable: (
+    callback: (info: { version: string; releaseDate: string; releaseNotes: string }) => void
+  ) => {
     const subscription = (_event: IpcRendererEvent, info: any) => callback(info);
     ipcRenderer.on('update-available', subscription);
     return () => ipcRenderer.removeListener('update-available', subscription);
@@ -103,12 +136,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-error', subscription);
     return () => ipcRenderer.removeListener('update-error', subscription);
   },
-  onUpdateDownloadProgress: (callback: (progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => void) => {
+  onUpdateDownloadProgress: (
+    callback: (progress: {
+      bytesPerSecond: number;
+      percent: number;
+      transferred: number;
+      total: number;
+    }) => void
+  ) => {
     const subscription = (_event: IpcRendererEvent, progress: any) => callback(progress);
     ipcRenderer.on('update-download-progress', subscription);
     return () => ipcRenderer.removeListener('update-download-progress', subscription);
   },
-  onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => void) => {
+  onUpdateDownloaded: (
+    callback: (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => void
+  ) => {
     const subscription = (_event: IpcRendererEvent, info: any) => callback(info);
     ipcRenderer.on('update-downloaded', subscription);
     return () => ipcRenderer.removeListener('update-downloaded', subscription);
@@ -148,7 +190,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on(channel, subscription);
     return () => ipcRenderer.removeListener(channel, subscription);
   },
-  removeListener: (channel: string, callback: (event: IpcRendererEvent, ...args: any[]) => void) => {
+  removeListener: (
+    channel: string,
+    callback: (event: IpcRendererEvent, ...args: any[]) => void
+  ) => {
     ipcRenderer.removeListener(channel, callback);
   },
 
@@ -178,73 +223,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-manual-download', subscription);
     return () => ipcRenderer.removeListener('update-manual-download', subscription);
   },
-});
-
-export type ElectronAPI = {
-  minimizeWindow: () => Promise<void>;
-  maximizeWindow: () => Promise<void>;
-  closeWindow: () => Promise<void>;
-  isMaximized: () => Promise<boolean>;
-  isFullscreen: () => Promise<boolean>;
-  getAppVersion: () => Promise<string>;
-  getPlatform: () => Promise<NodeJS.Platform>;
-  openDevTools: () => Promise<void>;
-  selectDocuments: () => Promise<string[] | undefined>;
-  processDocument: (path: string) => Promise<unknown>;
-  showInFolder: (path: string) => Promise<void>;
-  getFileStats: (filePath: string) => Promise<{ size: number; created: Date; modified: Date; isFile: boolean; isDirectory: boolean }>;
-  restoreFromBackup: (backupPath: string, targetPath: string) => Promise<void>;
-  getPathsForFiles: (files: File[]) => string[];
-  selectFiles: () => Promise<string[]>;
-  processHyperlinkDocument: (filePath: string, options: HyperlinkProcessingOptions) => Promise<HyperlinkProcessingResult>;
-  batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) => Promise<BatchProcessingResult>;
-  validateApi: (apiUrl: string) => Promise<{ isValid: boolean; message: string; responseTime?: number }>;
-  cancelOperation: (operationId: string) => Promise<{ success: boolean; message?: string }>;
-  onBatchProgress: (callback: (progress: BatchProgress) => void) => () => void;
-  onWindowMaximized: (callback: () => void) => () => void;
-  onWindowUnmaximized: (callback: () => void) => () => void;
-  onWindowFullscreen: (callback: () => void) => () => void;
-  onWindowUnfullscreen: (callback: () => void) => () => void;
-  exportSettings: () => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
-  importSettings: () => Promise<{ success: boolean; data?: any; filePath?: string; canceled?: boolean; error?: string }>;
-  saveExportData: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
-  checkForUpdates: () => Promise<{ success: boolean; message?: string; updateInfo?: any }>;
-  downloadUpdate: () => Promise<{ success: boolean; message?: string }>;
-  installUpdate: () => void;
-  getCurrentVersion: () => Promise<string>;
-  onUpdateChecking: (callback: () => void) => () => void;
-  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string; releaseNotes: string }) => void) => () => void;
-  onUpdateNotAvailable: (callback: (info: { version: string }) => void) => () => void;
-  onUpdateError: (callback: (error: { message: string }) => void) => () => void;
-  onUpdateDownloadProgress: (callback: (progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => void) => () => void;
-  onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => void) => () => void;
-  onUpdateFallbackMode?: (callback: (data: { message: string }) => void) => () => void;
-  onUpdateExtracting?: (callback: (data: { message: string }) => void) => () => void;
-  onUpdateStatus?: (callback: (data: { message: string }) => void) => () => void;
-  openUpdateInBrowser: () => Promise<{ success: boolean; message?: string }>;
-  onDebugNetworkRequest?: (callback: (data: any) => void) => () => void;
-  onDebugCertError?: (callback: (data: any) => void) => () => void;
-  onDebugNetworkError?: (callback: (data: any) => void) => () => void;
-  onDebugTLSError?: (callback: (data: any) => void) => () => void;
-  onUpdateManualDownload?: (callback: (data: { message: string; downloadUrl: string }) => void) => () => void;
-  // Certificate Management
-  checkZscalerStatus: () => Promise<{ detected: boolean; certificatePath: string | null }>;
-  getCertificatePath: () => Promise<string | null>;
-  getInstalledCertificates: () => Promise<Array<{
-    path: string;
-    name: string;
-    isActive: boolean;
-    isZscaler?: boolean;
-  }>>;
-  importCertificate: () => Promise<{ success: boolean; error?: string; name?: string; path?: string }>;
-  autoDetectCertificates: () => Promise<{ success: boolean; error?: string; count?: number | string; path?: string }>;
-  removeCertificate: (certPath: string) => Promise<{ success: boolean; error?: string }>;
-  testGitHubConnection: () => Promise<{ success: boolean; error?: string }>;
-  openExternal: (url: string) => Promise<void>;
-  // Event system helpers
-  on: (channel: string, callback: (...args: any[]) => void) => () => void;
-  removeListener: (channel: string, callback: (event: IpcRendererEvent, ...args: any[]) => void) => void;
 };
+
+// Expose to window using contextBridge (required for contextIsolation: true)
+// This is the correct, secure way to expose APIs to the renderer process
+contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+
+export type ElectronAPI = typeof electronAPI;
 
 declare global {
   interface Window {
