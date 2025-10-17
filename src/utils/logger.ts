@@ -37,35 +37,45 @@
  */
 
 import electronLog from 'electron-log';
-import * as path from 'path';
 
 // Detect environment
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const isTest = process.env.NODE_ENV === 'test';
 const isRenderer = typeof window !== 'undefined' && window.process?.type === 'renderer';
 
-// Configure electron-log
-electronLog.transports.file.level = 'info';
-electronLog.transports.console.level = isDevelopment ? 'debug' : 'warn';
+// Detect if electron-log is properly initialized
+const isElectronLogAvailable = !!(electronLog.transports?.file || electronLog.transports?.console);
 
-// File logging configuration
-electronLog.transports.file.maxSize = 5 * 1024 * 1024; // 5MB per file
-electronLog.transports.file.maxFiles = 5; // Keep 5 files (25MB total)
-electronLog.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
+// Only configure electron-log if transports are available (main process)
+if (isElectronLogAvailable) {
+  if (electronLog.transports?.file) {
+    electronLog.transports.file.level = 'info';
+    electronLog.transports.file.maxSize = 5 * 1024 * 1024; // 5MB per file
+    electronLog.transports.file.archiveLogFn = (file: any) => {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      return file.toString().replace(/\.log$/, `-${timestamp}.log`);
+    };
+    electronLog.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
+  }
 
-// Console configuration (development only)
-if (isDevelopment) {
-  electronLog.transports.console.format = '[{h}:{i}:{s}.{ms}] [{level}] {text}';
-  electronLog.transports.console.useStyles = true;
-} else {
-  // Production: minimal console output
-  electronLog.transports.console.format = '[{level}] {text}';
-}
+  if (electronLog.transports?.console) {
+    electronLog.transports.console.level = isDevelopment ? 'debug' : 'warn';
 
-// Disable logging in tests
-if (isTest) {
-  electronLog.transports.file.level = false;
-  electronLog.transports.console.level = false;
+    // Console configuration (development only)
+    if (isDevelopment) {
+      electronLog.transports.console.format = '[{h}:{i}:{s}.{ms}] [{level}] {text}';
+      electronLog.transports.console.useStyles = true;
+    } else {
+      // Production: minimal console output
+      electronLog.transports.console.format = '[{level}] {text}';
+    }
+  }
+
+  // Disable logging in tests
+  if (isTest && electronLog.transports?.file && electronLog.transports?.console) {
+    electronLog.transports.file.level = false;
+    electronLog.transports.console.level = false;
+  }
 }
 
 /**
@@ -84,7 +94,7 @@ function getTimestamp(): string {
  * Create a scoped logger for a specific module
  */
 function createScopedLogger(scope: string) {
-  const scopedLog = electronLog.scope(scope);
+  const scopedLog = isElectronLogAvailable ? electronLog.scope(scope) : null;
 
   return {
     /**
@@ -93,7 +103,11 @@ function createScopedLogger(scope: string) {
      */
     debug(message: string, ...args: any[]): void {
       if (isDevelopment && !isTest) {
-        scopedLog.debug(message, ...args);
+        if (scopedLog) {
+          scopedLog.debug(message, ...args);
+        } else {
+          console.debug(`[${scope}] [DEBUG] ${message}`, ...args);
+        }
       }
     },
 
@@ -103,7 +117,11 @@ function createScopedLogger(scope: string) {
      */
     info(message: string, ...args: any[]): void {
       if (!isTest) {
-        scopedLog.info(message, ...args);
+        if (scopedLog) {
+          scopedLog.info(message, ...args);
+        } else {
+          console.info(`[${scope}] [INFO] ${message}`, ...args);
+        }
       }
     },
 
@@ -113,7 +131,11 @@ function createScopedLogger(scope: string) {
      */
     warn(message: string, ...args: any[]): void {
       if (!isTest) {
-        scopedLog.warn(message, ...args);
+        if (scopedLog) {
+          scopedLog.warn(message, ...args);
+        } else {
+          console.warn(`[${scope}] [WARN] ${message}`, ...args);
+        }
       }
     },
 
@@ -122,7 +144,11 @@ function createScopedLogger(scope: string) {
      * Always enabled
      */
     error(message: string, ...args: any[]): void {
-      scopedLog.error(message, ...args);
+      if (scopedLog) {
+        scopedLog.error(message, ...args);
+      } else {
+        console.error(`[${scope}] [ERROR] ${message}`, ...args);
+      }
     },
 
     /**
@@ -131,7 +157,11 @@ function createScopedLogger(scope: string) {
      */
     verbose(message: string, ...args: any[]): void {
       if (isDevelopment && !isTest) {
-        scopedLog.verbose(message, ...args);
+        if (scopedLog) {
+          scopedLog.verbose(message, ...args);
+        } else {
+          console.log(`[${scope}] [VERBOSE] ${message}`, ...args);
+        }
       }
     },
 
@@ -141,7 +171,11 @@ function createScopedLogger(scope: string) {
      */
     silly(message: string, ...args: any[]): void {
       if (isDevelopment && !isTest) {
-        scopedLog.silly(message, ...args);
+        if (scopedLog) {
+          scopedLog.silly(message, ...args);
+        } else {
+          console.log(`[${scope}] [SILLY] ${message}`, ...args);
+        }
       }
     },
   };
@@ -156,7 +190,11 @@ export const logger = {
    */
   debug(message: string, ...args: any[]): void {
     if (isDevelopment && !isTest) {
-      electronLog.debug(message, ...args);
+      if (isElectronLogAvailable) {
+        electronLog.debug(message, ...args);
+      } else {
+        console.debug(`[DEBUG] ${message}`, ...args);
+      }
     }
   },
 
@@ -165,7 +203,11 @@ export const logger = {
    */
   info(message: string, ...args: any[]): void {
     if (!isTest) {
-      electronLog.info(message, ...args);
+      if (isElectronLogAvailable) {
+        electronLog.info(message, ...args);
+      } else {
+        console.info(`[INFO] ${message}`, ...args);
+      }
     }
   },
 
@@ -174,7 +216,11 @@ export const logger = {
    */
   warn(message: string, ...args: any[]): void {
     if (!isTest) {
-      electronLog.warn(message, ...args);
+      if (isElectronLogAvailable) {
+        electronLog.warn(message, ...args);
+      } else {
+        console.warn(`[WARN] ${message}`, ...args);
+      }
     }
   },
 
@@ -182,7 +228,11 @@ export const logger = {
    * Error level logging - always enabled
    */
   error(message: string, ...args: any[]): void {
-    electronLog.error(message, ...args);
+    if (isElectronLogAvailable) {
+      electronLog.error(message, ...args);
+    } else {
+      console.error(`[ERROR] ${message}`, ...args);
+    }
   },
 
   /**
@@ -190,7 +240,11 @@ export const logger = {
    */
   verbose(message: string, ...args: any[]): void {
     if (isDevelopment && !isTest) {
-      electronLog.verbose(message, ...args);
+      if (isElectronLogAvailable) {
+        electronLog.verbose(message, ...args);
+      } else {
+        console.log(`[VERBOSE] ${message}`, ...args);
+      }
     }
   },
 
@@ -216,7 +270,10 @@ export const logger = {
    * Get the path to the log file
    */
   getLogPath(): string {
-    return electronLog.transports.file.getFile().path;
+    if (electronLog.transports?.file) {
+      return electronLog.transports.file.getFile().path;
+    }
+    return 'Logs not available in renderer';
   },
 
   /**
@@ -225,23 +282,37 @@ export const logger = {
    * @param level - Log level (error, warn, info, debug, verbose, silly, false)
    */
   setLevel(level: 'error' | 'warn' | 'info' | 'debug' | 'verbose' | 'silly' | false): void {
-    electronLog.transports.file.level = level;
-    electronLog.transports.console.level = level;
+    if (electronLog.transports?.file) {
+      electronLog.transports.file.level = level;
+    }
+    if (electronLog.transports?.console) {
+      electronLog.transports.console.level = level;
+    }
   },
 
   /**
    * Enable or disable file logging
    */
   setFileLogging(enabled: boolean): void {
-    electronLog.transports.file.level = enabled ? 'info' : false;
+    if (electronLog.transports?.file) {
+      electronLog.transports.file.level = enabled ? 'info' : false;
+    }
   },
 
   /**
    * Clear all log files
+   * Note: This function uses dynamic imports to avoid bundling Node.js modules in renderer
    */
   async clearLogs(): Promise<void> {
     try {
+      if (!electronLog.transports?.file?.getFile) {
+        throw new Error('File logging not available');
+      }
+
+      // Dynamic imports to avoid Vite bundling Node.js built-ins
       const fs = await import('fs/promises');
+      const path = await import('path');
+
       const logPath = electronLog.transports.file.getFile().path;
       const logDir = path.dirname(logPath);
 
@@ -311,7 +382,13 @@ export function initializeLogging(): void {
   log.info('═══════════════════════════════════════════════════════════');
   log.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   log.info(`Process: ${isRenderer ? 'Renderer' : 'Main'}`);
-  log.info(`Log file: ${electronLog.transports.file.getFile().path}`);
-  log.info(`Log level: File=${electronLog.transports.file.level}, Console=${electronLog.transports.console.level}`);
+
+  if (electronLog.transports?.file) {
+    log.info(`Log file: ${electronLog.transports.file.getFile().path}`);
+    log.info(
+      `Log level: File=${electronLog.transports.file.level}, Console=${electronLog.transports.console?.level || 'N/A'}`
+    );
+  }
+
   log.info('═══════════════════════════════════════════════════════════');
 }

@@ -11,6 +11,12 @@ export function TitleBar() {
   const resetTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
+    // Safely check if electronAPI is available (may not be in browser-only mode)
+    if (typeof window.electronAPI === 'undefined') {
+      console.warn('TitleBar: electronAPI not available (running in browser mode?)');
+      return;
+    }
+
     window.electronAPI.getPlatform().then(setPlatform);
     window.electronAPI.isMaximized().then(setIsMaximized);
 
@@ -23,9 +29,9 @@ export function TitleBar() {
     };
   }, []);
 
-  const handleMinimize = () => window.electronAPI.minimizeWindow();
-  const handleMaximize = () => window.electronAPI.maximizeWindow();
-  const handleClose = () => window.electronAPI.closeWindow();
+  const handleMinimize = () => window.electronAPI?.minimizeWindow();
+  const handleMaximize = () => window.electronAPI?.maximizeWindow();
+  const handleClose = () => window.electronAPI?.closeWindow();
 
   const handleLogoClick = () => {
     // Clear existing timeout
@@ -40,7 +46,7 @@ export function TitleBar() {
     // Check if we've reached 5 clicks
     if (newCount === 5) {
       // Open dev tools
-      window.electronAPI.openDevTools();
+      window.electronAPI?.openDevTools();
 
       // Show toast notification
       setShowDebugToast(true);

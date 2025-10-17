@@ -7,7 +7,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   optimizeDeps: {
-    include: ['lucide-react']
+    include: ['lucide-react'],
   },
   plugins: [
     tailwindcss(),
@@ -83,7 +83,7 @@ export default defineConfig({
     emptyOutDir: true,
     chunkSizeWarningLimit: 600, // Increase from 500kb to 600kb
     commonjsOptions: {
-      include: [/lucide-react/, /node_modules/]
+      include: [/lucide-react/, /node_modules/],
     },
     // Use esbuild minification (faster and already included)
     minify: 'esbuild',

@@ -1,6 +1,31 @@
 /**
- * DocumentProcessor - Main document processing engine
- * Implements async/await patterns with robust error handling
+ * @deprecated This processor is legacy code and will be removed in a future version.
+ *
+ * **Migration Path:**
+ * Use `WordDocumentProcessor` with `DocXMLaterProcessor` instead.
+ *
+ * **Why deprecated:**
+ * - Uses manual fast-xml-parser manipulation (error-prone)
+ * - Duplicates functionality now available in DocXMLater
+ * - Requires complex relationship management
+ * - Not type-safe throughout
+ * - Style operations throw errors (moved to DocXMLater)
+ *
+ * **Example migration:**
+ * ```typescript
+ * // ❌ OLD (deprecated):
+ * import { DocumentProcessor } from './document/DocumentProcessor';
+ * const processor = new DocumentProcessor();
+ * await processor.processDocument(path, operations, options);
+ *
+ * // ✅ NEW (recommended):
+ * import { WordDocumentProcessor } from './document/WordDocumentProcessor';
+ * const processor = new WordDocumentProcessor();
+ * await processor.processDocument(path, options);
+ * ```
+ *
+ * @see WordDocumentProcessor for the modern implementation
+ * @see DocXMLaterProcessor for the core document engine
  */
 
 import JSZip from 'jszip';
@@ -21,17 +46,16 @@ import type {
   OperationStatus,
   OperationResult
 } from '@/types/operations';
-import { BackupService } from './BackupService';
 import { ValidationEngine } from './ValidationEngine';
 import { HyperlinkManager } from './HyperlinkManager';
 // Note: StylesXmlProcessor and DocumentXmlProcessor removed - migrated to DocXMLater
+// Note: BackupService moved to main process - use window.electronAPI.backup for backup operations
 
 /**
  * Main document processor class
  * Orchestrates all document processing operations
  */
 export class DocumentProcessor {
-  private backupService: BackupService;
   private validationEngine: ValidationEngine;
   private hyperlinkManager: HyperlinkManager;
   // Note: stylesProcessor and documentProcessor removed - use DocXMLater
@@ -40,7 +64,13 @@ export class DocumentProcessor {
   private xmlBuilder: XMLBuilder;
 
   constructor() {
-    this.backupService = new BackupService();
+    // Deprecation warning
+    console.warn(
+      '[DEPRECATED] DocumentProcessor is deprecated and will be removed in a future version. ' +
+      'Use WordDocumentProcessor with DocXMLater instead. ' +
+      'See JSDoc for migration guide.'
+    );
+
     this.validationEngine = new ValidationEngine();
     this.hyperlinkManager = new HyperlinkManager();
     // Note: Processors removed - use WordDocumentProcessor with DocXMLater instead
@@ -65,6 +95,7 @@ export class DocumentProcessor {
 
   /**
    * Process a document with the specified operations
+   * @deprecated Use WordDocumentProcessor.processDocument() instead
    */
   async processDocument(
     documentPath: string,
@@ -79,7 +110,11 @@ export class DocumentProcessor {
     try {
       // Create backup if requested
       if (options.createBackup) {
-        backupPath = await this.backupService.createBackup(documentPath);
+        // Note: Backup operations now via IPC in main process
+        const response = await window.electronAPI.backup.create(documentPath);
+        if (response.success && response.backupPath) {
+          backupPath = response.backupPath;
+        }
       }
 
       // Load document
@@ -168,7 +203,8 @@ export class DocumentProcessor {
       // Handle errors with rollback if necessary
       if (backupPath && options.createBackup) {
         try {
-          await this.backupService.restoreBackup(backupPath, documentPath);
+          // Note: Backup operations now via IPC in main process
+          await window.electronAPI.backup.restore(backupPath, documentPath);
         } catch (rollbackError) {
           errors.push({
             code: 'ROLLBACK_FAILED',
@@ -502,6 +538,7 @@ export class DocumentProcessor {
 
   /**
    * Process multiple documents in batch
+   * @deprecated Use WordDocumentProcessor.batchProcess() instead
    */
   async processBatch(
     documentPaths: string[],
