@@ -19,6 +19,8 @@ import {
   Save,
   Download,
   RefreshCw,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUserSettings } from '@/contexts/UserSettingsContext';
@@ -26,6 +28,7 @@ import { useSession } from '@/contexts/SessionContext';
 import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 import { cn } from '@/utils/cn';
 import { getContrastTextColor } from '@/utils/colorConvert';
+import { sanitizeUrl, validatePowerAutomateUrl, hasEncodingIssues } from '@/utils/urlHelpers';
 import logger from '@/utils/logger';
 
 const settingsSections = [
@@ -90,6 +93,10 @@ export function Settings() {
   useEffect(() => {
     const getVersion = async () => {
       try {
+        if (!window.electronAPI?.getCurrentVersion) {
+          console.warn('Settings: electronAPI.getCurrentVersion not available');
+          return;
+        }
         const version = await window.electronAPI.getCurrentVersion();
         setCurrentVersion(version);
       } catch (error) {
@@ -101,6 +108,12 @@ export function Settings() {
 
   // Update event listeners
   useEffect(() => {
+    // Safely check if electronAPI is available
+    if (typeof window.electronAPI === 'undefined') {
+      console.warn('Settings: electronAPI not available (running in browser mode?)');
+      return;
+    }
+
     const unsubAvailable = window.electronAPI.onUpdateAvailable((info) => {
       setUpdateAvailable(true);
       setUpdateVersion(info.version);
@@ -150,7 +163,36 @@ export function Settings() {
     setUpdateSettingsForm(settings.updateSettings);
   }, [settings]);
 
+  const handlePowerAutomateUrlChange = (url: string) => {
+    // Update form
+    setApiConnectionsForm({ ...apiConnectionsForm, powerAutomateUrl: url });
+
+    // Auto-sanitize if encoding issues detected
+    if (hasEncodingIssues(url)) {
+      const sanitized = sanitizeUrl(url);
+      setShowUrlWarning(true);
+      setTimeout(() => {
+        setApiConnectionsForm({ ...apiConnectionsForm, powerAutomateUrl: sanitized });
+        setShowUrlWarning(false);
+      }, 1500);
+    }
+
+    // Validate URL
+    if (url.trim()) {
+      const validation = validatePowerAutomateUrl(url);
+      setUrlValidation(validation);
+    } else {
+      setUrlValidation(null);
+    }
+  };
+
   const handleSaveSettings = async () => {
+    // Sanitize PowerAutomate URL before saving
+    if (apiConnectionsForm.powerAutomateUrl) {
+      const sanitized = sanitizeUrl(apiConnectionsForm.powerAutomateUrl);
+      apiConnectionsForm.powerAutomateUrl = sanitized;
+    }
+
     // Update all settings
     updateProfile(profileForm);
     updateNotifications(notificationsForm);
@@ -178,7 +220,7 @@ export function Settings() {
     setDownloadProgress(0);
 
     try {
-      await window.electronAPI.checkForUpdates();
+      await window.electronAPI?.checkForUpdates();
       // Status will be updated by event listeners
     } catch (error) {
       setUpdateStatus('Error checking for updates');
@@ -189,7 +231,7 @@ export function Settings() {
   const handleDownloadUpdate = async () => {
     setUpdateStatus('Starting download...');
     try {
-      await window.electronAPI.downloadUpdate();
+      await window.electronAPI?.downloadUpdate();
       // Progress will be updated by event listeners
     } catch (error) {
       setUpdateStatus('Download failed');
@@ -198,11 +240,16 @@ export function Settings() {
 
   const handleInstallUpdate = () => {
     // This will quit the app and install the update
-    window.electronAPI.installUpdate();
+    window.electronAPI?.installUpdate();
   };
 
   const handleExport = async () => {
     try {
+      if (!window.electronAPI?.exportSettings) {
+        console.warn('Settings: electronAPI.exportSettings not available');
+        return;
+      }
+
       // Show save dialog
       const result = await window.electronAPI.exportSettings();
 
@@ -243,6 +290,11 @@ export function Settings() {
 
   const handleImport = async () => {
     try {
+      if (!window.electronAPI?.importSettings) {
+        console.warn('Settings: electronAPI.importSettings not available');
+        return;
+      }
+
       // Show open dialog and read data
       const result = await window.electronAPI.importSettings();
 
@@ -315,6 +367,14 @@ export function Settings() {
 
   const [activeColorPicker, setActiveColorPicker] = useState<string | null>(null);
   const [tempColor, setTempColor] = useState('#000000');
+
+  // URL validation states
+  const [urlValidation, setUrlValidation] = useState<{
+    valid: boolean;
+    issues: string[];
+    warnings: string[];
+  } | null>(null);
+  const [showUrlWarning, setShowUrlWarning] = useState(false);
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -1346,14 +1406,84 @@ export function Settings() {
                       <label htmlFor="powerautomate-url" className="block text-sm font-medium mb-2">
                         PowerAutomate Dictionary URL
                       </label>
-                      <input
-                        id="powerautomate-url"
-                        type="url"
-                        value={apiConnectionsForm.powerAutomateUrl}
-                        onChange={(e) => setApiConnectionsForm({ ...apiConnectionsForm, powerAutomateUrl: e.target.value })}
-                        placeholder="https://www.example.com"
-                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
-                      />
+                      <div className="relative">
+                        <input
+                          id="powerautomate-url"
+                          type="url"
+                          value={apiConnectionsForm.powerAutomateUrl}
+                          onChange={(e) => handlePowerAutomateUrlChange(e.target.value)}
+                          onPaste={(e) => {
+                            // Auto-sanitize on paste
+                            setTimeout(() => {
+                              const pasted = e.currentTarget.value;
+                              if (hasEncodingIssues(pasted)) {
+                                handlePowerAutomateUrlChange(pasted);
+                              }
+                            }, 10);
+                          }}
+                          placeholder="https://prod-11.westus.logic.azure.com/workflows/..."
+                          className={cn(
+                            "w-full px-3 py-2 pr-10 rounded-md border bg-background focus:outline-none focus:ring-1",
+                            urlValidation?.valid === false
+                              ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
+                              : urlValidation?.warnings.length
+                              ? "border-yellow-500 focus:border-yellow-500 focus:ring-yellow-500/20"
+                              : "border-input focus:border-primary focus:ring-primary/20"
+                          )}
+                        />
+                        {urlValidation && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            {urlValidation.valid ? (
+                              <CheckCircle2 className="w-5 h-5 text-green-500" />
+                            ) : (
+                              <AlertCircle className="w-5 h-5 text-red-500" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Validation messages */}
+                      {urlValidation && !urlValidation.valid && urlValidation.issues.length > 0 && (
+                        <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 space-y-1">
+                              {urlValidation.issues.map((issue, idx) => (
+                                <p key={idx} className="text-xs text-red-700 dark:text-red-300">
+                                  {issue}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {urlValidation && urlValidation.warnings.length > 0 && (
+                        <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 space-y-1">
+                              {urlValidation.warnings.map((warning, idx) => (
+                                <p key={idx} className="text-xs text-yellow-700 dark:text-yellow-300">
+                                  {warning}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {showUrlWarning && (
+                        <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                          <div className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                            <p className="text-xs text-blue-700 dark:text-blue-300">
+                              URL automatically sanitized! Encoded characters have been fixed.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       <p className="text-xs text-muted-foreground mt-2">
                         This URL is used by the Hyperlink Service to retrieve document metadata and validate links.
                         The service will send collected document IDs to this endpoint and receive enriched data in response.

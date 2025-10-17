@@ -96,12 +96,18 @@ export function CurrentSession() {
   }
 
   const handleFileSelect = async () => {
+    // Safely check if electronAPI is available
+    if (!window.electronAPI?.selectFiles) {
+      console.warn('CurrentSession: electronAPI.selectFiles not available');
+      return;
+    }
+
     // Use Electron's native file dialog
     const filePaths = await window.electronAPI.selectFiles();
     if (filePaths && filePaths.length > 0) {
       // Convert file paths to File-like objects with path property and actual size
       const files = await Promise.all(
-        filePaths.map(async (filePath) => {
+        filePaths.map(async (filePath: string) => {
           const name = filePath.split(/[\\\/]/).pop() || 'document.docx';
 
           // Get actual file size from filesystem
@@ -142,6 +148,12 @@ export function CurrentSession() {
     const files = Array.from(e.dataTransfer.files).filter((file) => file.name.endsWith('.docx'));
 
     if (files.length > 0) {
+      // Safely check if electronAPI is available
+      if (!window.electronAPI?.getPathsForFiles) {
+        console.warn('CurrentSession: electronAPI.getPathsForFiles not available');
+        return;
+      }
+
       // Use webUtils.getPathForFile() via preload (Electron v32+ compatible)
       // This is the only way to get file paths from drag-dropped files in modern Electron
       const validFiles: (File & { path: string })[] = [];

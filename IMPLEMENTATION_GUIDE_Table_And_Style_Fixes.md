@@ -1,11 +1,14 @@
 # Implementation Guide: Complete Table Uniformity & Normal Style Fix
 
 ## Overview
+
 This guide provides detailed implementation steps to complete:
+
 1. **Phase 2**: Table uniformity with all 10+ features
 2. **Phase 3**: Fix Normal style to detect and assign heading styles first
 
 ## Phase 1: ✅ ALREADY COMPLETE
+
 List formatting is fully implemented with bullet definitions, indentation, and numbering.
 
 ---
@@ -13,11 +16,14 @@ List formatting is fully implemented with bullet definitions, indentation, and n
 ## Phase 2: Complete Table Uniformity (8 Missing Features)
 
 ### Current State
+
 `WordDocumentProcessor.ts` line 3425-3526 - `processTableShading()` method currently only implements:
+
 - ✅ Header row shading
 - ✅ Alternating row colors
 
 ### What's Missing
+
 1. Border styling
 2. Cell padding
 3. 1x1 table with Header 2 detection and special formatting
@@ -584,9 +590,11 @@ private async processTableShading(
 ## Phase 3: Fix Normal Style Override Bug
 
 ### Problem
+
 The `assignNormalStyles()` method applies Normal style to all paragraphs without a style ID. It doesn't **detect and assign** Heading1/Heading2 style IDs to heading paragraphs first, so unstyled headings get incorrectly marked as Normal.
 
 ### Solution
+
 Add heading detection logic BEFORE applying Normal style.
 
 ### Implementation
@@ -650,8 +658,8 @@ if (!currentStyle) {
       const pStyleElement = {
         'w:pStyle': [],
         ':@': {
-          '@_w:val': detectedHeadingStyle
-        }
+          '@_w:val': detectedHeadingStyle,
+        },
       };
 
       const pStyleIdx = pPrArray.findIndex((el: any) => el['w:pStyle'] !== undefined);
@@ -671,13 +679,15 @@ if (!currentStyle) {
       type: 'style',
       description: `Detected and assigned ${detectedHeadingStyle} style`,
       before: 'No style',
-      after: detectedHeadingStyle
+      after: detectedHeadingStyle,
     });
   }
 }
 
 // NOW check if Normal style is needed
-const isHeading = currentStyle && (currentStyle.toLowerCase().includes('heading') || currentStyle.toLowerCase().includes('header'));
+const isHeading =
+  currentStyle &&
+  (currentStyle.toLowerCase().includes('heading') || currentStyle.toLowerCase().includes('header'));
 const needsNormalStyle = !isHeading && (!currentStyle || currentStyle !== 'Normal');
 
 // ... rest of existing Normal application logic
@@ -719,8 +729,11 @@ for (const run of runs) {
 }
 
 // Don't apply Normal to paragraphs that look like headings
-const isHeading = currentStyle && (currentStyle.toLowerCase().includes('heading') || currentStyle.toLowerCase().includes('header'));
-const needsNormalStyle = !isHeading && !looksLikeHeading && (!currentStyle || currentStyle !== 'Normal');
+const isHeading =
+  currentStyle &&
+  (currentStyle.toLowerCase().includes('heading') || currentStyle.toLowerCase().includes('header'));
+const needsNormalStyle =
+  !isHeading && !looksLikeHeading && (!currentStyle || currentStyle !== 'Normal');
 ```
 
 ---
@@ -730,7 +743,9 @@ const needsNormalStyle = !isHeading && !looksLikeHeading && (!currentStyle || cu
 After implementing both phases:
 
 ### Test Document Requirements
+
 Create a test document with:
+
 - ✅ Bullet lists (3-5 levels)
 - ✅ Numbered lists
 - ✅ Tables with multiple rows (test header row shading)
@@ -743,6 +758,7 @@ Create a test document with:
 - ✅ Unstyled paragraphs with normal text (should become Normal)
 
 ### Expected Console Output
+
 ```
 === LIST FORMATTING ===
 Creating new bullet list definition: abstractNumId=X, numId=Y
@@ -767,7 +783,9 @@ Phase 2: Assigning style IDs and clearing direct formatting...
 ```
 
 ### Document Verification
+
 Open the processed document and verify:
+
 1. Bullet lists have correct characters and indentation
 2. Tables have borders, shading, and proper formatting
 3. 1x1 table with Header 2 has special shading/alignment
@@ -788,6 +806,7 @@ Open the processed document and verify:
 ---
 
 ## File Locations
+
 - **Main file**: `src/services/document/WordDocumentProcessor.ts`
 - **Helper methods**: Add after line 3560 (after `applyTableCellShading`)
 - **Method to replace**: Lines 3425-3526 (`processTableShading`)
