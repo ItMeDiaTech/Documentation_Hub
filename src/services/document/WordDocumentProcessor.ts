@@ -18,6 +18,7 @@ import {
 import { DocXMLaterProcessor } from './DocXMLaterProcessor';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
 import { logger } from '@/utils/logger';
+import { hyperlinkService } from '../HyperlinkService';
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -151,8 +152,194 @@ export class WordDocumentProcessor {
         `${hyperlinks.length} hyperlinks extracted`
       );
 
-      // Process hyperlinks based on options
-      if (options.appendContentId) {
+      // ═══════════════════════════════════════════════════════════
+      // PowerAutomate API Integration
+      // Process hyperlinks with PowerAutomate API if operations enabled
+      // ═══════════════════════════════════════════════════════════
+      if (hyperlinks.length > 0 && (options.operations?.fixContentIds || options.operations?.updateTitles)) {
+        const apiEndpoint = options.apiEndpoint;
+
+        if (apiEndpoint) {
+          this.log.debug('=== PROCESSING WITH POWERAUTOMATE API ===');
+          this.log.debug(`API Endpoint: ${apiEndpoint}`);
+          this.log.debug(`Operations: fixContentIds=${options.operations?.fixContentIds}, updateTitles=${options.operations?.updateTitles}`);
+
+          const apiSettings = {
+            apiUrl: apiEndpoint,
+            timeout: 30000,
+            retryAttempts: 3,
+            retryDelay: 1000,
+          };
+
+          try {
+            // Convert DocXMLater hyperlinks to DetailedHyperlinkInfo format for API
+            this.log.debug(`Calling hyperlink service with ${hyperlinks.length} hyperlinks`);
+
+            const hyperlinkInfos: DetailedHyperlinkInfo[] = hyperlinks.map((h, index) => ({
+              id: `hyperlink-${index}`,
+              relationshipId: `rId${index}`,
+              element: h.hyperlink as any,
+              containingPart: 'document.xml',
+              url: h.url || '',
+              displayText: h.text,
+              type: 'external' as HyperlinkType,
+              isInternal: false,
+              isValid: true,
+            }));
+
+            const apiResponse = await hyperlinkService.processHyperlinksWithApi(
+              hyperlinkInfos,
+              apiSettings
+            );
+
+            this.log.info(`API Response success: ${apiResponse.success}`);
+
+            // Check if API call succeeded - if not and operations require it, throw error
+            if (!apiResponse.success) {
+              const errorMsg = apiResponse.error || 'API request failed';
+              this.log.error('API Error:', errorMsg);
+
+              // If fixContentIds or updateTitles are required, we must fail
+              // Don't save a document with incorrect/unchanged hyperlinks
+              if (options.operations?.fixContentIds || options.operations?.updateTitles) {
+                throw new Error(`PowerAutomate API failed: ${errorMsg}. Document not saved to prevent incorrect hyperlink data.`);
+              }
+
+              // Otherwise just log and continue
+              result.errorMessages.push(errorMsg);
+              result.errorCount++;
+            } else if (apiResponse.success && apiResponse.body?.results) {
+              this.log.debug(`Processing ${apiResponse.body.results.length} API results`);
+
+              const apiResults = apiResponse.body.results;
+
+              // Phase 3: Collect URL updates for batch application
+              const urlUpdateMap = new Map<string, string>();
+
+              // Apply fixes based on API response
+              for (let i = 0; i < hyperlinks.length; i++) {
+                const hyperlink = hyperlinks[i];
+                const hyperlinkInfo = hyperlinkInfos[i];
+
+                // Find matching API result for this hyperlink
+                const apiResult = this.findMatchingApiResult(hyperlinkInfo.url, apiResults);
+
+                // Track changes
+                let finalDisplayText = hyperlinkInfo.displayText;
+                let finalUrl = hyperlinkInfo.url;
+                const modifications: string[] = [];
+
+                if (apiResult) {
+                  // Phase 3: URL Reconstruction
+                  // Collect URL updates for batch application after iteration
+                  if (apiResult.documentId && options.operations?.fixContentIds) {
+                    const newUrl = `https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=${apiResult.documentId.trim()}`;
+
+                    if (newUrl !== hyperlinkInfo.url) {
+                      // Add to URL update map for batch processing
+                      urlUpdateMap.set(hyperlinkInfo.url, newUrl);
+                      finalUrl = newUrl;
+                      modifications.push('URL updated');
+
+                      this.log.debug(`Queued URL update: ${hyperlinkInfo.url} → ${newUrl}`);
+                    }
+                  }
+
+                  // Phase 4: Display Text Rules
+                  // Update display text using docxmlater API if updateTitles enabled
+                  if (options.operations?.updateTitles) {
+                    let newText = apiResult.title?.trim() || hyperlinkInfo.displayText;
+
+                    // Append Content_ID (last 6 digits) if present
+                    if (apiResult.contentId) {
+                      const last6 = apiResult.contentId.slice(-6);
+                      newText = `${newText} (${last6})`;
+                    }
+
+                    // Add status indicator for deprecated/expired documents
+                    if (apiResult.status === 'Expired' || apiResult.status === 'deprecated') {
+                      newText += ' - Expired';
+                    }
+
+                    if (newText !== hyperlinkInfo.displayText) {
+                      hyperlink.hyperlink.setText(newText);
+                      finalDisplayText = newText;
+                      result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
+                      modifications.push('Display text updated');
+
+                      this.log.debug(`Updated text: "${hyperlinkInfo.displayText}" → "${newText}"`);
+                    }
+                  }
+
+                  modifications.push('API processed');
+
+                  // Track in processedLinks for UI display
+                  result.processedLinks.push({
+                    id: hyperlinkInfo.id,
+                    url: hyperlinkInfo.url,
+                    displayText: finalDisplayText,
+                    type: hyperlinkInfo.type,
+                    location: hyperlinkInfo.containingPart,
+                    status: 'processed' as const,
+                    before: hyperlinkInfo.url,
+                    after: finalUrl,
+                    modifications,
+                  });
+                } else {
+                  // API result not found - mark as not found
+                  this.log.warn(`No API result for hyperlink: ${hyperlinkInfo.url}`);
+
+                  if (options.operations?.updateTitles) {
+                    const notFoundText = `${hyperlinkInfo.displayText} - Not Found`;
+                    hyperlink.hyperlink.setText(notFoundText);
+                    result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
+                  }
+                }
+              }
+
+              // Apply URL updates in batch (paragraph reconstruction)
+              if (urlUpdateMap.size > 0) {
+                this.log.debug(`=== APPLYING URL UPDATES (BATCH) ===`);
+                this.log.debug(`Updating ${urlUpdateMap.size} URLs via paragraph reconstruction`);
+
+                const appliedCount = await this.applyUrlUpdates(doc, urlUpdateMap);
+                result.modifiedHyperlinks += appliedCount;
+                result.updatedUrls = (result.updatedUrls || 0) + appliedCount;
+
+                this.log.info(`Applied ${appliedCount} URL updates`);
+              }
+
+              this.log.info(`API processing complete: ${result.updatedUrls} URLs, ${result.updatedDisplayTexts} texts updated`);
+            }
+
+          } catch (error: any) {
+            this.log.error('API call failed:', error.message);
+
+            // If API operations are required, we must fail the entire processing
+            // This prevents saving documents with incorrect/unchanged hyperlinks
+            if (options.operations?.fixContentIds || options.operations?.updateTitles) {
+              throw new Error(`API Error: ${error.message}. Document not saved to prevent incorrect hyperlink data.`);
+            }
+
+            // Otherwise just log and continue
+            result.errorMessages.push(`API Error: ${error.message}`);
+            result.errorCount++;
+          }
+        } else {
+          // API endpoint not configured but operations require it
+          if (options.operations?.fixContentIds || options.operations?.updateTitles) {
+            throw new Error('API endpoint not configured but hyperlink operations (fixContentIds or updateTitles) are enabled. Please configure PowerAutomate URL in Settings.');
+          }
+
+          this.log.warn('API endpoint not configured, skipping PowerAutomate processing');
+        }
+      }
+      // ═══════════════════════════════════════════════════════════
+      // End PowerAutomate API Integration
+      // ═══════════════════════════════════════════════════════════
+
+      // Process hyperlinks based on options (local operations)
+      if (options.operations?.fixContentIds || options.appendContentId) {
         this.log.debug('=== APPENDING CONTENT IDS ===');
         const modifiedCount = await this.processContentIdAppending(hyperlinks, options, result);
         result.appendedContentIds = modifiedCount;
@@ -455,6 +642,88 @@ export class WordDocumentProcessor {
       failedFiles,
       results,
     };
+  }
+
+  /**
+   * Apply URL updates to hyperlinks using DocXMLater's setUrl() method
+   * Updated to use the new setUrl() API added to DocXMLater library
+   *
+   * @param doc - The document being processed
+   * @param urlMap - Map of old URL -> new URL
+   * @returns Number of URLs updated
+   */
+  private async applyUrlUpdates(
+    doc: Document,
+    urlMap: Map<string, string>
+  ): Promise<number> {
+    if (urlMap.size === 0) return 0;
+
+    let updatedCount = 0;
+    const paragraphs = doc.getParagraphs();
+
+    this.log.debug(`Processing ${paragraphs.length} paragraphs for URL updates`);
+
+    for (const para of paragraphs) {
+      const content = para.getContent();
+
+      // Find hyperlinks in this paragraph that need URL updates
+      for (const item of content) {
+        if (item instanceof Hyperlink) {
+          const oldUrl = item.getUrl();
+
+          if (oldUrl && urlMap.has(oldUrl)) {
+            // This hyperlink needs URL update
+            const newUrl = urlMap.get(oldUrl)!;
+
+            // Use DocXMLater's new setUrl() method to update the hyperlink
+            item.setUrl(newUrl);
+            updatedCount++;
+
+            this.log.debug(`✅ Updated hyperlink URL: ${oldUrl} → ${newUrl}`);
+          }
+        }
+      }
+    }
+
+    this.log.info(`Successfully updated ${updatedCount} hyperlink URLs`);
+    return updatedCount;
+  }
+
+  /**
+   * Find matching API result for a URL
+   * Matches based on Content_ID or Document_ID patterns
+   *
+   * @param url - The hyperlink URL to match
+   * @param apiResults - Array of API results from PowerAutomate
+   * @returns Matching API result or null if not found
+   */
+  private findMatchingApiResult(url: string, apiResults: any[]): any {
+    if (!url || !apiResults) return null;
+
+    // Extract Content_ID pattern: TSRC-ABC-123456 or CMS-XYZ-789012
+    // Improved pattern from Feature implementation
+    const contentIdMatch = url.match(/([TC][SM][RS]C?-[A-Za-z0-9]+-\d{6})/i);
+
+    // Extract Document_ID pattern: docid=abc-123-def
+    // Improved pattern to handle edge cases
+    const docIdMatch = url.match(/docid=([A-Za-z0-9\-]+)(?:[^A-Za-z0-9\-]|$)/i);
+
+    return apiResults.find(result => {
+      const resultContentId = result.contentId?.trim();
+      const resultDocId = result.documentId?.trim();
+
+      // Match by Content_ID
+      if (contentIdMatch && resultContentId === contentIdMatch[1]) {
+        return true;
+      }
+
+      // Match by Document_ID
+      if (docIdMatch && resultDocId === docIdMatch[1]) {
+        return true;
+      }
+
+      return false;
+    });
   }
 
   /**
