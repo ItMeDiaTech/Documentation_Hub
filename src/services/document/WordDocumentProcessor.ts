@@ -16,6 +16,7 @@ import {
   HyperlinkType,
 } from '@/types/hyperlink';
 import { DocXMLaterProcessor } from './DocXMLaterProcessor';
+import { OOXMLValidator } from './OOXMLValidator';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
 import { logger } from '@/utils/logger';
 import { hyperlinkService } from '../HyperlinkService';
@@ -63,6 +64,7 @@ export interface WordProcessingResult extends HyperlinkProcessingResult {
 export class WordDocumentProcessor {
   private readonly MAX_FILE_SIZE_MB = 100;
   private docXMLater: DocXMLaterProcessor;
+  private ooxmlValidator: OOXMLValidator;
 
   // Debug mode controlled by environment
   private readonly DEBUG = process.env.NODE_ENV !== 'production';
@@ -71,7 +73,8 @@ export class WordDocumentProcessor {
 
   constructor() {
     this.docXMLater = new DocXMLaterProcessor();
-    this.log.debug('Initialized with DocXMLater');
+    this.ooxmlValidator = new OOXMLValidator();
+    this.log.debug('Initialized with DocXMLater and OOXML validation');
   }
 
   /**
@@ -355,10 +358,39 @@ export class WordDocumentProcessor {
       // Memory checkpoint: Before save
       MemoryMonitor.logMemoryUsage('Before Document Save', 'Ready to save document');
 
-      // Save document
+      // CRITICAL: Post-process with OOXML validation before final save
+      // This ensures the docxmlater-generated document follows OOXML_HYPERLINK_ARCHITECTURE.md
+      this.log.debug('=== OOXML POST-PROCESSING VALIDATION ===');
+
+      // Save to temp buffer first
+      const buffer = await doc.toBuffer();
+
+      // Validate and fix OOXML structure
+      const validationResult = await this.ooxmlValidator.validateAndFixBuffer(buffer);
+
+      if (validationResult.issues.length > 0) {
+        this.log.warn(`Found ${validationResult.issues.length} OOXML issues:`, validationResult.issues);
+      }
+
+      if (validationResult.fixes.length > 0) {
+        this.log.info(`Applied ${validationResult.fixes.length} OOXML fixes:`, validationResult.fixes);
+        result.processedLinks.push({
+          id: 'ooxml-validation',
+          url: 'OOXML Validation',
+          displayText: 'Post-Processing OOXML Validation',
+          type: 'external' as HyperlinkType,
+          location: 'Document Processing',
+          status: 'processed' as const,
+          before: 'OOXML validation passed',
+          after: validationResult.fixes.length > 0 ? `Fixed ${validationResult.fixes.length} issues` : 'No fixes needed',
+          modifications: validationResult.fixes,
+        });
+      }
+
+      // Save document to file
       this.log.debug('=== SAVING DOCUMENT ===');
       await doc.save(filePath);
-      this.log.info('Document saved successfully');
+      this.log.info('Document saved successfully with OOXML validation');
 
       // Memory checkpoint: After save
       MemoryMonitor.logMemoryUsage('After Document Save', 'Document saved successfully');
