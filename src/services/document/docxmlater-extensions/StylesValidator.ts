@@ -289,7 +289,8 @@ export class DocXMLaterStylesValidator {
       // }
 
       // For now, use basic validation
-      const styles = this.doc.getStyles?.() || [];
+      // NOTE: DocXMLater doesn't yet expose getStyles() - this is a placeholder
+      const styles: any[] = [];
 
       if (styles.length === 0) {
         log.debug('No styles found via DocXMLater API');
