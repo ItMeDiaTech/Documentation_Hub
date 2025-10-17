@@ -751,42 +751,46 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Extract Content_ID from URL
-   * Matches patterns like: TSRC-ABC-123456 or CMS-XYZ-789012
+   * Extract both Lookup_IDs (Content_ID and Document_ID) from a URL in a single operation
+   * This matches how the PowerAutomate API receives and uses these IDs
+   *
+   * Returns an object with both IDs extracted:
+   * - contentId: Pattern like TSRC-ABC-123456 or CMS-XYZ-789012
+   * - documentId: UUID format from docid= parameter
    *
    * @param url - The hyperlink URL to parse
-   * @returns The extracted Content_ID or null if not found
+   * @returns Object with { contentId?: string, documentId?: string } or null if neither found
    */
-  private extractContentId(url: string): string | null {
+  private extractLookupIds(url: string): { contentId?: string; documentId?: string } | null {
     if (!url) return null;
-    // Pattern matches Content_ID like: TSRC-ABC-123456 or CMS-XYZ-789012
-    const match = url.match(/((?:TSRC|CMS)-[A-Za-z0-9]+-\d{6})/i);
-    return match ? match[1] : null;
-  }
 
-  /**
-   * Extract Document_ID from URL
-   * Only matches "docid=" (theSource URLs) - NOT "documentId=" (external policy URLs)
-   *
-   * Example: https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=8f2f198d-df40-4667-b72c-6f2d2141a91c
-   *
-   * @param url - The hyperlink URL to parse
-   * @returns The extracted Document_ID (UUID format) or null if not found
-   */
-  private extractDocumentId(url: string): string | null {
-    if (!url) return null;
-    // Match UUID format in docid parameter: docid=<uuid>
-    // Pattern: docid=<alphanumeric-with-hyphens> followed by non-alphanumeric or end of string
-    const match = url.match(/docid=([A-Za-z0-9\-]+)(?:[^A-Za-z0-9\-]|$)/i);
-    return match ? match[1] : null;
+    const lookupIds: { contentId?: string; documentId?: string } = {};
+
+    // Extract Content_ID: TSRC-ABC-123456 or CMS-XYZ-789012
+    const contentIdMatch = url.match(/((?:TSRC|CMS)-[A-Za-z0-9]+-\d{6})/i);
+    if (contentIdMatch) {
+      lookupIds.contentId = contentIdMatch[1];
+      this.log.debug(`    Extracted Content_ID: ${contentIdMatch[1]}`);
+    }
+
+    // Extract Document_ID: UUID from "docid=" parameter (theSource URLs only)
+    // Note: Does NOT match "documentId=" (external policy URLs)
+    const documentIdMatch = url.match(/docid=([A-Za-z0-9\-]+)(?:[^A-Za-z0-9\-]|$)/i);
+    if (documentIdMatch) {
+      lookupIds.documentId = documentIdMatch[1];
+      this.log.debug(`    Extracted Document_ID: ${documentIdMatch[1]}`);
+    }
+
+    // Return only if at least one ID was found
+    return Object.keys(lookupIds).length > 0 ? lookupIds : null;
   }
 
   /**
    * Find matching API result for a URL using Map-based lookup
-   * Two-step approach: extract ID, then lookup in Map for O(1) performance
+   * Uses both Content_ID and Document_ID as fallback lookup keys
    *
    * @param url - The hyperlink URL to match
-   * @param apiResultsMap - Map of Content_ID/Document_ID -> API result
+   * @param apiResultsMap - Map of Lookup_ID -> API result
    * @returns Matching API result or null if not found
    */
   private findMatchingApiResult(url: string, apiResultsMap: Map<string, any>): any {
@@ -794,29 +798,35 @@ export class WordDocumentProcessor {
       return null;
     }
 
+    // Extract both IDs at once (as sent to PowerAutomate API)
+    const lookupIds = this.extractLookupIds(url);
+    if (!lookupIds) {
+      this.log.debug(`  ✗ No Lookup_ID found in URL`);
+      return null;
+    }
+
     // Try Content_ID match first (more specific)
-    const contentId = this.extractContentId(url);
-    if (contentId) {
-      const result = apiResultsMap.get(contentId);
+    if (lookupIds.contentId) {
+      const result = apiResultsMap.get(lookupIds.contentId);
       if (result) {
-        this.log.debug(`  ✓ Matched by Content_ID: ${contentId}`);
+        this.log.debug(`  ✓ Matched by Content_ID: ${lookupIds.contentId}`);
         return result;
       }
     }
 
-    // Try Document_ID match (UUID in docid parameter)
-    const documentId = this.extractDocumentId(url);
-    if (documentId) {
-      const result = apiResultsMap.get(documentId);
+    // Try Document_ID match (UUID format) as fallback
+    if (lookupIds.documentId) {
+      const result = apiResultsMap.get(lookupIds.documentId);
       if (result) {
-        this.log.debug(`  ✓ Matched by Document_ID: ${documentId}`);
+        this.log.debug(`  ✓ Matched by Document_ID: ${lookupIds.documentId}`);
         return result;
       }
     }
 
-    // No match found
+    // No match found with either ID
     if (this.DEBUG) {
-      this.log.debug(`  ✗ No API match for URL: ${url.substring(0, 80)}${url.length > 80 ? '...' : ''}`);
+      const ids = [lookupIds.contentId, lookupIds.documentId].filter(Boolean).join(' or ');
+      this.log.debug(`  ✗ No match for Lookup_ID(${ids})`);
     }
     return null;
   }
