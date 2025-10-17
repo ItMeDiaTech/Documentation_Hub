@@ -14,7 +14,7 @@ import type {
   BatchProcessingOptions,
   BatchProcessingResult,
   HyperlinkProcessingOptions,
-  HyperlinkProcessingResult
+  HyperlinkProcessingResult,
 } from '../src/types/hyperlink';
 
 let mainWindow: BrowserWindow | null = null;
@@ -110,12 +110,13 @@ async function performPreflightCertificateCheck(): Promise<void> {
 
           // Check if it's a certificate error
           const errorMessage = error.message?.toLowerCase() || '';
-          if (errorMessage.includes('certificate') ||
-              errorMessage.includes('ssl') ||
-              errorMessage.includes('tls') ||
-              errorMessage.includes('unable to verify') ||
-              errorMessage.includes('self signed')) {
-
+          if (
+            errorMessage.includes('certificate') ||
+            errorMessage.includes('ssl') ||
+            errorMessage.includes('tls') ||
+            errorMessage.includes('unable to verify') ||
+            errorMessage.includes('self signed')
+          ) {
             log.info('Certificate error detected, attempting automatic fix...');
 
             // If Zscaler is detected, try to find and configure its certificate
@@ -132,8 +133,9 @@ async function performPreflightCertificateCheck(): Promise<void> {
                   // Show user dialog about certificate configuration
                   if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('certificate-configured', {
-                      message: 'Zscaler certificate automatically configured. Updates should work now.',
-                      certPath: certPath
+                      message:
+                        'Zscaler certificate automatically configured. Updates should work now.',
+                      certPath: certPath,
                     });
                   }
                 } else {
@@ -145,16 +147,19 @@ async function performPreflightCertificateCheck(): Promise<void> {
                       defaultId: 0,
                       title: 'Certificate Configuration Required',
                       message: 'Zscaler is blocking secure connections to GitHub.',
-                      detail: 'To enable automatic updates:\n\n' +
-                              '1. Export Zscaler certificate from your browser\n' +
-                              '2. Save it as C:\\Zscaler\\ZscalerRootCertificate.pem\n' +
-                              '3. Restart the application\n\n' +
-                              'Or contact your IT department to bypass GitHub.com from SSL inspection.',
+                      detail:
+                        'To enable automatic updates:\n\n' +
+                        '1. Export Zscaler certificate from your browser\n' +
+                        '2. Save it as C:\\Zscaler\\ZscalerRootCertificate.pem\n' +
+                        '3. Restart the application\n\n' +
+                        'Or contact your IT department to bypass GitHub.com from SSL inspection.',
                     });
 
                     if (choice.response === 0) {
                       // Open guide in browser
-                      shell.openExternal('https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Zscaler-Certificate-Setup');
+                      shell.openExternal(
+                        'https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Zscaler-Certificate-Setup'
+                      );
                     }
                   }
                 }
@@ -193,7 +198,7 @@ app.whenReady().then(async () => {
         url: details.url,
         method: details.method,
         resourceType: details.resourceType,
-        referrer: details.referrer
+        referrer: details.referrer,
       };
 
       // Log network requests (skip data URLs and devtools)
@@ -216,7 +221,7 @@ app.whenReady().then(async () => {
           url: details.url,
           statusCode: details.statusCode,
           statusLine: details.statusLine,
-          headers: details.responseHeaders
+          headers: details.responseHeaders,
         });
       }
       callback({});
@@ -229,7 +234,7 @@ app.whenReady().then(async () => {
         url: details.url,
         error: details.error,
         method: details.method,
-        resourceType: details.resourceType
+        resourceType: details.resourceType,
       };
 
       log.error('[Network Error]', errorInfo);
@@ -253,7 +258,7 @@ app.on('login', async (event, webContents, details, authInfo, callback) => {
     scheme: authInfo.scheme,
     host: authInfo.host,
     port: authInfo.port,
-    realm: authInfo.realm
+    realm: authInfo.realm,
   });
 
   if (authInfo.isProxy) {
@@ -293,7 +298,7 @@ if (!isDev) {
     nodeVersion: process.version,
     electronVersion: process.versions.electron,
     isDev: isDev,
-    proxyUrl: proxyConfig.getProxyUrl()
+    proxyUrl: proxyConfig.getProxyUrl(),
   });
 }
 
@@ -312,6 +317,10 @@ async function createWindow() {
     backgroundColor: '#0a0a0a',
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
+      // CRITICAL: Do NOT change these security settings!
+      // nodeIntegration: false - Prevents Node.js API access from renderer (security)
+      // contextIsolation: true - Required for React to work properly + security
+      // Changing these will cause black screen and security vulnerabilities
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -373,13 +382,13 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
       serialNumber: certificate.serialNumber,
       validStart: certificate.validStart,
       validExpiry: certificate.validExpiry,
-      fingerprint: certificate.fingerprint
+      fingerprint: certificate.fingerprint,
     },
     network: {
       proxy: proxyConfig.getProxyUrl(),
       zscaler: zscalerConfig.isDetected(),
-      mutualTLS: 'LIKELY' // Based on user's environment
-    }
+      mutualTLS: 'LIKELY', // Based on user's environment
+    },
   };
 
   log.warn('[Certificate Error - DETAILED]', JSON.stringify(certError, null, 2));
@@ -394,12 +403,16 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 
   // Check if this is a Zscaler-related error
   if (zscalerConfig.isDetected()) {
-    log.info('[Certificate Error] Zscaler detected - checking if this is a Zscaler certificate issue');
+    log.info(
+      '[Certificate Error] Zscaler detected - checking if this is a Zscaler certificate issue'
+    );
 
     // Check if the certificate issuer contains Zscaler
-    if (certificate.issuerName?.includes('Zscaler') ||
-        certificate.subjectName?.includes('Zscaler') ||
-        zscalerConfig.isZscalerError({ message: error })) {
+    if (
+      certificate.issuerName?.includes('Zscaler') ||
+      certificate.subjectName?.includes('Zscaler') ||
+      zscalerConfig.isZscalerError({ message: error })
+    ) {
       log.info('[Certificate Error] Detected Zscaler certificate - trusting it');
       callback(true); // Trust Zscaler certificates
       return;
@@ -412,11 +425,11 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
     'githubusercontent.com',
     'github.io',
     'github-releases.githubusercontent.com',
-    'objects.githubusercontent.com'
+    'objects.githubusercontent.com',
   ];
   const urlHost = new URL(url).hostname.toLowerCase();
 
-  if (trustedHosts.some(host => urlHost.includes(host))) {
+  if (trustedHosts.some((host) => urlHost.includes(host))) {
     log.info(`[Certificate Error] Trusting certificate for known host: ${urlHost}`);
     if (zscalerConfig.isDetected()) {
       log.info('[Certificate Error] Note: Zscaler is performing SSL inspection on this connection');
@@ -515,7 +528,6 @@ class HyperlinkIPCHandler {
 
         this.processingQueue.delete(safePath);
         return result;
-
       } catch (error) {
         return {
           success: false,
@@ -530,7 +542,7 @@ class HyperlinkIPCHandler {
           errorMessages: [error instanceof Error ? error.message : 'Processing failed'],
           processedLinks: [],
           validationIssues: [],
-          duration: 0
+          duration: 0,
         } as HyperlinkProcessingResult;
       }
     });
@@ -550,10 +562,7 @@ class HyperlinkIPCHandler {
         );
 
         // Process files with controlled concurrency
-        const processedResults = await this.processor.batchProcess(
-          validPaths,
-          request.options
-        );
+        const processedResults = await this.processor.batchProcess(validPaths, request.options);
 
         // Aggregate results
         for (const { file: filePath, result } of processedResults.results) {
@@ -564,23 +573,22 @@ class HyperlinkIPCHandler {
           } else {
             errors.push({
               file: filePath,
-              error: result.errorMessages.join(', ')
+              error: result.errorMessages.join(', '),
             });
           }
         }
 
         const summary = {
           totalFiles: request.filePaths.length,
-          successfulFiles: Array.from(results.values()).filter(r => r.success).length,
+          successfulFiles: Array.from(results.values()).filter((r) => r.success).length,
           failedFiles: errors.length,
           totalHyperlinksProcessed,
           totalHyperlinksModified,
           processingTimeMs: performance.now() - startTime,
-          errors
+          errors,
         };
 
         return { results, summary } as BatchProcessingResult;
-
       } catch (error) {
         return {
           results,
@@ -591,11 +599,13 @@ class HyperlinkIPCHandler {
             totalHyperlinksProcessed: 0,
             totalHyperlinksModified: 0,
             processingTimeMs: performance.now() - startTime,
-            errors: [{
-              file: 'batch',
-              error: error instanceof Error ? error.message : 'Batch processing failed'
-            }]
-          }
+            errors: [
+              {
+                file: 'batch',
+                error: error instanceof Error ? error.message : 'Batch processing failed',
+              },
+            ],
+          },
         } as BatchProcessingResult;
       }
     });
@@ -609,7 +619,7 @@ class HyperlinkIPCHandler {
 
         const response = await fetch(request.apiUrl, {
           method: 'OPTIONS',
-          signal: controller.signal
+          signal: controller.signal,
         });
 
         clearTimeout(timeout);
@@ -617,13 +627,15 @@ class HyperlinkIPCHandler {
 
         return {
           isValid: response.ok || response.status === 405, // 405 if OPTIONS not supported
-          message: response.ok ? 'API endpoint is reachable' : `API returned status ${response.status}`,
-          responseTime
+          message: response.ok
+            ? 'API endpoint is reachable'
+            : `API returned status ${response.status}`,
+          responseTime,
         };
       } catch (error) {
         return {
           isValid: false,
-          message: error instanceof Error ? error.message : 'Validation failed'
+          message: error instanceof Error ? error.message : 'Validation failed',
         };
       }
     });
@@ -645,9 +657,9 @@ class HyperlinkIPCHandler {
         title: 'Select Word Documents',
         filters: [
           { name: 'Word Documents', extensions: ['docx'] },
-          { name: 'All Files', extensions: ['*'] }
+          { name: 'All Files', extensions: ['*'] },
         ],
-        properties: ['openFile', 'multiSelections']
+        properties: ['openFile', 'multiSelections'],
       });
 
       if (!result.canceled) {
@@ -702,7 +714,7 @@ class HyperlinkIPCHandler {
           clearTimeout(timeout);
           reject(new Error('Operation was cancelled'));
         });
-      })
+      }),
     ]);
   }
 }
@@ -794,36 +806,43 @@ ipcMain.handle('get-file-stats', async (...[, filePath]: [Electron.IpcMainInvoke
 });
 
 // Restore document from backup
-ipcMain.handle('restore-from-backup', async (...[, request]: [Electron.IpcMainInvokeEvent, { backupPath: string; targetPath: string }]) => {
-  if (!request.backupPath || !request.targetPath) {
-    throw new Error('Both backupPath and targetPath are required');
+ipcMain.handle(
+  'restore-from-backup',
+  async (
+    ...[, request]: [Electron.IpcMainInvokeEvent, { backupPath: string; targetPath: string }]
+  ) => {
+    if (!request.backupPath || !request.targetPath) {
+      throw new Error('Both backupPath and targetPath are required');
+    }
+
+    try {
+      // Validate backup exists
+      if (!fs.existsSync(request.backupPath)) {
+        throw new Error(`Backup file not found: ${request.backupPath}`);
+      }
+
+      // Validate backup is a .docx file
+      if (!request.backupPath.toLowerCase().endsWith('.docx')) {
+        throw new Error('Backup file must be a .docx file');
+      }
+
+      // Validate target path
+      if (!request.targetPath.toLowerCase().endsWith('.docx')) {
+        throw new Error('Target file must be a .docx file');
+      }
+
+      // Copy backup to target location, overwriting existing file
+      await fsPromises.copyFile(request.backupPath, request.targetPath);
+
+      log.info(
+        `[Restore] Successfully restored ${request.targetPath} from backup ${request.backupPath}`
+      );
+    } catch (error) {
+      log.error('Error restoring from backup:', error);
+      throw error;
+    }
   }
-
-  try {
-    // Validate backup exists
-    if (!fs.existsSync(request.backupPath)) {
-      throw new Error(`Backup file not found: ${request.backupPath}`);
-    }
-
-    // Validate backup is a .docx file
-    if (!request.backupPath.toLowerCase().endsWith('.docx')) {
-      throw new Error('Backup file must be a .docx file');
-    }
-
-    // Validate target path
-    if (!request.targetPath.toLowerCase().endsWith('.docx')) {
-      throw new Error('Target file must be a .docx file');
-    }
-
-    // Copy backup to target location, overwriting existing file
-    await fsPromises.copyFile(request.backupPath, request.targetPath);
-
-    log.info(`[Restore] Successfully restored ${request.targetPath} from backup ${request.backupPath}`);
-  } catch (error) {
-    log.error('Error restoring from backup:', error);
-    throw error;
-  }
-});
+);
 
 ipcMain.handle('process-document', async (...[, path]: [Electron.IpcMainInvokeEvent, string]) => {
   if (!path) {
@@ -853,14 +872,14 @@ ipcMain.handle('export-settings', async () => {
       defaultPath: `DocHub-Export-${new Date().toISOString().split('T')[0]}.json`,
       filters: [
         { name: 'JSON Files', extensions: ['json'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
+        { name: 'All Files', extensions: ['*'] },
+      ],
     });
 
     if (!result.canceled && result.filePath) {
       return {
         success: true,
-        filePath: result.filePath
+        filePath: result.filePath,
       };
     }
 
@@ -878,9 +897,9 @@ ipcMain.handle('import-settings', async () => {
       title: 'Import Settings and Data',
       filters: [
         { name: 'JSON Files', extensions: ['json'] },
-        { name: 'All Files', extensions: ['*'] }
+        { name: 'All Files', extensions: ['*'] },
       ],
-      properties: ['openFile']
+      properties: ['openFile'],
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
@@ -890,7 +909,7 @@ ipcMain.handle('import-settings', async () => {
       return {
         success: true,
         data: JSON.parse(fileContent),
-        filePath
+        filePath,
       };
     }
 
@@ -902,16 +921,19 @@ ipcMain.handle('import-settings', async () => {
   }
 });
 
-ipcMain.handle('save-export-data', async (...[, request]: [Electron.IpcMainInvokeEvent, { filePath: string; data: any }]) => {
-  try {
-    await fsPromises.writeFile(request.filePath, JSON.stringify(request.data, null, 2), 'utf-8');
-    return { success: true };
-  } catch (error) {
-    log.error('Error saving export data:', error);
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
+ipcMain.handle(
+  'save-export-data',
+  async (...[, request]: [Electron.IpcMainInvokeEvent, { filePath: string; data: any }]) => {
+    try {
+      await fsPromises.writeFile(request.filePath, JSON.stringify(request.data, null, 2), 'utf-8');
+      return { success: true };
+    } catch (error) {
+      log.error('Error saving export data:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
   }
-});
+);
 
 // ==============================================================================
 // Certificate Management IPC Handlers
@@ -920,7 +942,7 @@ ipcMain.handle('save-export-data', async (...[, request]: [Electron.IpcMainInvok
 ipcMain.handle('check-zscaler-status', async () => {
   return {
     detected: zscalerConfig.isDetected(),
-    certificatePath: zscalerConfig.getCertPath()
+    certificatePath: zscalerConfig.getCertPath(),
   };
 });
 
@@ -937,16 +959,19 @@ ipcMain.handle('get-installed-certificates', async () => {
       path: zscalerConfig.getCertPath(),
       name: 'Zscaler Root Certificate',
       isActive: process.env.NODE_EXTRA_CA_CERTS === zscalerConfig.getCertPath(),
-      isZscaler: true
+      isZscaler: true,
     });
   }
 
   // Check for other configured certificates
-  if (process.env.NODE_EXTRA_CA_CERTS && process.env.NODE_EXTRA_CA_CERTS !== zscalerConfig.getCertPath()) {
+  if (
+    process.env.NODE_EXTRA_CA_CERTS &&
+    process.env.NODE_EXTRA_CA_CERTS !== zscalerConfig.getCertPath()
+  ) {
     certificates.push({
       path: process.env.NODE_EXTRA_CA_CERTS,
       name: path.basename(process.env.NODE_EXTRA_CA_CERTS),
-      isActive: true
+      isActive: true,
     });
   }
 
@@ -959,9 +984,9 @@ ipcMain.handle('import-certificate', async () => {
       title: 'Import Certificate',
       filters: [
         { name: 'Certificate Files', extensions: ['pem', 'crt', 'cer', 'ca'] },
-        { name: 'All Files', extensions: ['*'] }
+        { name: 'All Files', extensions: ['*'] },
       ],
-      properties: ['openFile']
+      properties: ['openFile'],
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
@@ -976,12 +1001,12 @@ ipcMain.handle('import-certificate', async () => {
         return {
           success: true,
           name: path.basename(certPath),
-          path: certPath
+          path: certPath,
         };
       } else {
         return {
           success: false,
-          error: 'Invalid certificate file format'
+          error: 'Invalid certificate file format',
         };
       }
     }
@@ -1023,17 +1048,20 @@ ipcMain.handle('auto-detect-certificates', async () => {
   }
 });
 
-ipcMain.handle('remove-certificate', async (...[, certPath]: [Electron.IpcMainInvokeEvent, string]) => {
-  try {
-    if (process.env.NODE_EXTRA_CA_CERTS === certPath) {
-      delete process.env.NODE_EXTRA_CA_CERTS;
+ipcMain.handle(
+  'remove-certificate',
+  async (...[, certPath]: [Electron.IpcMainInvokeEvent, string]) => {
+    try {
+      if (process.env.NODE_EXTRA_CA_CERTS === certPath) {
+        delete process.env.NODE_EXTRA_CA_CERTS;
+      }
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
     }
-    return { success: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
   }
-});
+);
 
 ipcMain.handle('test-github-connection', async () => {
   try {
