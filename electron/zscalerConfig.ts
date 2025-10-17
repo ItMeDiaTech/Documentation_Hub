@@ -4,8 +4,10 @@ import * as path from 'path';
 import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { logger } from '../src/utils/logger';
 
 const execAsync = promisify(exec);
+const log = logger.namespace('ZscalerConfig');
 
 /**
  * Zscaler-specific configuration for handling SSL inspection
@@ -75,7 +77,7 @@ export class ZscalerConfig {
    * Detect if Zscaler is present and find its certificate
    */
   private async detectZscaler(): Promise<void> {
-    console.log('[ZscalerConfig] Detecting Zscaler presence...');
+    log.info('[ZscalerConfig] Detecting Zscaler presence...');
 
     // Check environment variables that indicate Zscaler
     const zscalerEnvVars = [
@@ -88,7 +90,7 @@ export class ZscalerConfig {
 
     for (const envVar of zscalerEnvVars) {
       if (process.env[envVar]) {
-        console.log(`[ZscalerConfig] Detected Zscaler environment variable: ${envVar}`);
+        log.info(` Detected Zscaler environment variable: ${envVar}`);
         this.isZscalerDetected = true;
         break;
       }
@@ -99,7 +101,7 @@ export class ZscalerConfig {
       try {
         const { stdout } = await execAsync('tasklist /FI "IMAGENAME eq ZSATunnel.exe"');
         if (stdout.includes('ZSATunnel.exe')) {
-          console.log('[ZscalerConfig] Detected Zscaler process running');
+          log.info('[ZscalerConfig] Detected Zscaler process running');
           this.isZscalerDetected = true;
         }
       } catch (error) {
@@ -112,7 +114,7 @@ export class ZscalerConfig {
           'reg query "HKLM\\SOFTWARE\\Zscaler" 2>nul || reg query "HKCU\\SOFTWARE\\Zscaler" 2>nul'
         );
         if (regOutput && regOutput.length > 0) {
-          console.log('[ZscalerConfig] Detected Zscaler in Windows registry');
+          log.info('[ZscalerConfig] Detected Zscaler in Windows registry');
           this.isZscalerDetected = true;
         }
       } catch {
@@ -124,16 +126,16 @@ export class ZscalerConfig {
     const certPaths = this.getCommonCertPaths();
     for (const certPath of certPaths) {
       if (fs.existsSync(certPath)) {
-        console.log(`[ZscalerConfig] Found Zscaler certificate at: ${certPath}`);
+        log.info(` Found Zscaler certificate at: ${certPath}`);
         this.zscalerCertPath = certPath;
         this.isZscalerDetected = true;
 
         // Read certificate content
         try {
           this.certificateContent = fs.readFileSync(certPath, 'utf8');
-          console.log('[ZscalerConfig] Successfully loaded Zscaler certificate from disk');
+          log.info('[ZscalerConfig] Successfully loaded Zscaler certificate from disk');
         } catch (error) {
-          console.error('[ZscalerConfig] Failed to read certificate:', error);
+          log.error('[ZscalerConfig] Failed to read certificate:', error);
         }
         break;
       }
@@ -141,36 +143,36 @@ export class ZscalerConfig {
 
     // NEW: If no certificate found on disk, try Windows Certificate Store
     if (!this.zscalerCertPath && process.platform === 'win32') {
-      console.log('[ZscalerConfig] No certificate found on disk, checking Windows Certificate Store...');
+      log.info('[ZscalerConfig] No certificate found on disk, checking Windows Certificate Store...');
       try {
         // Dynamically import windowsCertStore to avoid static import warning
         const { windowsCertStore } = await import('./windowsCertStore');
         const certFromStore = await windowsCertStore.findZscalerCertificate();
         if (certFromStore) {
-          console.log(`[ZscalerConfig] Found Zscaler certificate in Windows store: ${certFromStore}`);
+          log.info(` Found Zscaler certificate in Windows store: ${certFromStore}`);
           this.zscalerCertPath = certFromStore;
           this.isZscalerDetected = true;
 
           // Read the exported certificate
           if (fs.existsSync(certFromStore)) {
             this.certificateContent = fs.readFileSync(certFromStore, 'utf8');
-            console.log('[ZscalerConfig] Successfully loaded certificate from Windows store');
+            log.info('[ZscalerConfig] Successfully loaded certificate from Windows store');
           }
         }
       } catch (error) {
-        console.error('[ZscalerConfig] Error accessing Windows Certificate Store:', error);
+        log.error('[ZscalerConfig] Error accessing Windows Certificate Store:', error);
       }
     }
 
     // Check if NODE_EXTRA_CA_CERTS is already set
     if (process.env.NODE_EXTRA_CA_CERTS) {
-      console.log(`[ZscalerConfig] NODE_EXTRA_CA_CERTS already set to: ${process.env.NODE_EXTRA_CA_CERTS}`);
+      log.info(` NODE_EXTRA_CA_CERTS already set to: ${process.env.NODE_EXTRA_CA_CERTS}`);
       // Check if it points to a Zscaler cert
       const certPath = process.env.NODE_EXTRA_CA_CERTS;
       if (fs.existsSync(certPath)) {
         const content = fs.readFileSync(certPath, 'utf8');
         if (content.includes('Zscaler') || content.includes('ZSCALER')) {
-          console.log('[ZscalerConfig] NODE_EXTRA_CA_CERTS points to Zscaler certificate');
+          log.info('[ZscalerConfig] NODE_EXTRA_CA_CERTS points to Zscaler certificate');
           this.isZscalerDetected = true;
           this.zscalerCertPath = certPath;
           this.certificateContent = content;
@@ -179,9 +181,9 @@ export class ZscalerConfig {
     }
 
     if (this.isZscalerDetected) {
-      console.log('[ZscalerConfig] Zscaler detected - special handling will be applied');
+      log.info('[ZscalerConfig] Zscaler detected - special handling will be applied');
     } else {
-      console.log('[ZscalerConfig] Zscaler not detected');
+      log.info('[ZscalerConfig] Zscaler not detected');
     }
   }
 
@@ -190,16 +192,16 @@ export class ZscalerConfig {
    */
   public configureApp(): void {
     if (!this.isZscalerDetected) {
-      console.log('[ZscalerConfig] Zscaler not detected, skipping configuration');
+      log.info('[ZscalerConfig] Zscaler not detected, skipping configuration');
       return;
     }
 
-    console.log('[ZscalerConfig] Configuring app for Zscaler...');
+    log.info('[ZscalerConfig] Configuring app for Zscaler...');
 
     // Set NODE_EXTRA_CA_CERTS if we found a certificate
     if (this.zscalerCertPath && !process.env.NODE_EXTRA_CA_CERTS) {
       process.env.NODE_EXTRA_CA_CERTS = this.zscalerCertPath;
-      console.log(`[ZscalerConfig] Set NODE_EXTRA_CA_CERTS to: ${this.zscalerCertPath}`);
+      log.info(` Set NODE_EXTRA_CA_CERTS to: ${this.zscalerCertPath}`);
     }
 
     // Configure Chromium to be more lenient with certificates
@@ -214,7 +216,7 @@ export class ZscalerConfig {
     // Set Zscaler bypass flag
     if (!process.env.ZSCALER_BYPASS) {
       process.env.ZSCALER_BYPASS = 'true';
-      console.log('[ZscalerConfig] Set ZSCALER_BYPASS flag');
+      log.info('[ZscalerConfig] Set ZSCALER_BYPASS flag');
     }
   }
 
@@ -255,14 +257,14 @@ export class ZscalerConfig {
     const zscalerToken = process.env.ZSCALER_API_TOKEN || process.env.ZS_API_TOKEN;
     if (zscalerToken) {
       headers['X-Zscaler-API-Token'] = zscalerToken;
-      console.log('[ZscalerConfig] Added Zscaler API token to bypass headers');
+      log.info('[ZscalerConfig] Added Zscaler API token to bypass headers');
     }
 
     // If we have a bypass code from IT department
     const bypassCode = process.env.ZSCALER_BYPASS_CODE || process.env.CORPORATE_BYPASS_CODE;
     if (bypassCode) {
       headers['X-Bypass-Code'] = bypassCode;
-      console.log('[ZscalerConfig] Added corporate bypass code to headers');
+      log.info('[ZscalerConfig] Added corporate bypass code to headers');
     }
 
     return headers;
@@ -335,7 +337,7 @@ export class ZscalerConfig {
         try {
           const { stdout } = await execAsync('certutil -store -silent Root');
           // This would need more processing to extract actual certificates
-          console.log('[ZscalerConfig] System certificates available');
+          log.info('[ZscalerConfig] System certificates available');
         } catch (e) {
           // Ignore
         }
@@ -345,10 +347,10 @@ export class ZscalerConfig {
       const bundle = this.certificateContent + '\n' + systemCerts;
       fs.writeFileSync(bundlePath, bundle);
 
-      console.log(`[ZscalerConfig] Created certificate bundle at: ${bundlePath}`);
+      log.info(` Created certificate bundle at: ${bundlePath}`);
       return bundlePath;
     } catch (error) {
-      console.error('[ZscalerConfig] Failed to create certificate bundle:', error);
+      log.error('[ZscalerConfig] Failed to create certificate bundle:', error);
       return null;
     }
   }
@@ -357,19 +359,19 @@ export class ZscalerConfig {
    * Log Zscaler configuration for debugging
    */
   public logConfiguration(): void {
-    console.log('[ZscalerConfig] Configuration Summary:');
-    console.log(`  - Zscaler Detected: ${this.isZscalerDetected}`);
-    console.log(`  - Certificate Path: ${this.zscalerCertPath || 'Not found'}`);
-    console.log(`  - Certificate Loaded: ${this.certificateContent ? 'Yes' : 'No'}`);
-    console.log(`  - NODE_EXTRA_CA_CERTS: ${process.env.NODE_EXTRA_CA_CERTS || 'Not set'}`);
-    console.log(`  - ZSCALER_BYPASS: ${process.env.ZSCALER_BYPASS || 'Not set'}`);
+    log.info('[ZscalerConfig] Configuration Summary:');
+    log.info(`  - Zscaler Detected: ${this.isZscalerDetected}`);
+    log.info(`  - Certificate Path: ${this.zscalerCertPath || 'Not found'}`);
+    log.info(`  - Certificate Loaded: ${this.certificateContent ? 'Yes' : 'No'}`);
+    log.info(`  - NODE_EXTRA_CA_CERTS: ${process.env.NODE_EXTRA_CA_CERTS || 'Not set'}`);
+    log.info(`  - ZSCALER_BYPASS: ${process.env.ZSCALER_BYPASS || 'Not set'}`);
 
     if (this.isZscalerDetected && !this.zscalerCertPath) {
-      console.log('[ZscalerConfig] WARNING: Zscaler detected but certificate not found!');
-      console.log('[ZscalerConfig] You may need to:');
-      console.log('  1. Export Zscaler certificate from your browser');
-      console.log('  2. Save it as C:\\Zscaler\\ZscalerRootCertificate.pem');
-      console.log('  3. Or set ZSCALER_CERT_PATH environment variable');
+      log.info('[ZscalerConfig] WARNING: Zscaler detected but certificate not found!');
+      log.info('[ZscalerConfig] You may need to:');
+      log.info('  1. Export Zscaler certificate from your browser');
+      log.info('  2. Save it as C:\\Zscaler\\ZscalerRootCertificate.pem');
+      log.info('  3. Or set ZSCALER_CERT_PATH environment variable');
     }
   }
 }

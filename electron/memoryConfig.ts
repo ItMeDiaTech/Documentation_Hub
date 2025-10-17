@@ -6,6 +6,9 @@
 
 import { app } from 'electron';
 import * as os from 'os';
+import { logger } from '../src/utils/logger';
+
+const log = logger.namespace('MemoryConfig');
 
 export interface MemoryConfiguration {
   heapSizeMB: number;
@@ -27,7 +30,7 @@ export class MemoryConfig {
     const totalMemoryMB = os.totalmem() / (1024 * 1024);
     const freeMemoryMB = os.freemem() / (1024 * 1024);
 
-    console.log(`[MemoryConfig] System RAM: ${totalMemoryMB.toFixed(0)}MB total, ${freeMemoryMB.toFixed(0)}MB free`);
+    log.info(`System RAM: ${totalMemoryMB.toFixed(0)}MB total, ${freeMemoryMB.toFixed(0)}MB free`);
 
     // Use 25% of total RAM, but cap between MIN and MAX
     let heapSize = Math.floor(totalMemoryMB * 0.25);
@@ -39,7 +42,7 @@ export class MemoryConfig {
     // Round to nearest 256MB for cleaner numbers
     heapSize = Math.round(heapSize / 256) * 256;
 
-    console.log(`[MemoryConfig] Calculated heap size: ${heapSize}MB`);
+    log.info(`Calculated heap size: ${heapSize}MB`);
     return heapSize;
   }
 
@@ -74,40 +77,40 @@ export class MemoryConfig {
   static configureApp(): void {
     const config = this.getConfiguration();
 
-    console.log('========================================');
-    console.log('[MemoryConfig] Configuration Summary:');
-    console.log(`  System Total RAM: ${config.systemTotalMB.toFixed(0)}MB`);
-    console.log(`  System Free RAM: ${config.systemFreeMB.toFixed(0)}MB`);
-    console.log(`  Heap Size: ${config.heapSizeMB}MB`);
-    console.log(`  Max Document Size: ${config.maxDocumentSizeMB}MB`);
-    console.log(`  Recommended Concurrency: ${config.recommendedConcurrency}`);
-    console.log('========================================');
+    log.info('========================================');
+    log.info('Configuration Summary:');
+    log.info(`  System Total RAM: ${config.systemTotalMB.toFixed(0)}MB`);
+    log.info(`  System Free RAM: ${config.systemFreeMB.toFixed(0)}MB`);
+    log.info(`  Heap Size: ${config.heapSizeMB}MB`);
+    log.info(`  Max Document Size: ${config.maxDocumentSizeMB}MB`);
+    log.info(`  Recommended Concurrency: ${config.recommendedConcurrency}`);
+    log.info('========================================');
 
     // Set heap size via V8 flags
     // Note: These must be set before app initialization
     try {
       app.commandLine.appendSwitch('--js-flags', `--max-old-space-size=${config.heapSizeMB}`);
-      console.log(`✓ [MemoryConfig] Set --max-old-space-size=${config.heapSizeMB}`);
+      log.info(`✓ Set --max-old-space-size=${config.heapSizeMB}`);
     } catch (error) {
-      console.error('✗ [MemoryConfig] Failed to set heap size:', error);
+      log.error('✗ Failed to set heap size:', error);
     }
 
     // Enable GC exposure for manual garbage collection if needed
     // Useful for cleaning up after large document operations
     try {
       app.commandLine.appendSwitch('--js-flags', '--expose-gc');
-      console.log('✓ [MemoryConfig] Enabled garbage collection exposure');
+      log.info('✓ Enabled garbage collection exposure');
     } catch (error) {
-      console.warn('⚠️ [MemoryConfig] Could not enable GC exposure:', error);
+      log.warn('⚠️ Could not enable GC exposure:', error);
     }
 
     // Optimize garbage collection for document processing
     // More aggressive GC to prevent memory buildup
     try {
       app.commandLine.appendSwitch('--js-flags', '--gc-interval=100');
-      console.log('✓ [MemoryConfig] Configured aggressive garbage collection');
+      log.info('✓ Configured aggressive garbage collection');
     } catch (error) {
-      console.warn('⚠️ [MemoryConfig] Could not configure GC interval:', error);
+      log.warn('⚠️ Could not configure GC interval:', error);
     }
   }
 
@@ -118,20 +121,20 @@ export class MemoryConfig {
     const usage = process.memoryUsage();
     const config = this.getConfiguration();
 
-    console.log(`[MemoryConfig] ${label} Memory Usage:`);
-    console.log(`  Heap Used: ${(usage.heapUsed / 1024 / 1024).toFixed(2)}MB`);
-    console.log(`  Heap Total: ${(usage.heapTotal / 1024 / 1024).toFixed(2)}MB`);
-    console.log(`  Heap Limit: ~${config.heapSizeMB}MB`);
-    console.log(`  External: ${(usage.external / 1024 / 1024).toFixed(2)}MB`);
-    console.log(`  RSS: ${(usage.rss / 1024 / 1024).toFixed(2)}MB`);
+    log.info(`${label} Memory Usage:`);
+    log.info(`  Heap Used: ${(usage.heapUsed / 1024 / 1024).toFixed(2)}MB`);
+    log.info(`  Heap Total: ${(usage.heapTotal / 1024 / 1024).toFixed(2)}MB`);
+    log.info(`  Heap Limit: ~${config.heapSizeMB}MB`);
+    log.info(`  External: ${(usage.external / 1024 / 1024).toFixed(2)}MB`);
+    log.info(`  RSS: ${(usage.rss / 1024 / 1024).toFixed(2)}MB`);
 
     const percentUsed = (usage.heapUsed / (config.heapSizeMB * 1024 * 1024)) * 100;
     if (percentUsed > 85) {
-      console.error(`🚨 [MemoryConfig] CRITICAL: ${percentUsed.toFixed(1)}% of heap used!`);
+      log.error(`🚨 CRITICAL: ${percentUsed.toFixed(1)}% of heap used!`);
     } else if (percentUsed > 70) {
-      console.warn(`⚠️ [MemoryConfig] WARNING: ${percentUsed.toFixed(1)}% of heap used`);
+      log.warn(`⚠️ WARNING: ${percentUsed.toFixed(1)}% of heap used`);
     } else {
-      console.log(`✓ [MemoryConfig] ${percentUsed.toFixed(1)}% of heap used`);
+      log.info(`✓ ${percentUsed.toFixed(1)}% of heap used`);
     }
   }
 
@@ -148,12 +151,12 @@ export class MemoryConfig {
     const requiredMB = documentSizeMB * 4;
 
     if (availableMB < requiredMB) {
-      console.error(`🚨 [MemoryConfig] Insufficient memory to process ${documentSizeMB.toFixed(2)}MB document`);
-      console.error(`   Required: ${requiredMB.toFixed(2)}MB, Available: ${availableMB.toFixed(2)}MB`);
+      log.error(`🚨 Insufficient memory to process ${documentSizeMB.toFixed(2)}MB document`);
+      log.error(`   Required: ${requiredMB.toFixed(2)}MB, Available: ${availableMB.toFixed(2)}MB`);
       return false;
     }
 
-    console.log(`✓ [MemoryConfig] Sufficient memory for ${documentSizeMB.toFixed(2)}MB document (${availableMB.toFixed(2)}MB available)`);
+    log.info(`✓ Sufficient memory for ${documentSizeMB.toFixed(2)}MB document (${availableMB.toFixed(2)}MB available)`);
     return true;
   }
 

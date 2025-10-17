@@ -9,6 +9,7 @@ import {
 import { Document } from '@/types/session';
 import { hyperlinkService } from './HyperlinkService';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
+import { logger } from '@/utils/logger';
 
 // Initialize XML parser with options
 const xmlParser = new XMLParser({
@@ -82,6 +83,7 @@ function pointsToTwips(points: number): number {
 
 export class DocumentProcessingService {
   private static instance: DocumentProcessingService;
+  private log = logger.namespace('DocumentProcessor');
 
   private constructor() {}
 
@@ -130,7 +132,7 @@ export class DocumentProcessingService {
       // Extract and process hyperlinks
       const hyperlinks = await this.extractHyperlinks(zip);
       result.totalHyperlinks = hyperlinks.length;
-      console.log(`Found ${hyperlinks.length} hyperlinks in document`);
+      this.log.info(`Found ${hyperlinks.length} hyperlinks in document`);
 
       // Memory checkpoint: After hyperlink extraction
       MemoryMonitor.logMemoryUsage('After Hyperlink Extraction', `${hyperlinks.length} hyperlinks extracted`);
@@ -138,7 +140,7 @@ export class DocumentProcessingService {
       if (hyperlinks.length > 0 && (options.fixContentIds || options.updateTitles)) {
         // Process hyperlinks with API if PowerAutomate URL is configured
         if (powerAutomateUrl) {
-          console.log('Processing hyperlinks with PowerAutomate API:', powerAutomateUrl);
+          this.log.debug('Processing hyperlinks with PowerAutomate API:', powerAutomateUrl);
           const apiSettings = {
             apiUrl: powerAutomateUrl,
             timeout: 30000,
@@ -147,12 +149,12 @@ export class DocumentProcessingService {
           };
 
           // Call API with extracted hyperlinks
-          console.log('Calling hyperlink service with', hyperlinks.length, 'hyperlinks');
+          this.log.debug('Calling hyperlink service with', hyperlinks.length, 'hyperlinks');
           const apiResponse = await hyperlinkService.processHyperlinksWithApi(
             hyperlinks,
             apiSettings
           );
-          console.log('API Response success:', apiResponse.success);
+          this.log.info('API Response success:', apiResponse.success);
 
           if (apiResponse.success && apiResponse.body?.results) {
             // Apply fixes based on API response

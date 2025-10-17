@@ -1,9 +1,11 @@
+import logger from './logger';
+
 // Convert hex color to HSL format for CSS variables
 export function hexToHSL(hex: string): string {
   try {
     // Validate input
     if (!hex || typeof hex !== 'string') {
-      console.error('[ColorConvert] Invalid hex color input:', hex);
+      logger.error('[ColorConvert] Invalid hex color input:', hex);
       return '0 0% 50%'; // Default to medium gray
     }
 
@@ -12,7 +14,7 @@ export function hexToHSL(hex: string): string {
 
     // Validate hex format (must be 6 characters of 0-9, A-F)
     if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
-      console.error('[ColorConvert] Invalid hex format:', hex);
+      logger.error('[ColorConvert] Invalid hex format:', hex);
       return '0 0% 50%'; // Default to medium gray
     }
 
@@ -23,7 +25,7 @@ export function hexToHSL(hex: string): string {
 
     // Validate parsed values
     if (isNaN(r) || isNaN(g) || isNaN(b)) {
-      console.error('[ColorConvert] Failed to parse hex values:', hex);
+      logger.error('[ColorConvert] Failed to parse hex values:', hex);
       return '0 0% 50%';
     }
 
@@ -57,14 +59,14 @@ export function hexToHSL(hex: string): string {
 
     // Validate final values
     if (isNaN(hDegrees) || isNaN(sPercent) || isNaN(lPercent)) {
-      console.error('[ColorConvert] Invalid HSL values calculated from:', hex);
+      logger.error('[ColorConvert] Invalid HSL values calculated from:', hex);
       return '0 0% 50%';
     }
 
     // Return in Tailwind CSS variable format
     return `${hDegrees} ${sPercent}% ${lPercent}%`;
   } catch (error) {
-    console.error('[ColorConvert] Unexpected error in hexToHSL:', error, 'Input:', hex);
+    logger.error('[ColorConvert] Unexpected error in hexToHSL:', error, 'Input:', hex);
     return '0 0% 50%'; // Safe fallback
   }
 }
@@ -89,7 +91,7 @@ export function calculateLuminance(hex: string): number {
   try {
     // Validate input
     if (!hex || typeof hex !== 'string') {
-      console.error('[ColorConvert] Invalid hex input for luminance:', hex);
+      logger.error('[ColorConvert] Invalid hex input for luminance:', hex);
       return 0.5; // Default to medium luminance
     }
 
@@ -98,7 +100,7 @@ export function calculateLuminance(hex: string): number {
 
     // Validate hex format
     if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
-      console.error('[ColorConvert] Invalid hex format for luminance:', hex);
+      logger.error('[ColorConvert] Invalid hex format for luminance:', hex);
       return 0.5;
     }
 
@@ -109,7 +111,7 @@ export function calculateLuminance(hex: string): number {
 
     // Validate parsed values
     if (isNaN(r) || isNaN(g) || isNaN(b)) {
-      console.error('[ColorConvert] Failed to parse RGB for luminance:', hex);
+      logger.error('[ColorConvert] Failed to parse RGB for luminance:', hex);
       return 0.5;
     }
 
@@ -131,13 +133,13 @@ export function calculateLuminance(hex: string): number {
 
     // Validate result
     if (isNaN(luminance)) {
-      console.error('[ColorConvert] Invalid luminance calculated from:', hex);
+      logger.error('[ColorConvert] Invalid luminance calculated from:', hex);
       return 0.5;
     }
 
     return luminance;
   } catch (error) {
-    console.error('[ColorConvert] Unexpected error in calculateLuminance:', error, 'Input:', hex);
+    logger.error('[ColorConvert] Unexpected error in calculateLuminance:', error, 'Input:', hex);
     return 0.5; // Safe fallback
   }
 }
@@ -152,7 +154,7 @@ export function getContrastTextColor(backgroundColor: string): string {
   try {
     // Validate input
     if (!backgroundColor || typeof backgroundColor !== 'string') {
-      console.error('[ColorConvert] Invalid background color for contrast:', backgroundColor);
+      logger.error('[ColorConvert] Invalid background color for contrast:', backgroundColor);
       return '#000000'; // Default to black text
     }
 
@@ -162,7 +164,7 @@ export function getContrastTextColor(backgroundColor: string): string {
     // luminance <= 0.5 suggests dark background (use white text)
     return luminance > 0.5 ? '#000000' : '#FFFFFF';
   } catch (error) {
-    console.error('[ColorConvert] Unexpected error in getContrastTextColor:', error, 'Input:', backgroundColor);
+    logger.error('[ColorConvert] Unexpected error in getContrastTextColor:', error, 'Input:', backgroundColor);
     return '#000000'; // Safe fallback
   }
 }
@@ -177,7 +179,7 @@ export function getSecondaryTextColor(primaryTextColor: string): string {
   try {
     // Validate input
     if (!primaryTextColor || typeof primaryTextColor !== 'string') {
-      console.error('[ColorConvert] Invalid primary text color for secondary:', primaryTextColor);
+      logger.error('[ColorConvert] Invalid primary text color for secondary:', primaryTextColor);
       return '#4D4D4D'; // Default to gray
     }
 
@@ -191,7 +193,7 @@ export function getSecondaryTextColor(primaryTextColor: string): string {
       return '#4D4D4D';
     }
   } catch (error) {
-    console.error('[ColorConvert] Unexpected error in getSecondaryTextColor:', error, 'Input:', primaryTextColor);
+    logger.error('[ColorConvert] Unexpected error in getSecondaryTextColor:', error, 'Input:', primaryTextColor);
     return '#4D4D4D'; // Safe fallback
   }
 }

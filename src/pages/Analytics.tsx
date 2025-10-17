@@ -23,6 +23,7 @@ import { Button } from '@/components/common/Button';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 import { cn } from '@/utils/cn';
+import logger from '@/utils/logger';
 import {
   TrendingUp,
   BarChart3,
@@ -78,7 +79,7 @@ export function Analytics() {
       await resetAllStats();
       setShowResetDialog(false);
     } catch (error) {
-      console.error('Failed to reset stats:', error);
+      logger.error('Failed to reset stats:', error);
     } finally {
       setIsResetting(false);
     }

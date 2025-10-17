@@ -1,6 +1,9 @@
 import { app, session } from 'electron';
 import * as os from 'os';
 import { zscalerConfig } from './zscalerConfig';
+import { logger } from '../src/utils/logger';
+
+const log = logger.namespace('ProxyConfig');
 
 /**
  * Proxy configuration and detection for corporate environments
@@ -34,7 +37,7 @@ export class ProxyConfig {
 
     // Check if we already have a proxy configured
     if (this.proxyUrl && !this.proxyUrl.includes('localhost') && !this.proxyUrl.includes('127.0.0.1')) {
-      console.log('[ProxyConfig] Non-localhost proxy already configured, skipping localhost detection');
+      log.info('[ZscalerConfig] Non-localhost proxy already configured, skipping localhost detection');
       return;
     }
 
@@ -43,17 +46,17 @@ export class ProxyConfig {
       // Check if this might be the active proxy
       if (process.env[`LOCALHOST_PROXY_${port}`] === 'true') {
         const proxyUrl = `http://localhost:${port}`;
-        console.log(`[ProxyConfig] Detected localhost proxy on port ${port} from environment`);
+        log.info(` Detected localhost proxy on port ${port} from environment`);
 
         if (port === 8005) {
-          console.log('[ProxyConfig] ⚠️  WSUS/MSDTC proxy detected on port 8005 - Mutual TLS likely required');
-          console.log('[ProxyConfig] This proxy requires special handling for certificate authentication');
+          log.info('[ZscalerConfig] ⚠️  WSUS/MSDTC proxy detected on port 8005 - Mutual TLS likely required');
+          log.info('[ZscalerConfig] This proxy requires special handling for certificate authentication');
         }
 
         // Only set if we don't already have a proxy
         if (!this.proxyUrl) {
           this.proxyUrl = proxyUrl;
-          console.log(`[ProxyConfig] Using localhost proxy: ${proxyUrl}`);
+          log.info(` Using localhost proxy: ${proxyUrl}`);
         }
         break;
       }
@@ -61,10 +64,10 @@ export class ProxyConfig {
 
     // Log if we detect the Windows Update localhost:8005 configuration
     if (!this.proxyUrl) {
-      console.log('[ProxyConfig] Checking for Windows Update proxy configuration...');
+      log.info('[ZscalerConfig] Checking for Windows Update proxy configuration...');
       // This is informational - the actual proxy might be transparent
-      console.log('[ProxyConfig] Note: Windows Update may be using localhost:8005 for WSUS');
-      console.log('[ProxyConfig] This often indicates enterprise network with mutual TLS requirements');
+      log.info('[ZscalerConfig] Note: Windows Update may be using localhost:8005 for WSUS');
+      log.info('[ZscalerConfig] This often indicates enterprise network with mutual TLS requirements');
     }
   }
 
@@ -86,24 +89,24 @@ export class ProxyConfig {
       const proxyValue = process.env[envVar];
       if (proxyValue) {
         this.proxyUrl = proxyValue;
-        console.log(`[ProxyConfig] Detected proxy from ${envVar}: ${this.proxyUrl}`);
+        log.info(` Detected proxy from ${envVar}: ${this.proxyUrl}`);
         break;
       }
     }
 
     // If Zscaler is detected but no proxy is set, use a default Zscaler proxy
     if (!this.proxyUrl && zscalerConfig.isDetected()) {
-      console.log('[ProxyConfig] Zscaler detected but no proxy configured');
+      log.info('[ZscalerConfig] Zscaler detected but no proxy configured');
       // Zscaler typically uses transparent proxy, so we might not need explicit proxy settings
       // But we should ensure certificate handling is properly configured
-      console.log('[ProxyConfig] Relying on Zscaler transparent proxy');
+      log.info('[ZscalerConfig] Relying on Zscaler transparent proxy');
     }
 
     // Check for NO_PROXY bypass list
     const noProxy = process.env.NO_PROXY || process.env.no_proxy;
     if (noProxy) {
       this.bypassList = [...this.bypassList, ...noProxy.split(',').map(s => s.trim())];
-      console.log(`[ProxyConfig] Proxy bypass list: ${this.bypassList.join(', ')}`);
+      log.info(` Proxy bypass list: ${this.bypassList.join(', ')}`);
     }
 
     // Check for proxy authentication
@@ -112,13 +115,13 @@ export class ProxyConfig {
 
     if (proxyUsername && proxyPassword) {
       this.proxyAuth = { username: proxyUsername, password: proxyPassword };
-      console.log('[ProxyConfig] Proxy authentication configured');
+      log.info('[ZscalerConfig] Proxy authentication configured');
     }
 
     // Log corporate CA certificate configuration
     const caCert = process.env.NODE_EXTRA_CA_CERTS;
     if (caCert) {
-      console.log(`[ProxyConfig] Corporate CA certificate configured: ${caCert}`);
+      log.info(` Corporate CA certificate configured: ${caCert}`);
     }
   }
 
@@ -127,12 +130,12 @@ export class ProxyConfig {
    */
   public configureApp(): void {
     if (!this.proxyUrl) {
-      console.log('[ProxyConfig] No proxy detected, using direct connection');
+      log.info('[ZscalerConfig] No proxy detected, using direct connection');
       return;
     }
 
     // Set proxy for Electron
-    console.log(`[ProxyConfig] Configuring app with proxy: ${this.proxyUrl}`);
+    log.info(`[ProxyConfig] Configuring app with proxy: ${this.proxyUrl}`);
 
     // Configure command line switches for Chromium
     app.commandLine.appendSwitch('proxy-server', this.proxyUrl);
@@ -146,7 +149,7 @@ export class ProxyConfig {
       app.on('login', (event, webContents, request, authInfo, callback) => {
         if (authInfo.isProxy && this.proxyAuth) {
           event.preventDefault();
-          console.log('[ProxyConfig] Providing proxy authentication for:', authInfo.host);
+          log.info('[ZscalerConfig] Providing proxy authentication for:', authInfo.host);
           callback(this.proxyAuth.username, this.proxyAuth.password);
         }
       });
@@ -162,8 +165,8 @@ export class ProxyConfig {
 
     try {
       // CRITICAL: Close all existing connections to prevent connection pool reuse
-      console.log('[ProxyConfig] Closing all existing connections...');
-      console.log('[ProxyConfig] Session info:', {
+      log.info('[ZscalerConfig] Closing all existing connections...');
+      log.info('[ZscalerConfig] Session info:', {
         cacheSize: await targetSession.getCacheSize(),
         userAgent: targetSession.getUserAgent().substring(0, 100),
         protocol: targetSession.protocol
@@ -171,13 +174,13 @@ export class ProxyConfig {
       await targetSession.closeAllConnections();
 
       if (!this.proxyUrl) {
-        console.log('[ProxyConfig] No proxy detected, configuring direct connection');
+        log.info('[ZscalerConfig] No proxy detected, configuring direct connection');
         await targetSession.setProxy({ mode: 'direct' });
         this.isProxyConfigured = true;
         return;
       }
 
-      console.log('[ProxyConfig] Configuring session proxy:', this.proxyUrl);
+      log.info('[ZscalerConfig] Configuring session proxy:', this.proxyUrl);
 
       // Build proxy configuration
       const proxyConfig: Electron.ProxyConfig = {
@@ -188,7 +191,7 @@ export class ProxyConfig {
       // Check for PAC script
       const pacUrl = process.env.PAC_URL || process.env.pac_url;
       if (pacUrl) {
-        console.log('[ProxyConfig] Using PAC script:', pacUrl);
+        log.info('[ZscalerConfig] Using PAC script:', pacUrl);
         proxyConfig.pacScript = pacUrl;
         proxyConfig.mode = 'pac_script';
       }
@@ -199,11 +202,11 @@ export class ProxyConfig {
       // Force reload proxy configuration
       await targetSession.forceReloadProxyConfig();
 
-      console.log('[ProxyConfig] Session proxy configured successfully');
+      log.info('[ZscalerConfig] Session proxy configured successfully');
       this.isProxyConfigured = true;
 
     } catch (error) {
-      console.error('[ProxyConfig] Failed to configure session proxy:', error);
+      log.error('[ZscalerConfig] Failed to configure session proxy:', error);
       throw error;
     }
   }
@@ -215,7 +218,7 @@ export class ProxyConfig {
     const targetSession = ses || session.defaultSession;
 
     try {
-      console.log(`[ProxyConfig] Resetting proxy configuration (attempt ${retryCount + 1}/${this.maxRetries})`);
+      log.info(` Resetting proxy configuration (attempt ${retryCount + 1}/${this.maxRetries})`);
 
       // Close all connections
       await targetSession.closeAllConnections();
@@ -228,7 +231,7 @@ export class ProxyConfig {
 
     } catch (error) {
       if (retryCount < this.maxRetries - 1) {
-        console.log('[ProxyConfig] Retrying proxy reset...');
+        log.info('[ZscalerConfig] Retrying proxy reset...');
         await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
         return this.resetProxyWithRetry(targetSession, retryCount + 1);
       }
@@ -250,7 +253,7 @@ export class ProxyConfig {
       .replace(/\s+/g, ' ')
       .trim();
 
-    console.log('[ProxyConfig] Clean User-Agent:', cleanUA);
+    log.info('[ZscalerConfig] Clean User-Agent:', cleanUA);
     return cleanUA;
   }
 
@@ -286,7 +289,7 @@ export class ProxyConfig {
         }
       }
     } catch (error) {
-      console.error('[ProxyConfig] Error checking bypass:', error);
+      log.error('[ZscalerConfig] Error checking bypass:', error);
     }
 
     return false;
@@ -317,19 +320,19 @@ export class ProxyConfig {
    * Log proxy configuration for debugging
    */
   public logConfiguration(): void {
-    console.log('[ProxyConfig] Configuration Summary:');
-    console.log(`  - Proxy URL: ${this.proxyUrl || 'Not configured (direct connection)'}`);
-    console.log(`  - Proxy Auth: ${this.proxyAuth ? 'Configured' : 'Not configured'}`);
-    console.log(`  - Bypass List: ${this.bypassList.join(', ')}`);
-    console.log(`  - Zscaler Status: ${zscalerConfig.isDetected() ? 'DETECTED' : 'Not detected'}`);
-    console.log(`  - NODE_EXTRA_CA_CERTS: ${process.env.NODE_EXTRA_CA_CERTS || 'Not configured'}`);
-    console.log(`  - NODE_TLS_REJECT_UNAUTHORIZED: ${process.env.NODE_TLS_REJECT_UNAUTHORIZED || 'Default (1)'}`);
-    console.log(`  - ZSCALER_BYPASS: ${process.env.ZSCALER_BYPASS || 'Not set'}`);
-    console.log(`  - Platform: ${os.platform()}`);
-    console.log(`  - Node Version: ${process.version}`);
-    console.log(`  - Electron Version: ${process.versions.electron}`);
-    console.log(`  - App Version: ${app.getVersion()}`);
-    console.log(`  - System Locale: ${app.getLocale()}`);
+    log.info('[ZscalerConfig] Configuration Summary:');
+    log.info(`  - Proxy URL: ${this.proxyUrl || 'Not configured (direct connection)'}`);
+    log.info(`  - Proxy Auth: ${this.proxyAuth ? 'Configured' : 'Not configured'}`);
+    log.info(`  - Bypass List: ${this.bypassList.join(', ')}`);
+    log.info(`  - Zscaler Status: ${zscalerConfig.isDetected() ? 'DETECTED' : 'Not detected'}`);
+    log.info(`  - NODE_EXTRA_CA_CERTS: ${process.env.NODE_EXTRA_CA_CERTS || 'Not configured'}`);
+    log.info(`  - NODE_TLS_REJECT_UNAUTHORIZED: ${process.env.NODE_TLS_REJECT_UNAUTHORIZED || 'Default (1)'}`);
+    log.info(`  - ZSCALER_BYPASS: ${process.env.ZSCALER_BYPASS || 'Not set'}`);
+    log.info(`  - Platform: ${os.platform()}`);
+    log.info(`  - Node Version: ${process.version}`);
+    log.info(`  - Electron Version: ${process.versions.electron}`);
+    log.info(`  - App Version: ${app.getVersion()}`);
+    log.info(`  - System Locale: ${app.getLocale()}`);
   }
 }
 

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserSettings, defaultUserSettings } from '@/types/settings';
+import { logger } from '@/utils/logger';
 
 interface UserSettingsContextType {
   settings: UserSettings;
@@ -18,6 +19,7 @@ const UserSettingsContext = createContext<UserSettingsContextType | undefined>(u
 const STORAGE_KEY = 'userSettings';
 
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
+  const log = logger.namespace('UserSettings');
   const [settings, setSettings] = useState<UserSettings>(defaultUserSettings);
 
   const loadSettings = () => {
@@ -28,7 +30,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         setSettings({ ...defaultUserSettings, ...parsed });
       }
     } catch (error) {
-      console.error('Failed to load user settings:', error);
+      log.error('Failed to load user settings:', error);
       setSettings(defaultUserSettings);
     }
   };
@@ -38,7 +40,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
       return true;
     } catch (error) {
-      console.error('Failed to save user settings:', error);
+      log.error('Failed to save user settings:', error);
       return false;
     }
   };

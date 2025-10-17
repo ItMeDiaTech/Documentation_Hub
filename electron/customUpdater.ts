@@ -9,8 +9,10 @@ import { proxyConfig } from './proxyConfig';
 import { zscalerConfig } from './zscalerConfig';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { logger } from '../src/utils/logger';
 
 const execAsync = promisify(exec);
+const log = logger.namespace('CustomUpdater');
 
 /**
  * Custom updater that implements fallback to ZIP downloads
@@ -43,7 +45,7 @@ export class CustomUpdater {
     };
 
     // Log TLS configuration for debugging
-    console.log('[CustomUpdater] Initialized with TLS configuration:', {
+    log.info('Initialized with TLS configuration:', {
       NODE_TLS_REJECT_UNAUTHORIZED: process.env.NODE_TLS_REJECT_UNAUTHORIZED,
       platform: process.platform,
       version: app.getVersion(),
@@ -53,7 +55,7 @@ export class CustomUpdater {
     // Set up event handlers
     autoUpdater.on('checking-for-update', () => {
       this.sendToWindow('update-checking');
-      console.log('[CustomUpdater] Checking for updates...');
+      log.info('Checking for updates...');
     });
 
     autoUpdater.on('update-available', (info) => {
@@ -63,14 +65,14 @@ export class CustomUpdater {
         releaseDate: info.releaseDate,
         releaseNotes: info.releaseNotes,
       });
-      console.log(`[CustomUpdater] Update available: ${info.version}`);
+      log.info(`Update available: ${info.version}`);
     });
 
     autoUpdater.on('update-not-available', (info) => {
       this.sendToWindow('update-not-available', {
         version: info.version,
       });
-      console.log('[CustomUpdater] No updates available');
+      log.info('No updates available');
     });
 
     autoUpdater.on('error', (error) => {
@@ -78,7 +80,7 @@ export class CustomUpdater {
       const isNetworkError = this.isNetworkBlockingError(error);
 
       if (isNetworkError && !this.useZipFallback && this.updateInfo) {
-        console.log('[CustomUpdater] Network error detected, attempting ZIP fallback...');
+        log.info('Network error detected, attempting ZIP fallback...');
         this.useZipFallback = true;
         // Trigger fallback download
         this.downloadZipUpdate();
@@ -86,7 +88,7 @@ export class CustomUpdater {
         this.sendToWindow('update-error', {
           message: error.message,
         });
-        console.error('[CustomUpdater] Update error:', error);
+        log.error('Update error:', error);
       }
     });
 
@@ -104,7 +106,7 @@ export class CustomUpdater {
         version: info.version,
         releaseNotes: info.releaseNotes,
       });
-      console.log(`[CustomUpdater] Update downloaded: ${info.version}`);
+      log.info(`Update downloaded: ${info.version}`);
     });
   }
 
@@ -160,14 +162,14 @@ export class CustomUpdater {
       ];
 
       if (tlsErrorCodes.includes(errorCode)) {
-        console.log(`[CustomUpdater] Detected TLS/network error code: ${errorCode}`);
+        log.debug(`Detected TLS/network error code: ${errorCode}`);
         return true;
       }
     }
 
     const isBlocked = blockingIndicators.some(indicator => errorMessage.includes(indicator));
     if (isBlocked) {
-      console.log(`[CustomUpdater] Detected network/TLS blocking indicator in error: ${errorMessage.substring(0, 200)}`);
+      log.debug(`Detected network/TLS blocking indicator in error: ${errorMessage.substring(0, 200)}`);
     }
     return isBlocked;
   }
@@ -200,7 +202,7 @@ export class CustomUpdater {
         updateInfo: result?.updateInfo,
       };
     } catch (error) {
-      console.error('[CustomUpdater] Failed to check for updates:', error);
+      log.error('Failed to check for updates:', error);
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to check for updates',
@@ -227,7 +229,7 @@ export class CustomUpdater {
     } catch (error) {
       // If standard download fails, try ZIP fallback
       if (!this.useZipFallback && this.updateInfo) {
-        console.log('[CustomUpdater] Standard download failed, trying ZIP fallback...');
+        log.info('Standard download failed, trying ZIP fallback...');
         this.useZipFallback = true;
         return await this.downloadZipUpdate();
       }
@@ -260,7 +262,7 @@ export class CustomUpdater {
       const zipFileName = `Documentation-Hub-Setup-${version}-Compressed.zip`;
       const releaseUrl = `https://github.com/ItMeDiaTech/Documentation_Hub/releases/download/v${version}/${zipFileName}`;
 
-      console.log(`[CustomUpdater] Downloading ZIP from: ${releaseUrl}`);
+      log.info(`Downloading ZIP from: ${releaseUrl}`);
 
       // Download ZIP file
       const tempDir = app.getPath('temp');
@@ -269,7 +271,7 @@ export class CustomUpdater {
 
       await this.downloadFile(releaseUrl, zipPath);
 
-      console.log(`[CustomUpdater] ZIP downloaded to: ${zipPath}`);
+      log.info(`ZIP downloaded to: ${zipPath}`);
 
       // Extract ZIP
       this.sendToWindow('update-extracting', {
@@ -279,7 +281,7 @@ export class CustomUpdater {
       const zip = new AdmZip(zipPath);
       zip.extractAllTo(tempDir, true);
 
-      console.log(`[CustomUpdater] Extracted to: ${tempDir}`);
+      log.info(`Extracted to: ${tempDir}`);
 
       // Verify the extracted .exe exists
       if (!fs.existsSync(exePath)) {
@@ -305,7 +307,7 @@ export class CustomUpdater {
         fallbackUsed: true,
       };
     } catch (error) {
-      console.error('[CustomUpdater] ZIP fallback failed:', error);
+      log.error('ZIP fallback failed:', error);
       this.sendToWindow('update-error', {
         message: `Fallback download failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
@@ -320,7 +322,7 @@ export class CustomUpdater {
    * Clean up active requests
    */
   private cleanupActiveRequests(): void {
-    console.log(`[CustomUpdater] Cleaning up ${this.activeRequests.size} active requests...`);
+    log.debug(`Cleaning up ${this.activeRequests.size} active requests...`);
     for (const request of this.activeRequests) {
       try {
         request.abort();
@@ -339,7 +341,7 @@ export class CustomUpdater {
       throw new Error('PowerShell download only available on Windows');
     }
 
-    console.log('[CustomUpdater] Attempting download with PowerShell (Mutual TLS/Enterprise network compatible)...');
+    log.info('Attempting download with PowerShell (Mutual TLS/Enterprise network compatible)...');
 
     // Enhanced PowerShell command with better Zscaler handling
     const psCommand = `
@@ -433,7 +435,7 @@ export class CustomUpdater {
       );
 
       if (stdout.includes('SUCCESS')) {
-        console.log('[CustomUpdater] PowerShell download successful');
+        log.info('PowerShell download successful');
         // Verify file exists
         if (!fs.existsSync(destPath)) {
           throw new Error('Download appeared successful but file not found');
@@ -442,7 +444,7 @@ export class CustomUpdater {
         throw new Error(`PowerShell download failed: ${stdout} ${stderr}`);
       }
     } catch (error) {
-      console.error('[CustomUpdater] PowerShell download failed:', error);
+      log.error('PowerShell download failed:', error);
       throw error;
     }
   }
@@ -451,7 +453,7 @@ export class CustomUpdater {
    * Curl download fallback (better certificate handling than Node.js)
    */
   private async downloadWithCurl(url: string, destPath: string): Promise<void> {
-    console.log('[CustomUpdater] Attempting download with curl...');
+    log.info('Attempting download with curl...');
 
     // Check if curl is available
     try {
@@ -464,14 +466,14 @@ export class CustomUpdater {
 
     try {
       const { stdout, stderr } = await execAsync(curlCommand, { timeout: 60000 });
-      console.log('[CustomUpdater] Curl download completed');
+      log.info('Curl download completed');
 
       // Verify file exists
       if (!fs.existsSync(destPath)) {
         throw new Error('Curl download appeared successful but file not found');
       }
     } catch (error) {
-      console.error('[CustomUpdater] Curl download failed:', error);
+      log.error('Curl download failed:', error);
       throw error;
     }
   }
@@ -488,36 +490,36 @@ export class CustomUpdater {
 
     // PRIORITIZE PowerShell when Zscaler is detected - it handles corporate certificates better
     if (zscalerConfig.isDetected() && process.platform === 'win32') {
-      console.log('[CustomUpdater] ⚠️ ZSCALER DETECTED - Prioritizing PowerShell download for better certificate handling');
-      console.log('[CustomUpdater] PowerShell uses Windows Certificate Store which includes corporate certificates');
+      log.warn('⚠️ ZSCALER DETECTED - Prioritizing PowerShell download for better certificate handling');
+      log.info('PowerShell uses Windows Certificate Store which includes corporate certificates');
 
       // Try PowerShell multiple times before falling back
       for (let psAttempt = 1; psAttempt <= 3; psAttempt++) {
         try {
-          console.log(`[CustomUpdater] PowerShell download attempt ${psAttempt}/3...`);
+          log.info(`PowerShell download attempt ${psAttempt}/3...`);
           await this.downloadWithPowerShell(url, destPath);
-          console.log('[CustomUpdater] ✅ PowerShell download successful with Zscaler!');
+          log.info('✅ PowerShell download successful with Zscaler!');
           return; // Success!
         } catch (error) {
-          console.log(`[CustomUpdater] PowerShell attempt ${psAttempt} failed:`, error);
+          log.warn(`PowerShell attempt ${psAttempt} failed:`, error);
           if (psAttempt < 3) {
             await new Promise(resolve => setTimeout(resolve, 2000 * psAttempt));
           }
         }
       }
-      console.log('[CustomUpdater] All PowerShell attempts failed, falling back to net.request...');
+      log.info('All PowerShell attempts failed, falling back to net.request...');
     }
 
     // On Windows without Zscaler, still try PowerShell first for better compatibility
     if (process.platform === 'win32' && attempt === 1 && !zscalerConfig.isDetected()) {
-      console.log('[CustomUpdater] Windows detected - trying PowerShell download with system certificates...');
+      log.info('Windows detected - trying PowerShell download with system certificates...');
       try {
         await this.downloadWithPowerShell(url, destPath);
-        console.log('[CustomUpdater] PowerShell download successful!');
+        log.info('PowerShell download successful!');
         return; // Success!
       } catch (error) {
-        console.log('[CustomUpdater] PowerShell download failed:', error);
-        console.log('[CustomUpdater] Falling back to net.request method...');
+        log.warn('PowerShell download failed:', error);
+        log.info('Falling back to net.request method...');
       }
     }
 
@@ -526,7 +528,7 @@ export class CustomUpdater {
       const elapsedTime = Date.now() - startTime;
       if (elapsedTime > ABSOLUTE_TIMEOUT) {
         const errorMsg = `Download timeout: Exceeded maximum time limit (${ABSOLUTE_TIMEOUT / 1000}s)`;
-        console.log(`[CustomUpdater] ${errorMsg}`);
+        log.error(errorMsg);
         this.sendToWindow('update-error', {
           message: errorMsg + '. Please try manual download or check your network connection.'
         });
@@ -536,7 +538,7 @@ export class CustomUpdater {
       try {
         // Reset proxy configuration on retry
         if (currentAttempt > 1) {
-          console.log(`[CustomUpdater] Resetting proxy configuration for attempt ${currentAttempt}...`);
+          log.debug(`Resetting proxy configuration for attempt ${currentAttempt}...`);
           await proxyConfig.resetProxyWithRetry();
 
           // Clean up any lingering connections
@@ -548,7 +550,7 @@ export class CustomUpdater {
 
         // Wait if we have too many concurrent connections
         while (this.activeRequests.size >= this.maxConcurrentConnections) {
-          console.log('[CustomUpdater] Waiting for connection slot...');
+          log.debug('Waiting for connection slot...');
           await new Promise(resolve => setTimeout(resolve, 100));
         }
 
@@ -558,7 +560,7 @@ export class CustomUpdater {
         const errorCode = error.code || '';
         const errorMessage = error.message || '';
 
-        console.log(`[CustomUpdater] Download attempt ${currentAttempt} failed:`, {
+        log.warn(`Download attempt ${currentAttempt} failed:`, {
           code: errorCode,
           message: errorMessage.substring(0, 200)
         });
@@ -566,7 +568,7 @@ export class CustomUpdater {
         // Check if error is specifically ERR_CONNECTION_RESET from net module
         if (errorMessage.includes('net::ERR_CONNECTION_RESET') ||
             errorMessage.includes('ERR_CONNECTION_RESET')) {
-          console.log('[CustomUpdater] Detected ERR_CONNECTION_RESET from net module');
+          log.debug('Detected ERR_CONNECTION_RESET from net module');
         }
 
         // Check if we should retry
@@ -589,7 +591,7 @@ export class CustomUpdater {
             throw new Error(`Download timeout: Not enough time remaining for retry (${timeRemaining}ms left)`);
           }
 
-          console.log(`[CustomUpdater] Retrying in ${delay}ms (${timeRemaining}ms remaining)...`);
+          log.info(`Retrying in ${delay}ms (${timeRemaining}ms remaining)...`);
 
           // Send status update
           let statusMessage = 'Connection interrupted, retrying...';
@@ -613,7 +615,7 @@ export class CustomUpdater {
             if (zscalerConfig.isZscalerError(error) || this.isCertificateError(error)) {
               // Try PowerShell as last resort on Windows
               if (process.platform === 'win32' && currentAttempt === maxAttempts) {
-                console.log('[CustomUpdater] Final attempt with PowerShell for Zscaler...');
+                log.info('Final attempt with PowerShell for Zscaler...');
                 try {
                   await this.downloadWithPowerShell(url, destPath);
                   return; // Success!
@@ -647,7 +649,7 @@ export class CustomUpdater {
    */
   private downloadFileWithNet(url: string, destPath: string, attempt: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      console.log(`[CustomUpdater] Downloading with net.request (attempt ${attempt}): ${url}`);
+      log.info(`Downloading with net.request (attempt ${attempt}): ${url}`);
 
       // Create file stream
       const file = fs.createWriteStream(destPath);
@@ -675,7 +677,7 @@ export class CustomUpdater {
 
       // Add Zscaler bypass headers if detected
       if (zscalerConfig.isDetected()) {
-        console.log('[CustomUpdater] Adding Zscaler bypass headers');
+        log.debug('Adding Zscaler bypass headers');
         const bypassHeaders = zscalerConfig.getBypassHeaders();
         for (const [key, value] of Object.entries(bypassHeaders)) {
           request.setHeader(key, value);
@@ -685,7 +687,7 @@ export class CustomUpdater {
       // Handle timeout (30 seconds per request)
       const timeout = setTimeout(() => {
         if (!requestCompleted) {
-          console.log('[CustomUpdater] Request timeout, aborting...');
+          log.warn('Request timeout, aborting...');
           request.abort();
           this.activeRequests.delete(request);
           reject(new Error('Download timeout - network may be too slow or blocked'));
@@ -701,7 +703,7 @@ export class CustomUpdater {
           const redirectUrl = response.headers.location;
           if (redirectUrl && typeof redirectUrl === 'string') {
             file.close();
-            console.log(`[CustomUpdater] Following redirect to: ${redirectUrl}`);
+            log.debug(`Following redirect to: ${redirectUrl}`);
             this.downloadFileWithNet(redirectUrl, destPath, attempt).then(resolve).catch(reject);
             return;
           }
@@ -744,7 +746,7 @@ export class CustomUpdater {
           clearTimeout(timeout);
           this.activeRequests.delete(request);
           file.end(() => {
-            console.log(`[CustomUpdater] Download complete: ${downloadedBytes} bytes`);
+            log.info(`Download complete: ${downloadedBytes} bytes`);
             resolve();
           });
         });
@@ -773,7 +775,7 @@ export class CustomUpdater {
         }
 
         // Log detailed error information
-        console.error(`[CustomUpdater] net.request error:`, {
+        log.error('net.request error:', {
           code: (error as any).code,
           message: error.message,
           syscall: (error as any).syscall,
@@ -843,7 +845,7 @@ export class CustomUpdater {
 
     // Check for specific error codes
     if (certErrorCodes.includes(code)) {
-      console.log(`[CustomUpdater] Certificate error detected: ${code}`);
+      log.debug(`Certificate error detected: ${code}`);
       return true;
     }
 
@@ -859,7 +861,7 @@ export class CustomUpdater {
 
     const hasCertMessage = certMessages.some(msg => message.includes(msg));
     if (hasCertMessage) {
-      console.log(`[CustomUpdater] Certificate error message detected: ${message.substring(0, 100)}`);
+      log.debug(`Certificate error message detected: ${message.substring(0, 100)}`);
       return true;
     }
 
@@ -872,7 +874,7 @@ export class CustomUpdater {
   public async openDownloadInBrowser(): Promise<void> {
     if (!this.updateInfo) {
       const githubReleasesUrl = 'https://github.com/ItMeDiaTech/Documentation_Hub/releases/latest';
-      console.log('[CustomUpdater] Opening GitHub releases page in browser');
+      log.info('Opening GitHub releases page in browser');
       await shell.openExternal(githubReleasesUrl);
       return;
     }
@@ -880,7 +882,7 @@ export class CustomUpdater {
     const version = this.updateInfo.version;
     const downloadUrl = `https://github.com/ItMeDiaTech/Documentation_Hub/releases/download/v${version}/Documentation-Hub-Setup-${version}.exe`;
 
-    console.log('[CustomUpdater] Opening direct download link in browser:', downloadUrl);
+    log.info('Opening direct download link in browser:', downloadUrl);
     this.sendToWindow('update-manual-download', {
       message: 'Opening download in your browser. Please download and install manually.',
       downloadUrl: downloadUrl
@@ -897,14 +899,14 @@ export class CustomUpdater {
     const fallbackPath = (global as any).fallbackInstallerPath;
 
     if (fallbackPath && fs.existsSync(fallbackPath)) {
-      console.log(`[CustomUpdater] Installing from fallback: ${fallbackPath}`);
+      log.info(`Installing from fallback: ${fallbackPath}`);
 
       // Launch the installer
       shell.openPath(fallbackPath).then(() => {
         // Quit the app after launching installer
         app.quit();
       }).catch((error) => {
-        console.error('[CustomUpdater] Failed to launch installer:', error);
+        log.error('Failed to launch installer:', error);
         this.sendToWindow('update-error', {
           message: 'Failed to launch installer',
         });
@@ -920,17 +922,17 @@ export class CustomUpdater {
    */
   public async checkOnStartup(): Promise<void> {
     if (this.isDev) {
-      console.log('[CustomUpdater] Skipping update check in development mode');
+      log.info('Skipping update check in development mode');
       return;
     }
 
     // Wait a bit for the window to load
     setTimeout(async () => {
       try {
-        console.log('[CustomUpdater] Checking for updates on startup...');
+        log.info('Checking for updates on startup...');
         await this.checkForUpdates();
       } catch (error) {
-        console.error('[CustomUpdater] Startup update check failed:', error);
+        log.error('Startup update check failed:', error);
       }
     }, 3000);
   }

@@ -312,7 +312,7 @@ export function Search() {
                 'p-4 rounded-lg border cursor-pointer transition-all duration-150',
                 'hover:border-primary hover:bg-accent/50',
                 selectedIndex === index
-                  ? 'border-primary bg-accent/50 shadow-sm'
+                  ? 'border-primary bg-accent/50 shadow-xs'
                   : 'border-border bg-card'
               )}
             >

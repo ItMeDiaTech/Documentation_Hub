@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Ca
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { cn } from '@/utils/cn';
+import logger from '@/utils/logger';
 import type { Document } from '@/types/session';
 
 interface DocumentWithSession extends Document {
@@ -60,14 +61,14 @@ export function Documents() {
 
   const handleOpenLocation = async (path?: string) => {
     if (!path) {
-      console.warn('No path available for document');
+      logger.warn('No path available for document');
       return;
     }
 
     try {
       await window.electronAPI.showInFolder(path);
     } catch (err) {
-      console.error('Failed to open file location:', err);
+      logger.error('Failed to open file location:', err);
     }
   };
 
