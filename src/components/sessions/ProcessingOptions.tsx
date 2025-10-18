@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { cn } from '@/utils/cn';
@@ -44,37 +44,31 @@ const groupLabels = {
 
 interface ProcessingOptionsProps {
   sessionId?: string;
-  initialOptions?: ProcessingOption[];
-  onOptionsChange?: (options: ProcessingOption[]) => void;
+  options: ProcessingOption[]; // Fully controlled - no "initial" prefix
+  onOptionsChange: (options: ProcessingOption[]) => void; // Required, not optional
 }
 
-export function ProcessingOptions({ initialOptions, onOptionsChange }: ProcessingOptionsProps) {
-  const [options, setOptions] = useState<ProcessingOption[]>(initialOptions ?? defaultOptions);
-  const [masterToggle, setMasterToggle] = useState(false);
+export function ProcessingOptions({ options, onOptionsChange }: ProcessingOptionsProps) {
+  // REFACTORED: Fully controlled component - no local state
+  // All state lives in parent (SessionContext)
+  // This eliminates race conditions and state synchronization issues
 
-  // Sync with prop changes (when switching sessions or loading saved options)
-  useEffect(() => {
-    if (initialOptions) {
-      setOptions(initialOptions);
-      // Update master toggle based on whether all options are enabled
-      setMasterToggle(initialOptions.every(opt => opt.enabled));
-    }
-  }, [initialOptions]);
+  // Calculate master toggle state from props (derived state, not stored)
+  const masterToggle = useMemo(() => {
+    return options.every(opt => opt.enabled);
+  }, [options]);
 
   const toggleOption = (optionId: string) => {
     const updatedOptions = options.map(opt =>
       opt.id === optionId ? { ...opt, enabled: !opt.enabled } : opt
     );
-    setOptions(updatedOptions);
-    onOptionsChange?.(updatedOptions);
+    onOptionsChange(updatedOptions);
   };
 
   const toggleAll = () => {
     const newState = !masterToggle;
-    setMasterToggle(newState);
     const updatedOptions = options.map(opt => ({ ...opt, enabled: newState }));
-    setOptions(updatedOptions);
-    onOptionsChange?.(updatedOptions);
+    onOptionsChange(updatedOptions);
   };
 
   const toggleGroup = (group: string) => {
@@ -84,8 +78,7 @@ export function ProcessingOptions({ initialOptions, onOptionsChange }: Processin
     const updatedOptions = options.map(opt =>
       opt.group === group ? { ...opt, enabled: !allEnabled } : opt
     );
-    setOptions(updatedOptions);
-    onOptionsChange?.(updatedOptions);
+    onOptionsChange(updatedOptions);
   };
 
   const groupedOptions = options.reduce((acc, option) => {
