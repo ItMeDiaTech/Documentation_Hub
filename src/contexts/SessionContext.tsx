@@ -195,10 +195,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         clearTimeout(persistTimerRef.current);
       }
 
-      // Set new timer with 1 second debounce
+      // PERFORMANCE FIX: Increased debounce from 1s to 3s for better UI responsiveness
+      // This reduces database writes during active editing (drag-drop, processing, etc.)
+      // and makes the UI feel much snappier
       persistTimerRef.current = setTimeout(() => {
         debouncedPersistSessions();
-      }, 1000);
+      }, 3000); // 3 second debounce
     }
 
     // Cleanup on unmount
@@ -209,6 +211,48 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     };
   }, [sessions, activeSessions]); // FIX: Removed debouncedPersistSessions - it's stable so doesn't need to be a dependency
+
+  // CRITICAL FIX: Flush pending saves before window closes
+  // Without this, sessions created/modified within the debounce window are lost
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Cancel the debounce timer
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+
+      // Immediately save all sessions (synchronous)
+      // Note: This must be synchronous - async operations may not complete before unload
+      const currentSessions = sessionsRef.current;
+      const currentActiveSessions = activeSessionsRef.current;
+
+      if (currentSessions.length > 0) {
+        log.info('[beforeunload] Flushing pending session saves...');
+
+        // Save active session IDs to localStorage (synchronous)
+        const activeSessionIds = safeJsonStringify(
+          currentActiveSessions.map((s) => s.id),
+          undefined,
+          'SessionContext.beforeunload'
+        );
+        if (activeSessionIds) {
+          localStorage.setItem('activeSessions', activeSessionIds);
+        }
+
+        // Trigger the async save (may not complete, but we try)
+        debouncedPersistSessions().catch((error) => {
+          log.error('[beforeunload] Failed to flush sessions:', error);
+        });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [debouncedPersistSessions, log]);
 
   const createSession = (name: string): Session => {
     const newSession: Session = {
@@ -230,24 +274,58 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setActiveSessions((prev) => [...prev, newSession]);
     setCurrentSession(newSession);
 
+    // CRITICAL FIX: Immediately persist new session to prevent loss
+    // Don't wait for 3-second debounce - save right away
+    const serializedSession: SerializedSession = {
+      ...newSession,
+      createdAt: newSession.createdAt.toISOString(),
+      lastModified: newSession.lastModified.toISOString(),
+      closedAt: undefined, // New sessions are always active
+      documents: [],
+    };
+
+    // Fire-and-forget immediate save
+    saveSessionToDB(serializedSession).catch((error) => {
+      log.error(`[createSession] Failed to immediately save session "${name}":`, error);
+    });
+
+    log.info(`[createSession] Created and immediately saved session: ${name} (${newSession.id})`);
+
     return newSession;
   };
 
   const loadSession = (id: string) => {
     const session = sessions.find((s) => s.id === id);
     if (session) {
-      // Re-open a closed session by adding it back to active sessions
-      if (!activeSessions.find((s) => s.id === id)) {
-        // Update status back to 'active' when loading
-        const updatedSession = { ...session, status: 'active' as const, lastModified: new Date() };
-        setSessions((prev) =>
-          prev.map((s) => (s.id === id ? updatedSession : s))
-        );
-        setActiveSessions((prev) => [...prev, updatedSession]);
-        setCurrentSession(updatedSession);
+      // Only load if session is already active or explicitly reopening
+      if (activeSessions.find((s) => s.id === id)) {
+        // Session is already active, just switch to it
+        setCurrentSession(session);
+      } else if (session.status === 'closed') {
+        // CRITICAL FIX: Don't auto-reopen closed sessions
+        // User must explicitly reopen via reopenSession() or the Sessions page
+        log.warn(`[loadSession] Attempted to load closed session: ${id}. Use reopenSession() instead.`);
+        return; // EXIT without reopening
       } else {
+        // Session exists but not in active list (shouldn't happen, but handle gracefully)
+        setActiveSessions((prev) => [...prev, session]);
         setCurrentSession(session);
       }
+    }
+  };
+
+  const reopenSession = (id: string) => {
+    const session = sessions.find((s) => s.id === id);
+    if (session && session.status === 'closed') {
+      // Explicitly reopen a closed session
+      const updatedSession = { ...session, status: 'active' as const, lastModified: new Date() };
+      setSessions((prev) =>
+        prev.map((s) => (s.id === id ? updatedSession : s))
+      );
+      setActiveSessions((prev) => [...prev, updatedSession]);
+      setCurrentSession(updatedSession);
+
+      log.info(`[reopenSession] Reopened session: ${session.name}`);
     }
   };
 
@@ -318,24 +396,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const addDocuments = async (sessionId: string, files: File[]) => {
     // Convert files to documents with strict validation
     const newDocuments: Document[] = [];
-    const invalidFiles: string[] = [];
+    const invalidFiles: Array<{ name: string; reason: string }> = [];
+
+    log.info(`[addDocuments] Processing ${files.length} file(s) for session ${sessionId}`);
 
     for (const file of files) {
       const fileWithPath = file as File & { path?: string };
 
+      // Log detailed file information for debugging
+      log.debug(`[addDocuments] File: "${file.name}"`, {
+        path: fileWithPath.path,
+        size: file.size,
+        type: file.type,
+        hasPathProperty: 'path' in file,
+        pathValue: fileWithPath.path,
+      });
+
       // STRICT VALIDATION: Only accept files with valid filesystem paths
       // This is critical for Electron processing which requires absolute paths
       if (!fileWithPath.path || fileWithPath.path.trim() === '') {
-        log.error(`[addDocuments] File "${file.name}" rejected: no path property`);
-        invalidFiles.push(file.name);
+        const reason = 'No file path provided';
+        log.error(`[addDocuments] File "${file.name}" rejected: ${reason}`);
+        invalidFiles.push({ name: file.name, reason });
         continue;
       }
 
       // Enhanced security validation with path traversal protection
       // Check for .docx/.doc extensions and security threats
       if (!isPathSafe(fileWithPath.path, ['.docx', '.doc'])) {
-        log.error(`[addDocuments] File "${file.name}" rejected: failed security validation`);
-        invalidFiles.push(file.name);
+        const reason = `Failed security validation for path: "${fileWithPath.path}"`;
+        log.error(`[addDocuments] File "${file.name}" rejected: ${reason}`);
+        invalidFiles.push({ name: file.name, reason });
         continue;
       }
 
@@ -351,17 +442,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // Log results
+    // Log detailed results
     if (invalidFiles.length > 0) {
-      log.warn(`[addDocuments] Rejected ${invalidFiles.length} file(s) with invalid paths:`, invalidFiles);
+      log.warn(`[addDocuments] Rejected ${invalidFiles.length} file(s):`);
+      invalidFiles.forEach(({ name, reason }) => {
+        log.warn(`  - ${name}: ${reason}`);
+      });
     }
     if (newDocuments.length > 0) {
-      log.info(`[addDocuments] Adding ${newDocuments.length} valid document(s) to session ${sessionId}`);
+      log.info(`[addDocuments] ✅ Successfully added ${newDocuments.length} valid document(s)`);
+      newDocuments.forEach(doc => {
+        log.debug(`  ✓ ${doc.name} (${doc.size} bytes)`);
+      });
     }
 
     // Only update state if we have valid documents
     if (newDocuments.length === 0) {
-      log.warn('[addDocuments] No valid documents to add');
+      log.error('[addDocuments] ❌ No valid documents to add - all files were rejected');
       return;
     }
 
@@ -643,6 +740,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           hyperlinksChecked: result.totalHyperlinks,
           timeSaved: Math.round((result.totalHyperlinks * 101) / 60),
         });
+
+        // Enhanced success logging for user visibility
+        log.info('═══════════════════════════════════════════════════════════');
+        log.info('✅ DOCUMENT PROCESSING COMPLETE');
+        log.info('═══════════════════════════════════════════════════════════');
+        log.info(`📄 Document: ${document.name}`);
+        log.info(`📁 Location: ${document.path}`);
+        log.info(`🔗 Hyperlinks Processed: ${result.totalHyperlinks}`);
+        log.info(`✏️  Hyperlinks Modified: ${result.modifiedHyperlinks}`);
+        log.info(`⏱️  Time Saved: ${Math.round((result.totalHyperlinks * 101) / 60)} seconds`);
+        log.info('');
+        log.info('💡 Next Steps:');
+        log.info('   • Click the green "Open Document" button to view in Word');
+        log.info('   • Or click "Open Location" to view in File Explorer');
+        log.info('═══════════════════════════════════════════════════════════');
       }
     } catch (error) {
       log.error('Error processing document:', error);
@@ -996,6 +1108,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         recentSessions,
         createSession,
         loadSession,
+        reopenSession,
         closeSession,
         deleteSession,
         switchSession,
