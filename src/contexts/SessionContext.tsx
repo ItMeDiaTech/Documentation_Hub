@@ -7,10 +7,13 @@ import {
   deleteSession as deleteSessionFromDB,
   migrateFromLocalStorage,
   ensureDBSizeLimit,
-  truncateSessionChanges
+  truncateSessionChanges,
+  handleQuotaExceededError
 } from '@/utils/indexedDB';
 import { useGlobalStats } from './GlobalStatsContext';
 import { logger } from '@/utils/logger';
+import { safeJsonParse, safeJsonStringify } from '@/utils/safeJsonParse';
+import { isPathSafe } from '@/utils/pathSecurity';
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
@@ -34,6 +37,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   // Ref to store debounce timer
   const persistTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Ref to store latest sessions for persistence
+  const sessionsRef = useRef(sessions);
+  const activeSessionsRef = useRef(activeSessions);
 
   const loadSessionsFromStorage = async () => {
     try {
@@ -96,7 +102,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
         setSessions(cleanedSessions);
         if (storedActiveSessions) {
-          const activeIds: string[] = JSON.parse(storedActiveSessions);
+          const activeIds = safeJsonParse<string[]>(
+            storedActiveSessions,
+            [],
+            'SessionContext.activeSessions'
+          );
           const active = cleanedSessions.filter((s) => activeIds.includes(s.id));
           setActiveSessions(active);
           if (active.length > 0) {
@@ -114,14 +124,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     loadSessionsFromStorage();
   }, []);
 
+  // Update refs when sessions change
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+
+  useEffect(() => {
+    activeSessionsRef.current = activeSessions;
+  }, [activeSessions]);
+
   // Debounced persist function to reduce database writes
   // PERFORMANCE: Debounces by 1 second to batch rapid state updates
+  // Using refs to access latest state without causing dependency issues
   const debouncedPersistSessions = useCallback(async () => {
     try {
       // Critical: Ensure database size limit to prevent quota exceeded errors
       await ensureDBSizeLimit(200); // 200MB limit
 
-      const serializedSessions: SerializedSession[] = sessions.map((s) => ({
+      // Use refs to get latest state values
+      const currentSessions = sessionsRef.current;
+      const currentActiveSessions = activeSessionsRef.current;
+
+      const serializedSessions: SerializedSession[] = currentSessions.map((s) => ({
         ...s,
         createdAt: s.createdAt.toISOString(),
         lastModified: s.lastModified.toISOString(),
@@ -132,19 +156,36 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         })),
       }));
 
-      // Save each session to IndexedDB with truncated changes
+      // Save each session to IndexedDB with quota error recovery
       for (const session of serializedSessions) {
         // Truncate large change arrays to prevent excessive storage
         const truncatedSession = truncateSessionChanges(session, 100);
-        await saveSessionToDB(truncatedSession);
+
+        // Use quota error handler for automatic recovery if needed
+        await handleQuotaExceededError(
+          async () => saveSessionToDB(truncatedSession),
+          session.id
+        );
       }
 
       // Keep active sessions in localStorage for quick access
-      localStorage.setItem('activeSessions', JSON.stringify(activeSessions.map((s) => s.id)));
+      const activeSessionIds = safeJsonStringify(
+        currentActiveSessions.map((s) => s.id),
+        undefined,
+        'SessionContext.saveActiveSessions'
+      );
+      if (activeSessionIds) {
+        localStorage.setItem('activeSessions', activeSessionIds);
+      }
     } catch (err) {
-      log.error('Failed to persist sessions:', err);
+      if (err instanceof Error && err.message.includes('DATABASE_QUOTA_EXCEEDED')) {
+        // User should be notified about quota issues - this should trigger a UI notification
+        log.error('Database quota exceeded - archive old sessions or export data to free up space', err);
+      } else {
+        log.error('Failed to persist sessions:', err);
+      }
     }
-  }, [sessions, activeSessions]);
+  }, []); // No dependencies - uses refs instead
 
   // Persist sessions and active sessions whenever they change (debounced)
   useEffect(() => {
@@ -164,9 +205,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => {
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null; // Clear the ref
       }
     };
-  }, [sessions, activeSessions, debouncedPersistSessions]);
+  }, [sessions, activeSessions]); // FIX: Removed debouncedPersistSessions - it's stable so doesn't need to be a dependency
 
   const createSession = (name: string): Session => {
     const newSession: Session = {
@@ -289,11 +331,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         continue;
       }
 
-      // Validate path is absolute (contains directory separators)
-      // Note: Detailed security validation happens in the main process
-      const isAbsolutePath = fileWithPath.path.includes('\\') || fileWithPath.path.includes('/');
-      if (!isAbsolutePath) {
-        log.error(`[addDocuments] File "${file.name}" rejected: invalid path "${fileWithPath.path}"`);
+      // Enhanced security validation with path traversal protection
+      // Check for .docx/.doc extensions and security threats
+      if (!isPathSafe(fileWithPath.path, ['.docx', '.doc'])) {
+        log.error(`[addDocuments] File "${file.name}" rejected: failed security validation`);
         invalidFiles.push(file.name);
         continue;
       }
@@ -391,7 +432,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       // Get user settings from localStorage
       const userSettings = localStorage.getItem('userSettings');
-      const settings = userSettings ? JSON.parse(userSettings) : { apiConnections: { powerAutomateUrl: '' } };
+      const settings = safeJsonParse<any>(
+        userSettings,
+        { apiConnections: { powerAutomateUrl: '' } },
+        'SessionContext.processDocument.userSettings'
+      );
 
       log.debug('Processing document with PowerAutomate URL:', settings.apiConnections.powerAutomateUrl);
 
@@ -527,7 +572,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           hyperlinksModified: result.modifiedHyperlinks,
                           contentIdsAppended: result.appendedContentIds || result.processedHyperlinks,
                           duration: result.duration,
-                          changes: (result.processedLinks || []) as any[]
+                          // Map processedLinks to DocumentChange format with enhanced descriptions
+                          changes: (result.processedLinks || []).map((link: any, idx: number) => {
+                            // Determine change type and enhance description
+                            let changeType: 'hyperlink' | 'text' | 'style' | 'structure' | 'table' | 'deletion' = 'hyperlink';
+                            let enhancedDescription = link.modifications?.join(', ') || 'Change applied';
+
+                            // Enhance description based on the modification type
+                            if (link.modifications?.includes('Content ID appended')) {
+                              enhancedDescription = 'Content ID appended to hyperlink';
+                              changeType = 'hyperlink';
+                            } else if (link.modifications?.includes('URL updated')) {
+                              enhancedDescription = 'Hyperlink URL updated';
+                              changeType = 'hyperlink';
+                            } else if (link.modifications?.includes('Display text updated')) {
+                              enhancedDescription = 'Hyperlink display text updated';
+                              changeType = 'text';
+                            }
+
+                            // Special case for invisible hyperlinks
+                            if (!link.displayText || link.displayText.trim() === '') {
+                              if (link.modifications?.includes('deletion')) {
+                                enhancedDescription = 'Invisible hyperlink deleted';
+                                changeType = 'deletion';
+                              }
+                            }
+
+                            return {
+                              id: link.id || `change-${idx}`,
+                              type: changeType,
+                              description: enhancedDescription,
+                              before: link.before || link.url || '',
+                              after: link.after || link.url || '',
+                              count: 1,
+                            };
+                          }),
                         },
                       }
                     : d
@@ -871,18 +950,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
 
   const saveSession = (session: Session) => {
-    localStorage.setItem(`session_${session.id}`, JSON.stringify(session));
+    const jsonString = safeJsonStringify(session, undefined, 'SessionContext.saveSession');
+    if (jsonString) {
+      localStorage.setItem(`session_${session.id}`, jsonString);
+    }
   };
 
   const loadSessionFromStorage = (id: string): Session | null => {
     const stored = localStorage.getItem(`session_${id}`);
     if (stored) {
-      const parsed = JSON.parse(stored);
-      return {
-        ...parsed,
-        createdAt: new Date(parsed.createdAt),
-        lastModified: new Date(parsed.lastModified),
-      };
+      const parsed = safeJsonParse<any>(stored, null, 'SessionContext.loadSessionFromStorage');
+      if (parsed) {
+        return {
+          ...parsed,
+          createdAt: new Date(parsed.createdAt),
+          lastModified: new Date(parsed.lastModified),
+        };
+      }
     }
     return null;
   };

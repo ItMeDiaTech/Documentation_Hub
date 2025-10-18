@@ -69,12 +69,19 @@ proxyConfig.configureApp();
 
 // ============================================================================
 // Pre-flight Certificate Check for GitHub Connectivity
+// Now optimized for background execution
 // ============================================================================
 async function performPreflightCertificateCheck(): Promise<void> {
   log.info('Performing pre-flight certificate check for GitHub...');
 
+  // Early return if offline
+  if (!app.isReady()) {
+    log.warn('App not ready for certificate check');
+    return;
+  }
+
   try {
-    // Test connection to GitHub API
+    // Test connection to GitHub API with reduced timeout
     const testUrl = 'https://api.github.com/';
     const request = net.request({
       method: 'GET',
@@ -82,10 +89,10 @@ async function performPreflightCertificateCheck(): Promise<void> {
       session: session.defaultSession,
     });
 
-    // Set timeout for the test
+    // Set shorter timeout for background check
     const timeout = setTimeout(() => {
       request.abort();
-    }, 10000); // 10 second timeout
+    }, 5000); // 5 second timeout (reduced from 10)
 
     // Promise to handle the response
     const testResult = await new Promise<boolean>((resolve) => {
@@ -563,13 +570,41 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 });
 
 app.whenReady().then(async () => {
+  // Create window immediately for better perceived performance
   await createWindow();
 
-  // Perform pre-flight certificate check after window is ready
-  setTimeout(async () => {
-    log.info('Running pre-flight certificate check...');
-    await performPreflightCertificateCheck();
-  }, 2000); // Wait 2 seconds for window to fully initialize
+  // Perform pre-flight certificate check in background (non-blocking)
+  // This allows the app to start immediately while checking network in parallel
+  setImmediate(async () => {
+    log.info('Starting background certificate check...');
+
+    // Small delay to ensure window is fully rendered
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Run check without blocking
+    performPreflightCertificateCheck().then(() => {
+      log.info('Background certificate check completed');
+
+      // Send status to renderer if window is available
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('certificate-check-complete', {
+          success: true,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }).catch((error) => {
+      log.error('Background certificate check failed:', error);
+
+      // Send error status to renderer
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('certificate-check-complete', {
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+  });
 });
 
 app.on('window-all-closed', () => {
@@ -616,6 +651,47 @@ ipcMain.handle('open-dev-tools', () => {
   if (mainWindow) {
     mainWindow.webContents.openDevTools();
   }
+});
+
+// Open comparison window for document processing changes
+ipcMain.handle('open-comparison-window', async (event, data) => {
+  const { sessionId, documentId, comparisonData } = data;
+
+  // Create new window for comparison
+  const comparisonWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 900,
+    minHeight: 600,
+    title: 'Document Processing Comparison',
+    webPreferences: REQUIRED_SECURITY_SETTINGS,
+    parent: mainWindow || undefined,
+    modal: false,
+    show: false,
+    backgroundColor: '#ffffff',
+  });
+
+  // Generate HTML content from comparison data
+  // NOTE: Dynamic import here is intentional for lazy-loading (used only when opening comparison windows)
+  // Rollup warning about "dynamically imported by main.ts but statically imported by WordDocumentProcessor.ts"
+  // is expected and acceptable - see docs/architecture/bundling-strategy.md
+  const { documentProcessingComparison } = await import('../src/services/document/DocumentProcessingComparison');
+  const htmlContent = documentProcessingComparison.generateHTMLReport(comparisonData);
+
+  // Load the HTML directly
+  comparisonWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+  // Show when ready
+  comparisonWindow.once('ready-to-show', () => {
+    comparisonWindow.show();
+  });
+
+  // Cleanup on close
+  comparisonWindow.on('closed', () => {
+    // Window cleanup handled automatically
+  });
+
+  return { success: true };
 });
 
 // Hyperlink processing IPC handlers with security validation

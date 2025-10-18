@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserSettings, defaultUserSettings } from '@/types/settings';
 import { logger } from '@/utils/logger';
+import { safeJsonParse, safeJsonStringify } from '@/utils/safeJsonParse';
 
 interface UserSettingsContextType {
   settings: UserSettings;
@@ -23,33 +24,41 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<UserSettings>(defaultUserSettings);
 
   const loadSettings = () => {
-    try {
-      const storedSettings = localStorage.getItem(STORAGE_KEY);
-      if (storedSettings) {
-        const parsed = JSON.parse(storedSettings);
-        setSettings({ ...defaultUserSettings, ...parsed });
-      }
-    } catch (error) {
-      log.error('Failed to load user settings:', error);
-      setSettings(defaultUserSettings);
-    }
+    const storedSettings = localStorage.getItem(STORAGE_KEY);
+    const parsed = safeJsonParse<Partial<UserSettings>>(
+      storedSettings,
+      {},
+      'UserSettings.loadSettings'
+    );
+    setSettings({ ...defaultUserSettings, ...parsed });
   };
 
   const saveSettings = async (): Promise<boolean> => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-      return true;
-    } catch (error) {
-      log.error('Failed to save user settings:', error);
-      return false;
+    const jsonString = safeJsonStringify(settings, undefined, 'UserSettings.saveSettings');
+    if (jsonString) {
+      try {
+        localStorage.setItem(STORAGE_KEY, jsonString);
+        return true;
+      } catch (error) {
+        log.error('Failed to save user settings to localStorage:', error);
+        return false;
+      }
     }
+    return false;
   };
 
   const updateSettings = (updates: Partial<UserSettings>) => {
     setSettings((prev) => {
       const newSettings = { ...prev, ...updates };
       // Auto-save to localStorage
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
+      const jsonString = safeJsonStringify(newSettings, undefined, 'UserSettings.updateSettings');
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          log.error('Failed to auto-save settings:', error);
+        }
+      }
       return newSettings;
     });
   };
@@ -75,7 +84,14 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         apiConnections: { ...prev.apiConnections, ...updates },
       };
       // Auto-save API settings to localStorage
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
+      const jsonString = safeJsonStringify(newSettings, undefined, 'UserSettings.updateApiConnections');
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          log.error('Failed to auto-save API connections:', error);
+        }
+      }
       return newSettings;
     });
   };
@@ -87,7 +103,14 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         updateSettings: { ...prev.updateSettings, ...updates },
       };
       // Auto-save update settings to localStorage
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
+      const jsonString = safeJsonStringify(newSettings, undefined, 'UserSettings.updateUpdateSettings');
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          log.error('Failed to auto-save update settings:', error);
+        }
+      }
       return newSettings;
     });
   };
