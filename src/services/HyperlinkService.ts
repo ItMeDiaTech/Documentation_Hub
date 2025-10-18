@@ -208,7 +208,9 @@ export class HyperlinkService {
       result.totalHyperlinks = hyperlinks.length;
 
       // Filter processable hyperlinks
-      const processableHyperlinks = hyperlinks.filter((h) => this.shouldProcessHyperlink(h, options));
+      const processableHyperlinks = hyperlinks.filter((h) =>
+        this.shouldProcessHyperlink(h, options)
+      );
       result.processedHyperlinks = processableHyperlinks.length;
       result.skippedHyperlinks = hyperlinks.length - processableHyperlinks.length;
 
@@ -268,9 +270,7 @@ export class HyperlinkService {
   /**
    * Validate hyperlinks in a document
    */
-  public async validateHyperlinks(
-    document: Document
-  ): Promise<HyperlinkValidationIssue[]> {
+  public async validateHyperlinks(document: Document): Promise<HyperlinkValidationIssue[]> {
     const issues: HyperlinkValidationIssue[] = [];
     const hyperlinks = await this.extractHyperlinkData(document);
 
@@ -383,16 +383,18 @@ export class HyperlinkService {
     if (!hyperlink.isInternal && !options.processExternalLinks) return false;
 
     if (options.urlPattern) {
-      const pattern = typeof options.urlPattern === 'string'
-        ? new RegExp(options.urlPattern, 'i')
-        : options.urlPattern;
+      const pattern =
+        typeof options.urlPattern === 'string'
+          ? new RegExp(options.urlPattern, 'i')
+          : options.urlPattern;
       if (!pattern.test(hyperlink.url)) return false;
     }
 
     if (options.displayTextPattern) {
-      const pattern = typeof options.displayTextPattern === 'string'
-        ? new RegExp(options.displayTextPattern, 'i')
-        : options.displayTextPattern;
+      const pattern =
+        typeof options.displayTextPattern === 'string'
+          ? new RegExp(options.displayTextPattern, 'i')
+          : options.displayTextPattern;
       if (!pattern.test(hyperlink.displayText)) return false;
     }
 
@@ -412,9 +414,17 @@ export class HyperlinkService {
     const resultsCache = (apiResponse as any).resultsCache || new Map();
 
     for (const hyperlink of hyperlinks) {
-      // Find matching API result based on Content_ID or Document_ID in the URL
+      // CRITICAL PRE-FILTER: Extract IDs to determine if this hyperlink is processable
+      // Only hyperlinks with Content_ID or Document_ID patterns should be processed
       const urlContentId = this.extractContentId(hyperlink.url);
       const urlDocumentId = this.extractDocumentId(hyperlink.url);
+
+      // SKIP: This hyperlink doesn't contain Content_ID or Document_ID patterns
+      // Examples: external URLs, mailto links, internal bookmarks
+      if (!urlContentId && !urlDocumentId) {
+        this.log.debug(`Skipping hyperlink (no Lookup_ID pattern): ${hyperlink.url.substring(0, 80)}`);
+        continue; // Skip to next hyperlink - no API processing needed
+      }
 
       // Try cache first for performance
       let apiResult = null;
@@ -471,7 +481,10 @@ export class HyperlinkService {
           updatedDisplayTexts++;
         }
       } else {
-        // ID not found in API response - add " - Not Found" indicator
+        // API result not found - BUT only mark as "Not Found" if we extracted valid IDs
+        // This prevents marking external/internal links that were never meant to be processed
+        // (Note: We only reach here if urlContentId or urlDocumentId exists, due to the pre-filter above)
+        this.log.warn(`No API result for hyperlink with Lookup_ID: ${hyperlink.url}`);
         if (!hyperlink.displayText.includes(' - Not Found')) {
           hyperlink.displayText += ' - Not Found';
           updatedDisplayTexts++;
@@ -502,9 +515,7 @@ export class HyperlinkService {
     return { appendedCount };
   }
 
-  private updateHyperlinkTitles(
-    hyperlinks: DetailedHyperlinkInfo[]
-  ): { updatedCount: number } {
+  private updateHyperlinkTitles(hyperlinks: DetailedHyperlinkInfo[]): { updatedCount: number } {
     let updatedCount = 0;
 
     for (const hyperlink of hyperlinks) {
@@ -555,7 +566,7 @@ export class HyperlinkService {
         try {
           if (attempt > 0) {
             // Exponential backoff
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+            await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
             this.log.info(`Retry attempt ${attempt} of ${maxRetries}`);
           }
 
@@ -576,7 +587,9 @@ export class HyperlinkService {
           if (!response.ok) {
             const errorText = await response.text().catch(() => 'No error details');
             this.log.error('API Error Response:', errorText);
-            throw new Error(`API returned status ${response.status} ${response.statusText}. Details: ${errorText}`);
+            throw new Error(
+              `API returned status ${response.status} ${response.statusText}. Details: ${errorText}`
+            );
           }
 
           const data = await response.json();
@@ -588,7 +601,8 @@ export class HyperlinkService {
           // The actual API uses Format 2, so we check for Results array presence
           const apiResponse: HyperlinkApiResponse = {
             // Success if HTTP 200 AND we have Results array (in either format)
-            success: response.ok && (Array.isArray(data.Results) || Array.isArray(data.Body?.Results)),
+            success:
+              response.ok && (Array.isArray(data.Results) || Array.isArray(data.Body?.Results)),
             timestamp: new Date(),
             statusCode: parseInt(data.StatusCode) || response.status,
           };
@@ -601,23 +615,24 @@ export class HyperlinkService {
             const resultsMap = new Map<string, any>();
 
             apiResponse.body = {
-              results: responseBody.Results?.map((result: any) => {
-                // Trim whitespace from all fields as specified
-                const processed = {
-                  url: '',  // Will be constructed from Document_ID
-                  documentId: result.Document_ID?.trim() || '',
-                  contentId: result.Content_ID?.trim() || '',
-                  title: result.Title?.trim() || '',
-                  status: result.Status?.trim() || 'Active',
-                  metadata: {},
-                };
+              results:
+                responseBody.Results?.map((result: any) => {
+                  // Trim whitespace from all fields as specified
+                  const processed = {
+                    url: '', // Will be constructed from Document_ID
+                    documentId: result.Document_ID?.trim() || '',
+                    contentId: result.Content_ID?.trim() || '',
+                    title: result.Title?.trim() || '',
+                    status: result.Status?.trim() || 'Active',
+                    metadata: {},
+                  };
 
-                // Cache by both IDs for quick lookup
-                if (processed.documentId) resultsMap.set(processed.documentId, processed);
-                if (processed.contentId) resultsMap.set(processed.contentId, processed);
+                  // Cache by both IDs for quick lookup
+                  if (processed.documentId) resultsMap.set(processed.documentId, processed);
+                  if (processed.contentId) resultsMap.set(processed.contentId, processed);
 
-                return processed;
-              }) || [],
+                  return processed;
+                }) || [],
               errors: [],
             };
 
@@ -627,7 +642,6 @@ export class HyperlinkService {
 
           clearTimeout(timeout);
           return apiResponse;
-
         } catch (error) {
           lastError = error as Error;
           if (error instanceof Error && error.name === 'AbortError') {
@@ -643,7 +657,6 @@ export class HyperlinkService {
       }
 
       throw lastError || new Error('API request failed after retries');
-
     } catch (error) {
       clearTimeout(timeout);
       throw error;
@@ -671,8 +684,7 @@ export class HyperlinkService {
   private needsContentId(url: string): boolean {
     return (
       this.isTheSourceUrl(url) &&
-      (URL_PATTERNS.CONTENT_ID.pattern.test(url) ||
-        URL_PATTERNS.DOCUMENT_ID.pattern.test(url))
+      (URL_PATTERNS.CONTENT_ID.pattern.test(url) || URL_PATTERNS.DOCUMENT_ID.pattern.test(url))
     );
   }
 
