@@ -26,24 +26,40 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
   }
 
   // Check for directory traversal patterns
+  // NOTE: We need to be careful here - don't reject paths with ".." in folder names
+  // Only reject actual path traversal attempts (/../ or \..\)
+  // IMPORTANT: Match only when ".." is surrounded by path separators to avoid false positives
+  // For example, "DiaTech" should NOT trigger (contains "..") but "C:/Users/../Admin" should
   const traversalPatterns = [
-    '..',
-    '../',
-    '..\\',
-    '%2e%2e',
+    '/../',      // Unix-style parent directory traversal
+    '\\..\\',    // Windows-style parent directory traversal
+    '%2e%2e%2f', // URL-encoded traversal
+    '%2e%2e%5c',
     '%252e%252e',
-    '..%2f',
-    '..%5c',
     '%c0%ae%c0%ae',
     '0x2e0x2e',
   ];
 
   const lowerPath = filePath.toLowerCase();
+
+  // Check for patterns that are clearly traversal attempts
   for (const pattern of traversalPatterns) {
     if (lowerPath.includes(pattern)) {
       log.error('Security: Path contains traversal pattern', { path: filePath, pattern });
       return false;
     }
+  }
+
+  // Check for leading traversal attempts (must be at start or after separator)
+  if (lowerPath.startsWith('../') || lowerPath.startsWith('..\\')) {
+    log.error('Security: Path starts with parent directory traversal', filePath);
+    return false;
+  }
+
+  // Check for trailing traversal attempts (must be at end or before separator)
+  if (lowerPath.endsWith('/..') || lowerPath.endsWith('\\..')) {
+    log.error('Security: Path ends with parent directory traversal', filePath);
+    return false;
   }
 
   // Check for absolute path indicators on different platforms
