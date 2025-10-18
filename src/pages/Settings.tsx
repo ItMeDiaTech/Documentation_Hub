@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
@@ -89,6 +89,11 @@ export function Settings() {
   const [dateFormatForm, setDateFormatForm] = useState(settings.dateFormat);
   const [updateSettingsForm, setUpdateSettingsForm] = useState(settings.updateSettings);
 
+  // Timeout refs for cleanup
+  const urlWarningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveSuccessTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const ideaSubmittedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Get current version on mount
   useEffect(() => {
     const getVersion = async () => {
@@ -163,6 +168,21 @@ export function Settings() {
     setUpdateSettingsForm(settings.updateSettings);
   }, [settings]);
 
+  // Cleanup all timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (urlWarningTimeoutRef.current) {
+        clearTimeout(urlWarningTimeoutRef.current);
+      }
+      if (saveSuccessTimeoutRef.current) {
+        clearTimeout(saveSuccessTimeoutRef.current);
+      }
+      if (ideaSubmittedTimeoutRef.current) {
+        clearTimeout(ideaSubmittedTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handlePowerAutomateUrlChange = (url: string) => {
     // Update form
     setApiConnectionsForm({ ...apiConnectionsForm, powerAutomateUrl: url });
@@ -171,9 +191,13 @@ export function Settings() {
     if (hasEncodingIssues(url)) {
       const sanitized = sanitizeUrl(url);
       setShowUrlWarning(true);
-      setTimeout(() => {
+      if (urlWarningTimeoutRef.current) {
+        clearTimeout(urlWarningTimeoutRef.current);
+      }
+      urlWarningTimeoutRef.current = setTimeout(() => {
         setApiConnectionsForm({ ...apiConnectionsForm, powerAutomateUrl: sanitized });
         setShowUrlWarning(false);
+        urlWarningTimeoutRef.current = null;
       }, 1500);
     }
 
@@ -208,7 +232,13 @@ export function Settings() {
     const success = await saveSettings();
     if (success) {
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      if (saveSuccessTimeoutRef.current) {
+        clearTimeout(saveSuccessTimeoutRef.current);
+      }
+      saveSuccessTimeoutRef.current = setTimeout(() => {
+        setSaveSuccess(false);
+        saveSuccessTimeoutRef.current = null;
+      }, 2000);
     }
   };
 
@@ -279,7 +309,13 @@ export function Settings() {
 
       if (saveResult.success) {
         setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 2000);
+        if (saveSuccessTimeoutRef.current) {
+          clearTimeout(saveSuccessTimeoutRef.current);
+        }
+        saveSuccessTimeoutRef.current = setTimeout(() => {
+          setSaveSuccess(false);
+          saveSuccessTimeoutRef.current = null;
+        }, 2000);
       } else {
         logger.error('Failed to save export data:', saveResult.error);
       }
@@ -317,10 +353,15 @@ export function Settings() {
 
       // Show success message
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
-
-      // Reload page to apply all changes
-      window.location.reload();
+      if (saveSuccessTimeoutRef.current) {
+        clearTimeout(saveSuccessTimeoutRef.current);
+      }
+      saveSuccessTimeoutRef.current = setTimeout(() => {
+        setSaveSuccess(false);
+        saveSuccessTimeoutRef.current = null;
+        // Reload page to apply all changes
+        window.location.reload();
+      }, 2000);
     } catch (error) {
       logger.error('Import failed:', error);
     }
@@ -1414,11 +1455,15 @@ export function Settings() {
                           onChange={(e) => handlePowerAutomateUrlChange(e.target.value)}
                           onPaste={(e) => {
                             // Auto-sanitize on paste
-                            setTimeout(() => {
+                            if (urlWarningTimeoutRef.current) {
+                              clearTimeout(urlWarningTimeoutRef.current);
+                            }
+                            urlWarningTimeoutRef.current = setTimeout(() => {
                               const pasted = e.currentTarget.value;
                               if (hasEncodingIssues(pasted)) {
                                 handlePowerAutomateUrlChange(pasted);
                               }
+                              urlWarningTimeoutRef.current = null;
                             }, 10);
                           }}
                           placeholder="https://prod-11.westus.logic.azure.com/workflows/..."
@@ -1620,10 +1665,14 @@ Version: ${currentVersion}
 
                         window.location.href = `mailto:support@example.com?subject=${subject}&body=${body}`;
                         setIdeaSubmitted(true);
-                        setTimeout(() => {
+                        if (ideaSubmittedTimeoutRef.current) {
+                          clearTimeout(ideaSubmittedTimeoutRef.current);
+                        }
+                        ideaSubmittedTimeoutRef.current = setTimeout(() => {
                           setIdeaTitle('');
                           setIdeaBenefit('');
                           setIdeaSubmitted(false);
+                          ideaSubmittedTimeoutRef.current = null;
                         }, 2000);
                         return;
                       }
@@ -1640,10 +1689,14 @@ Version: ${currentVersion}
 
                         if (response.ok) {
                           setIdeaSubmitted(true);
-                          setTimeout(() => {
+                          if (ideaSubmittedTimeoutRef.current) {
+                            clearTimeout(ideaSubmittedTimeoutRef.current);
+                          }
+                          ideaSubmittedTimeoutRef.current = setTimeout(() => {
                             setIdeaTitle('');
                             setIdeaBenefit('');
                             setIdeaSubmitted(false);
+                            ideaSubmittedTimeoutRef.current = null;
                           }, 2000);
                         } else {
                           alert('Failed to submit idea. Please try again.');

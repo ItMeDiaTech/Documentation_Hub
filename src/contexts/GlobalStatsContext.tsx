@@ -75,6 +75,16 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
     initDB();
   }, []);
 
+  // Cleanup database connection on unmount
+  useEffect(() => {
+    return () => {
+      if (db) {
+        log.debug('Closing GlobalStats database connection');
+        db.close();
+      }
+    };
+  }, [db]);
+
   // Check if we need to roll over to new day/week/month
   const checkAndRollOverPeriods = (currentStats: GlobalStats): GlobalStats => {
     const now = new Date();

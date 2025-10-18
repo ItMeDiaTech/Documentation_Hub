@@ -75,3 +75,4 @@ TestDocument.docx
 log.txt
 *.log.txtDocumentationHub-win-Setup.exe
 Tests_Responses.md
+/docxmlater-functions-and-structure.md

@@ -39,7 +39,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
   // Get the current session
   const session = sessions.find(s => s.id === sessionId);
 
-  // Extract real changes from processed documents
+  // Extract real changes from processed documents with intelligent filtering
   const documentChanges = useMemo(() => {
     if (!session) return [];
 
@@ -47,41 +47,146 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
 
     session.documents.forEach(doc => {
       if (doc.status === 'completed' && doc.processingResult?.changes) {
-        // Group changes by original and new text to merge duplicates
-        const changeMap = new Map<string, Change & { count: number }>();
+        // First, filter out trivial changes and enhance descriptions
+        const meaningfulChanges = doc.processingResult.changes
+          .filter(change => {
+            // Skip if before and after are identical
+            if (change.before === change.after) return false;
 
-        doc.processingResult.changes.forEach((change, idx) => {
-          const key = `${change.before || ''}_${change.after || ''}`;
+            // Skip pure whitespace changes
+            if (change.type === 'text' &&
+                change.before?.trim() === '' &&
+                change.after?.trim() === '') {
+              return false;
+            }
 
-          if (changeMap.has(key)) {
-            const existing = changeMap.get(key)!;
-            existing.count += 1;
-            // Update description to show count
-            existing.description = `${change.description || 'Change applied'} (${existing.count} occurrences)`;
+            // Skip formatting changes that don't affect visible text
+            // (unless it's about invisible hyperlinks which are important)
+            if (change.type === 'deletion' &&
+                !change.description?.toLowerCase().includes('hyperlink') &&
+                (!change.before || change.before.trim() === '')) {
+              return false;
+            }
+
+            return true;
+          })
+          .map(change => {
+            // Enhance descriptions for better clarity
+            let enhancedDescription = change.description || 'Change applied';
+
+            // Special handling for invisible hyperlinks
+            if (change.type === 'hyperlink' || enhancedDescription.toLowerCase().includes('hyperlink')) {
+              if (change.type === 'deletion' && (!change.before || change.before.trim() === '')) {
+                enhancedDescription = 'Invisible hyperlink deleted';
+              } else if (!change.before && change.after) {
+                enhancedDescription = `Hyperlink added: ${change.after}`;
+              } else if (change.before && change.after && change.before !== change.after) {
+                enhancedDescription = `Hyperlink updated`;
+              }
+            }
+
+            // Handle style changes with better descriptions
+            if (change.type === 'style') {
+              // Extract style name if present
+              const styleMatch = enhancedDescription.match(/(\w+)\s+style/i);
+              const styleName = styleMatch ? styleMatch[1] : 'Style';
+
+              // Only show if values actually changed
+              if (change.before === change.after) {
+                return null; // Will be filtered out
+              }
+
+              if (change.before && change.after) {
+                enhancedDescription = `${styleName} style updated: ${change.before} → ${change.after}`;
+              } else if (!change.before && change.after) {
+                enhancedDescription = `${styleName} style applied: ${change.after}`;
+              }
+            }
+
+            return { ...change, description: enhancedDescription };
+          })
+          .filter(Boolean); // Remove null entries
+
+        // Group similar changes for consolidation
+        const changeGroups = new Map<string, { changes: typeof meaningfulChanges, key: string }>();
+
+        meaningfulChanges.forEach(change => {
+          if (!change) return; // Skip null entries
+
+          // Create a grouping key based on change type and pattern
+          let groupKey = '';
+
+          if (change.type === 'style' && change.description) {
+            // Group style changes by style name and change type
+            const styleMatch = change.description.match(/^(\w+\s+style)\s+/);
+            if (styleMatch) {
+              groupKey = `style_${styleMatch[1]}_${change.before}_${change.after}`;
+            }
+          } else if (change.type === 'hyperlink') {
+            // Don't consolidate hyperlink changes - each is unique
+            groupKey = `unique_${change.id || Math.random()}`;
           } else {
-            changeMap.set(key, {
-              id: change.id || `${doc.id}-change-${idx}`,
-              description: change.description || 'Change applied',
-              type: change.type === 'hyperlink' ? 'modification' as const :
-                    change.type === 'text' ? 'modification' as const :
-                    'addition' as const,
-              originalText: change.before || '',
-              newText: change.after || '',
-              count: 1
-            });
+            // For other changes, group by exact before/after
+            groupKey = `${change.type}_${change.before || ''}_${change.after || ''}`;
           }
+
+          if (!changeGroups.has(groupKey)) {
+            changeGroups.set(groupKey, { changes: [], key: groupKey });
+          }
+          changeGroups.get(groupKey)!.changes.push(change);
         });
 
-        const docChanges: Change[] = Array.from(changeMap.values()).map(({ count, ...change }) => ({
-          ...change,
-          description: count > 1 ? `${change.description.replace(/ \(\d+ occurrences\)$/, '')} (${count} occurrences)` : change.description
-        }));
+        // Convert groups to final changes with consolidation
+        const docChanges: Change[] = [];
+
+        changeGroups.forEach(group => {
+          if (group.changes.length === 1) {
+            // Single change - use as is
+            const change = group.changes[0];
+            if (change) {
+              docChanges.push({
+                id: change.id || `${doc.id}-change-${docChanges.length}`,
+                description: change.description || 'Change applied',
+                type: change.type === 'hyperlink' ? 'modification' as const :
+                      change.type === 'text' ? 'modification' as const :
+                      change.type === 'style' ? 'modification' as const :
+                      'addition' as const,
+                originalText: change.before || '',
+                newText: change.after || ''
+              });
+            }
+          } else if (group.changes.length > 0) {
+            // Multiple similar changes - consolidate
+            const firstChange = group.changes[0];
+            if (firstChange) {
+              let consolidatedDescription = firstChange.description || 'Changes applied';
+
+              // Add occurrence count
+              if (group.changes.length > 1) {
+                // Remove any existing occurrence count and add new one
+                consolidatedDescription = consolidatedDescription.replace(/ \(\d+ occurrences\)$/, '');
+                consolidatedDescription += ` (${group.changes.length} occurrences)`;
+              }
+
+              docChanges.push({
+                id: `${doc.id}-group-${docChanges.length}`,
+                description: consolidatedDescription,
+                type: firstChange.type === 'hyperlink' ? 'modification' as const :
+                      firstChange.type === 'text' ? 'modification' as const :
+                      firstChange.type === 'style' ? 'modification' as const :
+                      'addition' as const,
+                originalText: firstChange.before || '',
+                newText: firstChange.after || ''
+              });
+            }
+          }
+        });
 
         if (docChanges.length > 0) {
           changes.push({
             id: doc.id,
             documentName: doc.name,
-            totalChanges: doc.processingResult.changes.length, // Use original count for total
+            totalChanges: docChanges.length, // Use consolidated count
             changes: docChanges
           });
         }
@@ -128,6 +233,13 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
       logger.error('Failed to revert all changes:', error);
       alert(`Failed to revert changes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  };
+
+  // Open comparison window for a document
+  // Note: Comparison window feature is planned for future implementation
+  const openComparisonWindow = async (docId: string) => {
+    logger.info('Comparison window feature not yet implemented for document:', docId);
+    alert('Document comparison feature coming soon!');
   };
 
   return (
@@ -211,6 +323,21 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
                 </div>
               </button>
               <div className="px-4 flex items-center gap-2">
+                {/* View Comparison Button - Feature planned for future */}
+                {/* Commented out until comparison data is implemented
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openComparisonWindow(doc.id);
+                  }}
+                  className="flex items-center gap-1"
+                >
+                  <Eye className="w-3 h-3" />
+                  View Comparison
+                </Button>
+                */}
                 <Button
                   variant="destructive"
                   size="sm"

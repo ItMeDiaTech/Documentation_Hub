@@ -223,6 +223,19 @@ const electronAPI = {
     ipcRenderer.on('update-manual-download', subscription);
     return () => ipcRenderer.removeListener('update-manual-download', subscription);
   },
+
+  // Certificate check events (background)
+  onCertificateCheckComplete: (callback: (data: { success: boolean; error?: string; timestamp: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('certificate-check-complete', subscription);
+    return () => ipcRenderer.removeListener('certificate-check-complete', subscription);
+  },
+
+  onCertificateConfigured: (callback: (data: { message: string; certPath?: string }) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('certificate-configured', subscription);
+    return () => ipcRenderer.removeListener('certificate-configured', subscription);
+  },
 };
 
 // Expose to window using contextBridge (required for contextIsolation: true)
