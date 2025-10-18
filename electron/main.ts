@@ -974,6 +974,39 @@ ipcMain.handle('show-in-folder', async (...[, path]: [Electron.IpcMainInvokeEven
   }
 });
 
+// Open document in default application (Microsoft Word for .docx)
+ipcMain.handle('open-document', async (...[, path]: [Electron.IpcMainInvokeEvent, string]) => {
+  if (!path) {
+    throw new Error('No path provided');
+  }
+
+  try {
+    // Security: Check if file exists
+    if (!fs.existsSync(path)) {
+      throw new Error(`File not found: ${path}`);
+    }
+
+    // Security: Validate file extension (only allow .docx files)
+    const fileExtension = path.toLowerCase().split('.').pop();
+    if (fileExtension !== 'docx') {
+      throw new Error(`Unsupported file type: .${fileExtension}. Only .docx files can be opened.`);
+    }
+
+    // Open the document in its default application
+    const errorMessage = await shell.openPath(path);
+
+    // shell.openPath returns an empty string on success, or an error message on failure
+    if (errorMessage) {
+      throw new Error(`Failed to open document: ${errorMessage}`);
+    }
+
+    log.info(`✅ Successfully opened document in default application: ${path}`);
+  } catch (error) {
+    log.error('Error opening document:', error);
+    throw error;
+  }
+});
+
 // Get file statistics (size, modified date, etc.)
 ipcMain.handle('get-file-stats', async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
   if (!filePath) {

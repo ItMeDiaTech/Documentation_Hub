@@ -269,6 +269,27 @@
   }
 
   /* ========================================
+     PRIMARY ELEMENT TEXT COLOR (LUMINANCE-BASED)
+     ======================================== */
+  /* Override primary-foreground color to use luminance-calculated text color */
+  [data-custom-colors='true'] {
+    --color-primary-foreground: hsl(var(--custom-primary-text)) !important;
+  }
+
+  /* Ensure all text on primary-colored elements uses the calculated color */
+  [data-custom-colors='true'] .bg-primary,
+  [data-custom-colors='true'] .bg-primary *,
+  [data-custom-colors='true'] button.bg-primary,
+  [data-custom-colors='true'] button.bg-primary * {
+    color: hsl(var(--custom-primary-text)) !important;
+  }
+
+  /* Text elements explicitly marked as primary-foreground */
+  [data-custom-colors='true'] .text-primary-foreground {
+    color: hsl(var(--custom-primary-text)) !important;
+  }
+
+  /* ========================================
      TOGGLE BUTTON STYLING
      ======================================== */
   /* Toggle track borders for clear definition (following Radix UI, shadcn/ui patterns) */
