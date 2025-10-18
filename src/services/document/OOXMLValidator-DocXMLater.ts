@@ -46,7 +46,7 @@ export class DocXMLaterOOXMLValidator {
       valid: true,
       issues: [],
       fixes: [],
-      correctedDocument: doc
+      correctedDocument: doc,
     };
 
     try {
@@ -64,7 +64,7 @@ export class DocXMLaterOOXMLValidator {
         result.issues.push({
           severity: 'error',
           type: 'MISSING_FILES',
-          message: 'Missing document.xml or document.xml.rels'
+          message: 'Missing document.xml or document.xml.rels',
         });
         return result;
       }
@@ -84,12 +84,12 @@ export class DocXMLaterOOXMLValidator {
             severity: issue.severity,
             type: 'STYLES_XML_CORRUPTION',
             message: `${issue.pattern}: ${issue.description}`,
-            element: issue.pattern
+            element: issue.pattern,
           });
         }
       }
       if (stylesResult.fixes.length > 0) {
-        result.fixes.push(...stylesResult.fixes.map(f => `[styles.xml] ${f}`));
+        result.fixes.push(...stylesResult.fixes.map((f) => `[styles.xml] ${f}`));
       }
 
       // Apply fixes if issues found
@@ -97,10 +97,7 @@ export class DocXMLaterOOXMLValidator {
         log.warn(`Found ${result.issues.length} OOXML issues, attempting fixes`);
 
         // Apply string-based fixes
-        const fixes = this.fixCriticalIssuesViaStringManipulation(
-          documentXmlStr,
-          relsXmlStr
-        );
+        const fixes = this.fixCriticalIssuesViaStringManipulation(documentXmlStr, relsXmlStr);
         result.fixes.push(...fixes.changes);
 
         if (fixes.changes.length > 0) {
@@ -122,7 +119,7 @@ export class DocXMLaterOOXMLValidator {
           result.issues.push({
             severity: 'error',
             type: 'PACKAGE_STRUCTURE',
-            message: issue
+            message: issue,
           });
         }
       }
@@ -134,16 +131,15 @@ export class DocXMLaterOOXMLValidator {
 
       return {
         ...result,
-        valid: result.issues.filter(i => i.severity === 'error').length === 0
+        valid: result.issues.filter((i) => i.severity === 'error').length === 0,
       };
-
     } catch (error: any) {
       log.error('OOXML validation failed:', error.message);
       result.valid = false;
       result.issues.push({
         severity: 'error',
         type: 'VALIDATION_ERROR',
-        message: `Validation error: ${error.message}`
+        message: `Validation error: ${error.message}`,
       });
       return result;
     }
@@ -161,12 +157,14 @@ export class DocXMLaterOOXMLValidator {
       log.error('Failed to load document from buffer:', error.message);
       return {
         valid: false,
-        issues: [{
-          severity: 'error',
-          type: 'LOAD_ERROR',
-          message: `Failed to load document: ${error.message}`
-        }],
-        fixes: []
+        issues: [
+          {
+            severity: 'error',
+            type: 'LOAD_ERROR',
+            message: `Failed to load document: ${error.message}`,
+          },
+        ],
+        fixes: [],
       };
     }
   }
@@ -220,7 +218,7 @@ export class DocXMLaterOOXMLValidator {
           severity: 'error',
           type: 'MISSING_RELATIONSHIP',
           message: `Hyperlink references ${docId} but relationship not found`,
-          element: docId
+          element: docId,
         });
       }
     }
@@ -232,7 +230,7 @@ export class DocXMLaterOOXMLValidator {
           severity: 'warning',
           type: 'ORPHANED_RELATIONSHIP',
           message: `Relationship ${relsId} exists but is not referenced`,
-          element: relsId
+          element: relsId,
         });
       }
     }
@@ -244,8 +242,44 @@ export class DocXMLaterOOXMLValidator {
         severity: 'error',
         type: 'MISSING_TARGET_MODE',
         message: `External URL missing TargetMode="External": ${url}`,
-        element: url
+        element: url,
       });
+    }
+
+    // CRITICAL FIX: Check for orphaned internal hyperlinks (anchors without bookmarks)
+    // This is a major cause of Word corruption - internal links referencing non-existent bookmarks
+    const internalAnchors = new Set<string>();
+    const anchorMatches = documentXmlStr.matchAll(/<w:hyperlink\s+w:anchor="([^"]+)"/g);
+    for (const match of anchorMatches) {
+      internalAnchors.add(match[1]);
+    }
+
+    // Extract all bookmark names from document
+    const bookmarkNames = new Set<string>();
+    const bookmarkMatches = documentXmlStr.matchAll(/<w:bookmarkStart[^>]+w:name="([^"]+)"/g);
+    for (const match of bookmarkMatches) {
+      bookmarkNames.add(match[1]);
+    }
+
+    // Check for orphaned internal hyperlinks (anchors without corresponding bookmarks)
+    for (const anchor of internalAnchors) {
+      if (!bookmarkNames.has(anchor)) {
+        result.valid = false;
+        result.issues.push({
+          severity: 'error',
+          type: 'ORPHANED_INTERNAL_HYPERLINK',
+          message: `Internal hyperlink references non-existent bookmark: "${anchor}"`,
+          element: anchor,
+        });
+        log.warn(`Found orphaned internal hyperlink: ${anchor}`);
+      }
+    }
+
+    log.debug(`Found ${internalAnchors.size} internal hyperlinks, ${bookmarkNames.size} bookmarks`);
+    if (internalAnchors.size > bookmarkNames.size) {
+      log.warn(
+        `Potential corruption: ${internalAnchors.size - bookmarkNames.size} orphaned internal hyperlinks detected`
+      );
     }
   }
 
@@ -264,7 +298,7 @@ export class DocXMLaterOOXMLValidator {
       result.issues.push({
         severity: 'warning',
         type: 'MISSING_XML_DECLARATION',
-        message: 'document.xml missing XML declaration'
+        message: 'document.xml missing XML declaration',
       });
     }
 
@@ -272,17 +306,20 @@ export class DocXMLaterOOXMLValidator {
       result.issues.push({
         severity: 'warning',
         type: 'MISSING_XML_DECLARATION',
-        message: 'document.xml.rels missing XML declaration'
+        message: 'document.xml.rels missing XML declaration',
       });
     }
 
     // Check for valid UTF-8 encoding
-    if (documentXmlStr.includes('encoding="ASCII"') || documentXmlStr.includes("encoding='ASCII'")) {
+    if (
+      documentXmlStr.includes('encoding="ASCII"') ||
+      documentXmlStr.includes("encoding='ASCII'")
+    ) {
       result.valid = false;
       result.issues.push({
         severity: 'error',
         type: 'INVALID_ENCODING',
-        message: 'document.xml has invalid ASCII encoding - Word requires UTF-8'
+        message: 'document.xml has invalid ASCII encoding - Word requires UTF-8',
       });
     }
 
@@ -291,7 +328,7 @@ export class DocXMLaterOOXMLValidator {
       result.issues.push({
         severity: 'error',
         type: 'INVALID_ENCODING',
-        message: 'document.xml.rels has invalid ASCII encoding - Word requires UTF-8'
+        message: 'document.xml.rels has invalid ASCII encoding - Word requires UTF-8',
       });
     }
   }
@@ -362,10 +399,43 @@ export class DocXMLaterOOXMLValidator {
       changes.push('Fixed double closing brackets in relationships');
     }
 
+    // CRITICAL FIX 7: Remove orphaned internal hyperlinks (w:anchor without corresponding bookmarks)
+    // This is the #1 cause of "Word cannot open the document" corruption
+    // Extract all bookmark names to check against
+    const bookmarkNames = new Set<string>();
+    const bookmarkMatches = modifiedDocumentXml.matchAll(/<w:bookmarkStart[^>]+w:name="([^"]+)"/g);
+    for (const match of bookmarkMatches) {
+      bookmarkNames.add(match[1]);
+    }
+
+    // Find and fix orphaned internal hyperlinks
+    let orphanedCount = 0;
+    modifiedDocumentXml = modifiedDocumentXml.replace(
+      /<w:hyperlink\s+w:anchor="([^"]+)"[^>]*>(.*?)<\/w:hyperlink>/g,
+      (match, anchorName, innerContent) => {
+        if (!bookmarkNames.has(anchorName)) {
+          // Orphaned internal hyperlink - remove wrapper, keep text content
+          // This preserves the text but removes the broken link
+          orphanedCount++;
+          return innerContent; // Return just the <w:r> runs, without the hyperlink wrapper
+        }
+        return match; // Keep valid internal hyperlinks
+      }
+    );
+
+    if (orphanedCount > 0) {
+      changes.push(
+        `Removed ${orphanedCount} orphaned internal hyperlink(s) (anchors without bookmarks)`
+      );
+      log.info(
+        `Fixed ${orphanedCount} orphaned internal hyperlinks - major corruption source resolved`
+      );
+    }
+
     return {
       documentXml: modifiedDocumentXml,
       relsXml: modifiedRelsXml,
-      changes
+      changes,
     };
   }
 
@@ -380,8 +450,8 @@ export class DocXMLaterOOXMLValidator {
 
     if (result.issues.length > 0) {
       report += 'ISSUES FOUND:\n';
-      const errors = result.issues.filter(i => i.severity === 'error');
-      const warnings = result.issues.filter(i => i.severity === 'warning');
+      const errors = result.issues.filter((i) => i.severity === 'error');
+      const warnings = result.issues.filter((i) => i.severity === 'warning');
 
       if (errors.length > 0) {
         report += '\n  ERRORS:\n';

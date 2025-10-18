@@ -73,7 +73,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
     };
 
     initDB();
-  }, []);
+  }, [log]); // Include log in dependencies for exhaustive-deps compliance
 
   // Cleanup database connection on unmount
   useEffect(() => {

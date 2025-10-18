@@ -20,6 +20,7 @@ import { DocXMLaterOOXMLValidator } from './OOXMLValidator-DocXMLater';
 import { DocumentProcessingComparison, documentProcessingComparison } from './DocumentProcessingComparison';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
 import { logger } from '@/utils/logger';
+import { extractLookupIds } from '@/utils/urlPatterns';
 import { hyperlinkService } from '../HyperlinkService';
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
@@ -256,7 +257,7 @@ export class WordDocumentProcessor {
                 // CRITICAL PRE-FILTER: Extract IDs to determine if this hyperlink is processable
                 // Only hyperlinks with Content_ID or Document_ID patterns should be processed
                 // This prevents "Not Found" from being added to external/internal links
-                const lookupIds = this.extractLookupIds(hyperlinkInfo.url);
+                const lookupIds = extractLookupIds(hyperlinkInfo.url);
 
                 if (!lookupIds) {
                   // SKIP: This hyperlink doesn't contain Content_ID or Document_ID patterns
@@ -383,17 +384,18 @@ export class WordDocumentProcessor {
               this.log.info(`API processing complete: ${result.updatedUrls} URLs, ${result.updatedDisplayTexts} texts updated`);
             }
 
-          } catch (error: any) {
-            this.log.error('API call failed:', error.message);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
+            this.log.error('API call failed:', errorMessage);
 
             // If API operations are required, we must fail the entire processing
             // This prevents saving documents with incorrect/unchanged hyperlinks
             if (options.operations?.fixContentIds || options.operations?.updateTitles) {
-              throw new Error(`API Error: ${error.message}. Document not saved to prevent incorrect hyperlink data.`);
+              throw new Error(`API Error: ${errorMessage}. Document not saved to prevent incorrect hyperlink data.`);
             }
 
             // Otherwise just log and continue
-            result.errorMessages.push(`API Error: ${error.message}`);
+            result.errorMessages.push(`API Error: ${errorMessage}`);
             result.errorCount++;
           }
         } else {
@@ -509,16 +511,17 @@ export class WordDocumentProcessor {
       this.log.info(`Duration: ${result.duration.toFixed(0)}ms`);
 
       return result;
-    } catch (error: any) {
-      this.log.error('ERROR:', error.message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.log.error('ERROR:', errorMessage);
 
       // Memory checkpoint: On error
-      MemoryMonitor.logMemoryUsage('DocProcessor Error', `Error: ${error.message}`);
+      MemoryMonitor.logMemoryUsage('DocProcessor Error', `Error: ${errorMessage}`);
       MemoryMonitor.compareCheckpoints('DocProcessor Start', 'DocProcessor Error');
 
       result.success = false;
       result.errorCount++;
-      result.errorMessages.push(error.message);
+      result.errorMessages.push(errorMessage);
       result.duration = performance.now() - startTime;
 
       // Restore from backup on error
@@ -527,8 +530,9 @@ export class WordDocumentProcessor {
         try {
           await fs.copyFile(result.backupPath, filePath);
           this.log.info('Restored from backup');
-        } catch (restoreError: any) {
-          this.log.error('Failed to restore backup:', restoreError.message);
+        } catch (restoreError) {
+          const restoreErrorMessage = restoreError instanceof Error ? restoreError.message : 'Unknown restore error';
+          this.log.error('Failed to restore backup:', restoreErrorMessage);
         }
       }
 
@@ -736,8 +740,9 @@ export class WordDocumentProcessor {
           }
 
           return result;
-        } catch (error: any) {
-          this.log.error(`Error processing ${filePath}:`, error.message);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          this.log.error(`Error processing ${filePath}:`, errorMessage);
           failedFiles++;
 
           const errorResult: WordProcessingResult = {
@@ -750,7 +755,7 @@ export class WordDocumentProcessor {
             updatedDisplayTexts: 0,
             appendedContentIds: 0,
             errorCount: 1,
-            errorMessages: [error.message],
+            errorMessages: [errorMessage],
             processedLinks: [],
             validationIssues: [],
             duration: 0,
@@ -847,40 +852,8 @@ export class WordDocumentProcessor {
     return updatedCount;
   }
 
-  /**
-   * Extract both Lookup_IDs (Content_ID and Document_ID) from a URL in a single operation
-   * This matches how the PowerAutomate API receives and uses these IDs
-   *
-   * Returns an object with both IDs extracted:
-   * - contentId: Pattern like TSRC-ABC-123456 or CMS-XYZ-789012
-   * - documentId: UUID format from docid= parameter
-   *
-   * @param url - The hyperlink URL to parse
-   * @returns Object with { contentId?: string, documentId?: string } or null if neither found
-   */
-  private extractLookupIds(url: string): { contentId?: string; documentId?: string } | null {
-    if (!url) return null;
-
-    const lookupIds: { contentId?: string; documentId?: string } = {};
-
-    // Extract Content_ID: TSRC-ABC-123456 or CMS-XYZ-789012
-    const contentIdMatch = url.match(/((?:TSRC|CMS)-[A-Za-z0-9]+-\d{6})/i);
-    if (contentIdMatch) {
-      lookupIds.contentId = contentIdMatch[1];
-      this.log.debug(`    Extracted Content_ID: ${contentIdMatch[1]}`);
-    }
-
-    // Extract Document_ID: UUID from "docid=" parameter (theSource URLs only)
-    // Note: Does NOT match "documentId=" (external policy URLs)
-    const documentIdMatch = url.match(/docid=([A-Za-z0-9\-]+)(?:[^A-Za-z0-9\-]|$)/i);
-    if (documentIdMatch) {
-      lookupIds.documentId = documentIdMatch[1];
-      this.log.debug(`    Extracted Document_ID: ${documentIdMatch[1]}`);
-    }
-
-    // Return only if at least one ID was found
-    return Object.keys(lookupIds).length > 0 ? lookupIds : null;
-  }
+  // Extraction method moved to centralized utility: src/utils/urlPatterns.ts
+  // Use: extractLookupIds(url) - returns { contentId?, documentId? } | null
 
   /**
    * Find matching API result for a URL using Map-based lookup
@@ -896,7 +869,7 @@ export class WordDocumentProcessor {
     }
 
     // Extract both IDs at once (as sent to PowerAutomate API)
-    const lookupIds = this.extractLookupIds(url);
+    const lookupIds = extractLookupIds(url);
     if (!lookupIds) {
       this.log.debug(`  ✗ No Lookup_ID found in URL`);
       return null;

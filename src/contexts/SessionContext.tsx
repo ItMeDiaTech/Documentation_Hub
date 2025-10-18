@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
-import { Session, Document, SessionStats, SessionContextType, ReplacementRule } from '@/types/session';
+import { Session, Document, SessionStats, SessionContextType, ReplacementRule, SessionStyle, ListBulletSettings, TableUniformitySettings } from '@/types/session';
 import type { HyperlinkProcessingOptions, BatchProcessingOptions } from '@/types/hyperlink';
 import {
   loadSessions,
@@ -41,7 +41,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const sessionsRef = useRef(sessions);
   const activeSessionsRef = useRef(activeSessions);
 
-  const loadSessionsFromStorage = async () => {
+  const loadSessionsFromStorage = useCallback(async () => {
     try {
       // Check if localStorage has sessions that need migration
       const hasLocalStorageSessions = localStorage.getItem('sessions');
@@ -117,12 +117,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       log.error('Failed to load sessions from storage', err);
     }
-  };
+  }, [log]); // Memoize with log dependency
 
   // Load all sessions & active sessions from localStorage on mount
   useEffect(() => {
     loadSessionsFromStorage();
-  }, []);
+  }, [loadSessionsFromStorage]); // Include loadSessionsFromStorage in dependencies
 
   // Update refs when sessions change
   useEffect(() => {
@@ -474,15 +474,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         log.debug('   Default Normal: 3pt before, 3pt after, 1.15 line spacing');
       }
 
-      const header1Style = session.styles?.find((s: any) => s.id === 'header1');
-      const header2Style = session.styles?.find((s: any) => s.id === 'header2');
-      const normalStyle = session.styles?.find((s: any) => s.id === 'normal');
+      const header1Style = session.styles?.find((s: SessionStyle) => s.id === 'header1');
+      const header2Style = session.styles?.find((s: SessionStyle) => s.id === 'header2');
+      const normalStyle = session.styles?.find((s: SessionStyle) => s.id === 'normal');
 
       log.debug('Found header1Style:', header1Style);
       log.debug('Found header2Style:', header2Style);
       log.debug('Found normalStyle:', normalStyle);
 
-      const customStyleSpacing: any = {};
+      // Define custom style spacing with proper type structure
+      interface CustomStyleSpacing {
+        header1?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
+        header2?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
+        normal?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number; noSpaceBetweenSame?: boolean };
+      }
+      const customStyleSpacing: CustomStyleSpacing = {};
 
       // Header 1 spacing (use session style or default)
       if (header1Style && (header1Style.spaceBefore !== undefined || header1Style.spaceAfter !== undefined || header1Style.lineSpacing !== undefined)) {
@@ -526,7 +532,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       log.debug('Final customStyleSpacing object:', customStyleSpacing);
       log.debug('Will pass to processor:', Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined);
 
-      const processingOptions: HyperlinkProcessingOptions = {
+      const processingOptions: HyperlinkProcessingOptions & {
+        removeWhitespace?: boolean;
+        removeItalics?: boolean;
+        assignStyles?: boolean;
+        listBulletSettings?: ListBulletSettings;
+        tableUniformitySettings?: TableUniformitySettings;
+      } = {
         apiEndpoint: settings.apiConnections.powerAutomateUrl || '',
         operations: {
           fixContentIds: session.processingOptions?.enabledOperations?.includes('fix-content-ids'),
@@ -545,7 +557,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         assignStyles: session.processingOptions?.enabledOperations?.includes('assign-styles'),
         listBulletSettings: session.listBulletSettings,
         tableUniformitySettings: session.tableUniformitySettings,
-      } as any;
+      };
 
       // Process the document using Electron IPC
       const result = await window.electronAPI.processHyperlinkDocument(
@@ -573,7 +585,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           contentIdsAppended: result.appendedContentIds || result.processedHyperlinks,
                           duration: result.duration,
                           // Map processedLinks to DocumentChange format with enhanced descriptions
-                          changes: (result.processedLinks || []).map((link: any, idx: number) => {
+                          changes: (result.processedLinks || []).map((link: { id?: string; url?: string; displayText?: string; modifications?: string[]; before?: string; after?: string }, idx: number) => {
                             // Determine change type and enhance description
                             let changeType: 'hyperlink' | 'text' | 'style' | 'structure' | 'table' | 'deletion' = 'hyperlink';
                             let enhancedDescription = link.modifications?.join(', ') || 'Change applied';
@@ -853,7 +865,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateSessionStyles = (sessionId: string, styles: any[]) => {
+  const updateSessionStyles = (sessionId: string, styles: SessionStyle[]) => {
     setSessions((prev) =>
       prev.map((session) =>
         session.id === sessionId
@@ -885,7 +897,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateSessionListBulletSettings = (sessionId: string, listBulletSettings: any) => {
+  const updateSessionListBulletSettings = (sessionId: string, listBulletSettings: ListBulletSettings) => {
     setSessions((prev) =>
       prev.map((session) =>
         session.id === sessionId
@@ -917,7 +929,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateSessionTableUniformitySettings = (sessionId: string, tableUniformitySettings: any) => {
+  const updateSessionTableUniformitySettings = (sessionId: string, tableUniformitySettings: TableUniformitySettings) => {
     setSessions((prev) =>
       prev.map((session) =>
         session.id === sessionId
