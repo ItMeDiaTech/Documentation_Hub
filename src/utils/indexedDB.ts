@@ -188,10 +188,168 @@ class IndexedDBConnectionPool {
 // Create singleton instance
 const connectionPool = new IndexedDBConnectionPool();
 
-// Close connection on window unload
+/**
+ * GlobalStats Connection Pool Manager for IndexedDB
+ * Maintains a single connection for GlobalStats database
+ * Separate from main connection pool to avoid cross-database issues
+ */
+class GlobalStatsConnectionPool {
+  private db: IDBDatabase | null = null;
+  private isConnecting = false;
+  private connectionPromise: Promise<IDBDatabase> | null = null;
+  private lastError: Error | null = null;
+  private reconnectAttempts = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS = 3;
+  private readonly RECONNECT_DELAY = 1000; // 1 second
+
+  private readonly DB_NAME = 'DocHub_GlobalStats';
+  private readonly DB_VERSION = 1;
+  private readonly STATS_STORE = 'stats';
+
+  /**
+   * Get database connection (creates if not exists)
+   * Uses singleton pattern to ensure only one connection
+   */
+  async getConnection(): Promise<IDBDatabase> {
+    // If we have a valid connection, return it
+    if (this.db && this.db.objectStoreNames.length > 0) {
+      // Check if connection is still valid
+      try {
+        // Simple health check - access object store names
+        const _ = this.db.objectStoreNames;
+        return this.db;
+      } catch (error) {
+        logger.warn('[GlobalStats Pool] Connection invalid, reconnecting...');
+        this.db = null;
+      }
+    }
+
+    // If already connecting, wait for that connection
+    if (this.isConnecting && this.connectionPromise) {
+      return this.connectionPromise;
+    }
+
+    // Create new connection
+    this.isConnecting = true;
+    this.connectionPromise = this.createConnection();
+
+    try {
+      this.db = await this.connectionPromise;
+      this.reconnectAttempts = 0; // Reset on successful connection
+      return this.db;
+    } finally {
+      this.isConnecting = false;
+      this.connectionPromise = null;
+    }
+  }
+
+  /**
+   * Create a new database connection
+   */
+  private createConnection(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+
+      request.onerror = () => {
+        const error = new Error(`Failed to open GlobalStats database: ${request.error?.message || 'Unknown error'}`);
+        this.lastError = error;
+        logger.error('[GlobalStats Pool] Connection failed:', error);
+        reject(error);
+      };
+
+      request.onsuccess = () => {
+        const db = request.result;
+        logger.info('[GlobalStats Pool] Connection established');
+
+        // Set up connection error handlers
+        db.onerror = (event) => {
+          logger.error('[GlobalStats Pool] Database error:', event);
+          this.handleConnectionError();
+        };
+
+        db.onclose = () => {
+          logger.info('[GlobalStats Pool] Connection closed');
+          this.db = null;
+        };
+
+        resolve(db);
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+
+        // Create stats object store if it doesn't exist
+        if (!db.objectStoreNames.contains(this.STATS_STORE)) {
+          db.createObjectStore(this.STATS_STORE);
+          logger.info('[GlobalStats Pool] Database upgraded to version', this.DB_VERSION);
+        }
+      };
+
+      request.onblocked = () => {
+        logger.warn('[GlobalStats Pool] Database upgrade blocked by other tabs');
+      };
+    });
+  }
+
+  /**
+   * Handle connection errors with automatic retry
+   */
+  private async handleConnectionError(): Promise<void> {
+    this.db = null;
+
+    if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+      this.reconnectAttempts++;
+      logger.info(`[GlobalStats Pool] Attempting reconnection (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`);
+
+      // Wait before reconnecting
+      await new Promise(resolve => setTimeout(resolve, this.RECONNECT_DELAY * this.reconnectAttempts));
+
+      try {
+        await this.getConnection();
+        logger.info('[GlobalStats Pool] Reconnection successful');
+      } catch (error) {
+        logger.error('[GlobalStats Pool] Reconnection failed:', error);
+      }
+    } else {
+      logger.error('[GlobalStats Pool] Max reconnection attempts reached');
+    }
+  }
+
+  /**
+   * Close the database connection (for cleanup)
+   */
+  close(): void {
+    if (this.db) {
+      logger.info('[GlobalStats Pool] Closing connection');
+      this.db.close();
+      this.db = null;
+    }
+  }
+
+  /**
+   * Get connection statistics
+   */
+  getStats(): {
+    connected: boolean;
+    reconnectAttempts: number;
+    lastError: Error | null;
+  } {
+    return {
+      connected: this.db !== null,
+      reconnectAttempts: this.reconnectAttempts,
+      lastError: this.lastError,
+    };
+  }
+}
+
+// Create singleton instance for GlobalStats
+const globalStatsConnectionPool = new GlobalStatsConnectionPool();
+
+// Close connections on window unload
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     connectionPool.close();
+    globalStatsConnectionPool.close();
   });
 }
 
@@ -645,3 +803,90 @@ export async function handleQuotaExceededError(
     }
   }
 }
+
+/**
+ * ========================================
+ * GlobalStats Database Helper Functions
+ * ========================================
+ * These functions provide a simple interface for GlobalStats persistence
+ * Uses the globalStatsConnectionPool for consistent connection management
+ */
+
+// Import GlobalStats types
+import type { GlobalStats } from '@/types/globalStats';
+
+const STATS_STORE = 'stats';
+const STATS_KEY = 'global';
+
+/**
+ * Load global statistics from IndexedDB
+ * Uses connection pool for better performance and reliability
+ */
+export async function loadGlobalStats(): Promise<GlobalStats | null> {
+  try {
+    const db = await globalStatsConnectionPool.getConnection();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STATS_STORE], 'readonly');
+      const store = transaction.objectStore(STATS_STORE);
+      const request = store.get(STATS_KEY);
+
+      request.onsuccess = () => {
+        resolve(request.result || null);
+      };
+
+      request.onerror = () => {
+        reject(new Error('Failed to load global stats'));
+      };
+    });
+  } catch (error) {
+    logger.error('[GlobalStats] Failed to load stats:', error);
+    throw error;
+  }
+}
+
+/**
+ * Save global statistics to IndexedDB
+ * Uses connection pool for better performance and reliability
+ */
+export async function saveGlobalStats(stats: GlobalStats): Promise<void> {
+  try {
+    const db = await globalStatsConnectionPool.getConnection();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STATS_STORE], 'readwrite');
+      const store = transaction.objectStore(STATS_STORE);
+      const request = store.put(stats, STATS_KEY);
+
+      request.onsuccess = () => {
+        resolve();
+      };
+
+      request.onerror = () => {
+        reject(new Error('Failed to save global stats'));
+      };
+    });
+  } catch (error) {
+    logger.error('[GlobalStats] Failed to save stats:', error);
+    throw error;
+  }
+}
+
+/**
+ * Reset global statistics to default values
+ * Uses connection pool for better performance and reliability
+ */
+export async function resetGlobalStats(freshStats: GlobalStats): Promise<void> {
+  try {
+    await saveGlobalStats(freshStats);
+    logger.info('[GlobalStats] Stats reset to default values');
+  } catch (error) {
+    logger.error('[GlobalStats] Failed to reset stats:', error);
+    throw error;
+  }
+}
+
+/**
+ * Export the global stats connection pool for advanced use cases
+ */
+export const getGlobalStatsConnectionPool = () => globalStatsConnectionPool;
