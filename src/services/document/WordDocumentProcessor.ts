@@ -16,7 +16,7 @@ import {
   HyperlinkType,
 } from '@/types/hyperlink';
 import { DocXMLaterProcessor } from './DocXMLaterProcessor';
-import { OOXMLValidator } from './OOXMLValidator';
+import { DocXMLaterOOXMLValidator } from './OOXMLValidator-DocXMLater';
 import { DocumentProcessingComparison, documentProcessingComparison } from './DocumentProcessingComparison';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
 import { logger } from '@/utils/logger';
@@ -69,7 +69,7 @@ export interface WordProcessingResult extends HyperlinkProcessingResult {
 export class WordDocumentProcessor {
   private readonly MAX_FILE_SIZE_MB = 100;
   private docXMLater: DocXMLaterProcessor;
-  private ooxmlValidator: OOXMLValidator;
+  private ooxmlValidator: DocXMLaterOOXMLValidator;
 
   // Debug mode controlled by environment
   private readonly DEBUG = process.env.NODE_ENV !== 'production';
@@ -78,8 +78,8 @@ export class WordDocumentProcessor {
 
   constructor() {
     this.docXMLater = new DocXMLaterProcessor();
-    this.ooxmlValidator = new OOXMLValidator();
-    this.log.debug('Initialized with DocXMLater and OOXML validation');
+    this.ooxmlValidator = new DocXMLaterOOXMLValidator();
+    this.log.debug('Initialized with DocXMLater and OOXML validation (JSZip-free)');
   }
 
   /**
@@ -253,6 +253,18 @@ export class WordDocumentProcessor {
                 const hyperlink = hyperlinks[i];
                 const hyperlinkInfo = hyperlinkInfos[i];
 
+                // CRITICAL PRE-FILTER: Extract IDs to determine if this hyperlink is processable
+                // Only hyperlinks with Content_ID or Document_ID patterns should be processed
+                // This prevents "Not Found" from being added to external/internal links
+                const lookupIds = this.extractLookupIds(hyperlinkInfo.url);
+
+                if (!lookupIds) {
+                  // SKIP: This hyperlink doesn't contain Content_ID or Document_ID patterns
+                  // Examples: external URLs, mailto links, internal bookmarks
+                  this.log.debug(`⊘ Skipping hyperlink (no Lookup_ID pattern): ${hyperlinkInfo.url.substring(0, 80)}`);
+                  continue; // Skip to next hyperlink - no API processing needed
+                }
+
                 // Find matching API result for this hyperlink (now using Map-based lookup)
                 const apiResult = this.findMatchingApiResult(hyperlinkInfo.url, apiResultsMap);
 
@@ -340,8 +352,10 @@ export class WordDocumentProcessor {
                     modifications,
                   });
                 } else {
-                  // API result not found - mark as not found
-                  this.log.warn(`No API result for hyperlink: ${hyperlinkInfo.url}`);
+                  // API result not found - BUT only mark as "Not Found" if we extracted valid IDs
+                  // This prevents marking external/internal links that were never meant to be processed
+                  // (Note: We only reach here if lookupIds exists, due to the pre-filter above)
+                  this.log.warn(`No API result for hyperlink with Lookup_ID: ${hyperlinkInfo.url}`);
 
                   if (options.operations?.updateTitles) {
                     // CRITICAL: Sanitize display text to ensure no XML markup is included
