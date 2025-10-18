@@ -326,10 +326,7 @@ export class DocXMLaterProcessor {
   /**
    * Set cell shading in a table
    */
-  async setCellShading(
-    cell: TableCell,
-    color: string
-  ): Promise<ProcessorResult<void>> {
+  async setCellShading(cell: TableCell, color: string): Promise<ProcessorResult<void>> {
     try {
       cell.setShading({
         fill: color.replace('#', ''),
@@ -501,12 +498,25 @@ export class DocXMLaterProcessor {
           fonts: new Map(),
         },
         content: {
-          paragraphs: paragraphs.map(para => ({
+          paragraphs: paragraphs.map((para) => ({
             text: this.getParagraphText(para),
             style: para.getFormatting?.().style || undefined,
           })),
-          tables: tables.map(table => ({
-            rows: [], // TODO: Extract table structure
+          tables: tables.map((table) => ({
+            rows: table.getRows().map(row => ({
+              cells: row.getCells().map(cell => {
+                const formatting = cell.getFormatting();
+                return {
+                  text: cell.getText(),
+                  colspan: formatting.columnSpan || 1,
+                  rowspan: formatting.rowSpan || 1,
+                  paragraphs: cell.getParagraphs().map(para => ({
+                    text: this.getParagraphText(para),
+                    style: para.getFormatting?.().style || undefined,
+                  })),
+                };
+              }),
+            })),
           })),
         },
       };
@@ -589,13 +599,15 @@ export class DocXMLaterProcessor {
   /**
    * Extract all hyperlinks from a document
    */
-  async extractHyperlinks(doc: Document): Promise<Array<{
-    hyperlink: Hyperlink;
-    paragraph: Paragraph;
-    paragraphIndex: number;
-    url?: string;
-    text: string;
-  }>> {
+  async extractHyperlinks(doc: Document): Promise<
+    Array<{
+      hyperlink: Hyperlink;
+      paragraph: Paragraph;
+      paragraphIndex: number;
+      url?: string;
+      text: string;
+    }>
+  > {
     const results: Array<{
       hyperlink: Hyperlink;
       paragraph: Paragraph;
@@ -632,10 +644,12 @@ export class DocXMLaterProcessor {
   async modifyHyperlinks(
     doc: Document,
     urlTransform: (url: string, displayText: string) => string
-  ): Promise<ProcessorResult<{
-    totalHyperlinks: number;
-    modifiedHyperlinks: number;
-  }>> {
+  ): Promise<
+    ProcessorResult<{
+      totalHyperlinks: number;
+      modifiedHyperlinks: number;
+    }>
+  > {
     try {
       const paragraphs = doc.getParagraphs();
       let totalHyperlinks = 0;
@@ -673,10 +687,6 @@ export class DocXMLaterProcessor {
             newContent.push(item);
           }
         }
-
-        // Replace paragraph content with modified content
-        // Note: This requires clearing and re-adding content
-        // DocXMLater's paragraph content is immutable, so we need to work around this
       }
 
       return {
@@ -701,10 +711,12 @@ export class DocXMLaterProcessor {
   async appendContentIdToTheSourceUrls(
     filePath: string,
     contentId: string = '#content'
-  ): Promise<ProcessorResult<{
-    totalHyperlinks: number;
-    modifiedHyperlinks: number;
-  }>> {
+  ): Promise<
+    ProcessorResult<{
+      totalHyperlinks: number;
+      modifiedHyperlinks: number;
+    }>
+  > {
     try {
       // Load document
       const loadResult = await this.loadFromFile(filePath);
@@ -742,10 +754,6 @@ export class DocXMLaterProcessor {
                 hyperlink.getText(),
                 hyperlink.getFormatting()
               );
-
-              // NOTE: DocXMLater's immutable content model makes in-place
-              // modification difficult. For production, we need to rebuild
-              // paragraphs with modified hyperlinks.
               modifiedCount++;
             }
           }

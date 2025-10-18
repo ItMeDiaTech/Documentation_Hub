@@ -345,7 +345,8 @@ export class ZscalerConfig {
 
       // Combine certificates
       const bundle = this.certificateContent + '\n' + systemCerts;
-      fs.writeFileSync(bundlePath, bundle);
+      // PEM files are text files, use UTF-8 encoding
+      fs.writeFileSync(bundlePath, bundle, 'utf-8');
 
       log.info(` Created certificate bundle at: ${bundlePath}`);
       return bundlePath;

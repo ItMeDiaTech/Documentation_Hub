@@ -11,7 +11,7 @@
  * - Need: getRelationships(partName: string) to access .rels files
  */
 
-import { Document } from 'docxmlater';
+import { Document, XMLParser, XMLBuilder } from 'docxmlater';
 import { logger } from '@/utils/logger';
 
 const log = logger.namespace('DocXMLaterXmlParser');
@@ -35,27 +35,34 @@ export class DocXMLaterXmlParser {
 
   /**
    * Parse XML string into JavaScript object
-   * Uses DocXMLater's internal parsing if available, or implements basic parsing
+   * Uses DocXMLater's native parseToObject() method for Office Open XML parsing
    *
-   * TODO: DocXMLater needs to expose parseXml() method or we implement it here
+   * @param xmlString - XML string to parse
+   * @returns Parse result with success status and parsed data
    */
   parseXmlString(xmlString: string): XmlParseResult {
     try {
-      // For now, we'll implement a basic XML to object conversion
-      // This should be replaced with DocXMLater's internal parser when available
-
-      // Basic implementation - DocXMLater should provide this
-      const obj = this.basicXmlToObject(xmlString);
+      // Use DocXMLater's native XML parser (framework now provides this)
+      // This handles OOXML namespaces, attributes (@_ prefix), and text nodes (#text)
+      const data = XMLParser.parseToObject(xmlString, {
+        ignoreAttributes: false,
+        attributeNamePrefix: '@_',
+        textNodeName: '#text',
+        ignoreNamespace: false,  // Keep w:p, w:r prefixes
+        parseAttributeValue: true,  // Convert "123" → 123
+        trimValues: true,
+      });
 
       return {
         success: true,
-        data: obj
+        data
       };
-    } catch (error: any) {
-      log.error('Failed to parse XML:', error.message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      log.error('Failed to parse XML:', errorMessage);
       return {
         success: false,
-        error: error.message
+        error: errorMessage
       };
     }
   }
@@ -63,84 +70,88 @@ export class DocXMLaterXmlParser {
   /**
    * Build XML string from JavaScript object
    *
-   * TODO: DocXMLater needs to expose buildXml() method
+   * NOTE: DocXMLater's XMLBuilder currently uses imperative element() methods.
+   * For declarative object-to-XML conversion, this would require the framework
+   * to add XMLBuilder.objectToXml() method (reverse of parseToObject).
+   *
+   * Current workaround: Use XMLBuilder's imperative API for XML generation.
+   *
+   * @param obj - JavaScript object to convert to XML
+   * @returns XML string
    */
   buildXmlString(obj: any): string {
-    // Basic implementation - should be replaced with DocXMLater's builder
-    return this.basicObjectToXml(obj);
+    // Placeholder - framework doesn't yet have objectToXml()
+    // For now, return a basic XML structure
+    log.warn('buildXmlString called - framework needs XMLBuilder.objectToXml() implementation');
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<!-- Object to XML conversion not yet implemented in framework -->';
   }
 
   /**
    * Get raw XML content from a document part
-   *
-   * REQUIRED: DocXMLater needs to implement this method
-   * Example: doc.getRawXml('word/document.xml')
+   * Uses DocXMLater's native getPart() API
    */
   async getRawXmlFromPart(partName: string): Promise<string | null> {
     try {
-      // This method needs to be implemented in DocXMLater
-      // For now, we'll document what's needed:
+      // Use DocXMLater's public API instead of private _zip access
+      const part = await this.doc.getPart(partName);
 
-      // PROPOSED DOCXMLATER API:
-      // const xml = await this.doc.getRawXml(partName);
-      // return xml;
-
-      log.warn(`getRawXml not yet implemented in DocXMLater for part: ${partName}`);
-
-      // Temporary workaround - need DocXMLater to expose internal XML
-      // @ts-ignore - accessing private property temporarily
-      const internalZip = this.doc._zip || this.doc.zip;
-      if (internalZip) {
-        const file = internalZip.file(partName);
-        if (file) {
-          return await file.async('string');
-        }
+      if (!part?.content) {
+        return null;
       }
 
-      return null;
-    } catch (error: any) {
-      log.error(`Failed to get raw XML from ${partName}:`, error.message);
+      // DocumentPart.content can be string or Buffer
+      return typeof part.content === 'string'
+        ? part.content
+        : part.content.toString('utf-8');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      log.error(`Failed to get raw XML from ${partName}:`, errorMessage);
       return null;
     }
   }
 
   /**
    * Set raw XML content in a document part
-   *
-   * REQUIRED: DocXMLater needs to implement this method
-   * Example: doc.setRawXml('word/document.xml', xmlString)
+   * Uses DocXMLater's native setPart() API
    */
   async setRawXmlInPart(partName: string, xmlString: string): Promise<boolean> {
     try {
-      // PROPOSED DOCXMLATER API:
-      // await this.doc.setRawXml(partName, xmlString);
-      // return true;
-
-      log.warn(`setRawXml not yet implemented in DocXMLater for part: ${partName}`);
-
-      // Temporary workaround
-      // @ts-ignore - accessing private property temporarily
-      const internalZip = this.doc._zip || this.doc.zip;
-      if (internalZip) {
-        internalZip.file(partName, xmlString);
-        return true;
-      }
-
-      return false;
-    } catch (error: any) {
-      log.error(`Failed to set raw XML in ${partName}:`, error.message);
+      // Use DocXMLater's public API instead of private _zip access
+      await this.doc.setPart(partName, xmlString);
+      return true;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      log.error(`Failed to set raw XML in ${partName}:`, errorMessage);
       return false;
     }
   }
 
   /**
    * Get relationships for a document part
-   *
-   * REQUIRED: DocXMLater should expose relationship access
+   * Uses DocXMLater's native getAllRelationships() API with fallback
    */
   async getRelationships(partName: string = 'word/document.xml'): Promise<any[]> {
     try {
-      // Construct relationship file path
+      // Try DocXMLater's native API first
+      try {
+        const allRels = await this.doc.getAllRelationships();
+
+        // Construct relationship file path
+        const dir = partName.substring(0, partName.lastIndexOf('/'));
+        const filename = partName.substring(partName.lastIndexOf('/') + 1);
+        const relsKey = `${dir}/_rels/${filename}.rels`;
+
+        // Return relationships for this specific part
+        const rels = allRels.get(relsKey);
+        if (rels && rels.length > 0) {
+          return rels;
+        }
+      } catch {
+        // Fall through to manual parsing
+        log.debug('Native getAllRelationships failed, using fallback');
+      }
+
+      // Fallback: Manual parsing (in case native API doesn't have this part)
       const dir = partName.substring(0, partName.lastIndexOf('/'));
       const filename = partName.substring(partName.lastIndexOf('/') + 1);
       const relsPath = `${dir}/_rels/${filename}.rels`;
@@ -160,60 +171,21 @@ export class DocXMLaterXmlParser {
       }
 
       return [];
-    } catch (error: any) {
-      log.error('Failed to get relationships:', error.message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      log.error('Failed to get relationships:', errorMessage);
       return [];
     }
   }
 
-  /**
-   * Basic XML to object conversion
-   * This should be replaced with DocXMLater's internal implementation
-   */
-  private basicXmlToObject(xml: string): any {
-    // Very basic implementation for demonstration
-    // DocXMLater should provide proper XML parsing
-
-    const result: any = {};
-
-    // Extract root element
-    const rootMatch = xml.match(/<(\w+:?\w+)([^>]*)>/);
-    if (!rootMatch) {
-      throw new Error('Invalid XML: No root element found');
-    }
-
-    // This is a placeholder - real implementation needed in DocXMLater
-    log.debug('Using basic XML parser - DocXMLater should provide proper parsing');
-
-    // For now, return a basic structure
-    return {
-      _warning: 'Basic XML parsing - needs DocXMLater implementation',
-      _raw: xml.substring(0, 100) + '...'
-    };
-  }
-
-  /**
-   * Basic object to XML conversion
-   * This should be replaced with DocXMLater's internal implementation
-   */
-  private basicObjectToXml(obj: any): string {
-    // Placeholder implementation
-    log.debug('Using basic XML builder - DocXMLater should provide proper building');
-
-    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<!-- Generated by DocXMLater -->';
-  }
 
   /**
    * Check if a document part exists
+   * Uses DocXMLater's native partExists() API
    */
   async partExists(partName: string): Promise<boolean> {
     try {
-      // @ts-ignore - temporary access to internal
-      const internalZip = this.doc._zip || this.doc.zip;
-      if (internalZip) {
-        return internalZip.file(partName) !== null;
-      }
-      return false;
+      return await this.doc.partExists(partName);
     } catch {
       return false;
     }
@@ -221,15 +193,11 @@ export class DocXMLaterXmlParser {
 
   /**
    * List all parts in the document
+   * Uses DocXMLater's native listParts() API
    */
   async listParts(): Promise<string[]> {
     try {
-      // @ts-ignore - temporary access to internal
-      const internalZip = this.doc._zip || this.doc.zip;
-      if (internalZip) {
-        return Object.keys(internalZip.files || {});
-      }
-      return [];
+      return await this.doc.listParts();
     } catch {
       return [];
     }
@@ -306,33 +274,22 @@ export class XmlHelper {
 }
 
 /**
- * DOCXMLATER FRAMEWORK REQUIREMENTS SUMMARY:
+ * DOCXMLATER FRAMEWORK INTEGRATION STATUS:
  *
- * The DocXMLater framework needs to implement these methods:
+ * ✅ IMPLEMENTED IN FRAMEWORK:
+ * 1. document.getPart(partName) → Get document part (XML or binary)
+ * 2. document.setPart(partName, content) → Update document part
+ * 3. document.listParts() → List all parts in ZIP
+ * 4. document.partExists(partName) → Check part existence
+ * 5. XMLParser.parseToObject(xml, options) → Parse XML to JS object
+ * 6. document.getAllRelationships() → Get all .rels files
  *
- * 1. document.getRawXml(partName: string): Promise<string>
- *    - Get raw XML content from any document part
- *    - Example: doc.getRawXml('word/document.xml')
+ * ⏳ PENDING IN FRAMEWORK:
+ * 1. XMLBuilder.objectToXml(obj, options) → Convert JS object to XML string
+ *    Current: Framework uses imperative element() API for building
+ *    Needed: Declarative object serialization (reverse of parseToObject)
  *
- * 2. document.setRawXml(partName: string, xml: string): Promise<void>
- *    - Set raw XML content in any document part
- *    - Example: doc.setRawXml('word/styles.xml', xmlString)
- *
- * 3. document.parseXml(xml: string): any
- *    - Parse XML string to JavaScript object
- *    - Should handle Office Open XML namespaces
- *
- * 4. document.buildXml(obj: any): string
- *    - Build XML string from JavaScript object
- *    - Should maintain Office Open XML structure
- *
- * 5. document.getDocumentPart(partName: string): DocumentPart
- *    - Get a document part object for manipulation
- *
- * 6. document.listParts(): string[]
- *    - List all parts in the document package
- *
- * These additions would eliminate the need for JSZip and fast-xml-parser entirely.
+ * This extension now uses 100% native DocXMLater APIs where available.
  */
 
 export default DocXMLaterXmlParser;
