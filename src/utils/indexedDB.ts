@@ -5,6 +5,7 @@
 
 import logger from './logger';
 import { safeJsonParse } from './safeJsonParse';
+import type { Session, Document as SessionDocument } from '@/types/session';
 
 const DB_NAME = 'DocHubDB';
 const DB_VERSION = 1;
@@ -14,6 +15,18 @@ interface DBConfig {
   dbName: string;
   version: number;
 }
+
+// Serialized session type for IndexedDB (dates as ISO strings)
+type SerializedDocument = Omit<SessionDocument, 'processedAt'> & {
+  processedAt?: string;
+};
+
+type SerializedSession = Omit<Session, 'createdAt' | 'lastModified' | 'closedAt' | 'documents'> & {
+  createdAt: string;
+  lastModified: string;
+  closedAt?: string;
+  documents: SerializedDocument[];
+};
 
 /**
  * Connection Pool Manager for IndexedDB
@@ -195,7 +208,7 @@ async function openDB(): Promise<IDBDatabase> {
  * Uses connection pool for better performance
  * Handles QuotaExceededError by triggering cleanup
  */
-export async function saveSession(session: any): Promise<void> {
+export async function saveSession(session: SerializedSession): Promise<void> {
   const db = await connectionPool.getConnection();
 
   return new Promise((resolve, reject) => {
@@ -234,7 +247,7 @@ export async function saveSession(session: any): Promise<void> {
  * Load all sessions from IndexedDB
  * Uses connection pool for better performance
  */
-export async function loadSessions(): Promise<any[]> {
+export async function loadSessions(): Promise<SerializedSession[]> {
   const db = await connectionPool.getConnection();
 
   return new Promise((resolve, reject) => {
@@ -331,7 +344,7 @@ export async function migrateFromLocalStorage(): Promise<void> {
       return;
     }
 
-    const sessions = safeJsonParse<any[]>(storedSessions, [], 'localStorage migration');
+    const sessions = safeJsonParse<SerializedSession[]>(storedSessions, [], 'localStorage migration');
 
     if (!Array.isArray(sessions) || sessions.length === 0) {
       logger.debug('[IndexedDB] No valid sessions to migrate');
@@ -403,7 +416,7 @@ export async function calculateDBSize(): Promise<number> {
  * Get oldest closed sessions sorted by closedAt date
  * Uses connection pool for better performance
  */
-export async function getOldestClosedSessions(limit: number): Promise<any[]> {
+export async function getOldestClosedSessions(limit: number): Promise<SerializedSession[]> {
   const db = await connectionPool.getConnection();
 
   return new Promise((resolve, reject) => {
@@ -416,10 +429,11 @@ export async function getOldestClosedSessions(limit: number): Promise<any[]> {
 
       // Filter closed sessions and sort by closedAt (oldest first)
       const closedSessions = sessions
-        .filter((s: any) => s.status === 'closed' && s.closedAt)
-        .sort((a: any, b: any) => {
-          const dateA = new Date(a.closedAt).getTime();
-          const dateB = new Date(b.closedAt).getTime();
+        .filter((s: SerializedSession) => s.status === 'closed' && s.closedAt)
+        .sort((a: SerializedSession, b: SerializedSession) => {
+          // closedAt is guaranteed to exist from the filter above
+          const dateA = new Date(a.closedAt!).getTime();
+          const dateB = new Date(b.closedAt!).getTime();
           return dateA - dateB; // Oldest first
         })
         .slice(0, limit);
@@ -490,7 +504,7 @@ export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> 
         break;
       }
 
-      const sessionIds = oldestSessions.map((s: any) => s.id);
+      const sessionIds = oldestSessions.map((s: SerializedSession) => s.id);
       await deleteSessions(sessionIds);
 
       const newSize = await calculateDBSize();
@@ -517,14 +531,14 @@ export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> 
  * Truncate large change arrays in session documents
  * Prevents excessive storage of tracking data
  */
-export function truncateSessionChanges(session: any, maxChanges: number = 100): any {
+export function truncateSessionChanges(session: SerializedSession, maxChanges: number = 100): SerializedSession {
   if (!session.documents) {
     return session;
   }
 
   return {
     ...session,
-    documents: session.documents.map((doc: any) => {
+    documents: session.documents.map((doc: SerializedDocument) => {
       if (doc.processingResult?.changes && doc.processingResult.changes.length > maxChanges) {
         return {
           ...doc,
@@ -598,13 +612,13 @@ export async function handleQuotaExceededError(
           // Aggressive cleanup - delete oldest closed sessions
           const oldestSessions = await getOldestClosedSessions(20);
           if (oldestSessions.length > 0) {
-            const sessionIds = oldestSessions.map((s: any) => s.id);
+            const sessionIds = oldestSessions.map((s: SerializedSession) => s.id);
             await deleteSessions(sessionIds);
             logger.info(`[IndexedDB] Deleted ${oldestSessions.length} session(s) to free up space`);
           } else {
             // No more closed sessions, truncate active sessions' change history
             const sessions = await loadSessions();
-            const activeSessions = sessions.filter((s: any) => s.status === 'active');
+            const activeSessions = sessions.filter((s: SerializedSession) => s.status === 'active');
 
             for (const session of activeSessions.slice(0, 5)) {
               const truncated = truncateSessionChanges(session, 50);

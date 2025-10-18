@@ -15,11 +15,20 @@ import {
   URL_PATTERNS,
   HyperlinkType,
   HyperlinkSummary,
+  PowerAutomateResponse,
 } from '@/types/hyperlink';
 import { Document } from '@/types/session';
 import { UserSettings } from '@/types/settings';
+import { extractContentId, extractDocumentId, isTheSourceUrl } from '@/utils/urlPatterns';
 import { logger } from '@/utils/logger';
 import { sanitizeUrl, validatePowerAutomateUrl } from '@/utils/urlHelpers';
+
+/**
+ * Extended API response with results cache for O(1) lookups
+ */
+interface HyperlinkApiResponseWithCache extends HyperlinkApiResponse {
+  resultsCache?: Map<string, HyperlinkApiResult>;
+}
 
 export class HyperlinkService {
   private static instance: HyperlinkService;
@@ -132,14 +141,14 @@ export class HyperlinkService {
 
       for (const hyperlink of hyperlinks) {
         // Extract Content_ID if present
-        const contentId = this.extractContentId(hyperlink.url);
+        const contentId = extractContentId(hyperlink.url);
         if (contentId && !uniqueIds.has(contentId)) {
           lookupIds.push(contentId);
           uniqueIds.add(contentId);
         }
 
         // Extract Document_ID if present
-        const documentId = this.extractDocumentId(hyperlink.url);
+        const documentId = extractDocumentId(hyperlink.url);
         if (documentId && !uniqueIds.has(documentId)) {
           lookupIds.push(documentId);
           uniqueIds.add(documentId);
@@ -411,18 +420,21 @@ export class HyperlinkService {
     if (!apiResponse.body?.results) return { updatedUrls, updatedDisplayTexts };
 
     // Use cache for O(1) lookups if available
-    const resultsCache = (apiResponse as any).resultsCache || new Map();
+    const apiResponseWithCache = apiResponse as HyperlinkApiResponseWithCache;
+    const resultsCache = apiResponseWithCache.resultsCache || new Map<string, HyperlinkApiResult>();
 
     for (const hyperlink of hyperlinks) {
       // CRITICAL PRE-FILTER: Extract IDs to determine if this hyperlink is processable
       // Only hyperlinks with Content_ID or Document_ID patterns should be processed
-      const urlContentId = this.extractContentId(hyperlink.url);
-      const urlDocumentId = this.extractDocumentId(hyperlink.url);
+      const urlContentId = extractContentId(hyperlink.url);
+      const urlDocumentId = extractDocumentId(hyperlink.url);
 
       // SKIP: This hyperlink doesn't contain Content_ID or Document_ID patterns
       // Examples: external URLs, mailto links, internal bookmarks
       if (!urlContentId && !urlDocumentId) {
-        this.log.debug(`Skipping hyperlink (no Lookup_ID pattern): ${hyperlink.url.substring(0, 80)}`);
+        this.log.debug(
+          `Skipping hyperlink (no Lookup_ID pattern): ${hyperlink.url.substring(0, 80)}`
+        );
         continue; // Skip to next hyperlink - no API processing needed
       }
 
@@ -471,8 +483,8 @@ export class HyperlinkService {
           }
         }
 
-        // Add status indicators
-        if (apiResult.status === 'Expired' || apiResult.status === 'deprecated') {
+        // Add status indicators for deprecated documents
+        if (apiResult.status === 'deprecated') {
           newDisplayText += ' - Expired';
         }
 
@@ -612,18 +624,26 @@ export class HyperlinkService {
 
           if (responseBody.Results) {
             // Cache results for efficient lookup
-            const resultsMap = new Map<string, any>();
+            const resultsMap = new Map<string, HyperlinkApiResult>();
 
             apiResponse.body = {
               results:
-                responseBody.Results?.map((result: any) => {
+                responseBody.Results?.map((result: PowerAutomateResponse['Body']['Results'][0]) => {
                   // Trim whitespace from all fields as specified
-                  const processed = {
+                  const rawStatus = result.Status?.trim() || 'Active';
+                  // Normalize status to match HyperlinkApiResult type
+                  const normalizedStatus: HyperlinkApiResult['status'] =
+                    rawStatus.toLowerCase() === 'deprecated' ? 'deprecated' :
+                    rawStatus.toLowerCase() === 'moved' ? 'moved' :
+                    rawStatus.toLowerCase() === 'not_found' ? 'not_found' :
+                    'active';
+
+                  const processed: HyperlinkApiResult = {
                     url: '', // Will be constructed from Document_ID
                     documentId: result.Document_ID?.trim() || '',
                     contentId: result.Content_ID?.trim() || '',
                     title: result.Title?.trim() || '',
-                    status: result.Status?.trim() || 'Active',
+                    status: normalizedStatus,
                     metadata: {},
                   };
 
@@ -637,7 +657,7 @@ export class HyperlinkService {
             };
 
             // Store cache for quick lookups
-            (apiResponse as any).resultsCache = resultsMap;
+            (apiResponse as HyperlinkApiResponseWithCache).resultsCache = resultsMap;
           }
 
           clearTimeout(timeout);
@@ -688,19 +708,8 @@ export class HyperlinkService {
     );
   }
 
-  private extractContentId(url: string): string | null {
-    // Improved pattern matching from Feature implementation
-    // Pattern: [TSRC|CMS]-[alphanumeric]-[6 digits]
-    const match = url.match(/([TC][SM][RS]C?-[A-Za-z0-9]+-\d{6})/i);
-    return match ? match[1] : null;
-  }
-
-  private extractDocumentId(url: string): string | null {
-    // Extract everything after "docid=" until a non-alphanumeric/dash character
-    // Improved pattern to handle edge cases
-    const match = url.match(/docid=([A-Za-z0-9\-]+)(?:[^A-Za-z0-9\-]|$)/i);
-    return match ? match[1] : null;
-  }
+  // Extraction methods moved to centralized utility: src/utils/urlPatterns.ts
+  // Use: extractContentId(url), extractDocumentId(url), isTheSourceUrl(url)
 
   private extractTitleFromUrl(url: string): string | null {
     try {

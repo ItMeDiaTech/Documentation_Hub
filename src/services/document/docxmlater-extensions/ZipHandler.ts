@@ -106,7 +106,7 @@ export class DocXMLaterZipHandler {
           const content = await file.async('string');
           return {
             name: partName,
-            content: content
+            content: content,
           };
         }
       }
@@ -118,18 +118,9 @@ export class DocXMLaterZipHandler {
     }
   }
 
-  /**
-   * Set/update a document part
-   *
-   * REQUIRED: DocXMLater needs to expose this capability
-   * Proposed API: doc.setPart(partName, content)
-   */
+  // Set/update a document part
   async setPart(partName: string, content: string | Buffer): Promise<boolean> {
     try {
-      // PROPOSED DOCXMLATER API:
-      // await this.doc.setPart(partName, content);
-      // return true;
-
       log.warn(`setPart not yet implemented in DocXMLater for: ${partName}`);
 
       // Temporary workaround
@@ -239,13 +230,17 @@ export class DocXMLaterZipHandler {
       const xmlContent = contentTypesXml.content.toString();
 
       // Extract Override elements
-      const overrideMatches = xmlContent.matchAll(/<Override\s+PartName="([^"]+)"\s+ContentType="([^"]+)"/g);
+      const overrideMatches = xmlContent.matchAll(
+        /<Override\s+PartName="([^"]+)"\s+ContentType="([^"]+)"/g
+      );
       for (const match of overrideMatches) {
         contentTypes.set(match[1], match[2]);
       }
 
       // Extract Default elements
-      const defaultMatches = xmlContent.matchAll(/<Default\s+Extension="([^"]+)"\s+ContentType="([^"]+)"/g);
+      const defaultMatches = xmlContent.matchAll(
+        /<Default\s+Extension="([^"]+)"\s+ContentType="([^"]+)"/g
+      );
       for (const match of defaultMatches) {
         contentTypes.set(`.${match[1]}`, match[2]);
       }
@@ -321,7 +316,7 @@ export class DocXMLaterZipHandler {
 
     try {
       const parts = await this.listParts();
-      const relsParts = parts.filter(p => p.includes('/_rels/') && p.endsWith('.rels'));
+      const relsParts = parts.filter((p) => p.includes('/_rels/') && p.endsWith('.rels'));
 
       for (const relsPart of relsParts) {
         const relsContent = await this.getPart(relsPart);
@@ -391,7 +386,7 @@ export class ZipUtils {
       '[Content_Types].xml',
       'word/document.xml',
       'word/_rels/document.xml.rels',
-      '_rels/.rels'
+      '_rels/.rels',
     ];
 
     const missingParts: string[] = [];
@@ -417,7 +412,7 @@ export class ZipUtils {
     return {
       valid: missingParts.length === 0 && issues.length === 0,
       missingParts,
-      issues
+      issues,
     };
   }
 
@@ -435,10 +430,10 @@ export class ZipUtils {
 
     return {
       totalParts: parts.length,
-      xmlParts: parts.filter(p => p.endsWith('.xml')).length,
-      relsParts: parts.filter(p => p.endsWith('.rels')).length,
-      mediaParts: parts.filter(p => p.includes('/media/')).length,
-      themeParts: parts.filter(p => p.includes('/theme/')).length
+      xmlParts: parts.filter((p) => p.endsWith('.xml')).length,
+      relsParts: parts.filter((p) => p.endsWith('.rels')).length,
+      mediaParts: parts.filter((p) => p.includes('/media/')).length,
+      themeParts: parts.filter((p) => p.includes('/theme/')).length,
     };
   }
 }

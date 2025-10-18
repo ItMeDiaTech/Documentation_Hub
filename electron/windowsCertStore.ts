@@ -175,9 +175,9 @@ export class WindowsCertStore {
 
         log.info('[ZscalerConfig] Certificate info:', certInfo);
 
-        // Save certificate to file
+        // Save certificate to file (PEM files are text files, use UTF-8)
         const certPath = path.join(this.tempCertDir, 'zscaler-root.pem');
-        fs.writeFileSync(certPath, certPEM);
+        fs.writeFileSync(certPath, certPEM, 'utf-8');
         log.info('[ZscalerConfig] Saved certificate to:', certPath);
 
         // Cache the certificate
