@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -377,14 +377,16 @@ export function CurrentSession() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  // Convert session processing options to ProcessingOption[] format for initializing the component
-  const getInitialProcessingOptions = (): ProcessingOption[] => {
+  // REFACTORED: Convert session processing options to ProcessingOption[] format
+  // Using useMemo to ensure we always have latest session data
+  // This prevents stale closure issues that caused toggle auto-revert bug
+  const processingOptions = useMemo((): ProcessingOption[] => {
     const enabledOps = session.processingOptions?.enabledOperations || [];
     return defaultOptions.map(opt => ({
       ...opt,
       enabled: enabledOps.includes(opt.id)
     }));
-  };
+  }, [session.processingOptions]);
 
   // Create session content for the Session tab
   const sessionContent = (
@@ -663,7 +665,7 @@ export function CurrentSession() {
       content: (
         <ProcessingOptions
           sessionId={session.id}
-          initialOptions={getInitialProcessingOptions()}
+          options={processingOptions}
           onOptionsChange={handleProcessingOptionsChange}
         />
       ),
