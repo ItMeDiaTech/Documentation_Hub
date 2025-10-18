@@ -1234,22 +1234,6 @@ export function StylesEditor({ initialStyles, onStylesChange, onListBulletSettin
 
   return (
     <div className="space-y-4">
-      {/* Only show button here if renderSaveButton is not provided (backward compatibility) */}
-      {!renderSaveButton && (
-        <div className="flex justify-end">
-          <Button
-            variant="default"
-            size="sm"
-            icon={<Save className="w-4 h-4" />}
-            onClick={handleSaveStyles}
-            showSuccess={showSuccess}
-            onSuccess={() => setShowSuccess(false)}
-          >
-            Save Styles
-          </Button>
-        </div>
-      )}
-
       {/* Render the button via callback if provided */}
       {renderSaveButton && renderSaveButton(handleSaveStyles, showSuccess, () => setShowSuccess(false))}
 

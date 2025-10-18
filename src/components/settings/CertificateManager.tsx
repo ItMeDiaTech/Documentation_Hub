@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
@@ -22,12 +22,17 @@ export function CertificateManager() {
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error' | 'info' | null; message: string }>({ type: null, message: '' });
   const [currentCertPath, setCurrentCertPath] = useState<string>('');
 
+  // Timeout refs for cleanup
+  const importTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const detectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const testTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     checkCertificateStatus();
     loadExistingCertificates();
 
     // Listen for certificate configuration from main process
-    const handleCertificateConfigured = (data: any) => {
+    const handleCertificateConfigured = (_event: any, data: { certPath: string }) => {
       setCertificateStatus('configured');
       setCurrentCertPath(data.certPath);
       loadExistingCertificates();
@@ -37,6 +42,21 @@ export function CertificateManager() {
 
     return () => {
       window.electronAPI.removeListener('certificate-configured', handleCertificateConfigured);
+    };
+  }, []);
+
+  // Cleanup all timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (importTimeoutRef.current) {
+        clearTimeout(importTimeoutRef.current);
+      }
+      if (detectTimeoutRef.current) {
+        clearTimeout(detectTimeoutRef.current);
+      }
+      if (testTimeoutRef.current) {
+        clearTimeout(testTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -94,8 +114,12 @@ export function CertificateManager() {
     }
 
     // Clear status after 5 seconds
-    setTimeout(() => {
+    if (importTimeoutRef.current) {
+      clearTimeout(importTimeoutRef.current);
+    }
+    importTimeoutRef.current = setTimeout(() => {
       setImportStatus({ type: null, message: '' });
+      importTimeoutRef.current = null;
     }, 5000);
   };
 
@@ -134,8 +158,12 @@ export function CertificateManager() {
       });
     }
 
-    setTimeout(() => {
+    if (detectTimeoutRef.current) {
+      clearTimeout(detectTimeoutRef.current);
+    }
+    detectTimeoutRef.current = setTimeout(() => {
       setImportStatus({ type: null, message: '' });
+      detectTimeoutRef.current = null;
     }, 5000);
   };
 
@@ -174,8 +202,12 @@ export function CertificateManager() {
       });
     }
 
-    setTimeout(() => {
+    if (testTimeoutRef.current) {
+      clearTimeout(testTimeoutRef.current);
+    }
+    testTimeoutRef.current = setTimeout(() => {
       setImportStatus({ type: null, message: '' });
+      testTimeoutRef.current = null;
     }, 5000);
   };
 

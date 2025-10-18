@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home,
@@ -29,7 +29,7 @@ interface NavItem {
   onClose?: () => void;
 }
 
-export function Sidebar() {
+export const Sidebar = memo(function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [logoClickCount, setLogoClickCount] = useState(0);
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -54,7 +54,7 @@ export function Sidebar() {
     };
   }, [logoClickCount]);
 
-  const handleLogoClick = () => {
+  const handleLogoClick = useCallback(() => {
     const newCount = logoClickCount + 1;
     setLogoClickCount(newCount);
 
@@ -63,14 +63,14 @@ export function Sidebar() {
       window.electronAPI.openDevTools();
       setLogoClickCount(0);
     }
-  };
+  }, [logoClickCount]);
 
-  const handleNavClick = (path: string) => {
+  const handleNavClick = useCallback((path: string) => {
     navigate(path);
-  };
+  }, [navigate]);
 
   // Build navigation items with dynamic sessions
-  const buildNavItems = (): NavItem[] => {
+  const navItems = useMemo(() => {
     const items: NavItem[] = [{ id: 'home', label: 'Dashboard', icon: Home, path: '/' }];
 
     // Add active sessions under Dashboard
@@ -86,9 +86,6 @@ export function Sidebar() {
       });
     });
 
-    // Calculate total documents across all sessions
-    const totalDocuments = sessions.reduce((sum, s) => sum + s.documents.length, 0);
-
     // Add other navigation items
     items.push(
       { id: 'sessions', label: 'Sessions', icon: FolderOpen, path: '/sessions' },
@@ -100,12 +97,12 @@ export function Sidebar() {
     );
 
     return items;
-  };
+  }, [activeSessions, closeSession]);
 
-  const bottomItems: NavItem[] = [
+  const bottomItems = useMemo<NavItem[]>(() => [
     { id: 'profile', label: 'Profile', icon: User, path: '/profile' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
-  ];
+  ], []);
 
   const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;
@@ -177,8 +174,6 @@ export function Sidebar() {
     );
   };
 
-  const navItems = buildNavItems();
-
   return (
     <motion.aside
       initial={{ width: 240 }}
@@ -246,4 +241,4 @@ export function Sidebar() {
       </motion.button>
     </motion.aside>
   );
-}
+});

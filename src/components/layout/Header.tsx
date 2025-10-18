@@ -1,7 +1,7 @@
 import { ChevronRight, Zap, Moon, Sun, Clock } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/utils/cn';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const pathToTitle: Record<string, string> = {
@@ -32,7 +32,7 @@ const pathDescriptions: Record<string, string> = {
   '/sessions': 'View and manage all sessions',
 };
 
-export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
+export const Header = memo(function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
   const { theme, setTheme } = useTheme();
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -47,38 +47,45 @@ export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
     return () => clearInterval(timer);
   }, []);
 
-  const formatTime = (date: Date) => {
+  const formatTime = useCallback((date: Date) => {
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
     });
-  };
+  }, []);
 
-  const getBreadcrumbs = () => {
+  const breadcrumbs = useMemo(() => {
     const paths = location.pathname.split('/').filter(Boolean);
-    const breadcrumbs = [];
+    const result = [];
     let currentPath = '';
 
     for (const path of paths) {
       currentPath += `/${path}`;
-      breadcrumbs.push({
+      result.push({
         label: pathToTitle[currentPath] || path,
         path: currentPath,
       });
     }
 
-    if (breadcrumbs.length === 0) {
-      breadcrumbs.push({ label: 'Dashboard', path: '/' });
+    if (result.length === 0) {
+      result.push({ label: 'Dashboard', path: '/' });
     }
 
-    return breadcrumbs;
-  };
-
-  const breadcrumbs = getBreadcrumbs();
+    return result;
+  }, [location.pathname]);
 
   const currentPath = location.pathname;
   const description = pathDescriptions[currentPath] || '';
+
+  const toggleThemeMenu = useCallback(() => {
+    setShowThemeMenu(prev => !prev);
+  }, []);
+
+  const handleThemeChange = useCallback((value: 'light' | 'dark') => {
+    setTheme(value);
+    setShowThemeMenu(false);
+  }, [setTheme]);
 
   return (
     <header className="header-bg border-b border-border bg-background/50 backdrop-blur-xl px-6 py-2">
@@ -133,7 +140,7 @@ export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
 
           <div className="relative">
             <button
-              onClick={() => setShowThemeMenu(!showThemeMenu)}
+              onClick={toggleThemeMenu}
               className={cn(
                 'p-2 rounded-md',
                 'hover:bg-accent hover:text-accent-foreground transition-colors',
@@ -155,10 +162,7 @@ export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
                   ].map(({ value, icon: Icon, label }) => (
                     <button
                       key={value}
-                      onClick={() => {
-                        setTheme(value);
-                        setShowThemeMenu(false);
-                      }}
+                      onClick={() => handleThemeChange(value)}
                       className={cn(
                         'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm',
                         'hover:bg-accent hover:text-accent-foreground transition-colors',
@@ -177,4 +181,4 @@ export function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
       </div>
     </header>
   );
-}
+});
