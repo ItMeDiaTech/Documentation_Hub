@@ -156,6 +156,7 @@ export interface SessionContextType {
   // Actions
   createSession: (name: string) => Session;
   loadSession: (id: string) => void;
+  reopenSession: (id: string) => void;
   closeSession: (id: string) => void;
   deleteSession: (id: string) => void;
   switchSession: (id: string) => void;

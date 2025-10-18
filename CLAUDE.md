@@ -10,6 +10,11 @@ The docx / xml structure is well defined within the file located at the root dir
 
 ## Recent Updates
 
+**Read ./GH_Issues for more details.**
+**When a research is found, push issues in the format found in ./GH_Issues/fix-github-issues.md and ./GH_Issues/CLAUDE.md**
+**Check on issues periodically to update your status and to alert me when they are all done after 1 or more issues h as been pushed to issues in github**
+**Store Research in ./GH_Issues/scratchpads/**
+
 ### Black Screen Prevention System (October 2025)
 
 **CRITICAL: Multi-Layer Protection Against Recurring Black Screen Issues**
