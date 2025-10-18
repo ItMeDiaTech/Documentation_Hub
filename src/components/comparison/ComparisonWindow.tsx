@@ -18,9 +18,13 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  X
+  X,
 } from 'lucide-react';
-import { ProcessingComparison, HyperlinkChange, StyleChange } from '@/services/document/DocumentProcessingComparison';
+import {
+  ProcessingComparison,
+  HyperlinkChange,
+  StyleChange,
+} from '@/services/document/DocumentProcessingComparison';
 import { cn } from '@/utils/cn';
 
 interface ComparisonWindowProps {
@@ -28,16 +32,13 @@ interface ComparisonWindowProps {
   onClose?: () => void;
 }
 
-export const ComparisonWindow: React.FC<ComparisonWindowProps> = ({
-  comparison,
-  onClose
-}) => {
+export const ComparisonWindow: React.FC<ComparisonWindowProps> = ({ comparison, onClose }) => {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['hyperlinks']));
   const [filter, setFilter] = useState<'all' | 'urls' | 'texts' | 'styles'>('all');
 
   // Toggle section expansion
   const toggleSection = (section: string) => {
-    setExpandedSections(prev => {
+    setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(section)) {
         next.delete(section);
@@ -50,12 +51,13 @@ export const ComparisonWindow: React.FC<ComparisonWindowProps> = ({
 
   // Calculate processing time
   const processingTime = comparison.statistics.processingDurationMs;
-  const formattedTime = processingTime < 1000
-    ? `${processingTime.toFixed(0)}ms`
-    : `${(processingTime / 1000).toFixed(2)}s`;
+  const formattedTime =
+    processingTime < 1000
+      ? `${processingTime.toFixed(0)}ms`
+      : `${(processingTime / 1000).toFixed(2)}s`;
 
   // Filter changes based on selected filter
-  const filteredHyperlinkChanges = comparison.hyperlinkChanges.filter(change => {
+  const filteredHyperlinkChanges = comparison.hyperlinkChanges.filter((change) => {
     if (filter === 'all') return true;
     if (filter === 'urls') return change.originalUrl !== change.modifiedUrl;
     if (filter === 'texts') return change.originalText !== change.modifiedText;
@@ -132,15 +134,15 @@ export const ComparisonWindow: React.FC<ComparisonWindowProps> = ({
 
           {/* Filter Tabs */}
           <div className="flex gap-2 mt-4">
-            {(['all', 'urls', 'texts', 'styles'] as const).map(tab => (
+            {(['all', 'urls', 'texts', 'styles'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
                 className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                  'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
                   filter === tab
-                    ? "bg-blue-500 text-white"
-                    : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                 )}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -157,21 +159,22 @@ export const ComparisonWindow: React.FC<ComparisonWindowProps> = ({
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-6">
         {/* Hyperlink Changes Section */}
-        {(filter === 'all' || filter === 'urls' || filter === 'texts') && filteredHyperlinkChanges.length > 0 && (
-          <Section
-            title="Hyperlink Changes"
-            icon={<Link className="w-5 h-5" />}
-            count={filteredHyperlinkChanges.length}
-            expanded={expandedSections.has('hyperlinks')}
-            onToggle={() => toggleSection('hyperlinks')}
-          >
-            <div className="space-y-3">
-              {filteredHyperlinkChanges.map((change, index) => (
-                <HyperlinkChangeCard key={index} change={change} />
-              ))}
-            </div>
-          </Section>
-        )}
+        {(filter === 'all' || filter === 'urls' || filter === 'texts') &&
+          filteredHyperlinkChanges.length > 0 && (
+            <Section
+              title="Hyperlink Changes"
+              icon={<Link className="w-5 h-5" />}
+              count={filteredHyperlinkChanges.length}
+              expanded={expandedSections.has('hyperlinks')}
+              onToggle={() => toggleSection('hyperlinks')}
+            >
+              <div className="space-y-3">
+                {filteredHyperlinkChanges.map((change, index) => (
+                  <HyperlinkChangeCard key={index} change={change} />
+                ))}
+              </div>
+            </Section>
+          )}
 
         {/* Style Changes Section */}
         {(filter === 'all' || filter === 'styles') && comparison.styleChanges.length > 0 && (
@@ -192,14 +195,14 @@ export const ComparisonWindow: React.FC<ComparisonWindowProps> = ({
 
         {/* Empty State */}
         {filteredHyperlinkChanges.length === 0 &&
-         (filter === 'styles' ? comparison.styleChanges.length === 0 : true) && (
-          <div className="text-center py-12">
-            <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 dark:text-gray-400">
-              No changes found for the selected filter
-            </p>
-          </div>
-        )}
+          (filter === 'styles' ? comparison.styleChanges.length === 0 : true) && (
+            <div className="text-center py-12">
+              <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500 dark:text-gray-400">
+                No changes found for the selected filter
+              </p>
+            </div>
+          )}
       </div>
     </div>
   );
@@ -222,7 +225,7 @@ const StatCard: React.FC<{
   };
 
   return (
-    <div className={cn("p-3 rounded-lg", colorClasses[color])}>
+    <div className={cn('p-3 rounded-lg', colorClasses[color])}>
       <div className="flex items-center gap-2 mb-1">
         {icon}
         <span className="text-xs font-medium opacity-80">{label}</span>
@@ -242,11 +245,7 @@ const Section: React.FC<{
   children: React.ReactNode;
 }> = ({ title, icon, count, expanded, onToggle, children }) => {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mb-6"
-    >
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
       <button
         onClick={onToggle}
         className="w-full bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow"
@@ -254,9 +253,7 @@ const Section: React.FC<{
         <div className="px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {icon}
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {title}
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
             <span className="px-2.5 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm rounded-full">
               {count}
             </span>
@@ -278,9 +275,7 @@ const Section: React.FC<{
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="pt-4">
-              {children}
-            </div>
+            <div className="pt-4">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -306,7 +301,9 @@ const HyperlinkChangeCard: React.FC<{ change: HyperlinkChange }> = ({ change }) 
 
       {urlChanged && (
         <div className="mb-3">
-          <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">URL Changed:</div>
+          <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            URL Changed:
+          </div>
           <div className="space-y-1">
             <div className="flex items-start gap-2">
               <span className="text-red-500">−</span>
@@ -326,7 +323,9 @@ const HyperlinkChangeCard: React.FC<{ change: HyperlinkChange }> = ({ change }) 
 
       {textChanged && (
         <div>
-          <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Display Text Changed:</div>
+          <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            Display Text Changed:
+          </div>
           <div className="space-y-1">
             <div className="flex items-start gap-2">
               <span className="text-red-500">−</span>
