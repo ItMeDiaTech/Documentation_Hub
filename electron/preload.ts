@@ -32,6 +32,7 @@ const electronAPI = {
   selectDocuments: () => ipcRenderer.invoke('select-documents'),
   processDocument: (path: string) => ipcRenderer.invoke('process-document', path),
   showInFolder: (path: string) => ipcRenderer.invoke('show-in-folder', path),
+  openDocument: (path: string) => ipcRenderer.invoke('open-document', path),
   getFileStats: (filePath: string) => ipcRenderer.invoke('get-file-stats', filePath),
   restoreFromBackup: (backupPath: string, targetPath: string) =>
     ipcRenderer.invoke('restore-from-backup', { backupPath, targetPath }),

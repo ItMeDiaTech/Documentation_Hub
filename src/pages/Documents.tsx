@@ -72,6 +72,20 @@ export function Documents() {
     }
   };
 
+  const handleOpenDocument = async (path?: string) => {
+    if (!path) {
+      logger.warn('No path available for document');
+      return;
+    }
+
+    try {
+      await window.electronAPI.openDocument(path);
+      logger.info('Document opened successfully');
+    } catch (err) {
+      logger.error('Failed to open document:', err);
+    }
+  };
+
   const getStatusIcon = (status: Document['status']) => {
     switch (status) {
       case 'completed':
@@ -267,6 +281,18 @@ export function Documents() {
 
                   <div className="flex items-center gap-3">
                     {getStatusBadge(doc.status)}
+                    {doc.status === 'completed' && doc.path && (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        icon={<FileText className="w-4 h-4" />}
+                        onClick={() => handleOpenDocument(doc.path)}
+                        title="Open document in Word"
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950"
+                      >
+                        Open Document
+                      </Button>
+                    )}
                     {doc.path && (
                       <Button
                         variant="ghost"
