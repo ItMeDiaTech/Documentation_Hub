@@ -6,6 +6,8 @@ Every subfolder should have a detailed CLAUDE.md describing what each file does.
 
 Every big change, CLAUDE.md files should be updated as needed and project should be added and committed with git.
 
+The docx / xml structure is well defined within the file located at the root directory of this project called "docxmlater-functions-and-structure.md".
+
 ## Recent Updates
 
 ### Black Screen Prevention System (October 2025)
@@ -15,6 +17,7 @@ Every big change, CLAUDE.md files should be updated as needed and project should
 Implemented comprehensive protection system to prevent the black screen issue that occurred after every update. The black screen was NOT caused by the update mechanism itself, but by accidental modifications to Electron security settings during development.
 
 **Problem:**
+
 - Historical incidents: 159f47b (2025-10-17), 290ee59 (2025-10-16), 7575ba6 (2024-12)
 - Changing `contextIsolation: true → false` causes React to fail rendering
 - Changing `nodeIntegration: false → true` creates security vulnerabilities
@@ -43,14 +46,17 @@ Implemented comprehensive protection system to prevent the black screen issue th
    - Final safety net - cannot be bypassed
 
 **Documentation:**
+
 - Complete guide: `BLACK_SCREEN_PREVENTION.md`
 - Testing instructions included
 - Maintenance guidelines provided
 
 **Dependencies Added:**
+
 - `husky`: ^9.1.7 (git hooks)
 
 **Impact:**
+
 - ✅ No more black screen after updates
 - ✅ Protection at every development stage
 - ✅ Self-documenting code with extensive comments

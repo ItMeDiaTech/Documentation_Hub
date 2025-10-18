@@ -17,6 +17,7 @@ import {
 } from '@/types/hyperlink';
 import { DocXMLaterProcessor } from './DocXMLaterProcessor';
 import { OOXMLValidator } from './OOXMLValidator';
+import { DocumentProcessingComparison, documentProcessingComparison } from './DocumentProcessingComparison';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
 import { logger } from '@/utils/logger';
 import { hyperlinkService } from '../HyperlinkService';
@@ -30,6 +31,9 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   removeItalics?: boolean;
   assignStyles?: boolean;
   contentId?: string; // Content ID to append
+  trackChanges?: boolean; // Track changes for comparison
+  trackChangesInWord?: boolean; // Add Word tracked changes (visible in Review mode)
+  trackChangesAuthor?: string; // Author name for tracked changes
   customReplacements?: Array<{
     find: string;
     replace: string;
@@ -56,6 +60,7 @@ export interface WordProcessingResult extends HyperlinkProcessingResult {
   backupPath?: string;
   documentSize?: number;
   processingTimeMs?: number;
+  comparisonData?: any; // Data for before/after comparison
 }
 
 /**
@@ -139,6 +144,12 @@ export class WordDocumentProcessor {
       this.log.debug('=== LOADING DOCUMENT WITH DOCXMLATER ===');
       const doc = await Document.load(filePath);
       this.log.debug('Document loaded successfully');
+
+      // Start tracking changes if enabled
+      if (options.trackChanges) {
+        this.log.debug('=== STARTING CHANGE TRACKING ===');
+        await documentProcessingComparison.startTracking(filePath, doc);
+      }
 
       // Memory checkpoint: After document load
       MemoryMonitor.logMemoryUsage('After Document Load', 'DocXMLater document loaded');
@@ -263,6 +274,17 @@ export class WordDocumentProcessor {
                       modifications.push('URL updated');
 
                       this.log.debug(`Queued URL update: ${hyperlinkInfo.url} → ${newUrl}`);
+
+                      // Track the URL change
+                      if (options.trackChanges) {
+                        documentProcessingComparison.recordHyperlinkUrlChange(
+                          hyperlink.paragraphIndex,
+                          i % 10, // Approximate hyperlink index within paragraph
+                          hyperlinkInfo.url,
+                          newUrl,
+                          'PowerAutomate API - Fix Content IDs'
+                        );
+                      }
                     }
                   }
 
@@ -289,6 +311,17 @@ export class WordDocumentProcessor {
                       modifications.push('Display text updated');
 
                       this.log.debug(`Updated text: "${hyperlinkInfo.displayText}" → "${newText}"`);
+
+                      // Track the change
+                      if (options.trackChanges) {
+                        documentProcessingComparison.recordHyperlinkTextChange(
+                          hyperlink.paragraphIndex,
+                          i % 10, // Approximate hyperlink index within paragraph
+                          hyperlinkInfo.displayText,
+                          newText,
+                          'PowerAutomate API Update'
+                        );
+                      }
                     }
                   }
 
@@ -384,10 +417,13 @@ export class WordDocumentProcessor {
       this.log.debug('=== OOXML POST-PROCESSING VALIDATION ===');
 
       // Save to temp buffer first
-      const buffer = await doc.toBuffer();
+      let buffer: Buffer | null = await doc.toBuffer();
 
       // Validate and fix OOXML structure
       const validationResult = await this.ooxmlValidator.validateAndFixBuffer(buffer);
+
+      // CRITICAL: Release original buffer reference immediately after validation
+      buffer = null;
 
       if (validationResult.issues.length > 0) {
         this.log.warn(`Found ${validationResult.issues.length} OOXML issues:`, validationResult.issues);
@@ -415,15 +451,35 @@ export class WordDocumentProcessor {
         // Use the corrected buffer that includes all OOXML fixes
         await fs.writeFile(filePath, Buffer.from(validationResult.correctedBuffer));
         this.log.info('Document saved successfully with OOXML corrections applied');
+
+        // CRITICAL: Release corrected buffer after save
+        // Note: We don't set to null as it would violate the type contract
+        // The object is already out of scope and will be garbage collected
       } else {
         // Fallback to original save if validation didn't return a buffer
         await doc.save(filePath);
         this.log.info('Document saved (validation completed, no OOXML fixes needed)');
       }
 
+      // Force garbage collection hint if available (Node.js with --expose-gc flag)
+      if (global.gc) {
+        this.log.debug('Triggering garbage collection after document save');
+        global.gc();
+      }
+
       // Memory checkpoint: After save
       MemoryMonitor.logMemoryUsage('After Document Save', 'Document saved successfully');
       MemoryMonitor.compareCheckpoints('DocProcessor Start', 'After Document Save');
+
+      // Complete change tracking if enabled
+      if (options.trackChanges) {
+        this.log.debug('=== COMPLETING CHANGE TRACKING ===');
+        const comparison = await documentProcessingComparison.completeTracking(doc);
+        if (comparison) {
+          result.comparisonData = comparison;
+          this.log.info(`Tracked ${comparison.statistics.totalChanges} changes during processing`);
+        }
+      }
 
       // Success
       result.success = true;
@@ -615,7 +671,7 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Batch process multiple documents
+   * Batch process multiple documents with optimized memory management
    */
   async batchProcess(
     filePaths: string[],
@@ -632,6 +688,7 @@ export class WordDocumentProcessor {
     const results: Array<{ file: string; result: WordProcessingResult }> = [];
     let successfulFiles = 0;
     let failedFiles = 0;
+    let processedCount = 0;
 
     this.log.debug('═══════════════════════════════════════════════════════════');
     this.log.info(`BATCH PROCESSING - ${filePaths.length} FILES`);
@@ -651,6 +708,14 @@ export class WordDocumentProcessor {
           }
 
           results.push({ file: filePath, result });
+          processedCount++;
+
+          // Trigger garbage collection periodically during batch processing
+          // Every 10 documents or when memory usage is high
+          if (processedCount % 10 === 0 && global.gc) {
+            this.log.debug(`Batch GC after ${processedCount} documents`);
+            global.gc();
+          }
 
           if (onProgress) {
             onProgress(filePath, index + 1, filePaths.length, result);
@@ -688,7 +753,19 @@ export class WordDocumentProcessor {
       })
     );
 
-    await Promise.all(promises);
+    // FIX: Use Promise.allSettled instead of Promise.all to handle partial failures
+    // Promise.all rejects if ANY promise rejects, stopping ALL remaining processing
+    // Promise.allSettled waits for ALL promises to complete, regardless of failures
+    // This ensures all documents are attempted even if some fail
+    const results_settled = await Promise.allSettled(promises);
+
+    // Process settled results (optional - can be logged for debugging)
+    for (let i = 0; i < results_settled.length; i++) {
+      const settled = results_settled[i];
+      if (settled.status === 'rejected') {
+        this.log.warn(`Batch processing warning: Promise ${i + 1} was rejected:`, (settled as PromiseRejectedResult).reason);
+      }
+    }
 
     this.log.debug('═══════════════════════════════════════════════════════════');
     this.log.info('BATCH PROCESSING COMPLETE');
@@ -696,6 +773,12 @@ export class WordDocumentProcessor {
     this.log.info(`Total files: ${filePaths.length}`);
     this.log.info(`Successful: ${successfulFiles}`);
     this.log.info(`Failed: ${failedFiles}`);
+
+    // Final garbage collection after batch processing
+    if (global.gc) {
+      this.log.debug('Final GC after batch processing complete');
+      global.gc();
+    }
 
     return {
       totalFiles: filePaths.length,
