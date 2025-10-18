@@ -11,7 +11,9 @@ import { BugReportButton } from '@/components/common/BugReportButton';
 import { UpdateNotification } from '@/components/common/UpdateNotification';
 import { DebugConsole } from '@/components/common/DebugConsole';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
-import { useState, lazy, Suspense } from 'react';
+import { SplashScreen } from '@/components/common/SplashScreen';
+import { useState, lazy, Suspense, useEffect } from 'react';
+import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 
 // Lazy load pages for code splitting and faster initial load
 const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -48,6 +50,24 @@ function EmptyPage({ title }: { title: string }) {
 
 function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const { isLoading } = useGlobalStats();
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Track initialization completion with slight delay for smooth transition
+  useEffect(() => {
+    if (!isLoading && !isInitialized) {
+      // Add 300ms delay to ensure smooth transition
+      const timer = setTimeout(() => {
+        setIsInitialized(true);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, isInitialized]);
+
+  // Show splash screen during initialization
+  if (!isInitialized) {
+    return <SplashScreen message="Loading your workspace..." />;
+  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-background">
