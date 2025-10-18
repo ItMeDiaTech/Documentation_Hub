@@ -7,7 +7,7 @@
 
 import { WordDocumentProcessor, WordProcessingOptions, WordProcessingResult } from '../WordDocumentProcessor';
 import { DocXMLaterProcessor } from '../DocXMLaterProcessor';
-import { OOXMLValidator } from '../OOXMLValidator';
+import { DocXMLaterOOXMLValidator } from '../OOXMLValidator-DocXMLater';
 import { Document, Hyperlink, Paragraph } from 'docxmlater';
 import { hyperlinkService } from '../../HyperlinkService';
 import { promises as fs } from 'fs';
@@ -16,7 +16,7 @@ import * as path from 'path';
 // Mock all dependencies
 jest.mock('docxmlater');
 jest.mock('../DocXMLaterProcessor');
-jest.mock('../OOXMLValidator');
+jest.mock('../OOXMLValidator-DocXMLater');
 jest.mock('../../HyperlinkService');
 jest.mock('fs', () => ({
   promises: {
@@ -30,7 +30,7 @@ describe('WordDocumentProcessor', () => {
   let processor: WordDocumentProcessor;
   let mockDoc: jest.Mocked<Document>;
   let mockDocXMLater: jest.Mocked<DocXMLaterProcessor>;
-  let mockOOXMLValidator: jest.Mocked<OOXMLValidator>;
+  let mockOOXMLValidator: jest.Mocked<DocXMLaterOOXMLValidator>;
 
   beforeEach(() => {
     // Clear all mocks before each test
@@ -357,7 +357,7 @@ describe('WordDocumentProcessor', () => {
         valid: false,
         issues: [],
         fixes: ['Fixed relationship ID'],
-        correctedBuffer: new ArrayBuffer(16),
+        correctedBuffer: Buffer.from('corrected'),
       });
 
       const result = await processor.processDocument(filePath);

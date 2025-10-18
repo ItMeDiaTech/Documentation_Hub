@@ -188,12 +188,17 @@ export function CurrentSession() {
             const stats = await window.electronAPI.getFileStats(path);
             // Create a new object with file properties + path (don't mutate File object)
             // File objects are immutable - their properties are read-only getters
-            validFiles.push({
-              name: file.name,
-              path: path,
-              size: stats.size,
-              type: file.type
-            } as any as File & { path: string });
+            // TypeScript doesn't allow extending File directly, so we create a compatible object
+            const fileWithPath: File & { path: string } = Object.assign(
+              new File([], file.name, { type: file.type }),
+              {
+                path: path,
+                size: stats.size,
+                name: file.name,
+                type: file.type
+              }
+            );
+            validFiles.push(fileWithPath);
           } catch (error) {
             logger.error(`[Drag-Drop] Failed to access file "${file.name}" at path "${path}":`, error);
             invalidFiles.push(file.name);
@@ -261,7 +266,7 @@ export function CurrentSession() {
     setEditedTitle('');
   };
 
-  const handleProcessingOptionsChange = (options: any[]) => {
+  const handleProcessingOptionsChange = (options: Array<{ id: string; enabled: boolean }>) => {
     // Update session with selected processing options
     const enabledOperations = options
       .filter(opt => opt.enabled)
