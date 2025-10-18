@@ -11,20 +11,8 @@ import {
   createEmptyWeeklyStats,
   createEmptyMonthlyStats,
 } from '@/types/globalStats';
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { loadGlobalStats, saveGlobalStats, resetGlobalStats } from '@/utils/indexedDB';
 import { logger } from '@/utils/logger';
-
-interface GlobalStatsDB extends DBSchema {
-  stats: {
-    key: string;
-    value: GlobalStats;
-  };
-}
-
-const DB_NAME = 'DocHub_GlobalStats';
-const DB_VERSION = 1;
-const STATS_STORE = 'stats';
-const STATS_KEY = 'global';
 
 const GlobalStatsContext = createContext<GlobalStatsContextType | undefined>(undefined);
 
@@ -32,24 +20,19 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
   const log = logger.namespace('GlobalStats');
   const [stats, setStats] = useState<GlobalStats>(createDefaultGlobalStats());
   const [isLoading, setIsLoading] = useState(true);
-  const [db, setDb] = useState<IDBPDatabase<GlobalStatsDB> | null>(null);
 
-  // Initialize IndexedDB
+  // Initialize GlobalStats - Load from IndexedDB using connection pool
   useEffect(() => {
-    const initDB = async () => {
+    let isMounted = true;
+
+    const initStats = async () => {
       try {
-        const database = await openDB<GlobalStatsDB>(DB_NAME, DB_VERSION, {
-          upgrade(db: IDBPDatabase<GlobalStatsDB>) {
-            if (!db.objectStoreNames.contains(STATS_STORE)) {
-              db.createObjectStore(STATS_STORE);
-            }
-          },
-        });
+        // Load existing stats using connection pool
+        const existingStats = await loadGlobalStats();
 
-        setDb(database);
+        // Only update state if component is still mounted
+        if (!isMounted) return;
 
-        // Load existing stats
-        const existingStats = await database.get(STATS_STORE, STATS_KEY);
         if (existingStats) {
           // Check if we need to roll over to new day/week/month
           const updatedStats = checkAndRollOverPeriods(existingStats);
@@ -57,33 +40,32 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
 
           // Save rolled-over stats if changed
           if (updatedStats !== existingStats) {
-            await database.put(STATS_STORE, updatedStats, STATS_KEY);
+            await saveGlobalStats(updatedStats);
           }
         } else {
           // No existing stats, save defaults
           const defaultStats = createDefaultGlobalStats();
-          await database.put(STATS_STORE, defaultStats, STATS_KEY);
+          await saveGlobalStats(defaultStats);
           setStats(defaultStats);
         }
       } catch (error) {
-        log.error('Failed to initialize GlobalStats IndexedDB:', error);
+        if (isMounted) {
+          log.error('Failed to initialize GlobalStats:', error);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
-    initDB();
-  }, [log]); // Include log in dependencies for exhaustive-deps compliance
+    initStats();
 
-  // Cleanup database connection on unmount
-  useEffect(() => {
+    // Cleanup: mark component as unmounted (connection pool handles db cleanup)
     return () => {
-      if (db) {
-        log.debug('Closing GlobalStats database connection');
-        db.close();
-      }
+      isMounted = false;
     };
-  }, [db]);
+  }, []); // Empty deps = runs once on mount, cleanup on unmount
 
   // Check if we need to roll over to new day/week/month
   const checkAndRollOverPeriods = (currentStats: GlobalStats): GlobalStats => {
@@ -128,8 +110,6 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
   // Update stats
   const updateStats = useCallback(
     async (update: StatsUpdate) => {
-      if (!db) return;
-
       setStats((prevStats) => {
         const updatedStats = { ...prevStats };
 
@@ -198,15 +178,15 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
 
         updatedStats.lastUpdated = now;
 
-        // Persist to IndexedDB
-        db.put(STATS_STORE, updatedStats, STATS_KEY).catch((error: Error) =>
+        // Persist to IndexedDB using connection pool
+        saveGlobalStats(updatedStats).catch((error: Error) =>
           log.error('Failed to save stats:', error)
         );
 
         return updatedStats;
       });
     },
-    [db]
+    [log]
   );
 
   // Get methods
@@ -295,12 +275,10 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
 
   // Reset all stats
   const resetAllStats = useCallback(async () => {
-    if (!db) return;
-
     const freshStats = createDefaultGlobalStats();
     setStats(freshStats);
-    await db.put(STATS_STORE, freshStats, STATS_KEY);
-  }, [db]);
+    await resetGlobalStats(freshStats);
+  }, []);
 
   return (
     <GlobalStatsContext.Provider
