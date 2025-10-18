@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, FolderOpen, Plus, Calendar, FileText } from 'lucide-react';
 import { Button } from '@/components/common/Button';
@@ -25,7 +26,15 @@ export function SessionManager({
 
   const handleCreateSession = () => {
     if (sessionName.trim()) {
-      const newSession = createSession(sessionName.trim());
+      // CRITICAL FIX: Use flushSync to force synchronous state update before navigation
+      // Without this, navigation happens before React batches the setState calls,
+      // causing the session to not appear in the sidebar (race condition)
+      let newSession!: ReturnType<typeof createSession>; // Non-null assertion - will be assigned in flushSync
+      flushSync(() => {
+        newSession = createSession(sessionName.trim());
+      });
+
+      // Now it's safe to navigate - state is guaranteed to be committed
       onSessionCreated(newSession.id);
       onClose();
     }
