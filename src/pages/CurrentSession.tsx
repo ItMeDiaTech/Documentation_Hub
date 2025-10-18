@@ -10,6 +10,7 @@ import {
   Loader2,
   Save,
   FileCheck,
+  FileText,
   Link,
   MessageSquare,
   Timer,
@@ -99,36 +100,92 @@ export function CurrentSession() {
     // Safely check if electronAPI is available
     if (!window.electronAPI?.selectFiles) {
       console.warn('CurrentSession: electronAPI.selectFiles not available');
+      toast({
+        title: 'Error',
+        description: 'File selection not available. Please restart the application.',
+        variant: 'destructive',
+      });
       return;
     }
 
-    // Use Electron's native file dialog
-    const filePaths = await window.electronAPI.selectFiles();
-    if (filePaths && filePaths.length > 0) {
+    try {
+      // Use Electron's native file dialog
+      const filePaths = await window.electronAPI.selectFiles();
+      if (!filePaths || filePaths.length === 0) {
+        return; // User cancelled
+      }
+
       // Convert file paths to File-like objects with path property and actual size
-      const files = await Promise.all(
-        filePaths.map(async (filePath: string) => {
-          const name = filePath.split(/[\\\/]/).pop() || 'document.docx';
+      const validFiles: (File & { path: string })[] = [];
+      const invalidFiles: string[] = [];
 
+      for (const filePath of filePaths) {
+        const name = filePath.split(/[\\\/]/).pop() || 'document.docx';
+
+        try {
           // Get actual file size from filesystem
-          let fileSize = 0;
-          try {
-            const stats = await window.electronAPI.getFileStats(filePath);
-            fileSize = stats.size;
-          } catch (error) {
-            logger.error('Failed to get file stats for', filePath, error);
-            // Size will remain 0 if stats retrieval fails
-          }
+          const stats = await window.electronAPI.getFileStats(filePath);
 
-          return {
-            name,
+          // CRITICAL FIX: Create a custom object that implements the File interface
+          // We can't use Object.assign on File because its properties are read-only getters
+          // Instead, create a plain object with all required File properties plus our custom 'path'
+          const fileWithPath = {
             path: filePath,
-            size: fileSize,
+            name: name,
+            size: stats.size,
             type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            lastModified: stats.mtimeMs || Date.now(),
+            // File methods (not used in our code, but required by the interface)
+            arrayBuffer: async () => new ArrayBuffer(0),
+            slice: () => new Blob(),
+            stream: () => new ReadableStream(),
+            text: async () => '',
+            webkitRelativePath: '',
           } as File & { path: string };
-        })
-      );
-      await addDocuments(session.id, files);
+
+          validFiles.push(fileWithPath);
+          logger.debug(`[File Select] Valid file: ${name} (${stats.size} bytes) at ${filePath}`);
+        } catch (error) {
+          logger.error(`[File Select] Failed to access file at "${filePath}":`, error);
+          invalidFiles.push(name);
+        }
+      }
+
+      // Add valid files to the session
+      if (validFiles.length > 0) {
+        await addDocuments(session.id, validFiles);
+        toast({
+          title: 'Files Added',
+          description: `Successfully added ${validFiles.length} file(s) to the session.`,
+          variant: 'success',
+        });
+      }
+
+      // Show error toast if any files were invalid
+      if (invalidFiles.length > 0) {
+        logger.warn(`[File Select] Rejected ${invalidFiles.length} file(s):`, invalidFiles);
+        toast({
+          title: 'Some Files Could Not Be Added',
+          description: `${invalidFiles.length} file(s) could not be accessed. Check file permissions.`,
+          variant: 'destructive',
+        });
+      }
+
+      // If no files were valid at all
+      if (validFiles.length === 0 && filePaths.length > 0) {
+        toast({
+          title: 'No Files Added',
+          description: 'None of the selected files could be accessed. Please check file permissions.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      logger.error('[File Select] Unexpected error:', error);
+      toast({
+        title: 'Error Selecting Files',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -242,6 +299,23 @@ export function CurrentSession() {
     setProcessingQueue((prev) => [...prev, documentId]);
     await processDocument(session.id, documentId);
     setProcessingQueue((prev) => prev.filter((id) => id !== documentId));
+
+    // Show success toast after processing completes
+    const doc = session.documents.find((d) => d.id === documentId);
+    if (doc?.status === 'completed' && doc.path) {
+      toast({
+        title: '✅ Processing Complete',
+        description: `${doc.name} is ready! Click the green button to open in Word.`,
+        variant: 'success',
+        duration: 6000,
+      });
+    } else if (doc?.status === 'error') {
+      toast({
+        title: 'Processing Failed',
+        description: doc.errors?.[0] || 'An error occurred while processing the document.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleSaveAndClose = () => {
@@ -485,6 +559,33 @@ export function CurrentSession() {
                           <span className="text-xs text-red-500 font-medium">Error</span>
                         )}
 
+                        {/* Open Document button - only show for completed documents */}
+                        {doc.status === 'completed' && doc.path && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await window.electronAPI.openDocument(doc.path!);
+                                toast({
+                                  title: 'Opening Document',
+                                  description: 'Launching Microsoft Word...',
+                                });
+                              } catch (err) {
+                                logger.error('Failed to open document:', err);
+                                toast({
+                                  title: 'Error',
+                                  description: err instanceof Error ? err.message : 'Could not open document',
+                                  variant: 'destructive',
+                                });
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-green-50 dark:hover:bg-green-950"
+                            title="Open document in Word"
+                          >
+                            <FileText className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          </button>
+                        )}
+
+                        {/* Show in Folder button */}
                         {doc.path && (
                           <button
                             onClick={async () => {
