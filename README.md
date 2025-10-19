@@ -13,6 +13,7 @@ Documentation Hub is a professional-grade Electron desktop application designed 
 Organize your document processing tasks into sessions, each maintaining its own configuration, documents, and processing history. Sessions persist across application restarts and can be resumed at any time.
 
 **Key Capabilities:**
+
 - Create unlimited processing sessions with custom names
 - Add multiple Word documents (.docx) to each session
 - Track processing status for each document
@@ -25,6 +26,7 @@ Organize your document processing tasks into sessions, each maintaining its own 
 Comprehensive document processing with support for multiple operations:
 
 **Hyperlink Management:**
+
 - Process and validate hyperlinks within documents
 - Append custom content IDs to hyperlink URLs
 - Distinguish between internal and external links
@@ -33,6 +35,7 @@ Comprehensive document processing with support for multiple operations:
 - Automatic backup creation before processing
 
 **Table of Contents Generation:**
+
 - Generate custom table of contents with configurable heading levels
 - Choose which heading levels to include (1-6)
 - Enable or disable page numbers
@@ -44,6 +47,7 @@ Comprehensive document processing with support for multiple operations:
 - Custom TOC title text
 
 **Table Uniformity:**
+
 - Apply consistent formatting across all tables
 - Configure border styles (single, double, dashed, or none)
 - Set uniform border widths
@@ -57,6 +61,7 @@ Comprehensive document processing with support for multiple operations:
 - Apply formatting to top rows automatically
 
 **List Bullet Formatting:**
+
 - Configure indentation levels (up to 5 levels)
 - Set custom bullet characters per level
 - Define numbered list formats
@@ -79,11 +84,13 @@ Create and manage text replacement rules for consistent document formatting:
 Customize document styles with comprehensive formatting options:
 
 **Supported Styles:**
+
 - Normal text
 - Header 1 through Header 6
 - Custom style definitions
 
 **Formatting Controls:**
+
 - Font family selection
 - Font size (points)
 - Bold, italic, and underline toggles
@@ -109,11 +116,13 @@ View detailed before-and-after comparisons of document modifications:
 Fully customizable user interface with extensive theming options:
 
 **Theme Modes:**
+
 - Light mode
 - Dark mode
 - Automatic theme switching based on time
 
 **Customization Options:**
+
 - Custom accent colors with visual picker
 - 24 preset color options (8 per row)
 - Custom primary, background, and foreground colors
@@ -159,6 +168,7 @@ Track your productivity with comprehensive statistics:
 ### User Experience Enhancements
 
 **Interface Polish:**
+
 - Custom frameless window with native controls
 - Collapsible sidebar with icon-only mode
 - Clickable breadcrumb navigation
@@ -170,6 +180,7 @@ Track your productivity with comprehensive statistics:
 - Responsive layout for different screen sizes
 
 **Accessibility:**
+
 - WCAG 2.1 AA compliant
 - Full keyboard navigation support
 - Screen reader compatibility
@@ -178,6 +189,7 @@ Track your productivity with comprehensive statistics:
 - Proper ARIA labels throughout
 
 **File Management:**
+
 - Open file location in system explorer
 - Drag and drop document upload
 - Multi-file selection support
@@ -220,12 +232,14 @@ Track your productivity with comprehensive statistics:
 ### Windows
 
 **Installer (Recommended):**
+
 ```powershell
 # Download and install using PowerShell
 iwr https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/master/install.ps1 | iex
 ```
 
 **Manual Installation:**
+
 1. Download the latest `.exe` installer from the [Releases](https://github.com/ItMeDiaTech/Documentation_Hub/releases) page
 2. Run the installer
 3. Choose installation directory (defaults to `%LOCALAPPDATA%\Programs\Documentation Hub`)
@@ -237,12 +251,14 @@ No administrator rights required - installs to user directory.
 ### macOS
 
 **Installer:**
+
 ```bash
 # Download and install using curl
 curl -fsSL https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/master/install.sh | bash
 ```
 
 **Manual Installation:**
+
 1. Download the latest `.dmg` file from the [Releases](https://github.com/ItMeDiaTech/Documentation_Hub/releases) page
 2. Open the DMG file
 3. Drag Documentation Hub to your Applications folder
@@ -251,12 +267,14 @@ curl -fsSL https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/maste
 ### Linux
 
 **AppImage:**
+
 ```bash
 # Download and run
 curl -fsSL https://raw.githubusercontent.com/ItMeDiaTech/Documentation_Hub/master/install.sh | bash
 ```
 
 **Manual Installation:**
+
 1. Download the latest `.AppImage` from the [Releases](https://github.com/ItMeDiaTech/Documentation_Hub/releases) page
 2. Make it executable: `chmod +x Documentation-Hub-*.AppImage`
 3. Run: `./Documentation-Hub-*.AppImage`
@@ -313,6 +331,7 @@ npm run dist
 ```
 
 **Platform-Specific Builds:**
+
 - Windows: Generates `.exe` installer (NSIS)
 - macOS: Generates `.dmg` disk image
 - Linux: Generates `.AppImage` executable
@@ -324,6 +343,7 @@ npm run dist
 Access settings via the gear icon in the sidebar or press `Ctrl/Cmd+,`.
 
 **Appearance:**
+
 - Theme (Light/Dark)
 - Accent color selection
 - Custom color configuration
@@ -331,27 +351,32 @@ Access settings via the gear icon in the sidebar or press `Ctrl/Cmd+,`.
 - Animation preferences
 
 **Typography:**
+
 - Main text font and sizing
 - Secondary text customization
 - Letter spacing and line height
 - Font weight and style
 
 **Localization:**
+
 - Language (English, Spanish, Mandarin)
 - Timezone selection (US and international)
 - Date format preferences
 
 **API Connections:**
+
 - PowerAutomate URL for automation
 - Bug report endpoint
 - Feature suggestion endpoint
 
 **Updates:**
+
 - Auto-update on launch (default: enabled)
 - Manual update checks
 - Release notes viewer
 
 **Data Management:**
+
 - Storage location
 - Session cleanup preferences
 - Export/import settings
@@ -362,6 +387,7 @@ Access settings via the gear icon in the sidebar or press `Ctrl/Cmd+,`.
 Each session maintains independent settings:
 
 **Processing Options:**
+
 - Append content ID to hyperlinks
 - Content ID string
 - URL validation
@@ -369,15 +395,18 @@ Each session maintains independent settings:
 - Internal/external link processing
 
 **Styles:**
+
 - Custom style definitions
 - Font and formatting rules
 - Spacing configurations
 
 **Replacements:**
+
 - Text replacement rules
 - Pattern matching options
 
 **Document Uniformity:**
+
 - Table formatting rules
 - List bullet configurations
 - TOC generation settings
@@ -418,12 +447,14 @@ Documentation_Hub/
 ### Key Design Patterns
 
 **State Management:**
+
 - React Context for global state
 - Zustand for complex state logic
 - IndexedDB for persistent session data
 - LocalStorage for user preferences
 
 **Security:**
+
 - Context isolation enabled
 - Node integration disabled
 - IPC communication via secure bridge
@@ -431,6 +462,7 @@ Documentation_Hub/
 - Sandboxed renderer process
 
 **Performance:**
+
 - Code splitting and lazy loading
 - Virtual scrolling for large lists
 - Optimized re-renders with React.memo
@@ -500,6 +532,7 @@ Documentation Hub includes advanced proxy support for corporate environments. If
    - Works with NTLM, Kerberos, and basic authentication
 
 2. **Setting Proxy Environment Variables (if needed):**
+
    ```bash
    # Windows (Command Prompt)
    set HTTPS_PROXY=http://proxy.company.com:8080
@@ -532,6 +565,7 @@ Documentation Hub includes advanced proxy support for corporate environments. If
 **Network Restriction Bypass:**
 
 If your network blocks .exe downloads:
+
 - The app automatically detects blocking and switches to ZIP fallback
 - No manual intervention required
 - Visual indicators show when fallback mode is active
@@ -585,6 +619,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Acknowledgments
 
 Built with these excellent open-source projects:
+
 - Electron for cross-platform desktop capabilities
 - React for UI components
 - TypeScript for type safety
@@ -606,6 +641,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and release notes.
 ## Roadmap
 
 Planned features for future releases:
+
 - Cloud sync for sessions across devices
 - Plugin system for custom processors
 - Team collaboration features

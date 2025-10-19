@@ -13,19 +13,22 @@ jest.mock('electron', () => ({
   },
 }));
 
-// Mock window.electron for IPC
-global.window = Object.create(window);
-Object.defineProperty(window, 'electron', {
-  value: {
-    ipcRenderer: {
-      invoke: jest.fn(),
-      on: jest.fn(),
-      send: jest.fn(),
-      removeAllListeners: jest.fn(),
+// Mock window.electron for IPC (only in renderer/browser environment)
+// Skip this for electron main process tests
+if (typeof window !== 'undefined') {
+  global.window = Object.create(window);
+  Object.defineProperty(window, 'electron', {
+    value: {
+      ipcRenderer: {
+        invoke: jest.fn(),
+        on: jest.fn(),
+        send: jest.fn(),
+        removeAllListeners: jest.fn(),
+      },
     },
-  },
-  writable: true,
-});
+    writable: true,
+  });
+}
 
 // Mock console methods to reduce test output noise
 global.console = {
