@@ -22,6 +22,7 @@ import { MemoryMonitor } from '@/utils/MemoryMonitor';
 import { logger } from '@/utils/logger';
 import { extractLookupIds } from '@/utils/urlPatterns';
 import { hyperlinkService } from '../HyperlinkService';
+import { repairTOC, hasOrphanedTOCEntries, type TOCRepairResult } from './TOCRepairService';
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -190,13 +191,15 @@ export class WordDocumentProcessor {
             // Convert DocXMLater hyperlinks to DetailedHyperlinkInfo format for API
             this.log.debug(`Calling hyperlink service with ${hyperlinks.length} hyperlinks`);
 
+            // LAYER 3 PROTECTION: Sanitize displayText when creating hyperlinkInfos
+            // This ensures no XML corruption flows into API processing or UI display
             const hyperlinkInfos: DetailedHyperlinkInfo[] = hyperlinks.map((h, index) => ({
               id: `hyperlink-${index}`,
               relationshipId: `rId${index}`,
               element: h.hyperlink as any,
               containingPart: 'document.xml',
               url: h.url || '',
-              displayText: h.text,
+              displayText: this.sanitizeTextContent(h.text),  // Sanitize text from extracted hyperlinks
               type: 'external' as HyperlinkType,
               isInternal: false,
               isValid: true,
@@ -318,8 +321,10 @@ export class WordDocumentProcessor {
                     }
 
                     if (newText !== hyperlinkInfo.displayText) {
-                      hyperlink.hyperlink.setText(newText);
-                      finalDisplayText = newText;
+                      // LAYER 3 PROTECTION: Sanitize text before setText() to prevent XML injection
+                      const sanitizedNewText = this.sanitizeTextContent(newText);
+                      hyperlink.hyperlink.setText(sanitizedNewText);
+                      finalDisplayText = sanitizedNewText;
                       result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
                       modifications.push('Display text updated');
 
@@ -359,11 +364,13 @@ export class WordDocumentProcessor {
                   this.log.warn(`No API result for hyperlink with Lookup_ID: ${hyperlinkInfo.url}`);
 
                   if (options.operations?.updateTitles) {
-                    // CRITICAL: Sanitize display text to ensure no XML markup is included
-                    // The displayText might contain XML structure from getText() that needs to be cleaned
+                    // LAYER 3 PROTECTION: Double sanitization for "Not Found" text
+                    // First sanitize the displayText, then sanitize the final composed string
+                    // This ensures no XML markup slips through even if displayText was already sanitized
                     const cleanDisplayText = this.sanitizeTextContent(hyperlinkInfo.displayText);
                     const notFoundText = `${cleanDisplayText} - Not Found`;
-                    hyperlink.hyperlink.setText(notFoundText);
+                    const sanitizedNotFoundText = this.sanitizeTextContent(notFoundText);
+                    hyperlink.hyperlink.setText(sanitizedNotFoundText);
                     result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
                   }
                 }
@@ -424,6 +431,61 @@ export class WordDocumentProcessor {
         this.log.debug('=== APPLYING CUSTOM REPLACEMENTS ===');
         await this.processCustomReplacements(hyperlinks, options.customReplacements, result);
       }
+
+      // ═══════════════════════════════════════════════════════════
+      // TOC Repair - Fix orphaned TOC links and generate proper TOC
+      // Only runs when enabled AND orphaned TOC entries are detected
+      // ═══════════════════════════════════════════════════════════
+      if (options.operations?.updateTocHyperlinks) {
+        this.log.debug('=== TOC REPAIR - CHECKING FOR ORPHANED ENTRIES ===');
+
+        // First, check if document has orphaned TOC entries
+        const hasOrphaned = hasOrphanedTOCEntries(doc);
+
+        if (hasOrphaned) {
+          this.log.warn('⚠️  Orphaned TOC entries detected - starting repair');
+
+          try {
+            const tocRepairResult: TOCRepairResult = repairTOC(doc, {
+              generateTOC: true,
+              addTopLinks: true,
+              clearOrphanedTOC: true,
+              onlyInTables: true,
+              topLinkText: 'Top of the Document',
+            });
+
+            // Add TOC repair results to processing result
+            result.processedLinks.push({
+              id: 'toc-repair',
+              url: 'TOC Repair Service',
+              displayText: 'Table of Contents Repair',
+              type: 'internal' as HyperlinkType,
+              location: 'Document Processing',
+              status: 'processed' as const,
+              before: hasOrphaned ? 'Orphaned TOC entries detected' : 'No orphaned entries',
+              after: `Repaired: ${tocRepairResult.header2Count} headers, ${tocRepairResult.topLinksAdded} nav links added, ${tocRepairResult.orphanedEntriesRemoved} orphaned entries removed`,
+              modifications: [
+                `TOC Generated: ${tocRepairResult.tocGenerated}`,
+                `Header 2 Count: ${tocRepairResult.header2Count}`,
+                `Navigation Links Added: ${tocRepairResult.topLinksAdded}`,
+                `Orphaned Entries Removed: ${tocRepairResult.orphanedEntriesRemoved}`,
+              ],
+            });
+
+            this.log.info(`✓ TOC Repair complete: ${tocRepairResult.orphanedEntriesRemoved} orphaned entries removed`);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown TOC repair error';
+            this.log.error('TOC repair failed:', errorMessage);
+            result.errorMessages.push(`TOC Repair Error: ${errorMessage}`);
+            result.errorCount++;
+          }
+        } else {
+          this.log.info('✓ No orphaned TOC entries detected - skipping repair');
+        }
+      }
+      // ═══════════════════════════════════════════════════════════
+      // End TOC Repair
+      // ═══════════════════════════════════════════════════════════
 
       // Memory checkpoint: Before save
       MemoryMonitor.logMemoryUsage('Before Document Save', 'Ready to save document');
@@ -578,8 +640,9 @@ export class WordDocumentProcessor {
           // Append #content
           const newUrl = url + (options.contentId || '#content');
 
-          // Update hyperlink URL
-          // Note: DocXMLater handles relationship updates automatically
+          // Update hyperlink URL using docxmlater's setUrl method
+          // This automatically handles relationship updates
+          hyperlink.setUrl(newUrl);
 
           const linkInfo = {
             id: `hyperlink-${modifiedCount}`,
@@ -633,7 +696,8 @@ export class WordDocumentProcessor {
             shouldApply = this.matchesPattern(url, rule.find, rule.matchType);
             if (shouldApply) {
               const newUrl = url.replace(rule.find, rule.replace);
-              // Update hyperlink (DocXMLater handles this)
+              // Update hyperlink using docxmlater's setUrl method
+              hyperlink.setUrl(newUrl);
               if (result.updatedUrls !== undefined) {
                 result.updatedUrls++;
               }
@@ -905,28 +969,49 @@ export class WordDocumentProcessor {
    * Sanitize text content by removing any XML markup
    * This prevents escaped XML from being injected into hyperlink text
    * CRITICAL: Protects against corruption from getText() returning XML structure
+   *
+   * LAYER 2 PROTECTION: Enhanced comprehensive sanitization with all known corruption patterns
+   * Addresses bug where <w:t xml:space="preserve"> appears in document text
    */
   private sanitizeTextContent(text: string): string {
     if (!text) return '';
 
     // Remove XML markup patterns that might have been captured by getText()
-    // Match patterns like <w:t>, </w:t>, &lt;, &gt;, &quot;, etc.
+    // Process in order from most specific to most general to avoid partial matches
     let cleaned = text
-      // Remove actual XML tags
-      .replace(/<[^>]*>/g, '')
-      // Unescape XML entities that might appear as strings
-      .replace(/&lt;/g, '')
-      .replace(/&gt;/g, '')
+      // Remove Word XML text tags (MOST SPECIFIC FIRST)
+      .replace(/<w:t\s+xml:space=["']preserve["'][^>]*>/gi, '')  // <w:t xml:space="preserve">
+      .replace(/<w:t[^>]*>/gi, '')                                // <w:t> or <w:t ...>
+      .replace(/<\/w:t>/gi, '')                                   // </w:t>
+      .replace(/<w:r[^>]*>/gi, '')                                // <w:r> (run tags)
+      .replace(/<\/w:r>/gi, '')                                   // </w:r>
+      .replace(/<w:rPr[^>]*>/gi, '')                              // <w:rPr> (run properties)
+      .replace(/<\/w:rPr>/gi, '')                                 // </w:rPr>
+      .replace(/<w:[^>]*>/g, '')                                  // Any other <w:...> tags
+      .replace(/<[^>]*>/g, '')                                    // Any remaining tags
+      // Remove escaped XML patterns (SECOND PASS for &lt; variants)
+      .replace(/&lt;w:t\s+xml:space=&quot;preserve&quot;[^&]*&gt;/gi, '')
+      .replace(/&lt;w:t[^&]*&gt;/gi, '')                          // &lt;w:t&gt;
+      .replace(/&lt;\/w:t&gt;/gi, '')                             // &lt;/w:t&gt;
+      .replace(/&lt;w:r[^&]*&gt;/gi, '')                          // &lt;w:r&gt;
+      .replace(/&lt;\/w:r&gt;/gi, '')                             // &lt;/w:r&gt;
+      .replace(/&lt;w:[^&]*&gt;/g, '')                            // &lt;w:...&gt;
+      .replace(/&lt;/g, '')                                       // Remaining &lt;
+      .replace(/&gt;/g, '')                                       // Remaining &gt;
+      // Unescape XML entities
       .replace(/&quot;/g, '"')
       .replace(/&apos;/g, "'")
       .replace(/&amp;/g, '&')
-      // Clean up any remaining escaped sequences
-      .replace(/\\x[0-9a-fA-F]{2}/g, '')
+      // Clean up escape sequences and control characters
+      .replace(/\\x[0-9a-fA-F]{2}/g, '')                         // Hex escape sequences
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, '')                      // Control characters
+      // Clean up multiple spaces that might result from tag removal
+      .replace(/\s+/g, ' ')
       .trim();
 
-    // If the text becomes empty after cleaning, return the original
-    // to avoid losing all display text
-    return cleaned.length === 0 ? text : cleaned;
+    // Fallback: if sanitization removed everything, return original trimmed
+    // This prevents losing legitimate text that might match a pattern
+    return cleaned.length === 0 ? text.trim() : cleaned;
   }
 
   /**
