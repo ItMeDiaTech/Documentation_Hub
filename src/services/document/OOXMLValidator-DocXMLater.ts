@@ -383,10 +383,40 @@ export class DocXMLaterOOXMLValidator {
     modifiedRelsXml = XmlHelper.ensureXmlDeclaration(modifiedRelsXml);
 
     // Fix 5: Ensure xml:space="preserve" on text nodes
-    modifiedDocumentXml = modifiedDocumentXml.replace(
-      /<w:t>([^<]+)<\/w:t>/g,
-      '<w:t xml:space="preserve">$1</w:t>'
-    );
+    // LAYER 4 PROTECTION: Check if text content already contains XML markup to prevent double-wrapping
+    // This addresses the bug where setText() with corrupted text would be wrapped again
+    const textNodePattern = /<w:t>([^<]+)<\/w:t>/g;
+    const alreadyPreservedPattern = /<w:t\s+xml:space=["']preserve["'][^>]*>/;
+
+    // Only apply xml:space if not already present and if text doesn't contain XML markup
+    const hasPreserveAttribute = alreadyPreservedPattern.test(modifiedDocumentXml);
+
+    if (!hasPreserveAttribute) {
+      // Additional check: Don't wrap if the text content contains escaped XML patterns
+      const textContentTest = modifiedDocumentXml.match(textNodePattern);
+      let shouldWrap = true;
+
+      if (textContentTest) {
+        // Check if any matched text contains XML escape sequences or markup
+        for (const match of textContentTest) {
+          if (match.includes('&lt;') || match.includes('&gt;') || match.includes('&quot;')) {
+            log.warn('Text content contains escaped XML - skipping xml:space wrapping to prevent corruption');
+            shouldWrap = false;
+            break;
+          }
+        }
+      }
+
+      if (shouldWrap) {
+        modifiedDocumentXml = modifiedDocumentXml.replace(
+          textNodePattern,
+          '<w:t xml:space="preserve">$1</w:t>'
+        );
+        changes.push('Added xml:space="preserve" to text nodes');
+      } else {
+        changes.push('Skipped xml:space="preserve" (text contains XML escapes)');
+      }
+    }
 
     // Fix 6: Remove double closing brackets if any
     if (modifiedDocumentXml.includes('>>')) {

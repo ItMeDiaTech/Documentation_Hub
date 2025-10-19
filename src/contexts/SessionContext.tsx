@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { Session, Document, SessionStats, SessionContextType, ReplacementRule, SessionStyle, ListBulletSettings, TableUniformitySettings } from '@/types/session';
-import type { HyperlinkProcessingOptions, BatchProcessingOptions } from '@/types/hyperlink';
+import type { HyperlinkProcessingOptions } from '@/types/hyperlink';
 import {
   loadSessions,
   saveSession as saveSessionToDB,
@@ -120,9 +120,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [log]); // Memoize with log dependency
 
   // Load all sessions & active sessions from localStorage on mount
+  // CRITICAL: Only run ONCE on mount - do NOT reload when dependencies change
+  // Re-loading after mount causes race conditions where new data gets overwritten
   useEffect(() => {
     loadSessionsFromStorage();
-  }, [loadSessionsFromStorage]); // Include loadSessionsFromStorage in dependencies
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - ONLY run on mount
 
   // Update refs when sessions change
   useEffect(() => {
@@ -256,7 +259,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const createSession = (name: string): Session => {
     const newSession: Session = {
-      id: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       name,
       createdAt: new Date(),
       lastModified: new Date(),
@@ -432,7 +435,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       // Create document with validated path
       newDocuments.push({
-        id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         name: file.name,
         path: fileWithPath.path,
         size: file.size || 0,
