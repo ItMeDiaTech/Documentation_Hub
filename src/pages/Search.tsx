@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
 import Fuse from 'fuse.js';
 import {
@@ -50,7 +50,8 @@ const itemVariants = {
   },
 };
 
-export function Search() {
+// PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
+export const Search = memo(function Search() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('all');
@@ -349,4 +350,4 @@ export function Search() {
       </motion.div>
     </motion.div>
   );
-}
+});
