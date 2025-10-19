@@ -16,7 +16,6 @@ import {
   HyperlinkType,
 } from '@/types/hyperlink';
 import { DocXMLaterProcessor } from './DocXMLaterProcessor';
-import { DocXMLaterOOXMLValidator } from './OOXMLValidator-DocXMLater';
 import { DocumentProcessingComparison, documentProcessingComparison } from './DocumentProcessingComparison';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
 import { logger } from '@/utils/logger';
@@ -71,7 +70,6 @@ export interface WordProcessingResult extends HyperlinkProcessingResult {
 export class WordDocumentProcessor {
   private readonly MAX_FILE_SIZE_MB = 100;
   private docXMLater: DocXMLaterProcessor;
-  private ooxmlValidator: DocXMLaterOOXMLValidator;
 
   // Debug mode controlled by environment
   private readonly DEBUG = process.env.NODE_ENV !== 'production';
@@ -80,8 +78,7 @@ export class WordDocumentProcessor {
 
   constructor() {
     this.docXMLater = new DocXMLaterProcessor();
-    this.ooxmlValidator = new DocXMLaterOOXMLValidator();
-    this.log.debug('Initialized with DocXMLater and OOXML validation (JSZip-free)');
+    this.log.debug('Initialized with DocXMLater library');
   }
 
   /**
@@ -505,60 +502,21 @@ export class WordDocumentProcessor {
       // Memory checkpoint: Before save
       MemoryMonitor.logMemoryUsage('Before Document Save', 'Ready to save document');
 
-      // CRITICAL: Post-process with OOXML validation before final save
-      // This ensures the docxmlater-generated document follows OOXML_HYPERLINK_ARCHITECTURE.md
-      this.log.debug('=== OOXML POST-PROCESSING VALIDATION ===');
-
-      // Save to temp buffer first
-      let buffer: Buffer | null = await doc.toBuffer();
-
-      // Validate and fix OOXML structure
-      const validationResult = await this.ooxmlValidator.validateAndFixBuffer(buffer);
-
-      // CRITICAL: Release original buffer reference immediately after validation
-      buffer = null;
-
-      if (validationResult.issues.length > 0) {
-        this.log.warn(`Found ${validationResult.issues.length} OOXML issues:`, validationResult.issues);
-      }
-
-      if (validationResult.fixes.length > 0) {
-        this.log.info(`Applied ${validationResult.fixes.length} OOXML fixes:`, validationResult.fixes);
-        result.processedLinks.push({
-          id: 'ooxml-validation',
-          url: 'OOXML Validation',
-          displayText: 'Post-Processing OOXML Validation',
-          type: 'external' as HyperlinkType,
-          location: 'Document Processing',
-          status: 'processed' as const,
-          before: 'OOXML validation passed',
-          after: validationResult.fixes.length > 0 ? `Fixed ${validationResult.fixes.length} issues` : 'No fixes needed',
-          modifications: validationResult.fixes,
-        });
-      }
-
-      // CRITICAL FIX: Save the CORRECTED buffer, not the original document!
-      // This is the key fix - we must use the validated/corrected buffer returned by the validator
+      // ═══════════════════════════════════════════════════════════
+      // SAVE DOCUMENT - Direct save using docxmlater
+      //
+      // IMPORTANT: We rely on docxmlater's internal DOCX formatting
+      // which properly maintains:
+      // 1. [Content_Types].xml as first ZIP entry with STORE compression
+      // 2. Correct file ordering in ZIP archive
+      // 3. All OOXML relationships and structure
+      //
+      // Previous approach of toBuffer() → validate → resave caused
+      // corruption due to double ZIP creation breaking file ordering.
+      // ═══════════════════════════════════════════════════════════
       this.log.debug('=== SAVING DOCUMENT ===');
-      if (validationResult.correctedBuffer) {
-        // Use the corrected buffer that includes all OOXML fixes
-        await fs.writeFile(filePath, Buffer.from(validationResult.correctedBuffer));
-        this.log.info('Document saved successfully with OOXML corrections applied');
-
-        // CRITICAL: Release corrected buffer after save
-        // Note: We don't set to null as it would violate the type contract
-        // The object is already out of scope and will be garbage collected
-      } else {
-        // Fallback to original save if validation didn't return a buffer
-        await doc.save(filePath);
-        this.log.info('Document saved (validation completed, no OOXML fixes needed)');
-      }
-
-      // Force garbage collection hint if available (Node.js with --expose-gc flag)
-      if (global.gc) {
-        this.log.debug('Triggering garbage collection after document save');
-        global.gc();
-      }
+      await doc.save(filePath);
+      this.log.info('Document saved successfully');
 
       // Memory checkpoint: After save
       MemoryMonitor.logMemoryUsage('After Document Save', 'Document saved successfully');
