@@ -50,20 +50,46 @@ Template_UI.code-workspace
 # Release automation (customize per developer)
 release.ps1
 
-# Claude AI files
+# ============================================================================
+# PERSONAL WORKSPACE & AI ASSISTANT FILES
+# These files are developer-specific and should not be committed
+# ============================================================================
+
+# Claude AI workspace files (personal context for AI assistance)
 .claude/
+**/CLAUDE.md
+.claude.md
+
+# Personal development notes and workspace files
+**/TODO.md
+**/NOTES.md
+**/SCRATCH.md
+**/PERSONAL.md
+workspace-*.md
+notes-*.md
+todo-*.md
+
+# Personal status tracking
+**/STATUS.md
+status-*.md
+progress-*.md
+
+# Developer-specific plans and research
+personal/
+scratch/
+workspace/
 
 # Reports (optional - these seem to be development notes)
 reports/
 
-# Security scanning reports
+# Security scanning reports (auto-generated)
 gitleaks-report.json
 
-# Refactoring and planning files
+# Refactoring and planning files (moved to docs/)
 refactor/
+implement/
 
-# Development documentation
-**/CLAUDE.md
+# Legacy development documentation (moved to docs/)
 CLAUDE_CSHARP_WPF_MVVM.md
 Hyperlink_Implementation.md
 changes.md
@@ -83,12 +109,17 @@ Tests_Responses.md
 coverage/
 .nyc_output/
 
-# Temporary documentation/research files
+# Temporary documentation/research files (moved to docs/)
 COMMIT_MESSAGE.txt
 DOCXMLATER_*.md
 KNOWN_TEST_ISSUES.md
 TEST_FIXES_SUMMARY.md
 TEST_STATUS_UPDATE.md
+IMPLEMENTATION_SUMMARY.md
+PLUGIN_MARKETPLACE_PLAN.md
+GITHUB_ISSUE_*.md
+ISSUE_*.md
+OOXML_*.md
 
 # Backup and temporary files
 *.bak
