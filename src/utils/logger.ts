@@ -43,11 +43,13 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 const isTest = process.env.NODE_ENV === 'test';
 const isRenderer = typeof window !== 'undefined' && window.process?.type === 'renderer';
 
-// Detect if electron-log is properly initialized
-const isElectronLogAvailable = !!(electronLog.transports?.file || electronLog.transports?.console);
+// In renderer process, electron-log only has console transport and uses IPC for file logging
+// In main process, it has both file and console transports
+// We should only configure transports in the main process
+const isMainProcess = !isRenderer;
 
-// Only configure electron-log if transports are available (main process)
-if (isElectronLogAvailable) {
+// Only configure electron-log if we're in the main process
+if (isMainProcess) {
   if (electronLog.transports?.file) {
     electronLog.transports.file.level = 'info';
     electronLog.transports.file.maxSize = 5 * 1024 * 1024; // 5MB per file
@@ -76,6 +78,18 @@ if (isElectronLogAvailable) {
     electronLog.transports.file.level = false;
     electronLog.transports.console.level = false;
   }
+} else {
+  // Renderer process: Use console transport only, electron-log handles IPC automatically
+  // This prevents the "logger isn't initialized in main process" error
+  if (electronLog.transports?.console) {
+    electronLog.transports.console.level = isDevelopment ? 'debug' : 'warn';
+    electronLog.transports.console.format = '[{h}:{i}:{s}.{ms}] [{level}] {text}';
+  }
+
+  // Disable file transport attempts in renderer (it uses IPC automatically when available)
+  if (electronLog.transports?.file) {
+    electronLog.transports.file.level = false;
+  }
 }
 
 /**
@@ -94,7 +108,10 @@ function getTimestamp(): string {
  * Create a scoped logger for a specific module
  */
 function createScopedLogger(scope: string) {
-  const scopedLog = isElectronLogAvailable ? electronLog.scope(scope) : null;
+  // In renderer, only use console logging to avoid "not initialized" errors
+  // electron-log will automatically send logs to main process via IPC when properly set up
+  const useElectronLog = isMainProcess;
+  const scopedLog = useElectronLog ? electronLog.scope(scope) : null;
 
   return {
     /**
@@ -106,6 +123,7 @@ function createScopedLogger(scope: string) {
         if (scopedLog) {
           scopedLog.debug(message, ...args);
         } else {
+          // Renderer fallback: use console directly
           console.debug(`[${scope}] [DEBUG] ${message}`, ...args);
         }
       }
@@ -190,7 +208,7 @@ export const logger = {
    */
   debug(message: string, ...args: any[]): void {
     if (isDevelopment && !isTest) {
-      if (isElectronLogAvailable) {
+      if (isMainProcess) {
         electronLog.debug(message, ...args);
       } else {
         console.debug(`[DEBUG] ${message}`, ...args);
@@ -203,7 +221,7 @@ export const logger = {
    */
   info(message: string, ...args: any[]): void {
     if (!isTest) {
-      if (isElectronLogAvailable) {
+      if (isMainProcess) {
         electronLog.info(message, ...args);
       } else {
         console.info(`[INFO] ${message}`, ...args);
@@ -216,7 +234,7 @@ export const logger = {
    */
   warn(message: string, ...args: any[]): void {
     if (!isTest) {
-      if (isElectronLogAvailable) {
+      if (isMainProcess) {
         electronLog.warn(message, ...args);
       } else {
         console.warn(`[WARN] ${message}`, ...args);
@@ -228,7 +246,7 @@ export const logger = {
    * Error level logging - always enabled
    */
   error(message: string, ...args: any[]): void {
-    if (isElectronLogAvailable) {
+    if (isMainProcess) {
       electronLog.error(message, ...args);
     } else {
       console.error(`[ERROR] ${message}`, ...args);
@@ -240,7 +258,7 @@ export const logger = {
    */
   verbose(message: string, ...args: any[]): void {
     if (isDevelopment && !isTest) {
-      if (isElectronLogAvailable) {
+      if (isMainProcess) {
         electronLog.verbose(message, ...args);
       } else {
         console.log(`[VERBOSE] ${message}`, ...args);
