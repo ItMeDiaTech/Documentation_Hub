@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import {
   AlignLeft,
   AlignCenter,
@@ -157,7 +157,8 @@ interface StylesEditorProps {
   renderSaveButton?: (handleSave: () => void, showSuccess: boolean, onSuccessComplete: () => void) => React.ReactNode;
 }
 
-export function StylesEditor({ initialStyles, onStylesChange, onListBulletSettingsChange, onTableUniformitySettingsChange, renderSaveButton }: StylesEditorProps) {
+// PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
+export const StylesEditor = memo(function StylesEditor({ initialStyles, onStylesChange, onListBulletSettingsChange, onTableUniformitySettingsChange, renderSaveButton }: StylesEditorProps) {
   // Convert session styles to StyleDefinition format or use defaults
   const convertToStyleDefinitions = (sessionStyles?: any[]): StyleDefinition[] => {
     if (!sessionStyles || sessionStyles.length === 0) {
@@ -1256,4 +1257,4 @@ export function StylesEditor({ initialStyles, onStylesChange, onListBulletSettin
       {styles.map(style => renderStyleEditor(style))}
     </div>
   );
-}
+});
