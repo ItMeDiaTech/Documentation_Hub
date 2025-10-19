@@ -299,22 +299,32 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('blur', String(blur));
   }, [blur]);
 
-  // Apply typography settings
+  // PERFORMANCE FIX: Apply typography settings with requestAnimationFrame
+  // Batches all 6 CSS updates into a single frame to prevent layout thrashing
   useEffect(() => {
-    const root = window.document.documentElement;
-    root.style.setProperty('--custom-font-size', `${fontSize}px`);
-    root.style.setProperty('--custom-font-family', fontFamily);
-    root.style.setProperty('--custom-font-weight', fontWeight);
-    root.style.setProperty('--custom-font-style', fontStyle);
-    root.style.setProperty('--custom-letter-spacing', `${letterSpacing}em`);
-    root.style.setProperty('--custom-line-height', String(lineHeight));
+    // Use requestAnimationFrame to batch DOM updates
+    const frameId = requestAnimationFrame(() => {
+      const root = window.document.documentElement;
 
-    localStorage.setItem('fontSize', String(fontSize));
-    localStorage.setItem('fontFamily', fontFamily);
-    localStorage.setItem('fontWeight', fontWeight);
-    localStorage.setItem('fontStyle', fontStyle);
-    localStorage.setItem('letterSpacing', String(letterSpacing));
-    localStorage.setItem('lineHeight', String(lineHeight));
+      // Batch all CSS custom property updates in one frame
+      root.style.setProperty('--custom-font-size', `${fontSize}px`);
+      root.style.setProperty('--custom-font-family', fontFamily);
+      root.style.setProperty('--custom-font-weight', fontWeight);
+      root.style.setProperty('--custom-font-style', fontStyle);
+      root.style.setProperty('--custom-letter-spacing', `${letterSpacing}em`);
+      root.style.setProperty('--custom-line-height', String(lineHeight));
+
+      // Persist to localStorage after DOM updates complete
+      localStorage.setItem('fontSize', String(fontSize));
+      localStorage.setItem('fontFamily', fontFamily);
+      localStorage.setItem('fontWeight', fontWeight);
+      localStorage.setItem('fontStyle', fontStyle);
+      localStorage.setItem('letterSpacing', String(letterSpacing));
+      localStorage.setItem('lineHeight', String(lineHeight));
+    });
+
+    // Cleanup: cancel scheduled frame if component unmounts or dependencies change
+    return () => cancelAnimationFrame(frameId);
   }, [fontSize, fontFamily, fontWeight, fontStyle, letterSpacing, lineHeight]);
 
   return (

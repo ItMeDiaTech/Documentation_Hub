@@ -962,8 +962,18 @@ class HyperlinkIPCHandler {
   }
 
   private async validateFilePath(filePath: string): Promise<string> {
+    // SECURITY: Check for path traversal attempts before normalization
+    if (filePath.includes('..')) {
+      throw new Error('Path traversal detected - relative paths with ".." are not allowed');
+    }
+
     // Normalize and validate path
     const normalizedPath = join(filePath);
+
+    // SECURITY: Double-check after normalization (defense in depth)
+    if (normalizedPath.includes('..')) {
+      throw new Error('Path traversal detected after normalization');
+    }
 
     // Check if file exists
     try {

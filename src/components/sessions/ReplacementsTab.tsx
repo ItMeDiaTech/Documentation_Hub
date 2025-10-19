@@ -5,6 +5,7 @@ import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from '@/contexts/SessionContext';
 import { ReplacementRule } from '@/types/session';
+import { validateUrlScheme } from '@/utils/urlHelpers';
 
 interface HyperlinkRule {
   id: string;
@@ -30,6 +31,8 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
   const [replaceTextEnabled, setReplaceTextEnabled] = useState(false);
   const [hyperlinkRules, setHyperlinkRules] = useState<HyperlinkRule[]>([]);
   const [textRules, setTextRules] = useState<TextRule[]>([]);
+  // SECURITY: Track URL validation errors for user feedback
+  const [urlValidationErrors, setUrlValidationErrors] = useState<Record<string, string>>({});
 
   // Load existing replacements from session on mount
   useEffect(() => {
@@ -104,6 +107,35 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
   };
 
   const updateHyperlinkRule = (id: string, updates: Partial<HyperlinkRule>) => {
+    // SECURITY FIX: Validate URL scheme for newContentId to prevent XSS-like attacks
+    if (updates.newContentId !== undefined) {
+      const validation = validateUrlScheme(updates.newContentId);
+
+      if (!validation.valid) {
+        // Store validation error to show to user
+        setUrlValidationErrors(prev => ({
+          ...prev,
+          [id]: validation.error || 'Invalid URL'
+        }));
+
+        // Still update the field value (for user to see and correct)
+        // but don't save to session until valid
+        const updatedRules = hyperlinkRules.map(rule =>
+          rule.id === id ? { ...rule, ...updates } : rule
+        );
+        setHyperlinkRules(updatedRules);
+        return; // Don't save to session with invalid URL
+      } else {
+        // Clear any previous validation error for this field
+        setUrlValidationErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors[id];
+          return newErrors;
+        });
+      }
+    }
+
+    // If validation passed or update doesn't include newContentId, proceed normally
     const updatedRules = hyperlinkRules.map(rule =>
       rule.id === id ? { ...rule, ...updates } : rule
     );
@@ -236,14 +268,26 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <input
-                          type="text"
-                          value={rule.newContentId}
-                          onChange={(e) => updateHyperlinkRule(rule.id, { newContentId: e.target.value })}
-                          disabled={!replaceHyperlinksEnabled}
-                          placeholder="Enter new content ID"
-                          className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50"
-                        />
+                        <div className="space-y-1">
+                          <input
+                            type="text"
+                            value={rule.newContentId}
+                            onChange={(e) => updateHyperlinkRule(rule.id, { newContentId: e.target.value })}
+                            disabled={!replaceHyperlinksEnabled}
+                            placeholder="Enter new content ID"
+                            className={cn(
+                              "w-full px-3 py-1.5 text-sm border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50",
+                              urlValidationErrors[rule.id]
+                                ? "border-red-500 focus:border-red-500"
+                                : "border-border"
+                            )}
+                          />
+                          {urlValidationErrors[rule.id] && (
+                            <p className="text-xs text-red-500 mt-1">
+                              {urlValidationErrors[rule.id]}
+                            </p>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <button

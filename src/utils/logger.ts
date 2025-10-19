@@ -98,6 +98,76 @@ if (isMainProcess) {
 }
 
 /**
+ * SECURITY: Sanitize log data to prevent sensitive information exposure
+ *
+ * Redacts:
+ * - File paths (Windows: C:\..., Unix: /home/...)
+ * - API endpoints and URLs
+ * - Document content (truncates long strings)
+ * - Sensitive field names (apiEndpoint, filePath, documentPath, token, password, etc.)
+ *
+ * @param data - Any data to be logged
+ * @returns Sanitized version safe for logging
+ */
+function sanitizeLogData(data: any): any {
+  // Handle null/undefined
+  if (data == null) {
+    return data;
+  }
+
+  // Handle primitive types
+  if (typeof data === 'string') {
+    let sanitized = data;
+
+    // Redact Windows file paths (C:\Users\..., D:\Documents\..., etc.)
+    sanitized = sanitized.replace(/[A-Z]:\\[\\\w\s\-\.()]+/gi, '[REDACTED_PATH]');
+
+    // Redact Unix file paths (/home/..., /Users/..., /var/..., etc.)
+    sanitized = sanitized.replace(/\/(home|Users|var|tmp|opt)\/[\w\s\-\.\/]+/gi, '[REDACTED_PATH]');
+
+    // Redact full URLs (but keep domain for debugging)
+    sanitized = sanitized.replace(/(https?:\/\/[^\/\s]+)(\/[^\s]*)/gi, '$1/[REDACTED_URL]');
+
+    // Truncate very long strings (likely document content)
+    if (sanitized.length > 500) {
+      sanitized = sanitized.substring(0, 500) + '... [TRUNCATED]';
+    }
+
+    return sanitized;
+  }
+
+  // Handle arrays
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeLogData(item));
+  }
+
+  // Handle objects
+  if (typeof data === 'object') {
+    const sanitized: any = {};
+    const sensitiveKeys = [
+      'apiEndpoint', 'apiUrl', 'filePath', 'documentPath', 'path', 'fullPath',
+      'token', 'apiKey', 'password', 'secret', 'authorization', 'cookie',
+      'sessionId', 'userId', 'email', 'username'
+    ];
+
+    for (const [key, value] of Object.entries(data)) {
+      // Redact sensitive fields entirely
+      if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk.toLowerCase()))) {
+        sanitized[key] = '[REDACTED]';
+      } else {
+        // Recursively sanitize nested objects
+        sanitized[key] = sanitizeLogData(value);
+      }
+    }
+
+    return sanitized;
+  }
+
+  // Return other types (numbers, booleans) as-is
+  return data;
+}
+
+/**
  * Get formatted timestamp for manual logging
  */
 function getTimestamp(): string {
@@ -125,11 +195,15 @@ function createScopedLogger(scope: string) {
      */
     debug(message: string, ...args: any[]): void {
       if (isDevelopment && !isTest) {
+        // SECURITY: Sanitize all arguments before logging
+        const sanitizedArgs = args.map(sanitizeLogData);
+        const sanitizedMessage = sanitizeLogData(message);
+
         if (scopedLog) {
-          scopedLog.debug(message, ...args);
+          scopedLog.debug(sanitizedMessage, ...sanitizedArgs);
         } else {
           // Renderer fallback: use console directly
-          console.debug(`[${scope}] [DEBUG] ${message}`, ...args);
+          console.debug(`[${scope}] [DEBUG] ${sanitizedMessage}`, ...sanitizedArgs);
         }
       }
     },
@@ -140,10 +214,14 @@ function createScopedLogger(scope: string) {
      */
     info(message: string, ...args: any[]): void {
       if (!isTest) {
+        // SECURITY: Sanitize all arguments before logging
+        const sanitizedArgs = args.map(sanitizeLogData);
+        const sanitizedMessage = sanitizeLogData(message);
+
         if (scopedLog) {
-          scopedLog.info(message, ...args);
+          scopedLog.info(sanitizedMessage, ...sanitizedArgs);
         } else {
-          console.info(`[${scope}] [INFO] ${message}`, ...args);
+          console.info(`[${scope}] [INFO] ${sanitizedMessage}`, ...sanitizedArgs);
         }
       }
     },
@@ -154,10 +232,14 @@ function createScopedLogger(scope: string) {
      */
     warn(message: string, ...args: any[]): void {
       if (!isTest) {
+        // SECURITY: Sanitize all arguments before logging
+        const sanitizedArgs = args.map(sanitizeLogData);
+        const sanitizedMessage = sanitizeLogData(message);
+
         if (scopedLog) {
-          scopedLog.warn(message, ...args);
+          scopedLog.warn(sanitizedMessage, ...sanitizedArgs);
         } else {
-          console.warn(`[${scope}] [WARN] ${message}`, ...args);
+          console.warn(`[${scope}] [WARN] ${sanitizedMessage}`, ...sanitizedArgs);
         }
       }
     },
@@ -167,10 +249,14 @@ function createScopedLogger(scope: string) {
      * Always enabled
      */
     error(message: string, ...args: any[]): void {
+      // SECURITY: Sanitize all arguments before logging
+      const sanitizedArgs = args.map(sanitizeLogData);
+      const sanitizedMessage = sanitizeLogData(message);
+
       if (scopedLog) {
-        scopedLog.error(message, ...args);
+        scopedLog.error(sanitizedMessage, ...sanitizedArgs);
       } else {
-        console.error(`[${scope}] [ERROR] ${message}`, ...args);
+        console.error(`[${scope}] [ERROR] ${sanitizedMessage}`, ...sanitizedArgs);
       }
     },
 

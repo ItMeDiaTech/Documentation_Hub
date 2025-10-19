@@ -226,3 +226,81 @@ export function hasEncodingIssues(url: string): boolean {
     url.includes('&quot;')
   );
 }
+
+/**
+ * SECURITY: Validate URL scheme for user-controlled hyperlink replacements
+ *
+ * Prevents XSS-like attacks by rejecting dangerous URL schemes that could:
+ * - Execute JavaScript (javascript:)
+ * - Embed data URIs (data:)
+ * - Access local files (file:///)
+ * - Use other non-HTTP protocols
+ *
+ * @param url - The URL to validate
+ * @returns Object with validation result and error message if invalid
+ *
+ * @example
+ * validateUrlScheme('https://example.com') // { valid: true, isHttp: true }
+ * validateUrlScheme('javascript:alert(1)') // { valid: false, error: '...', isHttp: false }
+ */
+export function validateUrlScheme(url: string): {
+  valid: boolean;
+  isHttp: boolean;
+  error?: string;
+} {
+  if (!url || url.trim() === '') {
+    return { valid: true, isHttp: false }; // Allow empty (will be handled elsewhere)
+  }
+
+  try {
+    // Attempt to parse as URL
+    const parsed = new URL(url);
+
+    // Whitelist only HTTP/HTTPS protocols
+    const allowedSchemes = ['http:', 'https:'];
+    const isAllowed = allowedSchemes.includes(parsed.protocol.toLowerCase());
+
+    if (!isAllowed) {
+      return {
+        valid: false,
+        isHttp: false,
+        error: `Dangerous URL scheme detected: "${parsed.protocol}". Only http:// and https:// are allowed for security.`
+      };
+    }
+
+    return { valid: true, isHttp: true };
+
+  } catch (error) {
+    // If URL parsing fails, it might be a relative URL or malformed
+    // Check for obvious dangerous patterns even if URL parse fails
+    const lowerUrl = url.toLowerCase().trim();
+
+    if (lowerUrl.startsWith('javascript:')) {
+      return {
+        valid: false,
+        isHttp: false,
+        error: 'JavaScript URLs are not allowed for security reasons.'
+      };
+    }
+
+    if (lowerUrl.startsWith('data:')) {
+      return {
+        valid: false,
+        isHttp: false,
+        error: 'Data URLs are not allowed for security reasons.'
+      };
+    }
+
+    if (lowerUrl.startsWith('file:')) {
+      return {
+        valid: false,
+        isHttp: false,
+        error: 'File URLs are not allowed for security reasons.'
+      };
+    }
+
+    // If it's not a parseable URL and doesn't match dangerous patterns,
+    // it might be a content ID or relative path - allow it
+    return { valid: true, isHttp: false };
+  }
+}
