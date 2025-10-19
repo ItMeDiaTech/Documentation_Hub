@@ -41,7 +41,12 @@ import electronLog from 'electron-log';
 // Detect environment
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const isTest = process.env.NODE_ENV === 'test';
-const isRenderer = typeof window !== 'undefined' && window.process?.type === 'renderer';
+
+// Detect if we're in renderer process
+// NOTE: With contextIsolation: true, window.process is not available
+// So we check for window and document (browser-like environment)
+// Main process has 'electron' in process.versions, renderer has window/document
+const isRenderer = typeof window !== 'undefined' && typeof document !== 'undefined';
 
 // In renderer process, electron-log only has console transport and uses IPC for file logging
 // In main process, it has both file and console transports
