@@ -40,9 +40,67 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Ref to store latest sessions for persistence
   const sessionsRef = useRef(sessions);
   const activeSessionsRef = useRef(activeSessions);
+  // RACE CONDITION FIX: Flag to prevent double-loading sessions
+  // Prevents re-running loadSessionsFromStorage if component re-mounts
+  const hasLoadedRef = useRef(false);
 
   const loadSessionsFromStorage = useCallback(async () => {
+    // RACE CONDITION FIX: Prevent double-loading if already loaded
+    if (hasLoadedRef.current) {
+      log.warn('[Session] loadSessionsFromStorage called but already loaded - skipping to prevent race condition');
+      return;
+    }
+
+    hasLoadedRef.current = true;
+
     try {
+      // CRITICAL RECOVERY: Check for emergency backup from beforeunload
+      // This recovers data that may not have been saved to IndexedDB before app close
+      const emergencyBackup = localStorage.getItem('sessions_emergency_backup');
+      if (emergencyBackup) {
+        log.warn('[Session] Found emergency backup - attempting recovery...');
+        try {
+          const backup = safeJsonParse<{
+            sessions: SerializedSession[];
+            activeSessions: SerializedSession[];
+            timestamp: number;
+            reason: string;
+          } | null>(emergencyBackup, null, 'SessionContext.emergencyRecover');
+
+          if (backup && backup.sessions && backup.timestamp) {
+            const backupAge = Date.now() - backup.timestamp;
+            const backupAgeMinutes = Math.floor(backupAge / 60000);
+
+            log.info(`[Session] Emergency backup is ${backupAgeMinutes} minutes old`);
+
+            // Only restore if backup is recent (< 5 minutes old)
+            // Older backups are likely stale and shouldn't override IndexedDB
+            if (backupAge < 5 * 60 * 1000) {
+              log.info(`[Session] Restoring ${backup.sessions.length} sessions from emergency backup`);
+
+              // Save backup sessions to IndexedDB immediately
+              // backup.sessions is already in SerializedSession format (strings for dates)
+              for (const session of backup.sessions) {
+                await saveSessionToDB(session).catch(err =>
+                  log.error(`Failed to restore session ${session.id}:`, err)
+                );
+              }
+
+              log.info('[Session] Emergency backup successfully restored to IndexedDB');
+            } else {
+              log.info('[Session] Emergency backup too old - using IndexedDB instead');
+            }
+          }
+
+          // Clear emergency backup after processing (successful or not)
+          localStorage.removeItem('sessions_emergency_backup');
+        } catch (err) {
+          log.error('[Session] Failed to restore emergency backup:', err);
+          // Clear corrupted backup
+          localStorage.removeItem('sessions_emergency_backup');
+        }
+      }
+
       // Check if localStorage has sessions that need migration
       const hasLocalStorageSessions = localStorage.getItem('sessions');
       if (hasLocalStorageSessions) {
@@ -241,6 +299,42 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
         if (activeSessionIds) {
           localStorage.setItem('activeSessions', activeSessionIds);
+        }
+
+        // CRITICAL DATA LOSS FIX: Add emergency backup to localStorage
+        // This ensures data is preserved even if the async IndexedDB save doesn't complete
+        // before window closes (within the 3-second debounce window)
+        try {
+          // Helper function to serialize Session to SerializedSession
+          const serializeSession = (session: Session): SerializedSession => ({
+            ...session,
+            createdAt: session.createdAt.toISOString(),
+            lastModified: session.lastModified.toISOString(),
+            closedAt: session.closedAt?.toISOString(),
+            documents: session.documents.map(doc => ({
+              ...doc,
+              processedAt: doc.processedAt?.toISOString()
+            }))
+          });
+
+          const emergencyBackup = safeJsonStringify(
+            {
+              sessions: currentSessions.map(serializeSession),
+              activeSessions: currentActiveSessions.map(serializeSession),
+              timestamp: Date.now(),
+              reason: 'beforeunload_emergency_backup'
+            },
+            undefined,
+            'SessionContext.emergencyBackup'
+          );
+
+          if (emergencyBackup) {
+            localStorage.setItem('sessions_emergency_backup', emergencyBackup);
+            log.info('[beforeunload] Emergency backup saved to localStorage');
+          }
+        } catch (error) {
+          // Silent fail - localStorage might be full or disabled
+          log.error('[beforeunload] Failed to create emergency backup:', error);
         }
 
         // Trigger the async save (may not complete, but we try)
@@ -505,7 +599,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const processDocument = async (sessionId: string, documentId: string): Promise<void> => {
+  // PERFORMANCE FIX: Wrap in useCallback to prevent child component re-renders
+  // This is critical for StylesEditor and other components that depend on this function
+  const processDocument = useCallback(async (sessionId: string, documentId: string): Promise<void> => {
     const session = sessions.find((s) => s.id === sessionId);
     const document = session?.documents.find((d) => d.id === documentId);
 
@@ -783,7 +879,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         )
       );
     }
-  };
+  }, [sessions, log, updateGlobalStats]); // Dependencies: sessions for finding docs, log for logging, updateGlobalStats for stats
 
 
   const revertChange = async (sessionId: string, documentId: string, changeId: string): Promise<void> => {

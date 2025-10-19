@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
   LineChart,
@@ -60,7 +60,8 @@ const itemVariants = {
   },
 };
 
-export function Analytics() {
+// PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
+export const Analytics = memo(function Analytics() {
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -86,7 +87,9 @@ export function Analytics() {
   };
 
   // Prepare chart data based on view mode
-  const getChartData = () => {
+  // PERFORMANCE FIX: Memoize chart data to prevent unnecessary recalculations
+  // Recharts will re-render only when data actually changes, not on every parent render
+  const chartData = useMemo(() => {
     if (viewMode === 'daily') {
       const history = getDailyHistory(30);
       return [...history].reverse().map((day) => ({
@@ -127,9 +130,7 @@ export function Analytics() {
         'Time (min)': month.timeSaved,
       }));
     }
-  };
-
-  const chartData = getChartData();
+  }, [viewMode, getDailyHistory, getWeeklyHistory, getMonthlyHistory]);
 
   const viewModes = [
     {
@@ -358,4 +359,4 @@ export function Analytics() {
       />
     </motion.div>
   );
-}
+});
