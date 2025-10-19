@@ -597,6 +597,45 @@ export class DocXMLaterProcessor {
   // ========== Hyperlink Operations ==========
 
   /**
+   * Sanitize hyperlink text to remove XML markup corruption
+   * CRITICAL: Prevents XML tags from docxmlater getText() from entering the system
+   *
+   * This addresses the bug where <w:t xml:space="preserve"> appears in document text.
+   * The docxmlater library's getText() can return XML markup when the underlying
+   * Run object contains corrupted data.
+   */
+  private sanitizeHyperlinkText(text: string): string {
+    if (!text) return '';
+
+    let cleaned = text
+      // Remove Word XML text tags (most specific patterns first)
+      .replace(/<w:t\s+xml:space=["']preserve["'][^>]*>/gi, '')  // <w:t xml:space="preserve">
+      .replace(/<w:t[^>]*>/gi, '')                                // <w:t> or <w:t ...>
+      .replace(/<\/w:t>/gi, '')                                   // </w:t>
+      .replace(/<w:[^>]*>/g, '')                                  // Any other <w:...> tags
+      .replace(/<[^>]*>/g, '')                                    // Any remaining tags
+      // Remove escaped XML patterns (second pass for &lt; variants)
+      .replace(/&lt;w:t\s+xml:space=&quot;preserve&quot;[^&]*&gt;/gi, '')
+      .replace(/&lt;w:t[^&]*&gt;/gi, '')                          // &lt;w:t&gt;
+      .replace(/&lt;\/w:t&gt;/gi, '')                             // &lt;/w:t&gt;
+      .replace(/&lt;w:[^&]*&gt;/g, '')                            // &lt;w:...&gt;
+      .replace(/&lt;/g, '')                                       // Remaining &lt;
+      .replace(/&gt;/g, '')                                       // Remaining &gt;
+      // Unescape XML entities
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&')
+      // Clean up escape sequences and control characters
+      .replace(/\\x[0-9a-fA-F]{2}/g, '')                         // Hex escape sequences
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, '')                      // Control characters
+      .trim();
+
+    // Fallback: if sanitization removed everything, return original trimmed
+    // This prevents losing legitimate text that might match a pattern
+    return cleaned.length === 0 ? text.trim() : cleaned;
+  }
+
+  /**
    * Extract all hyperlinks from a document
    */
   async extractHyperlinks(doc: Document): Promise<
@@ -623,12 +662,17 @@ export class DocXMLaterProcessor {
 
       for (const item of content) {
         if (item instanceof Hyperlink) {
+          // LAYER 1 PROTECTION: Sanitize text immediately at extraction point
+          // This prevents XML corruption from ever entering the processing pipeline
+          const rawText = item.getText();
+          const sanitizedText = this.sanitizeHyperlinkText(rawText);
+
           results.push({
             hyperlink: item,
             paragraph: para,
             paragraphIndex: paraIndex,
             url: item.getUrl(),
-            text: item.getText(),
+            text: sanitizedText,  // Use sanitized text instead of raw
           });
         }
       }
