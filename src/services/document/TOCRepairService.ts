@@ -1,15 +1,25 @@
 /**
  * TOC Repair Service - Fix orphaned TOC links and generate proper Table of Contents
  *
- * This service:
- * 1. Detects and removes orphaned TOC hyperlinks (links with anchors but no field)
+ * TRIGGER CONDITIONS (both must be true):
+ * 1. `operations.updateTocHyperlinks` is ENABLED in Processing Options
+ * 2. Orphaned TOC entries are DETECTED in the document
+ *
+ * What are orphaned TOC entries?
+ * - Hyperlinks with bookmark anchors (e.g., #_Toc123456)
+ * - Found in typical TOC location (first 30 paragraphs)
+ * - 3+ such links indicates orphaned TOC section
+ * - Occurs when TOC field is deleted but hyperlink entries remain
+ *
+ * What this service does when BOTH conditions are met:
+ * 1. Removes orphaned TOC hyperlinks (bookmark-based links with no field)
  * 2. Generates Word's native TOC field that references Header 2 styles directly
  * 3. Adds "Top of the Document" navigation links before each Header 2
- * 4. Only runs when specifically enabled in processing options
  *
  * Integration:
- * - Triggered by `operations.updateTocHyperlinks` in WordProcessingOptions
- * - Automatically detects orphaned TOC entries before repair
+ * - Triggered by `operations.updateTocHyperlinks` in WordProcessingOptions (user must enable)
+ * - Automatically detects orphaned TOC entries before repair (smart processing)
+ * - Only executes when both setting enabled AND orphaned entries found
  * - Uses docxmlater's Document API for all operations
  *
  * Word automatically generates bookmarks and hyperlinks when the TOC field is updated.

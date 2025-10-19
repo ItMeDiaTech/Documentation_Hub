@@ -434,16 +434,31 @@ export class WordDocumentProcessor {
 
       // ═══════════════════════════════════════════════════════════
       // TOC Repair - Fix orphaned TOC links and generate proper TOC
-      // Only runs when enabled AND orphaned TOC entries are detected
+      //
+      // TRIGGER CONDITIONS (both must be true):
+      // 1. options.operations.updateTocHyperlinks is ENABLED (user setting)
+      // 2. Orphaned TOC entries are DETECTED in document
+      //
+      // Orphaned TOC entries = hyperlinks with bookmark anchors (#_Toc123456)
+      // that exist without a corresponding TOC field. This happens when:
+      // - TOC field is deleted but hyperlink entries remain
+      // - Document was corrupted or improperly edited
+      //
+      // When BOTH conditions are met, this service:
+      // - Removes orphaned TOC hyperlinks
+      // - Generates new Word TOC field
+      // - Adds "Top of the Document" navigation links
       // ═══════════════════════════════════════════════════════════
       if (options.operations?.updateTocHyperlinks) {
         this.log.debug('=== TOC REPAIR - CHECKING FOR ORPHANED ENTRIES ===');
+        this.log.debug('updateTocHyperlinks setting: ENABLED by user');
 
         // First, check if document has orphaned TOC entries
         const hasOrphaned = hasOrphanedTOCEntries(doc);
 
         if (hasOrphaned) {
           this.log.warn('⚠️  Orphaned TOC entries detected - starting repair');
+          this.log.info('BOTH conditions met: Setting enabled + Orphaned entries detected');
 
           try {
             const tocRepairResult: TOCRepairResult = repairTOC(doc, {
