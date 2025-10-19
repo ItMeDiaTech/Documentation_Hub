@@ -7,7 +7,6 @@
 
 import { WordDocumentProcessor, WordProcessingOptions, WordProcessingResult } from '../WordDocumentProcessor';
 import { DocXMLaterProcessor } from '../DocXMLaterProcessor';
-import { DocXMLaterOOXMLValidator } from '../OOXMLValidator-DocXMLater';
 import { Document, Hyperlink, Paragraph } from 'docxmlater';
 import { hyperlinkService } from '../../HyperlinkService';
 import { promises as fs } from 'fs';
@@ -16,7 +15,6 @@ import * as path from 'path';
 // Mock all dependencies
 jest.mock('docxmlater');
 jest.mock('../DocXMLaterProcessor');
-jest.mock('../OOXMLValidator-DocXMLater');
 jest.mock('../../HyperlinkService');
 jest.mock('fs', () => ({
   promises: {
@@ -30,7 +28,6 @@ describe('WordDocumentProcessor', () => {
   let processor: WordDocumentProcessor;
   let mockDoc: jest.Mocked<Document>;
   let mockDocXMLater: jest.Mocked<DocXMLaterProcessor>;
-  let mockOOXMLValidator: jest.Mocked<DocXMLaterOOXMLValidator>;
 
   beforeEach(() => {
     // Clear all mocks before each test
@@ -56,14 +53,6 @@ describe('WordDocumentProcessor', () => {
     // Setup DocXMLaterProcessor mock
     mockDocXMLater = (processor as any).docXMLater;
     mockDocXMLater.extractHyperlinks = jest.fn().mockResolvedValue([]);
-
-    // Setup OOXMLValidator mock
-    mockOOXMLValidator = (processor as any).ooxmlValidator;
-    mockOOXMLValidator.validateAndFixBuffer = jest.fn().mockResolvedValue({
-      issues: [],
-      fixes: [],
-      correctedBuffer: Buffer.from('corrected'),
-    });
 
     // Setup fs mocks
     (fs.stat as jest.Mock).mockResolvedValue({
@@ -348,42 +337,13 @@ describe('WordDocumentProcessor', () => {
     });
   });
 
-  describe('OOXML Validation', () => {
-    it('should validate and fix OOXML structure', async () => {
+  describe('Document Save', () => {
+    it('should save document directly using docxmlater', async () => {
       const filePath = '/test/document.docx';
-
-      // Mock validation with issues
-      mockOOXMLValidator.validateAndFixBuffer.mockResolvedValue({
-        valid: false,
-        issues: [],
-        fixes: ['Fixed relationship ID'],
-        correctedBuffer: Buffer.from('corrected'),
-      });
-
-      const result = await processor.processDocument(filePath);
-
-      expect(mockOOXMLValidator.validateAndFixBuffer).toHaveBeenCalled();
-      expect(fs.writeFile).toHaveBeenCalledWith(filePath, expect.any(Buffer));
-      expect(result.processedLinks).toContainEqual(
-        expect.objectContaining({
-          id: 'ooxml-validation',
-          status: 'processed',
-        })
-      );
-    });
-
-    it('should save original document if no OOXML fixes needed', async () => {
-      const filePath = '/test/document.docx';
-
-      // Mock validation with no issues
-      mockOOXMLValidator.validateAndFixBuffer.mockResolvedValue({
-        valid: true,
-        issues: [],
-        fixes: [],
-      });
 
       await processor.processDocument(filePath);
 
+      // Verify direct save is called (no buffer validation cycle)
       expect(mockDoc.save).toHaveBeenCalledWith(filePath);
     });
   });
@@ -522,8 +482,8 @@ describe('WordDocumentProcessor', () => {
 
       await processor.processDocument(filePath);
 
-      // Check that buffer references are cleared (via writeFile being called)
-      expect(fs.writeFile).toHaveBeenCalled();
+      // Check that document is saved directly (no buffer intermediary)
+      expect(mockDoc.save).toHaveBeenCalledWith(filePath);
     });
   });
 
