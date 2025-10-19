@@ -190,8 +190,11 @@ async function performPreflightCertificateCheck(): Promise<void> {
   }
 }
 
-// Configure session proxy and network debugging after app is ready
-app.whenReady().then(async () => {
+// ============================================================================
+// Session Proxy and Network Monitoring Configuration
+// MOVED to consolidated initialization in app.whenReady() below
+// ============================================================================
+async function configureSessionProxyAndNetworking(): Promise<void> {
   log.info('Configuring session-level proxy and network monitoring...');
   try {
     await proxyConfig.configureSessionProxy();
@@ -254,11 +257,12 @@ app.whenReady().then(async () => {
       }
     });
 
-    log.info('Session proxy and network monitoring configured successfully');
+    log.info('✓ Session proxy and network monitoring configured successfully');
   } catch (error) {
-    log.error('Failed to configure session:', error);
+    log.error('❌ Failed to configure session:', error);
+    throw error; // Re-throw to allow caller to handle
   }
-});
+}
 
 // Enhanced login handler for proxy authentication
 app.on('login', async (event, webContents, details, authInfo, callback) => {
@@ -335,8 +339,8 @@ process.env['NODE_NO_WARNINGS'] = '1'; // Suppress TLS warnings in production
  *    - If disabled: Causes BLACK SCREEN in production builds
  *
  * WHAT BREAKS WHEN CHANGED:
- * - contextIsolation: false → Black screen, React won't load
- * - nodeIntegration: true → Security vulnerability + preload API breaks
+ * - contextIsolation set to false → Black screen, React won't load
+ * - nodeIntegration enabled (true) → Security vulnerability + preload API breaks
  *
  * HISTORICAL INCIDENTS:
  * - 2025-10-17: Commit 159f47b - Restored after accidental change caused black screen
@@ -371,6 +375,7 @@ async function createWindow() {
     frame: false,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0a0a0a',
+    show: false, // ISSUE #6 FIX: Don't show window immediately - prevents black screen
     webPreferences: REQUIRED_SECURITY_SETTINGS,
     // Icon will be set by electron-builder during packaging
   });
@@ -387,6 +392,17 @@ async function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // ============================================================================
+  // ISSUE #6 FIX: ready-to-show Event
+  // ============================================================================
+  // Wait for React to load before showing window - prevents black screen flicker
+  // This ensures the renderer process has loaded and painted the UI before
+  // the window becomes visible to the user
+  mainWindow.once('ready-to-show', () => {
+    log.info('✓ Window ready to show - React loaded and rendered');
+    mainWindow?.show();
   });
 
   mainWindow.on('closed', () => {
@@ -569,42 +585,121 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
   }
 });
 
+// ============================================================================
+// CONSOLIDATED APP INITIALIZATION - ISSUE #1 FIX
+// ============================================================================
+// CRITICAL FIX: Previously had 3 separate app.whenReady() handlers that ran
+// in parallel with no execution order guarantee. This caused race conditions:
+// - mainWindow could be null when updater tries to access it
+// - Proxy config might not complete before window loads
+// - Certificate check timing was unpredictable
+//
+// NOW: Single sequential initialization flow with guaranteed order:
+// 1. Configure session proxy and networking
+// 2. Create main window
+// 3. Perform certificate check (prerequisite for auto-updater)
+// 4. Initialize auto-updater (Issue #7 - depends on cert check)
+// ============================================================================
+
 app.whenReady().then(async () => {
-  // Create window immediately for better perceived performance
-  await createWindow();
+  const startTime = Date.now();
+  log.info('🚀 App ready - beginning sequential initialization...');
 
-  // Perform pre-flight certificate check in background (non-blocking)
-  // This allows the app to start immediately while checking network in parallel
-  setImmediate(async () => {
-    log.info('Starting background certificate check...');
+  try {
+    // ========================================================================
+    // STEP 1: Configure Session Proxy and Network Monitoring
+    // ========================================================================
+    log.info('[1/4] Configuring session proxy and network monitoring...');
+    await configureSessionProxyAndNetworking();
+    log.info(`✓ Step 1 complete (${Date.now() - startTime}ms)`);
 
-    // Small delay to ensure window is fully rendered
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // ========================================================================
+    // STEP 2: Create Main Window
+    // ========================================================================
+    log.info('[2/4] Creating main window...');
+    const windowStartTime = Date.now();
+    await createWindow();
+    log.info(`✓ Step 2 complete - Window created (${Date.now() - windowStartTime}ms)`);
 
-    // Run check without blocking
-    performPreflightCertificateCheck().then(() => {
-      log.info('Background certificate check completed');
+    // Verify mainWindow exists before proceeding
+    if (!mainWindow) {
+      throw new Error('CRITICAL: mainWindow is null after createWindow()');
+    }
 
-      // Send status to renderer if window is available
+    // ========================================================================
+    // STEP 3: Certificate Check (Prerequisite for Auto-Updater - Issue #7)
+    // ========================================================================
+    log.info('[3/4] Performing pre-flight certificate check...');
+    const certStartTime = Date.now();
+
+    try {
+      await performPreflightCertificateCheck();
+      log.info(`✓ Step 3 complete - Certificate check passed (${Date.now() - certStartTime}ms)`);
+
+      // Send success status to renderer
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('certificate-check-complete', {
           success: true,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          duration: Date.now() - certStartTime
         });
       }
-    }).catch((error) => {
-      log.error('Background certificate check failed:', error);
+    } catch (error) {
+      log.error(`❌ Certificate check failed (${Date.now() - certStartTime}ms):`, error);
 
       // Send error status to renderer
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('certificate-check-complete', {
           success: false,
-          error: error.message,
-          timestamp: new Date().toISOString()
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+          duration: Date.now() - certStartTime
         });
       }
-    });
-  });
+
+      // Don't throw - allow app to continue even if cert check fails
+      log.warn('⚠️  Continuing app initialization despite certificate check failure');
+    }
+
+    // ========================================================================
+    // STEP 4: Initialize Auto-Updater (Issue #7 - After Certificate Check)
+    // ========================================================================
+    log.info('[4/4] Initializing auto-updater...');
+    const updaterStartTime = Date.now();
+
+    // Initialize updater (mainWindow is guaranteed to exist now)
+    if (!isDev) {
+      updaterHandler = new AutoUpdaterHandler();
+      updaterHandler.checkOnStartup();
+      log.info(`✓ Step 4 complete - Auto-updater initialized (${Date.now() - updaterStartTime}ms)`);
+    } else {
+      log.info('⊘ Step 4 skipped - Auto-updater disabled in development mode');
+    }
+
+    // ========================================================================
+    // Initialization Complete
+    // ========================================================================
+    const totalTime = Date.now() - startTime;
+    log.info(`✅ Sequential initialization complete in ${totalTime}ms`);
+    log.info('   1. Session proxy configured');
+    log.info('   2. Main window created');
+    log.info('   3. Certificate check completed');
+    log.info('   4. Auto-updater initialized');
+
+  } catch (error) {
+    log.error('❌ CRITICAL: App initialization failed:', error);
+    log.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+
+    // Show error dialog to user
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      dialog.showErrorBox(
+        'Initialization Error',
+        `Documentation Hub failed to initialize properly:\n\n${error instanceof Error ? error.message : String(error)}\n\nThe app may not function correctly. Please restart the application.`
+      );
+    }
+
+    // Don't quit - allow user to try to use the app anyway
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -1578,18 +1673,9 @@ class AutoUpdaterHandler {
   }
 }
 
-// Initialize auto-updater handler (will be created after window is ready)
+// ============================================================================
+// Auto-Updater Handler
+// ============================================================================
+// MOVED to consolidated initialization above (Step 4)
+// Now initialized AFTER certificate check completes (Issue #7 fix)
 let updaterHandler: AutoUpdaterHandler;
-
-// Check for updates on startup (will be controlled by user settings in production)
-app.whenReady().then(() => {
-  // Initialize updater after window is created
-  setTimeout(() => {
-    updaterHandler = new AutoUpdaterHandler();
-    // Check for updates 3 seconds after app is ready
-    // This can be controlled by user settings later
-    if (!isDev) {
-      updaterHandler.checkOnStartup();
-    }
-  }, 1000);
-});
