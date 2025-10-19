@@ -78,3 +78,32 @@ Tests_Responses.md
 /docxmlater-functions-and-structure.md
 /TestDocument_V3 - Copy (5) - Copy_backup_2025-10-16T12-58-18-270Z.docx
 /GH_Issues
+
+# Test coverage reports (auto-generated)
+coverage/
+.nyc_output/
+
+# Temporary documentation/research files
+COMMIT_MESSAGE.txt
+DOCXMLATER_*.md
+KNOWN_TEST_ISSUES.md
+TEST_FIXES_SUMMARY.md
+TEST_STATUS_UPDATE.md
+
+# Backup and temporary files
+*.bak
+*.backup
+*~
+
+# Test utilities and fixtures (development only)
+src/services/document/__tests__/create-fixtures.ts
+src/services/document/__tests__/diagnose-fixtures.cjs
+src/services/document/__tests__/generate-fixtures.cjs
+src/services/document/__tests__/test-processor.cjs
+src/contexts/__tests__/*.bak
+
+# Electron test files (development only)
+electron/__tests__/
+
+# Temporary fix/import scripts
+fix-imports/
