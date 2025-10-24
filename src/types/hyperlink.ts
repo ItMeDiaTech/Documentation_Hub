@@ -91,6 +91,7 @@ export interface HyperlinkProcessingOptions {
   operations?: {
     fixContentIds?: boolean;
     updateTitles?: boolean;
+    replaceOutdatedTitles?: boolean; // Standalone title replacement (fallback when API unavailable)
     fixInternalHyperlinks?: boolean;
     updateTopHyperlinks?: boolean;
     updateTocHyperlinks?: boolean;

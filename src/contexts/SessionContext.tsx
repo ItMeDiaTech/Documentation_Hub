@@ -729,29 +729,59 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       log.debug('Will pass to processor:', Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined);
 
       const processingOptions: HyperlinkProcessingOptions & {
+        // Text Formatting Options
         removeWhitespace?: boolean;
+        removeParagraphLines?: boolean;
         removeItalics?: boolean;
+
+        // Content Structure Options
         assignStyles?: boolean;
+        centerImages?: boolean;
+
+        // Lists & Tables Options
         listBulletSettings?: ListBulletSettings;
+        bulletUniformity?: boolean;
+        tableUniformity?: boolean;
+
+        // Legacy
         tableUniformitySettings?: TableUniformitySettings;
       } = {
         apiEndpoint: settings.apiConnections.powerAutomateUrl || '',
+
+        // Hyperlink Operations (operations object)
         operations: {
           fixContentIds: session.processingOptions?.enabledOperations?.includes('fix-content-ids'),
           updateTitles: session.processingOptions?.enabledOperations?.includes('replace-outdated-titles'),
+          replaceOutdatedTitles: session.processingOptions?.enabledOperations?.includes('replace-outdated-titles'), // Same flag, standalone fallback
           fixInternalHyperlinks: session.processingOptions?.enabledOperations?.includes('fix-internal-hyperlinks'),
           updateTopHyperlinks: session.processingOptions?.enabledOperations?.includes('update-top-hyperlinks'),
           updateTocHyperlinks: session.processingOptions?.enabledOperations?.includes('update-toc-hyperlinks'),
           fixKeywords: session.processingOptions?.enabledOperations?.includes('fix-keywords'),
           standardizeHyperlinkColor: session.processingOptions?.enabledOperations?.includes('standardize-hyperlink-color'),
         },
+
+        // Text replacements and styles
         textReplacements: session.replacements?.filter(r => r.enabled) || [],
         styles: session.styles || {},
         customStyleSpacing: Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined,
+
+        // Text Formatting Options (mapped from ProcessingOptions UI)
         removeWhitespace: session.processingOptions?.enabledOperations?.includes('remove-whitespace'),
+        removeParagraphLines: session.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
         removeItalics: session.processingOptions?.enabledOperations?.includes('remove-italics'),
+
+        // Content Structure Options (mapped from ProcessingOptions UI)
         assignStyles: session.processingOptions?.enabledOperations?.includes('assign-styles'),
-        listBulletSettings: session.listBulletSettings,
+        centerImages: session.processingOptions?.enabledOperations?.includes('center-images'),
+
+        // Lists & Tables Options (mapped from ProcessingOptions UI)
+        listBulletSettings: session.processingOptions?.enabledOperations?.includes('list-indentation')
+          ? session.listBulletSettings
+          : undefined,
+        bulletUniformity: session.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
+        tableUniformity: session.processingOptions?.enabledOperations?.includes('table-uniformity'),
+
+        // Legacy (deprecated, kept for backwards compatibility)
         tableUniformitySettings: session.tableUniformitySettings,
       };
 
