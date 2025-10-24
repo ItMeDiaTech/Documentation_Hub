@@ -70,7 +70,8 @@ describe('WordDocumentProcessor', () => {
       const result = await processor.processDocument(filePath, options);
 
       expect(result.success).toBe(true);
-      expect(Document.load).toHaveBeenCalledWith(filePath);
+      // Updated: Document.load now called with strictParsing: false for robustness
+      expect(Document.load).toHaveBeenCalledWith(filePath, { strictParsing: false });
       expect(fs.stat).toHaveBeenCalledWith(filePath);
     });
 

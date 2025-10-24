@@ -37,7 +37,7 @@ export class MemoryMonitor {
 
     // Estimate heap limit (V8 default or set via --max-old-space-size)
     // Default is around 1.4GB on 64-bit systems, but we'll calculate from actual usage
-    const heapLimit = usage.heapTotal * 2; // Conservative estimate
+    const heapLimit = usage.heapTotal * 3; // Conservative estimate
 
     return {
       heapUsed: usage.heapUsed,
@@ -135,7 +135,9 @@ export class MemoryMonitor {
     const end = this.checkpoints.get(endLabel);
 
     if (!start || !end) {
-      logger.warn(`[Memory] Cannot compare: checkpoint ${!start ? startLabel : endLabel} not found`);
+      logger.warn(
+        `[Memory] Cannot compare: checkpoint ${!start ? startLabel : endLabel} not found`
+      );
       return;
     }
 
@@ -144,7 +146,9 @@ export class MemoryMonitor {
     const sign = delta >= 0 ? '+' : '-';
     const duration = end.timestamp - start.timestamp;
 
-    logger.debug(`[Memory] Delta (${startLabel} → ${endLabel}): ${sign}${deltaFormatted} in ${duration}ms`);
+    logger.debug(
+      `[Memory] Delta (${startLabel} → ${endLabel}): ${sign}${deltaFormatted} in ${duration}ms`
+    );
   }
 
   /**
@@ -188,7 +192,10 @@ export class MemoryMonitor {
 
     // Critical level - don't proceed
     if (warning && warning.level === 'critical') {
-      logger.error('🚨 [Memory] Cannot process document safely. Memory usage critical:', warning.message);
+      logger.error(
+        '🚨 [Memory] Cannot process document safely. Memory usage critical:',
+        warning.message
+      );
       return false;
     }
 
@@ -198,7 +205,9 @@ export class MemoryMonitor {
       const needsHeadroom = requiredBytes * 1.5; // 50% safety margin
 
       if (available < needsHeadroom) {
-        logger.warn(`⚠️ [Memory] Insufficient memory. Need ${this.formatBytes(needsHeadroom)}, have ${this.formatBytes(available)}`);
+        logger.warn(
+          `⚠️ [Memory] Insufficient memory. Need ${this.formatBytes(needsHeadroom)}, have ${this.formatBytes(available)}`
+        );
         return false;
       }
     }
@@ -209,10 +218,7 @@ export class MemoryMonitor {
   /**
    * Monitor operation with automatic memory logging
    */
-  static async monitorOperation<T>(
-    operationName: string,
-    operation: () => Promise<T>
-  ): Promise<T> {
+  static async monitorOperation<T>(operationName: string, operation: () => Promise<T>): Promise<T> {
     const startLabel = `${operationName}-start`;
     const endLabel = `${operationName}-end`;
 

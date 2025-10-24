@@ -26,6 +26,7 @@ import {
   pointsToTwips,
 } from 'docxmlater';
 import { promises as fs } from 'fs';
+import { sanitizeHyperlinkText } from '@/utils/textSanitizer';
 import {
   DocumentReadResult,
   DocumentModifyResult,
@@ -64,7 +65,8 @@ export class DocXMLaterProcessor {
    */
   async loadFromFile(filePath: string): Promise<ProcessorResult<Document>> {
     try {
-      const doc = await Document.load(filePath);
+      // Use non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
+      const doc = await Document.load(filePath, { strictParsing: false });
       return {
         success: true,
         data: doc,
@@ -82,7 +84,8 @@ export class DocXMLaterProcessor {
    */
   async loadFromBuffer(buffer: Buffer): Promise<ProcessorResult<Document>> {
     try {
-      const doc = await Document.loadFromBuffer(buffer);
+      // Use non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
+      const doc = await Document.loadFromBuffer(buffer, { strictParsing: false });
       return {
         success: true,
         data: doc,
@@ -260,8 +263,8 @@ export class DocXMLaterProcessor {
   private getParagraphText(para: any): string {
     try {
       // Access the runs and extract text
-      const runs = para.getRuns?.() || [];
-      return runs.map((run: any) => run.getText?.() || '').join('');
+      const runs = para.getRuns();
+      return runs.map((run: any) => run.getText() || '').join('');
     } catch {
       return '';
     }
@@ -479,7 +482,8 @@ export class DocXMLaterProcessor {
    */
   async readDocument(filePath: string): Promise<DocumentReadResult> {
     try {
-      const doc = await Document.load(filePath);
+      // Use non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
+      const doc = await Document.load(filePath, { strictParsing: false });
 
       // Extract document structure
       const paragraphs = doc.getParagraphs();
@@ -500,19 +504,19 @@ export class DocXMLaterProcessor {
         content: {
           paragraphs: paragraphs.map((para) => ({
             text: this.getParagraphText(para),
-            style: para.getFormatting?.().style || undefined,
+            style: para.getFormatting().style || undefined,
           })),
           tables: tables.map((table) => ({
-            rows: table.getRows().map(row => ({
-              cells: row.getCells().map(cell => {
+            rows: table.getRows().map((row) => ({
+              cells: row.getCells().map((cell) => {
                 const formatting = cell.getFormatting();
                 return {
                   text: cell.getText(),
                   colspan: formatting.columnSpan || 1,
                   rowspan: formatting.rowSpan || 1,
-                  paragraphs: cell.getParagraphs().map(para => ({
+                  paragraphs: cell.getParagraphs().map((para) => ({
                     text: this.getParagraphText(para),
-                    style: para.getFormatting?.().style || undefined,
+                    style: para.getFormatting().style || undefined,
                   })),
                 };
               }),
@@ -541,8 +545,8 @@ export class DocXMLaterProcessor {
     modifications: (doc: Document) => Promise<void> | void
   ): Promise<DocumentModifyResult> {
     try {
-      // Load document
-      const doc = await Document.load(filePath);
+      // Load document with non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
+      const doc = await Document.load(filePath, { strictParsing: false });
 
       // Apply modifications
       await modifications(doc);
@@ -573,8 +577,8 @@ export class DocXMLaterProcessor {
     modifications: (doc: Document) => Promise<void> | void
   ): Promise<DocumentModifyResult> {
     try {
-      // Load from buffer
-      const doc = await Document.loadFromBuffer(buffer);
+      // Load from buffer with non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
+      const doc = await Document.loadFromBuffer(buffer, { strictParsing: false });
 
       // Apply modifications
       await modifications(doc);
@@ -604,39 +608,12 @@ export class DocXMLaterProcessor {
    * The docxmlater library's getText() can return XML markup when the underlying
    * Run object contains corrupted data.
    */
-  private sanitizeHyperlinkText(text: string): string {
-    if (!text) return '';
-
-    let cleaned = text
-      // Remove Word XML text tags (most specific patterns first)
-      .replace(/<w:t\s+xml:space=["']preserve["'][^>]*>/gi, '')  // <w:t xml:space="preserve">
-      .replace(/<w:t[^>]*>/gi, '')                                // <w:t> or <w:t ...>
-      .replace(/<\/w:t>/gi, '')                                   // </w:t>
-      .replace(/<w:[^>]*>/g, '')                                  // Any other <w:...> tags
-      .replace(/<[^>]*>/g, '')                                    // Any remaining tags
-      // Remove escaped XML patterns (second pass for &lt; variants)
-      .replace(/&lt;w:t\s+xml:space=&quot;preserve&quot;[^&]*&gt;/gi, '')
-      .replace(/&lt;w:t[^&]*&gt;/gi, '')                          // &lt;w:t&gt;
-      .replace(/&lt;\/w:t&gt;/gi, '')                             // &lt;/w:t&gt;
-      .replace(/&lt;w:[^&]*&gt;/g, '')                            // &lt;w:...&gt;
-      .replace(/&lt;/g, '')                                       // Remaining &lt;
-      .replace(/&gt;/g, '')                                       // Remaining &gt;
-      // Unescape XML entities
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&amp;/g, '&')
-      // Clean up escape sequences and control characters
-      .replace(/\\x[0-9a-fA-F]{2}/g, '')                         // Hex escape sequences
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, '')                      // Control characters
-      .trim();
-
-    // Fallback: if sanitization removed everything, return original trimmed
-    // This prevents losing legitimate text that might match a pattern
-    return cleaned.length === 0 ? text.trim() : cleaned;
-  }
 
   /**
    * Extract all hyperlinks from a document
+   *
+   * IMPORTANT: Applies defensive text sanitization to handle potential XML corruption
+   * from docxmlater's Hyperlink.getText() method.
    */
   async extractHyperlinks(doc: Document): Promise<
     Array<{
@@ -662,17 +639,15 @@ export class DocXMLaterProcessor {
 
       for (const item of content) {
         if (item instanceof Hyperlink) {
-          // LAYER 1 PROTECTION: Sanitize text immediately at extraction point
-          // This prevents XML corruption from ever entering the processing pipeline
-          const rawText = item.getText();
-          const sanitizedText = this.sanitizeHyperlinkText(rawText);
-
+          // Extract hyperlink data using docxmlater API
+          // Sanitize text to remove any XML corruption that may have been
+          // returned by Hyperlink.getText()
           results.push({
             hyperlink: item,
             paragraph: para,
             paragraphIndex: paraIndex,
             url: item.getUrl(),
-            text: sanitizedText,  // Use sanitized text instead of raw
+            text: sanitizeHyperlinkText(item.getText()),
           });
         }
       }
@@ -684,6 +659,8 @@ export class DocXMLaterProcessor {
   /**
    * Modify hyperlinks in a document based on a transformation function
    * The URL transform function receives the current URL and returns the modified URL
+   *
+   * IMPORTANT: Applies defensive text sanitization to display text
    */
   async modifyHyperlinks(
     doc: Document,
@@ -701,34 +678,23 @@ export class DocXMLaterProcessor {
 
       for (const para of paragraphs) {
         const content = para.getContent();
-        const newContent: Array<Run | Hyperlink> = [];
 
         for (const item of content) {
           if (item instanceof Hyperlink) {
             totalHyperlinks++;
             const oldUrl = item.getUrl();
-            const displayText = item.getText();
+            // Sanitize text to remove any XML corruption
+            const displayText = sanitizeHyperlinkText(item.getText());
 
             if (oldUrl) {
               const newUrl = urlTransform(oldUrl, displayText);
 
-              // Only recreate if URL changed
+              // Modify hyperlink URL in-place (no paragraph reconstruction needed)
               if (newUrl !== oldUrl) {
-                const newHyperlink = Hyperlink.createExternal(
-                  newUrl,
-                  displayText,
-                  item.getFormatting()
-                );
-                newContent.push(newHyperlink);
+                item.setUrl(newUrl);
                 modifiedHyperlinks++;
-              } else {
-                newContent.push(item);
               }
-            } else {
-              newContent.push(item);
             }
-          } else if (item instanceof Run) {
-            newContent.push(item);
           }
         }
       }
@@ -830,6 +796,8 @@ export class DocXMLaterProcessor {
 
   /**
    * Replace hyperlink display text based on a pattern
+   *
+   * NOTE: extractHyperlinks() already sanitizes text, so this method receives clean text
    */
   async replaceHyperlinkText(
     doc: Document,
@@ -840,19 +808,18 @@ export class DocXMLaterProcessor {
       const hyperlinks = await this.extractHyperlinks(doc);
       let replacedCount = 0;
 
-      for (const { hyperlink } of hyperlinks) {
-        const currentText = hyperlink.getText();
+      for (const { hyperlink, text: sanitizedText } of hyperlinks) {
         let newText: string;
 
         if (typeof pattern === 'string') {
-          if (currentText.includes(pattern)) {
-            newText = currentText.replace(pattern, replacement);
+          if (sanitizedText.includes(pattern)) {
+            newText = sanitizedText.replace(pattern, replacement);
             hyperlink.setText(newText);
             replacedCount++;
           }
         } else {
-          if (pattern.test(currentText)) {
-            newText = currentText.replace(pattern, replacement);
+          if (pattern.test(sanitizedText)) {
+            newText = sanitizedText.replace(pattern, replacement);
             hyperlink.setText(newText);
             replacedCount++;
           }
