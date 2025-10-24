@@ -15,24 +15,27 @@ export const defaultOptions: ProcessingOption[] = [
   { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'text', enabled: false },
   { id: 'remove-paragraph-lines', label: 'Remove Extra Paragraph Lines', group: 'text', enabled: false },
   { id: 'remove-italics', label: 'Remove Italics', group: 'text', enabled: false },
+  { id: 'normalize-spacing', label: 'Smart Spacing Normalization (New)', group: 'text', enabled: false },
 
   // Hyperlinks Group
   { id: 'update-top-hyperlinks', label: 'Update Top of Document Hyperlinks', group: 'hyperlinks', enabled: false },
   { id: 'update-toc-hyperlinks', label: 'Update Table of Contents Hyperlinks', group: 'hyperlinks', enabled: false },
   { id: 'replace-outdated-titles', label: 'Replace Outdated Titles', group: 'hyperlinks', enabled: false },
-  { id: 'fix-internal-hyperlinks', label: 'Attempt Fix for Internal Hyperlinks', group: 'hyperlinks', enabled: false },
+  { id: 'fix-internal-hyperlinks', label: 'Fix Internal Hyperlinks (Enhanced)', group: 'hyperlinks', enabled: false },
   { id: 'fix-content-ids', label: 'Fix / Append Content IDs', group: 'hyperlinks', enabled: false },
   { id: 'standardize-hyperlink-color', label: 'Standardize Hyperlink Color', group: 'hyperlinks', enabled: false },
+  { id: 'validate-hyperlinks', label: 'Validate & Auto-Fix All Links (New)', group: 'hyperlinks', enabled: false },
 
   // Content Structure Group
-  { id: 'assign-styles', label: 'Assign Styles', group: 'structure', enabled: false },
+  { id: 'assign-styles', label: 'Assign Styles (Smart Detection)', group: 'structure', enabled: false },
   { id: 'center-images', label: 'Center Images', group: 'structure', enabled: false },
-  { id: 'fix-keywords', label: 'Fix Key Words', group: 'structure', enabled: false },
+  { id: 'fix-keywords', label: 'Fix Key Words (Enhanced)', group: 'structure', enabled: false },
 
   // Lists & Tables Group
   { id: 'list-indentation', label: 'List Indentation Uniformity', group: 'lists', enabled: false },
   { id: 'bullet-uniformity', label: 'Bullet Style Uniformity', group: 'lists', enabled: false },
-  { id: 'table-uniformity', label: 'Table Uniformity', group: 'lists', enabled: false },
+  { id: 'table-uniformity', label: 'Table Uniformity (Enhanced)', group: 'lists', enabled: false },
+  { id: 'smart-tables', label: 'Smart Table Detection & Formatting (New)', group: 'lists', enabled: false },
 ];
 
 const groupLabels = {
