@@ -541,7 +541,7 @@ export class WordDocumentProcessor {
 
       if (options.fixKeywords) {
         this.log.debug('=== FIXING KEYWORDS ===');
-        const keywordsFixed = await this.fixCommonKeywords(doc);
+        const keywordsFixed = await this.fixCommonKeywords(doc, options);
         this.log.info(`Fixed ${keywordsFixed} keyword errors`);
       }
 
@@ -1446,7 +1446,7 @@ export class WordDocumentProcessor {
    * - Whole word boundaries
    * - Optional tracked changes integration
    */
-  private async fixCommonKeywords(doc: Document): Promise<number> {
+  private async fixCommonKeywords(doc: Document, options: WordProcessingOptions = {}): Promise<number> {
     const keywords = [
       { find: /\bteh\b/gi, replace: 'the' },
       { find: /\brecieve\b/gi, replace: 'receive' },
@@ -1473,7 +1473,7 @@ export class WordDocumentProcessor {
           {
             matchCase: false,
             wholeWord: true,
-            trackChanges: this.options?.trackChangesInWord || false,
+            trackChanges: options?.trackChangesInWord || false,
             author: 'DocHub AutoCorrect'
           }
         );
@@ -1481,7 +1481,7 @@ export class WordDocumentProcessor {
         if (result) {
           totalFixed += result.count || 0;
 
-          if (result.revisions && this.options?.trackChangesInWord) {
+          if (result.revisions && options?.trackChangesInWord) {
             this.log.debug(`Created ${result.revisions.length} tracked changes for keyword: ${replace}`);
           }
         }
@@ -1791,31 +1791,86 @@ export class WordDocumentProcessor {
           // Smart content-based rules
           contentRules: [
             {
-              // Decision cells (Yes/No, True/False)
-              condition: (text: string) => /^(Yes|No|True|False|Y|N)$/i.test(text.trim()),
+              // Positive decision cells (Yes/True)
+              condition: (text: string) => /^(Yes|True|Y)$/i.test(text.trim()),
               formatting: {
                 alignment: 'center',
                 bold: true,
-                color: text.trim().match(/^(Yes|True|Y)$/i) ? '008000' : '800000'
+                color: '008000'  // Green for positive
               }
             },
             {
-              // Percentage values
-              condition: (text: string) => /^\d+(\.\d+)?%$/.test(text.trim()),
+              // Negative decision cells (No/False)
+              condition: (text: string) => /^(No|False|N)$/i.test(text.trim()),
+              formatting: {
+                alignment: 'center',
+                bold: true,
+                color: '800000'  // Red for negative
+              }
+            },
+            {
+              // High percentage values (>= 80%)
+              condition: (text: string) => {
+                const match = text.trim().match(/^(\d+(?:\.\d+)?)%$/);
+                return match && parseFloat(match[1]) >= 80;
+              },
               formatting: {
                 alignment: 'right',
-                color: parseFloat(text) >= 80 ? '008000' : parseFloat(text) < 50 ? 'FF0000' : '000000'
+                color: '008000'  // Green for high percentages
               }
             },
             {
-              // Status indicators
-              condition: (text: string) => /^(Active|Inactive|Pending|Completed|In Progress)$/i.test(text.trim()),
+              // Low percentage values (< 50%)
+              condition: (text: string) => {
+                const match = text.trim().match(/^(\d+(?:\.\d+)?)%$/);
+                return match && parseFloat(match[1]) < 50;
+              },
+              formatting: {
+                alignment: 'right',
+                color: 'FF0000'  // Red for low percentages
+              }
+            },
+            {
+              // Medium percentage values (50-79%)
+              condition: (text: string) => {
+                const match = text.trim().match(/^(\d+(?:\.\d+)?)%$/);
+                return match && parseFloat(match[1]) >= 50 && parseFloat(match[1]) < 80;
+              },
+              formatting: {
+                alignment: 'right',
+                color: '000000'  // Black for medium percentages
+              }
+            },
+            {
+              // Status indicators - Active/Completed (green background)
+              condition: (text: string) => /^(Active|Completed)$/i.test(text.trim()),
               formatting: {
                 alignment: 'center',
                 bold: true,
                 shading: {
-                  fill: text.match(/Active|Completed/i) ? 'E8F5E9' :
-                        text.match(/Inactive/i) ? 'FFEBEE' : 'FFF3E0'
+                  fill: 'E8F5E9'  // Light green background
+                }
+              }
+            },
+            {
+              // Status indicators - Inactive (red background)
+              condition: (text: string) => /^Inactive$/i.test(text.trim()),
+              formatting: {
+                alignment: 'center',
+                bold: true,
+                shading: {
+                  fill: 'FFEBEE'  // Light red background
+                }
+              }
+            },
+            {
+              // Status indicators - Pending/In Progress (orange background)
+              condition: (text: string) => /^(Pending|In Progress)$/i.test(text.trim()),
+              formatting: {
+                alignment: 'center',
+                bold: true,
+                shading: {
+                  fill: 'FFF3E0'  // Light orange background
                 }
               }
             },
