@@ -5,7 +5,7 @@
  * Replaces 4000+ lines of manual XML parsing with clean, type-safe APIs.
  */
 
-import { Document, Hyperlink, Paragraph, Run, Table, TableCell, Image, Style, pointsToTwips, twipsToPoints } from 'docxmlater';
+import { Document, Hyperlink, Paragraph, Run, Table, TableRow, TableCell, Image, Style, StylesManager, NumberingLevel, NumberingManager, AbstractNumbering, pointsToTwips, twipsToPoints, inchesToTwips } from 'docxmlater';
 // Note: Run, Hyperlink, Image imported for type checking in isParagraphTrulyEmpty()
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -516,25 +516,6 @@ export class WordDocumentProcessor {
         this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
       }
 
-      // NEW 1.1.0 Option: Smart Spacing Normalization
-      if (options.normalizeSpacing) {
-        this.log.debug('=== SMART SPACING NORMALIZATION (NEW) ===');
-        try {
-          const result = await (doc as any).normalizeSpacing?.({
-            removeDuplicateEmptyParagraphs: true,
-            standardizeParagraphSpacing: true,
-            standardLineSpacing: 240,  // 1.15 line spacing
-            removeTrailingSpaces: true,
-            processTables: true  // Also normalize spacing in table cells
-          });
-
-          if (result) {
-            this.log.info(`Normalized spacing: ${result.paragraphsModified || 0} paragraphs modified, ${result.duplicatesRemoved || 0} duplicates removed`);
-          }
-        } catch (error) {
-          this.log.warn('normalizeSpacing() not available in current docxmlater version');
-        }
-      }
 
       if (options.removeItalics) {
         this.log.debug('=== REMOVING ITALIC FORMATTING ===');
@@ -544,15 +525,11 @@ export class WordDocumentProcessor {
 
       // CONTENT STRUCTURE GROUP
       if (options.assignStyles && options.styles && options.styles.length > 0) {
-        this.log.debug('=== ASSIGNING STYLES (DOCXMLATER PATTERN) ===');
-        // Use the docxmlater pattern: modify style definitions, then clear direct formatting
-        // This replicates applyCustomFormattingToExistingStyles() but with UI values
-        const styleResults = await this.applyCustomStylesFromUI(doc, options.styles);
-        this.log.info(`Updated style definitions: Heading1=${styleResults.heading1}, Heading2=${styleResults.heading2}, Heading3=${styleResults.heading3}, Normal=${styleResults.normal}, ListParagraph=${styleResults.listParagraph}`);
-
-        // Apply UI formatting settings (bold/italic/underline) to all paragraphs with those styles
-        await this.clearDirectFormattingFromParagraphs(doc, styleResults, options.styles);
-        this.log.info('Applied UI formatting settings to paragraphs (bold/italic/underline based on UI selections)');
+        this.log.debug('=== ASSIGNING STYLES (USING DOCXMLATER applyCustomFormattingToExistingStyles) ===');
+        // Use docXMLater's native method with preserve flag support
+        // This handles style definitions, direct formatting clearing, and Header2 table wrapping
+        const styleResults = await this.applyCustomStylesFromUI(doc, options.styles, options.tableShadingSettings);
+        this.log.info(`Applied custom formatting: Heading1=${styleResults.heading1}, Heading2=${styleResults.heading2}, Heading3=${styleResults.heading3}, Normal=${styleResults.normal}, ListParagraph=${styleResults.listParagraph}`);
       }
 
       // NEW VALIDATION OPERATIONS (DocXMLater 1.6.0)
@@ -615,10 +592,13 @@ export class WordDocumentProcessor {
         this.log.info(`Applied indentation to ${listsFormatted} list paragraphs`);
       }
 
-      if (options.bulletUniformity) {
-        this.log.debug('=== APPLYING BULLET UNIFORMITY ===');
-        const bulletsStandardized = await this.applyBulletUniformity(doc);
+      if (options.bulletUniformity && options.listBulletSettings) {
+        this.log.debug('=== APPLYING BULLET AND NUMBERED LIST UNIFORMITY ===');
+        const bulletsStandardized = await this.applyBulletUniformity(doc, options.listBulletSettings);
         this.log.info(`Standardized ${bulletsStandardized} bullet lists`);
+
+        const numbersStandardized = await this.applyNumberedUniformity(doc, options.listBulletSettings);
+        this.log.info(`Standardized ${numbersStandardized} numbered lists`);
       }
 
       if (options.tableUniformity) {
@@ -1234,35 +1214,16 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Remove extra paragraph lines - ENHANCED with docxmlater 1.1.0
+   * Remove extra paragraph lines
    *
-   * Now uses the built-in Document.normalizeSpacing() helper which:
-   * - Handles tables, SDTs, and complex structures automatically
-   * - Preserves list items and numbered paragraphs
-   * - Works inside table cells
-   * - More reliable than manual implementation
+   * Removes consecutive empty paragraphs while:
+   * - Handling tables, SDTs, and complex structures safely
+   * - Preserving list items and numbered paragraphs
+   * - Working inside table cells
+   * - Protecting paragraphs adjacent to tables
    */
   private async removeExtraParagraphLines(doc: Document): Promise<number> {
-    // Use the new docxmlater 1.1.0 normalizeSpacing() helper
-    // This replaces 130+ lines of manual implementation
-    try {
-      const result = await (doc as any).normalizeSpacing?.({
-        removeDuplicateEmptyParagraphs: true,
-        standardizeParagraphSpacing: false,  // Keep original spacing
-        removeTrailingSpaces: true,
-        processTables: true  // Also process inside table cells
-      });
-
-      if (result) {
-        this.log.info(`Normalized spacing: removed ${result.duplicatesRemoved || 0} duplicate empty paragraphs`);
-        return result.duplicatesRemoved || 0;
-      }
-    } catch (error) {
-      this.log.warn('normalizeSpacing() helper not available, falling back to manual implementation');
-    }
-
-    // Fallback to manual implementation if helper not available
-    this.log.debug('Using manual implementation for backward compatibility');
+    this.log.debug('Removing duplicate empty paragraphs');
 
     const paragraphs = doc.getParagraphs();
     const paragraphsToRemove: Paragraph[] = [];
@@ -1513,8 +1474,110 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Apply custom styles from UI using docxmlater's style update pattern
-   * This replicates the approach from applyCustomFormattingToExistingStyles() but with UI values
+   * Convert SessionStyle array to docXMLater's ApplyCustomFormattingOptions format
+   */
+  private convertSessionStylesToDocXMLaterConfig(
+    styles: Array<{
+      id: string;
+      fontFamily: string;
+      fontSize: number;
+      bold: boolean;
+      italic: boolean;
+      underline: boolean;
+      preserveBold?: boolean;
+      preserveItalic?: boolean;
+      preserveUnderline?: boolean;
+      alignment: 'left' | 'center' | 'right' | 'justify';
+      color: string;
+      spaceBefore: number;
+      spaceAfter: number;
+      lineSpacing: number;
+      noSpaceBetweenSame?: boolean;
+      indentation?: {
+        left?: number;
+        firstLine?: number;
+      };
+    }>,
+    tableShadingSettings?: {
+      header2Shading: string;
+      otherShading: string;
+    }
+  ): any {
+    const config: any = {};
+
+    for (const style of styles) {
+      const runFormatting: any = {
+        font: style.fontFamily,
+        size: style.fontSize,
+        bold: style.bold,
+        italic: style.italic,
+        underline: style.underline,
+        color: style.color.replace('#', ''),
+        preserveBold: style.preserveBold,
+        preserveItalic: style.preserveItalic,
+        preserveUnderline: style.preserveUnderline,
+      };
+
+      const paragraphFormatting: any = {
+        alignment: style.alignment,
+        spacing: {
+          before: pointsToTwips(style.spaceBefore),
+          after: pointsToTwips(style.spaceAfter),
+          line: pointsToTwips(style.lineSpacing * 12),
+          lineRule: 'auto' as const,
+        },
+      };
+
+      // Add indentation if present (for List Paragraph style)
+      if (style.indentation) {
+        paragraphFormatting.indentation = {
+          left: pointsToTwips((style.indentation.left ?? 0.25) * 72),
+          firstLine: pointsToTwips((style.indentation.firstLine ?? 0.5) * 72),
+        };
+      }
+
+      // Add contextualSpacing if present (for List Paragraph style)
+      if (style.noSpaceBetweenSame !== undefined) {
+        paragraphFormatting.contextualSpacing = style.noSpaceBetweenSame;
+      }
+
+      // Map UI style IDs to docXMLater style IDs
+      switch (style.id) {
+        case 'header1':
+          config.heading1 = { run: runFormatting, paragraph: paragraphFormatting };
+          break;
+        case 'header2':
+          config.heading2 = {
+            run: runFormatting,
+            paragraph: paragraphFormatting,
+            tableOptions: {
+              shading: tableShadingSettings?.header2Shading?.replace('#', '') ?? 'BFBFBF',
+              marginTop: 0,
+              marginBottom: 0,
+              marginLeft: 115,
+              marginRight: 115,
+              tableWidthPercent: 5000,
+            }
+          };
+          break;
+        case 'header3':
+          config.heading3 = { run: runFormatting, paragraph: paragraphFormatting };
+          break;
+        case 'normal':
+          config.normal = { run: runFormatting, paragraph: paragraphFormatting };
+          break;
+        case 'listParagraph':
+          config.listParagraph = { run: runFormatting, paragraph: paragraphFormatting };
+          break;
+      }
+    }
+
+    return config;
+  }
+
+  /**
+   * Apply custom styles from UI using docXMLater's applyCustomFormattingToExistingStyles()
+   * This replaces the custom implementation with the framework's native method
    */
   private async applyCustomStylesFromUI(
     doc: Document,
@@ -1539,63 +1602,18 @@ export class WordDocumentProcessor {
         left?: number;
         firstLine?: number;
       };
-    }>
-  ): Promise<{ heading1: boolean; heading2: boolean; heading3: boolean; normal: boolean; listParagraph: boolean }> {
-    const results = { heading1: false, heading2: false, heading3: false, normal: false, listParagraph: false };
-    const stylesManager = doc.getStylesManager();
-
-    // Process each custom style from UI
-    for (const customStyle of styles) {
-      // Map UI style ID to docxmlater style ID
-      const docStyleId = customStyle.id === 'header1' ? 'Heading1' :
-                         customStyle.id === 'header2' ? 'Heading2' :
-                         customStyle.id === 'header3' ? 'Heading3' :
-                         customStyle.id === 'listParagraph' ? 'ListParagraph' : 'Normal';
-
-      // Get the style object from the document
-      const styleObj = stylesManager.getStyle(docStyleId);
-
-      if (styleObj) {
-        // Set run formatting using values from UI
-        // Include bold, italic, and underline based on UI selections
-        styleObj.setRunFormatting({
-          font: customStyle.fontFamily,
-          size: customStyle.fontSize,
-          bold: customStyle.bold,
-          italic: customStyle.italic,
-          underline: customStyle.underline ? 'single' : false,
-          color: customStyle.color.replace('#', ''),
-        });
-
-        // Set paragraph formatting using values from UI (exactly like docxmlater does)
-        const paragraphFormatting: any = {
-          alignment: customStyle.alignment,
-          spacing: {
-            before: pointsToTwips(customStyle.spaceBefore),
-            after: pointsToTwips(customStyle.spaceAfter),
-            line: pointsToTwips(customStyle.lineSpacing * 12),
-            lineRule: 'auto',
-          },
-        };
-
-        // Add indentation if present (for List Paragraph style)
-        if (customStyle.indentation) {
-          paragraphFormatting.indentation = {
-            left: pointsToTwips((customStyle.indentation.left ?? 0.25) * 72), // Convert inches to points, then to twips
-            firstLine: pointsToTwips((customStyle.indentation.firstLine ?? 0.5) * 72), // Convert inches to points, then to twips
-          };
-        }
-
-        styleObj.setParagraphFormatting(paragraphFormatting);
-
-        // Mark which styles were successfully updated
-        if (customStyle.id === 'header1') results.heading1 = true;
-        else if (customStyle.id === 'header2') results.heading2 = true;
-        else if (customStyle.id === 'header3') results.heading3 = true;
-        else if (customStyle.id === 'normal') results.normal = true;
-        else if (customStyle.id === 'listParagraph') results.listParagraph = true;
-      }
+    }>,
+    tableShadingSettings?: {
+      header2Shading: string;
+      otherShading: string;
     }
+  ): Promise<{ heading1: boolean; heading2: boolean; heading3: boolean; normal: boolean; listParagraph: boolean }> {
+    // Convert SessionStyle array to docXMLater format
+    const config = this.convertSessionStylesToDocXMLaterConfig(styles, tableShadingSettings);
+
+    // Use docXMLater's native method with preserve flag support
+    // This handles both style definition updates and direct formatting clearing
+    const results = doc.applyCustomFormattingToExistingStyles(config);
 
     return results;
   }
@@ -1856,206 +1874,6 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Clear direct formatting from paragraphs after style updates
-   * Uses UI values for bold, italic, and underline instead of hardcoding them
-   */
-  private async clearDirectFormattingFromParagraphs(
-    doc: Document,
-    styleResults: { heading1: boolean; heading2: boolean; heading3: boolean; normal: boolean; listParagraph: boolean },
-    styles: Array<{
-      id: string;
-      bold: boolean;
-      italic: boolean;
-      underline: boolean;
-      preserveBold?: boolean;
-      preserveItalic?: boolean;
-      preserveUnderline?: boolean;
-    }>
-  ): Promise<void> {
-    const processedParagraphs = new Set<any>();
-    const allParas = doc.getAllParagraphs();
-    const stylesManager = doc.getStylesManager();
-
-    // Look up UI style configurations for each style type
-    const header1Config = styles.find(s => s.id === 'header1');
-    const header2Config = styles.find(s => s.id === 'header2');
-    const header3Config = styles.find(s => s.id === 'header3');
-    const normalConfig = styles.find(s => s.id === 'normal');
-    const listParagraphConfig = styles.find(s => s.id === 'listParagraph');
-
-    for (const para of allParas) {
-      // Skip if already processed
-      if (processedParagraphs.has(para)) {
-        continue;
-      }
-
-      const styleId = para.getStyle();
-
-      // Process Heading1 paragraphs
-      if (styleId === 'Heading1' && styleResults.heading1 && header1Config) {
-        const heading1 = stylesManager.getStyle('Heading1');
-        if (heading1) {
-          para.clearDirectFormattingConflicts(heading1);
-
-          // Apply formatting from UI settings to all runs (dual toggle)
-          for (const run of para.getRuns()) {
-            if (!header1Config.preserveBold) {
-              run.setBold(header1Config.bold);
-            }
-            if (!header1Config.preserveItalic) {
-              run.setItalic(header1Config.italic);
-            }
-            if (!header1Config.preserveUnderline) {
-              run.setUnderline(header1Config.underline ? 'single' : false);
-            }
-          }
-
-          // Update paragraph mark properties to match UI settings
-          if ((para as any).formatting?.paragraphMarkRunProperties) {
-            const markProps = (para as any).formatting.paragraphMarkRunProperties;
-            if (!header1Config.preserveItalic && header1Config.italic === false && markProps.italic) delete markProps.italic;
-            if (!header1Config.preserveUnderline && header1Config.underline === false && markProps.underline) delete markProps.underline;
-            if (!header1Config.preserveBold && header1Config.bold === false && markProps.bold) delete markProps.bold;
-          }
-        }
-        processedParagraphs.add(para);
-      }
-
-      // Process Heading2 paragraphs
-      else if (styleId === 'Heading2' && styleResults.heading2 && header2Config) {
-        // Check if paragraph has actual text content (skip empty paragraphs)
-        const hasContent = para.getRuns().some((run: any) => run.getText().trim().length > 0);
-
-        if (!hasContent) {
-          // Skip empty Heading2 paragraphs
-          processedParagraphs.add(para);
-          continue;
-        }
-
-        const heading2 = stylesManager.getStyle('Heading2');
-        if (heading2) {
-          // Clear direct formatting first
-          para.clearDirectFormattingConflicts(heading2);
-
-          // Apply formatting from UI settings to all runs (dual toggle)
-          for (const run of para.getRuns()) {
-            if (!header2Config.preserveBold) {
-              run.setBold(header2Config.bold);
-            }
-            if (!header2Config.preserveItalic) {
-              run.setItalic(header2Config.italic);
-            }
-            if (!header2Config.preserveUnderline) {
-              run.setUnderline(header2Config.underline ? 'single' : false);
-            }
-          }
-
-          // Update paragraph mark properties to match UI settings
-          if ((para as any).formatting?.paragraphMarkRunProperties) {
-            const markProps = (para as any).formatting.paragraphMarkRunProperties;
-            if (!header2Config.preserveItalic && header2Config.italic === false && markProps.italic) delete markProps.italic;
-            if (!header2Config.preserveUnderline && header2Config.underline === false && markProps.underline) delete markProps.underline;
-            if (!header2Config.preserveBold && header2Config.bold === false && markProps.bold) delete markProps.bold;
-          }
-
-          // Note: Table wrapping for Heading2 would be added here if needed
-        }
-        processedParagraphs.add(para);
-      }
-
-      // Process Heading3 paragraphs
-      else if (styleId === 'Heading3' && styleResults.heading3 && header3Config) {
-        const heading3 = stylesManager.getStyle('Heading3');
-        if (heading3) {
-          para.clearDirectFormattingConflicts(heading3);
-
-          // Apply formatting from UI settings to all runs (dual toggle)
-          for (const run of para.getRuns()) {
-            if (!header3Config.preserveBold) {
-              run.setBold(header3Config.bold);
-            }
-            if (!header3Config.preserveItalic) {
-              run.setItalic(header3Config.italic);
-            }
-            if (!header3Config.preserveUnderline) {
-              run.setUnderline(header3Config.underline ? 'single' : false);
-            }
-          }
-
-          // Update paragraph mark properties to match UI settings
-          if ((para as any).formatting?.paragraphMarkRunProperties) {
-            const markProps = (para as any).formatting.paragraphMarkRunProperties;
-            if (!header3Config.preserveItalic && header3Config.italic === false && markProps.italic) delete markProps.italic;
-            if (!header3Config.preserveUnderline && header3Config.underline === false && markProps.underline) delete markProps.underline;
-            if (!header3Config.preserveBold && header3Config.bold === false && markProps.bold) delete markProps.bold;
-          }
-        }
-        processedParagraphs.add(para);
-      }
-
-      // Process Normal paragraphs (including undefined style which defaults to Normal)
-      else if ((styleId === 'Normal' || styleId === undefined) && styleResults.normal && normalConfig) {
-        const normal = stylesManager.getStyle('Normal');
-        if (normal) {
-          para.clearDirectFormattingConflicts(normal);
-
-          // Apply formatting from UI settings to all runs (dual toggle)
-          for (const run of para.getRuns()) {
-            if (!normalConfig.preserveBold) {
-              run.setBold(normalConfig.bold);
-            }
-            if (!normalConfig.preserveItalic) {
-              run.setItalic(normalConfig.italic);
-            }
-            if (!normalConfig.preserveUnderline) {
-              run.setUnderline(normalConfig.underline ? 'single' : false);
-            }
-          }
-
-          // Update paragraph mark properties to match UI settings
-          if ((para as any).formatting?.paragraphMarkRunProperties) {
-            const markProps = (para as any).formatting.paragraphMarkRunProperties;
-            if (!normalConfig.preserveItalic && normalConfig.italic === false && markProps.italic) delete markProps.italic;
-            if (!normalConfig.preserveUnderline && normalConfig.underline === false && markProps.underline) delete markProps.underline;
-            if (!normalConfig.preserveBold && normalConfig.bold === false && markProps.bold) delete markProps.bold;
-          }
-        }
-        processedParagraphs.add(para);
-      }
-
-      // Process ListParagraph paragraphs
-      else if (styleId === 'ListParagraph' && styleResults.listParagraph && listParagraphConfig) {
-        const listParagraph = stylesManager.getStyle('ListParagraph');
-        if (listParagraph) {
-          para.clearDirectFormattingConflicts(listParagraph);
-
-          // Apply formatting from UI settings to all runs (dual toggle)
-          for (const run of para.getRuns()) {
-            if (!listParagraphConfig.preserveBold) {
-              run.setBold(listParagraphConfig.bold);
-            }
-            if (!listParagraphConfig.preserveItalic) {
-              run.setItalic(listParagraphConfig.italic);
-            }
-            if (!listParagraphConfig.preserveUnderline) {
-              run.setUnderline(listParagraphConfig.underline ? 'single' : false);
-            }
-          }
-
-          // Update paragraph mark properties to match UI settings
-          if ((para as any).formatting?.paragraphMarkRunProperties) {
-            const markProps = (para as any).formatting.paragraphMarkRunProperties;
-            if (!listParagraphConfig.preserveItalic && listParagraphConfig.italic === false && markProps.italic) delete markProps.italic;
-            if (!listParagraphConfig.preserveUnderline && listParagraphConfig.underline === false && markProps.underline) delete markProps.underline;
-            if (!listParagraphConfig.preserveBold && listParagraphConfig.bold === false && markProps.bold) delete markProps.bold;
-          }
-        }
-        processedParagraphs.add(para);
-      }
-    }
-  }
-
-  /**
    * Center all images - Set alignment to center for paragraphs containing images
    */
   private async centerAllImages(doc: Document): Promise<number> {
@@ -2226,96 +2044,182 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Apply bullet uniformity - Standardize bullet characters across all bullet lists
-   *
-   * FIX: Adds font specification to bullet definitions to prevent square box rendering.
-   * The createBulletList() API doesn't support fonts, so we manually inject them into numbering.xml.
+   * Helper: Check if a numbering ID represents a bullet list
    */
-  private async applyBulletUniformity(doc: Document): Promise<number> {
-    // Standard bullet characters for levels 0-2
-    const standardBullets = ['•', '◦', '▪'];
-
-    // Create a standard bullet list with 3 levels
-    const numId = doc.createBulletList(3, standardBullets);
-    if (!numId) return 0;
-
-    // FIX: Add font specification to the bullet definitions in numbering.xml
-    // to prevent square box rendering when bullet Unicode characters lack font support
+  private isBulletList(doc: Document, numId: number): boolean {
     try {
-      const numberingPart = await doc.getPart('word/numbering.xml');
-      if (numberingPart && numberingPart.content) {
-        // Convert Buffer to string if needed
-        let numberingXml = typeof numberingPart.content === 'string'
-          ? numberingPart.content
-          : numberingPart.content.toString('utf-8');
+      const manager = doc.getNumberingManager();
+      const instance = manager.getInstance(numId);
+      if (!instance) return false;
 
-        // Find the abstract numbering definition that was just created
-        // It should contain our bullet characters
-        const abstractNumRegex = /<w:abstractNum[^>]*w:abstractNumId="(\d+)"[^>]*>[\s\S]*?<\/w:abstractNum>/g;
-        let match;
-        let targetAbstractNumId: string | null = null;
+      const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+      if (!abstractNum) return false;
 
-        // Find the abstractNum that contains our bullet characters
-        while ((match = abstractNumRegex.exec(numberingXml)) !== null) {
-          const abstractNumBlock = match[0];
-          // Check if this block contains our bullet characters
-          if (abstractNumBlock.includes('•') || abstractNumBlock.includes('◦') || abstractNumBlock.includes('▪')) {
-            targetAbstractNumId = match[1];
-            break;
-          }
-        }
-
-        if (targetAbstractNumId) {
-          // Find all <w:lvl> elements in this abstractNum and add font specification
-          const lvlRegex = new RegExp(
-            `(<w:abstractNum[^>]*w:abstractNumId="${targetAbstractNumId}"[^>]*>[\\s\\S]*?` +
-            `<w:lvl[^>]*>)([\\s\\S]*?)(<w:lvlText[^/>]*/>)([\\s\\S]*?<\/w:lvl>)`,
-            'g'
-          );
-
-          numberingXml = numberingXml.replace(
-            lvlRegex,
-            (fullMatch: string, beforeLvlText: string, middlePart: string, lvlText: string, afterLvlText: string) => {
-              // Check if font specification already exists
-              if (middlePart.includes('<w:rPr>') && middlePart.includes('<w:rFonts')) {
-                return fullMatch; // Already has font specification
-              }
-
-              // Add font specification right after <w:lvl> opening tag or before <w:lvlText>
-              // Use Arial which has proper Unicode bullet support
-              const fontSpec = `<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/></w:rPr>`;
-
-              // If there's already an <w:rPr> tag, add font inside it
-              if (middlePart.includes('<w:rPr>')) {
-                return beforeLvlText + middlePart.replace('<w:rPr>', '<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>') + lvlText + afterLvlText;
-              } else {
-                // Add new <w:rPr> block before <w:lvlText>
-                return beforeLvlText + middlePart + fontSpec + lvlText + afterLvlText;
-              }
-            }
-          );
-
-          // Save the modified numbering.xml back to the document
-          await doc.setPart('word/numbering.xml', numberingXml);
-          this.log.debug(`Added Arial font specification to bullet list numId=${numId}, abstractNumId=${targetAbstractNumId}`);
-        }
-      }
+      const level = abstractNum.getLevel(0);
+      return level?.getFormat() === 'bullet';
     } catch (error) {
-      // Non-critical: If font injection fails, bullets will still work (may show as squares)
-      this.log.warn(`Failed to add font specification to bullets: ${error}`);
+      this.log.warn(`Error checking if numId ${numId} is bullet list: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Helper: Check if a numbering ID represents a numbered list
+   */
+  private isNumberedList(doc: Document, numId: number): boolean {
+    try {
+      const manager = doc.getNumberingManager();
+      const instance = manager.getInstance(numId);
+      if (!instance) return false;
+
+      const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+      if (!abstractNum) return false;
+
+      const level = abstractNum.getLevel(0);
+      const format = level?.getFormat();
+      return format !== 'bullet' && format !== undefined;
+    } catch (error) {
+      this.log.warn(`Error checking if numId ${numId} is numbered list: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Apply bullet uniformity - Standardize bullet characters across all bullet lists
+   * Uses UI configuration for bullet characters and indentation
+   */
+  private async applyBulletUniformity(
+    doc: Document,
+    settings: {
+      indentationLevels: Array<{
+        level: number;
+        symbolIndent: number;  // in inches
+        textIndent: number;    // in inches
+        bulletChar?: string;
+        numberedFormat?: string;
+      }>;
+    }
+  ): Promise<number> {
+    const manager = doc.getNumberingManager();
+
+    // Extract bullet characters from UI settings
+    const bullets = settings.indentationLevels.map(level => level.bulletChar || '•');
+
+    // Create custom levels with font specified and UI indentation
+    const levels = settings.indentationLevels.map((levelConfig, index) => {
+      const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
+      const textTwips = Math.round(levelConfig.textIndent * 1440);
+      const hangingTwips = textTwips - symbolTwips;
+
+      return new NumberingLevel({
+        level: index,
+        format: 'bullet',
+        text: levelConfig.bulletChar || '•',
+        font: 'Arial',  // Specify font directly in API
+        leftIndent: symbolTwips,
+        hangingIndent: hangingTwips
+      });
+    });
+
+    // Create custom list with all UI-configured levels
+    const numId = manager.createCustomList(levels, 'UI Bullet List');
+    if (!numId) {
+      this.log.warn('Failed to create custom bullet list');
+      return 0;
     }
 
+    this.log.debug(`Created bullet list numId=${numId} with ${levels.length} levels`);
+
+    // Apply to bullet list paragraphs only
     let standardizedCount = 0;
     const paragraphs = doc.getParagraphs();
 
     for (const para of paragraphs) {
       const numbering = para.getNumbering();
       if (numbering && numbering.numId !== undefined) {
-        // Apply standard bullet list to all numbered paragraphs
-        // (Since we can't check type, apply to all list items)
-        const level = Math.min(numbering.level || 0, 2); // Cap at level 2
-        para.setNumbering(numId, level);
-        standardizedCount++;
+        // Only apply to bullet lists (not numbered lists)
+        if (this.isBulletList(doc, numbering.numId)) {
+          const level = Math.min(numbering.level || 0, levels.length - 1);
+          para.setNumbering(numId, level);
+          standardizedCount++;
+        }
+      }
+    }
+
+    return standardizedCount;
+  }
+
+  /**
+   * Helper: Parse numbered format string to NumberFormat type
+   */
+  private parseNumberedFormat(formatString: string): 'decimal' | 'lowerLetter' | 'upperLetter' | 'lowerRoman' | 'upperRoman' {
+    if (formatString.includes('a')) return 'lowerLetter';
+    if (formatString.includes('A')) return 'upperLetter';
+    if (formatString.includes('i')) return 'lowerRoman';
+    if (formatString.includes('I')) return 'upperRoman';
+    return 'decimal';
+  }
+
+  /**
+   * Apply numbered uniformity - Standardize numbered lists across document
+   * Uses UI configuration for numbering formats and indentation
+   */
+  private async applyNumberedUniformity(
+    doc: Document,
+    settings: {
+      indentationLevels: Array<{
+        level: number;
+        symbolIndent: number;  // in inches
+        textIndent: number;    // in inches
+        bulletChar?: string;
+        numberedFormat?: string;
+      }>;
+    }
+  ): Promise<number> {
+    const manager = doc.getNumberingManager();
+
+    // Parse numbering formats from UI settings
+    const formats = settings.indentationLevels.map(level =>
+      this.parseNumberedFormat(level.numberedFormat || '1.')
+    );
+
+    // Create custom levels with UI indentation
+    const levels = settings.indentationLevels.map((levelConfig, index) => {
+      const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
+      const textTwips = Math.round(levelConfig.textIndent * 1440);
+      const hangingTwips = textTwips - symbolTwips;
+
+      return new NumberingLevel({
+        level: index,
+        format: formats[index],
+        text: `%${index + 1}.`,  // Standard template (e.g., %1., %2.)
+        leftIndent: symbolTwips,
+        hangingIndent: hangingTwips
+      });
+    });
+
+    // Create custom numbered list with all UI-configured levels
+    const numId = manager.createCustomList(levels, 'UI Numbered List');
+    if (!numId) {
+      this.log.warn('Failed to create custom numbered list');
+      return 0;
+    }
+
+    this.log.debug(`Created numbered list numId=${numId} with ${levels.length} levels`);
+
+    // Apply to numbered list paragraphs only
+    let standardizedCount = 0;
+    const paragraphs = doc.getParagraphs();
+
+    for (const para of paragraphs) {
+      const numbering = para.getNumbering();
+      if (numbering && numbering.numId !== undefined) {
+        // Only apply to numbered lists (not bullet lists)
+        if (this.isNumberedList(doc, numbering.numId)) {
+          const level = Math.min(numbering.level || 0, levels.length - 1);
+          para.setNumbering(numId, level);
+          standardizedCount++;
+        }
       }
     }
 
@@ -2357,12 +2261,11 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Apply smart table formatting - NEW docxmlater 1.1.0
+   * Apply smart table formatting using docxmlater APIs
    *
    * Intelligent table detection and formatting:
    * - Detects header rows based on content analysis
-   * - Applies appropriate formatting based on table size
-   * - Uses content patterns for intelligent formatting
+   * - Formats headers with bold text and gray background
    */
   private async applySmartTableFormatting(doc: Document): Promise<number> {
     const tables = doc.getTables();
@@ -2388,131 +2291,25 @@ export class WordDocumentProcessor {
           }
         }
 
-        // Apply smart conditional formatting
-        const result = await (table as any).applyConditionalFormatting?.({
-          // Apply header formatting if detected
-          headerRow: isLikelyHeader ? {
-            condition: 'first-row',
-            formatting: {
-              bold: true,
-              shading: { fill: 'E0E0E0' },
-              alignment: 'center',
-              borders: {
-                bottom: { style: 'thick', size: 8, color: '333333' }
+        // Apply header formatting if detected
+        if (isLikelyHeader) {
+          for (const cell of firstRowCells) {
+            // Set header background color
+            cell.setShading({ fill: 'E0E0E0' });
+
+            // Make all text in header cells bold
+            for (const para of cell.getParagraphs()) {
+              for (const run of para.getRuns()) {
+                run.setBold(true);
               }
             }
-          } : undefined,
-
-          // Apply zebra stripes only for larger tables
-          zebraStripes: {
-            enabled: rows.length > 5,
-            evenRowColor: 'FAFAFA',
-            oddRowColor: 'FFFFFF'
-          },
-
-          // Smart content-based rules
-          contentRules: [
-            {
-              // Positive decision cells (Yes/True)
-              condition: (text: string) => /^(Yes|True|Y)$/i.test(text.trim()),
-              formatting: {
-                alignment: 'center',
-                bold: true,
-                color: '008000'  // Green for positive
-              }
-            },
-            {
-              // Negative decision cells (No/False)
-              condition: (text: string) => /^(No|False|N)$/i.test(text.trim()),
-              formatting: {
-                alignment: 'center',
-                bold: true,
-                color: '800000'  // Red for negative
-              }
-            },
-            {
-              // High percentage values (>= 80%)
-              condition: (text: string) => {
-                const match = text.trim().match(/^(\d+(?:\.\d+)?)%$/);
-                return match && parseFloat(match[1]) >= 80;
-              },
-              formatting: {
-                alignment: 'right',
-                color: '008000'  // Green for high percentages
-              }
-            },
-            {
-              // Low percentage values (< 50%)
-              condition: (text: string) => {
-                const match = text.trim().match(/^(\d+(?:\.\d+)?)%$/);
-                return match && parseFloat(match[1]) < 50;
-              },
-              formatting: {
-                alignment: 'right',
-                color: 'FF0000'  // Red for low percentages
-              }
-            },
-            {
-              // Medium percentage values (50-79%)
-              condition: (text: string) => {
-                const match = text.trim().match(/^(\d+(?:\.\d+)?)%$/);
-                return match && parseFloat(match[1]) >= 50 && parseFloat(match[1]) < 80;
-              },
-              formatting: {
-                alignment: 'right',
-                color: '000000'  // Black for medium percentages
-              }
-            },
-            {
-              // Status indicators - Active/Completed (green background)
-              condition: (text: string) => /^(Active|Completed)$/i.test(text.trim()),
-              formatting: {
-                alignment: 'center',
-                bold: true,
-                shading: {
-                  fill: 'E8F5E9'  // Light green background
-                }
-              }
-            },
-            {
-              // Status indicators - Inactive (red background)
-              condition: (text: string) => /^Inactive$/i.test(text.trim()),
-              formatting: {
-                alignment: 'center',
-                bold: true,
-                shading: {
-                  fill: 'FFEBEE'  // Light red background
-                }
-              }
-            },
-            {
-              // Status indicators - Pending/In Progress (orange background)
-              condition: (text: string) => /^(Pending|In Progress)$/i.test(text.trim()),
-              formatting: {
-                alignment: 'center',
-                bold: true,
-                shading: {
-                  fill: 'FFF3E0'  // Light orange background
-                }
-              }
-            },
-            {
-              // Email addresses
-              condition: (text: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text.trim()),
-              formatting: {
-                color: '0066CC',
-                underline: 'single'
-              }
-            }
-          ]
-        });
-
-        if (result) {
-          formattedCount++;
-          this.log.debug(`Smart formatting applied to table with ${rows.length} rows`);
+          }
         }
+
+        formattedCount++;
+        this.log.debug(`Smart formatting applied to table with ${rows.length} rows`);
       } catch (error) {
-        this.log.warn('Smart table formatting not available in current docxmlater version');
+        this.log.warn(`Error applying smart table formatting: ${error}`);
       }
     }
 
@@ -2606,35 +2403,20 @@ export class WordDocumentProcessor {
    * This is used for non-critical extraction (displaying text).
    * For safety-critical decisions (paragraph deletion), use isParagraphTrulyEmpty() instead.
    */
-  private getParagraphText(para: any): string {
+  private getParagraphText(para: Paragraph | any): string {
     try {
-      // Check if this is a valid paragraph with getRuns method
-      if (!para || typeof para.getRuns !== 'function') {
-        this.log.warn(`⚠️  Invalid paragraph object: ${typeof para}`);
-        return '[INVALID_PARAGRAPH]';
+      // Validate paragraph object
+      if (!para || typeof para.getText !== 'function') {
+        this.log.warn(`Invalid paragraph object: ${typeof para}`);
+        return '';
       }
 
-      const runs = para.getRuns();
-      if (!Array.isArray(runs)) {
-        this.log.warn(`⚠️  Paragraph.getRuns() returned non-array: ${typeof runs}`);
-        return '[EXTRACTION_ERROR]';
-      }
-
-      return runs.map((run: any) => {
-        try {
-          return run.getText() || '';
-        } catch (runError) {
-          this.log.warn(`⚠️  Failed to extract text from run: ${runError instanceof Error ? runError.message : 'Unknown'}`);
-          return '[RUN_ERROR]';
-        }
-      }).join('');
-
+      // Use docxmlater's built-in getText() method
+      return para.getText() || '';
     } catch (error) {
-      // ❌ FIX #1: Don't silently fail with empty string
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      this.log.warn(`⚠️  Failed to extract text from paragraph: ${errorMsg}`);
-      // Return distinguishable value instead of empty string
-      return '[EXTRACTION_FAILED]';
+      this.log.warn(`Failed to extract text from paragraph: ${errorMsg}`);
+      return '';
     }
   }
 
@@ -3012,254 +2794,6 @@ export class WordDocumentProcessor {
   // End Processing Options Method Implementations
   // ═══════════════════════════════════════════════════════════
 
-  /**
-   * Update Table of Contents - Rebuild TOC with current Heading 2 entries
-   *
-   * @deprecated Since DocXMLater 1.6.0 - Use doc.replaceTableOfContents() instead
-   * This method uses manual XML parsing and is no longer maintained.
-   * The new replaceTableOfContents() method provides:
-   * - Automatic heading detection
-   * - Bookmark creation and linking
-   * - Support for all heading levels (not just Heading 2)
-   * - Cleaner implementation without regex parsing
-   *
-   * Keeping for reference until fully removed in future version.
-   *
-   * Finds all Heading 2 paragraphs using regex, extracts their text and bookmarks,
-   * and rebuilds the TOC with hyperlinks to those headings
-   */
-  private async updateTableOfContents(doc: Document): Promise<number> {
-    this.log.debug('Starting TOC update process...');
-
-    // Get the ZipHandler from the document to access raw XML
-    const zipHandler = doc.getZipHandler();
-
-    // Extract document.xml
-    const docXml = zipHandler.getFileAsString('word/document.xml');
-    if (!docXml) {
-      this.log.error('word/document.xml not found in document');
-      return 0;
-    }
-
-    // Detect existing TOC heading level from document
-    const existingTocLevel = this.detectTOCHeadingLevel(docXml);
-    this.log.debug(`Detected existing TOC heading level: ${existingTocLevel}`);
-
-    // Determine which heading style to search for
-    const headingStyleName = `Heading${existingTocLevel}`;
-    const headingLabel = `Heading ${existingTocLevel}`;
-
-    // Find all heading paragraphs using regex
-    const headings: Array<{ text: string; bookmark: string }> = [];
-
-    // Regex to match paragraphs with the detected heading style
-    const headingParaRegex = new RegExp(`<w:p>[\\s\\S]*?<w:pStyle w:val="${headingStyleName}"[\\s\\S]*?</w:p>`, 'g');
-    const paragraphMatches = docXml.match(headingParaRegex);
-
-    if (paragraphMatches) {
-      for (const paraXml of paragraphMatches) {
-        // Extract bookmark name that contains '_heading'
-        const bookmarkRegex = /<w:bookmarkStart[^>]*w:name="([^"]*_heading[^"]*)"/;
-        const bookmarkMatch = paraXml.match(bookmarkRegex);
-
-        if (!bookmarkMatch) {
-          continue; // Skip if no heading bookmark found
-        }
-
-        const bookmark = bookmarkMatch[1];
-
-        // Extract all text content from <w:t> elements
-        const textRegex = /<w:t[^>]*>(.*?)<\/w:t>/g;
-        let text = '';
-        let textMatch;
-
-        while ((textMatch = textRegex.exec(paraXml)) !== null) {
-          text += textMatch[1];
-        }
-
-        // Decode XML entities
-        text = text
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&apos;/g, "'")
-          .replace(/&amp;/g, '&');
-
-        // Only add if we have both bookmark and text
-        if (bookmark && text.trim()) {
-          headings.push({ text: text.trim(), bookmark });
-          this.log.debug(`  Found ${headingLabel}: "${text.trim()}" (bookmark: ${bookmark})`);
-        }
-      }
-    }
-
-    this.log.info(`Found ${headings.length} ${headingLabel} element(s) for TOC`);
-
-    if (headings.length === 0) {
-      this.log.warn(`No ${headingLabel} elements found. Cannot generate TOC.`);
-      return 0;
-    }
-
-    // Build TOC XML with detected heading level
-    const tocXml = this.buildTOCXml(headings, existingTocLevel);
-
-    // Replace existing TOC in document.xml
-    const modifiedXml = this.replaceTOC(docXml, tocXml);
-
-    // Update document.xml in the zip
-    zipHandler.updateFile('word/document.xml', modifiedXml);
-
-    return headings.length;
-  }
-
-  /**
-   * Detect which heading level the existing TOC uses
-   * Looks for patterns like "Heading 2,2," or "Heading 3,3," in the TOC instruction
-   */
-  private detectTOCHeadingLevel(docXml: string): number {
-    // Find existing TOC instruction
-    const instrRegex = /<w:instrText[^>]*>TOC[^<]*"Heading (\d),\d,"[^<]*<\/w:instrText>/;
-    const match = docXml.match(instrRegex);
-
-    if (match && match[1]) {
-      const level = parseInt(match[1], 10);
-      this.log.debug(`Found existing TOC targeting Heading ${level}`);
-      return level;
-    }
-
-    // Default to Heading 2 if no existing TOC found
-    this.log.debug('No existing TOC instruction found, defaulting to Heading 2');
-    return 2;
-  }
-
-  /**
-   * Build TOC XML structure with hyperlinks to heading entries
-   * @param headings Array of headings with text and bookmarks
-   * @param headingLevel The heading level (2, 3, etc.) to use in the TOC instruction
-   */
-  private buildTOCXml(headings: Array<{ text: string; bookmark: string }>, headingLevel: number): string {
-    // SDT ID (random)
-    const sdtId = Math.floor(Math.random() * 2000000000) - 1000000000;
-
-    let tocXml = '<w:sdt>';
-
-    // SDT properties
-    tocXml += '<w:sdtPr>';
-    tocXml += `<w:id w:val="${sdtId}"/>`;
-    tocXml += '<w:docPartObj>';
-    tocXml += '<w:docPartGallery w:val="Table of Contents"/>';
-    tocXml += '<w:docPartUnique w:val="1"/>';
-    tocXml += '</w:docPartObj>';
-    tocXml += '</w:sdtPr>';
-
-    // SDT content
-    tocXml += '<w:sdtContent>';
-
-    // First paragraph: field begin + instruction
-    tocXml += '<w:p>';
-    tocXml += '<w:pPr>';
-    tocXml += '<w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>';
-    tocXml += '</w:pPr>';
-
-    // Field begin
-    tocXml += '<w:r><w:fldChar w:fldCharType="begin"/></w:r>';
-
-    // Field instruction with dynamic heading level
-    tocXml += '<w:r>';
-    tocXml += `<w:instrText xml:space="preserve">TOC \\h \\u \\z \\n \\t "Heading ${headingLevel},${headingLevel},"</w:instrText>`;
-    tocXml += '</w:r>';
-
-    // Field separator
-    tocXml += '<w:r><w:fldChar w:fldCharType="separate"/></w:r>';
-
-    // First heading entry (in the same paragraph as field begin)
-    const firstHeading = headings[0];
-    if (firstHeading) {
-      tocXml += this.buildTOCEntryXml(firstHeading);
-    }
-
-    tocXml += '</w:p>';
-
-    // Remaining entries (each in its own paragraph)
-    for (let i = 1; i < headings.length; i++) {
-      const heading = headings[i];
-      if (heading) {
-        tocXml += '<w:p>';
-        tocXml += '<w:pPr>';
-        tocXml += '<w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>';
-        tocXml += '</w:pPr>';
-        tocXml += this.buildTOCEntryXml(heading);
-        tocXml += '</w:p>';
-      }
-    }
-
-    // Final paragraph with field end
-    tocXml += '<w:p>';
-    tocXml += '<w:pPr>';
-    tocXml += '<w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>';
-    tocXml += '</w:pPr>';
-    tocXml += '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
-    tocXml += '</w:p>';
-
-    tocXml += '</w:sdtContent>';
-    tocXml += '</w:sdt>';
-
-    return tocXml;
-  }
-
-  /**
-   * Build individual TOC entry XML with hyperlink
-   */
-  private buildTOCEntryXml(heading: { text: string; bookmark: string }): string {
-    // Escape XML special characters in text
-    const escapedText = heading.text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
-
-    let xml = '';
-
-    // Hyperlink
-    xml += `<w:hyperlink w:anchor="${heading.bookmark}">`;
-    xml += '<w:r>';
-    xml += '<w:rPr>';
-    xml += '<w:rFonts w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana" w:eastAsia="Verdana"/>';
-    xml += '<w:color w:val="0000ff"/>';
-    xml += '<w:sz w:val="24"/>';
-    xml += '<w:szCs w:val="24"/>';
-    xml += '<w:u w:val="single"/>';
-    xml += '</w:rPr>';
-    xml += `<w:t xml:space="preserve">${escapedText}</w:t>`;
-    xml += '</w:r>';
-    xml += '</w:hyperlink>';
-
-    return xml;
-  }
-
-  /**
-   * Replace existing TOC in document XML with new TOC structure
-   */
-  private replaceTOC(docXml: string, newTocXml: string): string {
-    // Find the existing TOC SDT
-    // Match: <w:sdt>...</w:sdt> where sdtPr contains docPartGallery="Table of Contents"
-    const sdtRegex = /<w:sdt>[\s\S]*?<w:docPartGallery w:val="Table of Contents"[\s\S]*?<\/w:sdt>/;
-
-    const match = docXml.match(sdtRegex);
-
-    if (!match) {
-      this.log.warn('Could not find existing TOC in document - no TOC to update');
-      return docXml; // Return unchanged if no TOC found
-    }
-
-    this.log.debug('Found existing TOC, replacing with new structure...');
-
-    // Replace the matched SDT with our new TOC
-    const modifiedXml = docXml.replace(sdtRegex, newTocXml);
-
-    return modifiedXml;
-  }
 
   /**
    * Add or update document warning at the end of the document
