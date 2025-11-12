@@ -20,6 +20,9 @@ export interface TextStyle {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  preserveBold?: boolean; // Optional: true = preserve existing bold (ignore bold property)
+  preserveItalic?: boolean; // Optional: true = preserve existing italic (ignore italic property)
+  preserveUnderline?: boolean; // Optional: true = preserve existing underline (ignore underline property)
   color?: string; // hex color (e.g., "FF0000")
   highlight?: string; // highlight color
 }
