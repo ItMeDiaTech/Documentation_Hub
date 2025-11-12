@@ -121,6 +121,9 @@ GITHUB_ISSUE_*.md
 ISSUE_*.md
 OOXML_*.md
 
+# Development documentation (internal use only)
+docs/architecture/COMPLETE_PROCESSING_FLOW.md
+
 # Backup and temporary files
 *.bak
 *.backup
@@ -138,3 +141,27 @@ electron/__tests__/
 
 # Temporary fix/import scripts
 fix-imports/
+/test-hyperlink-para.ts
+/test-bookmark-only.ts
+/test-clean-document.ts
+/test-default-options.ts
+/test-fix-hyperlinks.ts
+/test-forward-order.ts
+/test-fresh-insert.ts
+/test-hyperlink-colors.ts
+/test-insert-only.ts
+/test-no-bookmark.ts
+/test-pure-load-save.ts
+/test-top-of-document.ts
+/verify-processed.ts
+/verify-style-spacing.ts
+/test-output
+/Test_Code.backup.2025-11-11T17-31-56
+/SDT_PROTECTION_FIX.md
+/TABLE_PROTECTION_FIX.md
+/run-all-isolation-tests.ts
+/HYPERLINK_TEXT_SANITIZATION.md
+/FIX_SUMMARY_DATA_LOSS_BUG.md
+/FINAL_SOLUTION.md
+/EXECUTION_LOG_TEST_BASE.md
+/inspect-paragraph-xml.ts

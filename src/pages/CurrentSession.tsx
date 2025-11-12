@@ -57,19 +57,13 @@ export function CurrentSession() {
     updateSessionStyles,
     updateSessionListBulletSettings,
     updateSessionTableUniformitySettings,
+    updateSessionTableShadingSettings,
   } = useSession();
 
   const [isDragging, setIsDragging] = useState(false);
   const [processingQueue, setProcessingQueue] = useState<string[]>([]);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
-  const [showStylesSaveSuccess, setShowStylesSaveSuccess] = useState(false);
-
-  // Create a stable callback for the save handler
-  const handleStylesSave = useCallback(() => {
-    // This will trigger the success animation
-    setShowStylesSaveSuccess(true);
-  }, []);
 
   useEffect(() => {
     if (id && !currentSession) {
@@ -296,23 +290,43 @@ export function CurrentSession() {
   };
 
   const handleProcessDocument = async (documentId: string) => {
+    const doc = session.documents.find((d) => d.id === documentId);
+
+    // Show toast with enabled operations when processing starts
+    const enabledOps = session.processingOptions?.enabledOperations || [];
+    const operationsCount = enabledOps.length;
+
+    if (operationsCount > 0) {
+      const firstFewOps = enabledOps.slice(0, 3).map(op => {
+        // Convert kebab-case to human-readable
+        return op.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+      }).join(', ');
+
+      toast({
+        title: 'Processing Document',
+        description: `Applying ${operationsCount} operation${operationsCount > 1 ? 's' : ''}: ${firstFewOps}${operationsCount > 3 ? ', ...' : ''}`,
+        variant: 'default',
+        duration: 3000,
+      });
+    }
+
     setProcessingQueue((prev) => [...prev, documentId]);
     await processDocument(session.id, documentId);
     setProcessingQueue((prev) => prev.filter((id) => id !== documentId));
 
     // Show success toast after processing completes
-    const doc = session.documents.find((d) => d.id === documentId);
-    if (doc?.status === 'completed' && doc.path) {
+    const processedDoc = session.documents.find((d) => d.id === documentId);
+    if (processedDoc?.status === 'completed' && processedDoc.path) {
       toast({
         title: '✅ Processing Complete',
-        description: `${doc.name} is ready! Click the green button to open in Word.`,
+        description: `${processedDoc.name} is ready! Click the green button to open in Word.`,
         variant: 'success',
         duration: 6000,
       });
-    } else if (doc?.status === 'error') {
+    } else if (processedDoc?.status === 'error') {
       toast({
         title: 'Processing Failed',
-        description: doc.errors?.[0] || 'An error occurred while processing the document.',
+        description: processedDoc.errors?.[0] || 'An error occurred while processing the document.',
         variant: 'destructive',
       });
     }
@@ -346,6 +360,13 @@ export function CurrentSession() {
       .filter(opt => opt.enabled)
       .map(opt => opt.id);
 
+    // DEBUG: Log processing options changes
+    console.log('[CurrentSession] Processing options changed:');
+    console.log('  - Enabled operations:', enabledOperations);
+    console.log('  - TOC enabled:', enabledOperations.includes('update-toc-hyperlinks'));
+    console.log('  - Validate styles enabled:', enabledOperations.includes('validate-document-styles'));
+    console.log('  - Validate Header2 tables enabled:', enabledOperations.includes('validate-header2-tables'));
+
     // Update session processing options using the context method
     updateSessionOptions(session.id, {
       appendContentId: enabledOperations.includes('fix-content-ids'),
@@ -355,6 +376,14 @@ export function CurrentSession() {
       processInternalLinks: enabledOperations.includes('fix-internal-hyperlinks'),
       processExternalLinks: true,
       enabledOperations: enabledOperations,
+    });
+  };
+
+  const handleTableShadingChange = (header2: string, other: string) => {
+    // Update session table shading settings
+    updateSessionTableShadingSettings(session.id, {
+      header2Shading: header2,
+      otherShading: other,
     });
   };
 
@@ -636,21 +665,9 @@ export function CurrentSession() {
     </div>
   );
 
-  // Header actions for each tab
-  const headerActions: Record<string, React.ReactNode> = {
-    styles: (
-      <Button
-        variant="default"
-        size="sm"
-        icon={<Save className="w-4 h-4" />}
-        onClick={handleStylesSave}
-        showSuccess={showStylesSaveSuccess}
-        onSuccess={() => setShowStylesSaveSuccess(false)}
-      >
-        Save Styles
-      </Button>
-    ),
-  };
+  // Note: Header actions removed - Styles tab now auto-saves on field change
+  // No manual save button needed as changes persist immediately to SessionContext
+  const headerActions: Record<string, React.ReactNode> = {};
 
   // Create tabs configuration
   const tabs = [
@@ -677,16 +694,16 @@ export function CurrentSession() {
         <StylesEditor
           initialStyles={session.styles}
           onStylesChange={(styles) => {
+            // Auto-save: changes are persisted immediately to SessionContext
             updateSessionStyles(session.id, styles);
-            // Automatically trigger the save success animation
-            setShowStylesSaveSuccess(true);
           }}
           onListBulletSettingsChange={(settings) => {
+            // Auto-save: changes are persisted immediately to SessionContext
             updateSessionListBulletSettings(session.id, settings);
           }}
-          onTableUniformitySettingsChange={(settings) => {
-            updateSessionTableUniformitySettings(session.id, settings);
-          }}
+          tableHeader2Shading={session.tableShadingSettings?.header2Shading || '#BFBFBF'}
+          tableOtherShading={session.tableShadingSettings?.otherShading || '#E9E9E9'}
+          onTableShadingChange={handleTableShadingChange}
         />
       ),
     },

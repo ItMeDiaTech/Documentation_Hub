@@ -256,16 +256,16 @@ export const Analytics = memo(function Analytics() {
       </motion.div>
 
       {/* Charts */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Line Chart */}
+      <motion.div variants={itemVariants} className="grid grid-cols-1 gap-6">
+        {/* Documents Processed Chart */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5" />
-              Trends Over Time
+              Documents Processed Over Time
             </CardTitle>
             <CardDescription>
-              Track your productivity metrics across {viewMode === 'daily' ? 'days' : viewMode === 'weekly' ? 'weeks' : 'months'}
+              Track document processing trends across {viewMode === 'daily' ? 'days' : viewMode === 'weekly' ? 'weeks' : 'months'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -274,12 +274,12 @@ export const Analytics = memo(function Analytics() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }}
+                  tick={{ fontSize: 12, fill: 'var(--color-foreground)' }}
                   angle={-45}
                   textAnchor="end"
                   height={80}
                 />
-                <YAxis tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
+                <YAxis tick={{ fontSize: 12, fill: 'var(--color-foreground)' }} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'hsl(var(--background))',
@@ -295,6 +295,42 @@ export const Analytics = memo(function Analytics() {
                   strokeWidth={2}
                   dot={{ r: 4 }}
                 />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Hyperlinks Checked Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Hyperlinks Checked Over Time
+            </CardTitle>
+            <CardDescription>
+              Track hyperlink validation trends across {viewMode === 'daily' ? 'days' : viewMode === 'weekly' ? 'weeks' : 'months'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 12, fill: 'var(--color-foreground)' }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                />
+                <YAxis tick={{ fontSize: 12, fill: 'var(--color-foreground)' }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--background))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                  }}
+                />
+                <Legend />
                 <Line
                   type="monotone"
                   dataKey="Hyperlinks"
@@ -324,12 +360,12 @@ export const Analytics = memo(function Analytics() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }}
+                  tick={{ fontSize: 12, fill: 'var(--color-foreground)' }}
                   angle={-45}
                   textAnchor="end"
                   height={80}
                 />
-                <YAxis tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
+                <YAxis tick={{ fontSize: 12, fill: 'var(--color-foreground)' }} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'hsl(var(--background))',

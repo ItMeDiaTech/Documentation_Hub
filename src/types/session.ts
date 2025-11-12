@@ -65,30 +65,40 @@ export interface Session {
   styles?: SessionStyle[];
   // Document uniformity settings
   listBulletSettings?: ListBulletSettings;
-  tableUniformitySettings?: TableUniformitySettings;
+  tableUniformitySettings?: TableUniformitySettings; // Legacy - will be deprecated
+  tableShadingSettings?: TableShadingSettings; // NEW: Simplified table shading colors
   tableOfContentsSettings?: TableOfContentsSettings;
   // Replacement rules
   replacements?: ReplacementRule[];
 }
 
 export interface SessionStyle {
-  id: string; // CRITICAL: needed to identify which style (header1, header2, normal)
+  id: string; // CRITICAL: needed to identify which style (header1, header2, header3, normal, listParagraph)
   name: string;
   fontFamily: string;
   fontSize: number;
-  bold: boolean;
-  italic: boolean;
-  underline: boolean;
+  bold: boolean; // Required: true = apply bold, false = remove bold
+  italic: boolean; // Required: true = apply italic, false = remove italic
+  underline: boolean; // Required: true = apply underline, false = remove underline
+  preserveBold?: boolean; // Optional: true = preserve existing bold (ignore bold property)
+  preserveItalic?: boolean; // Optional: true = preserve existing italic (ignore italic property)
+  preserveUnderline?: boolean; // Optional: true = preserve existing underline (ignore underline property)
   alignment: 'left' | 'center' | 'right' | 'justify';
   color: string;
   spaceBefore: number;
   spaceAfter: number;
   lineSpacing: number;
+  noSpaceBetweenSame?: boolean; // Don't add space between paragraphs of the same style (List Paragraph)
+  indentation?: {
+    left?: number;      // Left indent in inches (e.g., 0.25" for bullet position)
+    firstLine?: number; // First line indent in inches (e.g., 0.5" for text position)
+  };
 }
 
 export interface IndentationLevel {
   level: number;
-  indentation: number; // in points
+  symbolIndent: number; // Symbol/bullet position from left margin in inches
+  textIndent: number;   // Text position from left margin in inches
   bulletChar?: string; // bullet character for this level
   numberedFormat?: string; // format for numbered lists (1., a., i., etc.)
 }
@@ -96,7 +106,7 @@ export interface IndentationLevel {
 export interface ListBulletSettings {
   enabled: boolean;
   indentationLevels: IndentationLevel[];
-  spacingBetweenItems: number; // in points
+  // Note: List item spacing uses the List Paragraph style's spaceBefore/spaceAfter values
 }
 
 export interface TableUniformitySettings {
@@ -136,6 +146,11 @@ export interface TableOfContentsSettings {
   tocTitle: string;
   showTocTitle: boolean; // Option to turn off TOC title display
   spacingBetweenHyperlinks: number; // in points
+}
+
+export interface TableShadingSettings {
+  header2Shading: string; // Hex color for Header 2 / 1x1 table cells (default: #BFBFBF)
+  otherShading: string;   // Hex color for other table cells (default: #E9E9E9)
 }
 
 export interface ReplacementRule {
@@ -178,6 +193,8 @@ export interface SessionContextType {
   updateSessionStyles: (sessionId: string, styles: SessionStyle[]) => void;
   updateSessionListBulletSettings: (sessionId: string, listBulletSettings: ListBulletSettings) => void;
   updateSessionTableUniformitySettings: (sessionId: string, tableUniformitySettings: TableUniformitySettings) => void;
+  updateSessionTableShadingSettings: (sessionId: string, tableShadingSettings: TableShadingSettings) => void;
+  updateSessionTableOfContentsSettings: (sessionId: string, tableOfContentsSettings: TableOfContentsSettings) => void;
 
   // Persistence
   saveSession: (session: Session) => void;
