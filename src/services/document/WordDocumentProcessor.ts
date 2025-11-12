@@ -2102,21 +2102,26 @@ export class WordDocumentProcessor {
   ): Promise<number> {
     const manager = doc.getNumberingManager();
 
-    // Extract bullet characters from UI settings
-    const bullets = settings.indentationLevels.map(level => level.bulletChar || '•');
+    // Extract bullet characters from UI settings (U+F0B7 is Symbol font standard bullet)
+    const bullets = settings.indentationLevels.map(level => level.bulletChar || '\uF0B7');
+
+    // Use level 0 as base indentation, multiply for subsequent levels per Microsoft spec
+    const baseSymbolIndent = settings.indentationLevels[0].symbolIndent;
+    const baseTextIndent = settings.indentationLevels[0].textIndent;
 
     // Create custom levels with font specified and UI indentation
     const levels = settings.indentationLevels.map((levelConfig, index) => {
-      const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
-      const textTwips = Math.round(levelConfig.textIndent * 1440);
+      // Multiply base indentation by (level + 1): Level 0=1×, Level 1=2×, Level 2=3×, etc.
+      const symbolTwips = Math.round(baseSymbolIndent * 1440 * (index + 1));
+      const textTwips = Math.round(baseTextIndent * 1440 * (index + 1));
       const hangingTwips = textTwips - symbolTwips;
 
       return new NumberingLevel({
         level: index,
         format: 'bullet',
-        text: levelConfig.bulletChar || '•',
-        font: 'Arial',  // Specify font directly in API
-        leftIndent: symbolTwips,
+        text: levelConfig.bulletChar || '\uF0B7',  // U+F0B7 is Symbol font standard bullet
+        // Let framework use default 'Symbol' font for correct bullet rendering
+        leftIndent: textTwips,  // Text position (not bullet position)
         hangingIndent: hangingTwips
       });
     });
@@ -2183,17 +2188,22 @@ export class WordDocumentProcessor {
       this.parseNumberedFormat(level.numberedFormat || '1.')
     );
 
+    // Use level 0 as base indentation, multiply for subsequent levels per Microsoft spec
+    const baseSymbolIndent = settings.indentationLevels[0].symbolIndent;
+    const baseTextIndent = settings.indentationLevels[0].textIndent;
+
     // Create custom levels with UI indentation
     const levels = settings.indentationLevels.map((levelConfig, index) => {
-      const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
-      const textTwips = Math.round(levelConfig.textIndent * 1440);
+      // Multiply base indentation by (level + 1): Level 0=1×, Level 1=2×, Level 2=3×, etc.
+      const symbolTwips = Math.round(baseSymbolIndent * 1440 * (index + 1));
+      const textTwips = Math.round(baseTextIndent * 1440 * (index + 1));
       const hangingTwips = textTwips - symbolTwips;
 
       return new NumberingLevel({
         level: index,
         format: formats[index],
         text: `%${index + 1}.`,  // Standard template (e.g., %1., %2.)
-        leftIndent: symbolTwips,
+        leftIndent: textTwips,  // Text position (not number position)
         hangingIndent: hangingTwips
       });
     });

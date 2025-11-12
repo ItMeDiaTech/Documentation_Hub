@@ -140,12 +140,13 @@ const lineSpacingOptions = [
 // Default indentation levels based on documentation best practices
 // Alternating between closed (•) and open (○) bullets
 // Symbol indent: 0.25" per level, Text indent: 0.5" per level
+// Using U+F0B7 () for standard Symbol font bullets per Microsoft spec
 const defaultIndentationLevels: IndentationLevel[] = [
-  { level: 1, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '•', numberedFormat: '1.' },
+  { level: 1, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '\uF0B7', numberedFormat: '1.' },
   { level: 2, symbolIndent: 0.5, textIndent: 1.0, bulletChar: '○', numberedFormat: 'a.' },
-  { level: 3, symbolIndent: 0.75, textIndent: 1.5, bulletChar: '•', numberedFormat: 'i.' },
+  { level: 3, symbolIndent: 0.75, textIndent: 1.5, bulletChar: '\uF0B7', numberedFormat: 'i.' },
   { level: 4, symbolIndent: 1.0, textIndent: 2.0, bulletChar: '○', numberedFormat: '1)' },
-  { level: 5, symbolIndent: 1.25, textIndent: 2.5, bulletChar: '•', numberedFormat: 'a)' }
+  { level: 5, symbolIndent: 1.25, textIndent: 2.5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {
@@ -657,11 +658,11 @@ export const StylesEditor = memo(function StylesEditor({
                     onChange={(e) => {
                       const increment = Number(e.target.value);
                       const newLevels: IndentationLevel[] = [
-                        { level: 1, symbolIndent: increment * 1, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 1, bulletChar: '•', numberedFormat: '1.' },
+                        { level: 1, symbolIndent: increment * 1, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 1, bulletChar: '\uF0B7', numberedFormat: '1.' },
                         { level: 2, symbolIndent: increment * 2, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 2, bulletChar: '○', numberedFormat: 'a.' },
-                        { level: 3, symbolIndent: increment * 3, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 3, bulletChar: '•', numberedFormat: 'i.' },
+                        { level: 3, symbolIndent: increment * 3, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 3, bulletChar: '\uF0B7', numberedFormat: 'i.' },
                         { level: 4, symbolIndent: increment * 4, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 4, bulletChar: '○', numberedFormat: '1)' },
-                        { level: 5, symbolIndent: increment * 5, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 5, bulletChar: '•', numberedFormat: 'a)' }
+                        { level: 5, symbolIndent: increment * 5, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
                       ];
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);
@@ -684,11 +685,11 @@ export const StylesEditor = memo(function StylesEditor({
                     onChange={(e) => {
                       const increment = Number(e.target.value);
                       const newLevels: IndentationLevel[] = [
-                        { level: 1, symbolIndent: listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25, textIndent: increment * 1, bulletChar: '•', numberedFormat: '1.' },
+                        { level: 1, symbolIndent: listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25, textIndent: increment * 1, bulletChar: '\uF0B7', numberedFormat: '1.' },
                         { level: 2, symbolIndent: listBulletSettings.indentationLevels[1]?.symbolIndent || 0.5, textIndent: increment * 2, bulletChar: '○', numberedFormat: 'a.' },
-                        { level: 3, symbolIndent: listBulletSettings.indentationLevels[2]?.symbolIndent || 0.75, textIndent: increment * 3, bulletChar: '•', numberedFormat: 'i.' },
+                        { level: 3, symbolIndent: listBulletSettings.indentationLevels[2]?.symbolIndent || 0.75, textIndent: increment * 3, bulletChar: '\uF0B7', numberedFormat: 'i.' },
                         { level: 4, symbolIndent: listBulletSettings.indentationLevels[3]?.symbolIndent || 1.0, textIndent: increment * 4, bulletChar: '○', numberedFormat: '1)' },
-                        { level: 5, symbolIndent: listBulletSettings.indentationLevels[4]?.symbolIndent || 1.25, textIndent: increment * 5, bulletChar: '•', numberedFormat: 'a)' }
+                        { level: 5, symbolIndent: listBulletSettings.indentationLevels[4]?.symbolIndent || 1.25, textIndent: increment * 5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
                       ];
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);
@@ -727,7 +728,7 @@ export const StylesEditor = memo(function StylesEditor({
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Level 1</label>
                   <select
-                    value={listBulletSettings.indentationLevels[0]?.bulletChar || '•'}
+                    value={listBulletSettings.indentationLevels[0]?.bulletChar || '\uF0B7'}
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[0] = { ...newLevels[0], bulletChar: e.target.value };
@@ -781,7 +782,7 @@ export const StylesEditor = memo(function StylesEditor({
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Level 3</label>
                   <select
-                    value={listBulletSettings.indentationLevels[2]?.bulletChar || '•'}
+                    value={listBulletSettings.indentationLevels[2]?.bulletChar || '\uF0B7'}
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[2] = { ...newLevels[2], bulletChar: e.target.value };
