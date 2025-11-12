@@ -8,17 +8,14 @@ import {
   Italic,
   Underline,
   Check,
-  Save,
   List,
   Table,
-  BookOpen
+  BookOpen,
+  Lock
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { Button } from '@/components/common/Button';
 import {
   ListBulletSettings,
-  TableUniformitySettings,
-  TableOfContentsSettings,
   IndentationLevel
 } from '@/types/session';
 
@@ -27,15 +24,22 @@ interface StyleDefinition {
   name: string;
   fontSize: number;
   fontFamily: string;
-  bold: boolean;
-  italic: boolean;
-  underline: boolean;
+  bold: boolean; // Required: true = apply bold, false = remove bold
+  italic: boolean; // Required: true = apply italic, false = remove italic
+  underline: boolean; // Required: true = apply underline, false = remove underline
+  preserveBold?: boolean; // Optional: true = preserve existing bold (ignore bold property)
+  preserveItalic?: boolean; // Optional: true = preserve existing italic (ignore italic property)
+  preserveUnderline?: boolean; // Optional: true = preserve existing underline (ignore underline property)
   alignment: 'left' | 'center' | 'right' | 'justify';
   spaceBefore: number;
   spaceAfter: number;
   lineSpacing: number; // 1.0 = single, 1.15 = Word default, 1.5, 2.0 = double
   color: string;
   noSpaceBetweenSame?: boolean;
+  indentation?: {
+    left?: number;      // Left indent in inches (e.g., 0.25" for bullet position)
+    firstLine?: number; // First line indent in inches (e.g., 0.5" for text position)
+  };
 }
 
 const defaultStyles: StyleDefinition[] = [
@@ -68,19 +72,58 @@ const defaultStyles: StyleDefinition[] = [
     color: '#000000'
   },
   {
-    id: 'normal',
-    name: 'Normal',
+    id: 'header3',
+    name: 'Header 3',
     fontSize: 12,
     fontFamily: 'Verdana',
-    bold: false,
+    bold: true,
     italic: false,
     underline: false,
     alignment: 'left',
     spaceBefore: 3,
     spaceAfter: 3,
-    lineSpacing: 1.15, // Word default
+    lineSpacing: 1.0, // Single spacing for headings
+    color: '#000000'
+  },
+  {
+    id: 'normal',
+    name: 'Normal',
+    fontSize: 12,
+    fontFamily: 'Verdana',
+    bold: false, // Not bold by default
+    italic: false, // Not italic by default
+    underline: false, // Not underlined by default
+    preserveBold: true, // Preserve existing bold formatting (Requirement 5)
+    preserveItalic: false, // Apply italic setting (not preserved)
+    preserveUnderline: false, // Apply underline setting (not preserved)
+    alignment: 'left',
+    spaceBefore: 3,
+    spaceAfter: 3,
+    lineSpacing: 1.0, // Changed from 1.15 to 1.0
     color: '#000000',
-    noSpaceBetweenSame: false
+    noSpaceBetweenSame: false // Allow spacing between Normal paragraphs (Requirement 5)
+  },
+  {
+    id: 'listParagraph',
+    name: 'List Paragraph',
+    fontSize: 12,
+    fontFamily: 'Verdana',
+    bold: false, // Not bold by default
+    italic: false, // Not italic by default
+    underline: false, // Not underlined by default
+    preserveBold: true, // Preserve existing bold formatting (Requirement 6)
+    preserveItalic: false, // Apply italic setting (not preserved)
+    preserveUnderline: false, // Apply underline setting (not preserved)
+    alignment: 'left',
+    spaceBefore: 0,
+    spaceAfter: 6,
+    lineSpacing: 1.0,
+    color: '#000000',
+    noSpaceBetweenSame: true, // No spacing between list items (Requirement 6)
+    indentation: {
+      left: 0.25,     // Bullet position at 0.25 inches
+      firstLine: 0.5  // Text position at 0.5 inches (0.25 additional from left)
+    }
   }
 ];
 
@@ -96,69 +139,42 @@ const lineSpacingOptions = [
 
 // Default indentation levels based on documentation best practices
 // Alternating between closed (•) and open (○) bullets
+// Symbol indent: 0.25" per level, Text indent: 0.5" per level
 const defaultIndentationLevels: IndentationLevel[] = [
-  { level: 1, indentation: 0, bulletChar: '•', numberedFormat: '1.' },
-  { level: 2, indentation: 36, bulletChar: '○', numberedFormat: 'a.' },
-  { level: 3, indentation: 72, bulletChar: '•', numberedFormat: 'i.' },
-  { level: 4, indentation: 108, bulletChar: '○', numberedFormat: '1)' },
-  { level: 5, indentation: 144, bulletChar: '•', numberedFormat: 'a)' }
+  { level: 1, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '•', numberedFormat: '1.' },
+  { level: 2, symbolIndent: 0.5, textIndent: 1.0, bulletChar: '○', numberedFormat: 'a.' },
+  { level: 3, symbolIndent: 0.75, textIndent: 1.5, bulletChar: '•', numberedFormat: 'i.' },
+  { level: 4, symbolIndent: 1.0, textIndent: 2.0, bulletChar: '○', numberedFormat: '1)' },
+  { level: 5, symbolIndent: 1.25, textIndent: 2.5, bulletChar: '•', numberedFormat: 'a)' }
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {
   enabled: true,
-  indentationLevels: defaultIndentationLevels,
-  spacingBetweenItems: 3
+  indentationLevels: defaultIndentationLevels
 };
 
-const defaultTableUniformitySettings: TableUniformitySettings = {
-  enabled: true,
-  borderStyle: 'single',
-  borderWidth: 1,
-  headerRowBold: true,
-  headerRowShaded: true,
-  headerRowShadingColor: '#D3D3D3',
-  alternatingRowColors: false,
-  cellPadding: 4,
-  autoFit: 'content',
-  // Header 2 in 1x1 table cell settings
-  header2In1x1CellShading: '#D3D3D3',
-  header2In1x1Alignment: 'left',
-  // Large table (>1x1) settings
-  largeTableSettings: {
-    font: 'Verdana',
-    fontSize: 12,
-    bold: false,
-    italic: false,
-    underline: false,
-    alignment: 'left',
-    cellPadding: 4
-  },
-  applyToIfThenPattern: true,
-  applyToTopRow: true
-};
-
-const defaultTableOfContentsSettings: TableOfContentsSettings = {
-  enabled: true,
-  includeHeadingLevels: [2], // Default to only Level 2
-  showPageNumbers: true,
-  rightAlignPageNumbers: true,
-  useHyperlinks: true,
-  tabLeaderStyle: 'none', // Default to none instead of dots
-  tocTitle: 'Table of Contents',
-  showTocTitle: false, // Option to turn off title (default: off)
-  spacingBetweenHyperlinks: 0 // Default spacing
-};
+// Note: defaultTableOfContentsSettings removed - TOC managed via Processing Options
+// Note: defaultTableUniformitySettings removed - Table settings now in Processing Options
 
 interface StylesEditorProps {
   initialStyles?: any[];
   onStylesChange?: (styles: StyleDefinition[]) => void;
   onListBulletSettingsChange?: (settings: ListBulletSettings) => void;
-  onTableUniformitySettingsChange?: (settings: TableUniformitySettings) => void;
-  renderSaveButton?: (handleSave: () => void, showSuccess: boolean, onSuccessComplete: () => void) => React.ReactNode;
+  tableHeader2Shading?: string;
+  tableOtherShading?: string;
+  onTableShadingChange?: (header2: string, other: string) => void;
+  // Note: Auto-save is now implemented - no renderSaveButton needed
 }
 
 // PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
-export const StylesEditor = memo(function StylesEditor({ initialStyles, onStylesChange, onListBulletSettingsChange, onTableUniformitySettingsChange, renderSaveButton }: StylesEditorProps) {
+export const StylesEditor = memo(function StylesEditor({
+  initialStyles,
+  onStylesChange,
+  onListBulletSettingsChange,
+  tableHeader2Shading,
+  tableOtherShading,
+  onTableShadingChange
+}: StylesEditorProps) {
   // Convert session styles to StyleDefinition format or use defaults
   const convertToStyleDefinitions = (sessionStyles?: any[]): StyleDefinition[] => {
     if (!sessionStyles || sessionStyles.length === 0) {
@@ -176,29 +192,38 @@ export const StylesEditor = memo(function StylesEditor({ initialStyles, onStyles
         bold: sessionStyle.bold ?? defaultStyle.bold,
         italic: sessionStyle.italic ?? defaultStyle.italic,
         underline: sessionStyle.underline ?? defaultStyle.underline,
+        preserveBold: sessionStyle.preserveBold ?? defaultStyle.preserveBold,
+        preserveItalic: sessionStyle.preserveItalic ?? defaultStyle.preserveItalic,
+        preserveUnderline: sessionStyle.preserveUnderline ?? defaultStyle.preserveUnderline,
         alignment: sessionStyle.alignment || defaultStyle.alignment,
         color: sessionStyle.color || defaultStyle.color,
         spaceBefore: sessionStyle.spaceBefore ?? defaultStyle.spaceBefore,
         spaceAfter: sessionStyle.spaceAfter ?? defaultStyle.spaceAfter,
         lineSpacing: sessionStyle.lineSpacing ?? defaultStyle.lineSpacing,
         noSpaceBetweenSame: sessionStyle.noSpaceBetweenSame ?? defaultStyle.noSpaceBetweenSame,
+        indentation: sessionStyle.indentation || defaultStyle.indentation,
       };
     });
   };
 
   const [styles, setStyles] = useState<StyleDefinition[]>(() => convertToStyleDefinitions(initialStyles));
   const [listBulletSettings, setListBulletSettings] = useState<ListBulletSettings>(defaultListBulletSettings);
-  const [tableUniformitySettings, setTableUniformitySettings] = useState<TableUniformitySettings>(defaultTableUniformitySettings);
-  const [tableOfContentsSettings, setTableOfContentsSettings] = useState<TableOfContentsSettings>(defaultTableOfContentsSettings);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [localTableHeader2Shading, setLocalTableHeader2Shading] = useState<string>(tableHeader2Shading || '#BFBFBF');
+  const [localTableOtherShading, setLocalTableOtherShading] = useState<string>(tableOtherShading || '#E9E9E9');
+  // Note: Table of Contents settings removed - managed via Processing Options checkbox
+  // Note: showSuccess state removed - no longer needed with auto-save
 
   const updateStyle = (styleId: string, updates: Partial<StyleDefinition>) => {
     const updatedStyles = styles.map(style =>
       style.id === styleId ? { ...style, ...updates } : style
     );
     setStyles(updatedStyles);
+    // Auto-save: immediately call onStylesChange to persist changes
     onStylesChange?.(updatedStyles);
   };
+
+  // Note: updateTableOfContentsSettings removed - TOC settings managed via Processing Options
+  // Note: updateTableUniformitySettings removed - Table settings now in Processing Options
 
   const renderStyleEditor = (style: StyleDefinition) => {
     return (
@@ -258,41 +283,139 @@ export const StylesEditor = memo(function StylesEditor({ initialStyles, onStyles
           <div className="space-y-3">
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Formatting</label>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => updateStyle(style.id, { bold: !style.bold })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    style.bold
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <Bold className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => updateStyle(style.id, { italic: !style.italic })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    style.italic
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <Italic className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => updateStyle(style.id, { underline: !style.underline })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    style.underline
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <Underline className="w-4 h-4" />
-                </button>
-              </div>
+              {/* Headers: Binary toggles */}
+              {(style.id === 'header1' || style.id === 'header2' || style.id === 'header3') && (
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => updateStyle(style.id, { bold: !style.bold })}
+                    className={cn(
+                      'p-2 rounded transition-all',
+                      style.bold
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted hover:bg-muted/80'
+                    )}
+                  >
+                    <Bold className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => updateStyle(style.id, { italic: !style.italic })}
+                    className={cn(
+                      'p-2 rounded transition-all',
+                      style.italic
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted hover:bg-muted/80'
+                    )}
+                  >
+                    <Italic className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => updateStyle(style.id, { underline: !style.underline })}
+                    className={cn(
+                      'p-2 rounded transition-all',
+                      style.underline
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted hover:bg-muted/80'
+                    )}
+                  >
+                    <Underline className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+              {/* Normal & ListParagraph: Dual toggles */}
+              {(style.id === 'normal' || style.id === 'listParagraph') && (
+                <div className="space-y-2">
+                  {/* Row 1: Format toggles */}
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => updateStyle(style.id, { bold: !style.bold })}
+                      disabled={style.preserveBold}
+                      className={cn(
+                        'p-2 rounded transition-all',
+                        style.preserveBold
+                          ? 'opacity-50 cursor-not-allowed bg-muted'
+                          : style.bold
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted hover:bg-muted/80'
+                      )}
+                      title={style.preserveBold ? 'Bold formatting is preserved' : style.bold ? 'Bold enabled' : 'Bold disabled'}
+                    >
+                      <Bold className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => updateStyle(style.id, { italic: !style.italic })}
+                      disabled={style.preserveItalic}
+                      className={cn(
+                        'p-2 rounded transition-all',
+                        style.preserveItalic
+                          ? 'opacity-50 cursor-not-allowed bg-muted'
+                          : style.italic
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted hover:bg-muted/80'
+                      )}
+                      title={style.preserveItalic ? 'Italic formatting is preserved' : style.italic ? 'Italic enabled' : 'Italic disabled'}
+                    >
+                      <Italic className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => updateStyle(style.id, { underline: !style.underline })}
+                      disabled={style.preserveUnderline}
+                      className={cn(
+                        'p-2 rounded transition-all',
+                        style.preserveUnderline
+                          ? 'opacity-50 cursor-not-allowed bg-muted'
+                          : style.underline
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted hover:bg-muted/80'
+                      )}
+                      title={style.preserveUnderline ? 'Underline formatting is preserved' : style.underline ? 'Underline enabled' : 'Underline disabled'}
+                    >
+                      <Underline className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {/* Row 2: Preserve toggles */}
+                  <div className="flex gap-2 text-xs">
+                    <button
+                      onClick={() => updateStyle(style.id, { preserveBold: !style.preserveBold })}
+                      className={cn(
+                        'flex items-center gap-1 px-2 py-1 rounded transition-all',
+                        style.preserveBold
+                          ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                          : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                      )}
+                      title={style.preserveBold ? 'Preserve existing bold formatting' : 'Apply bold setting'}
+                    >
+                      <Lock className="w-3 h-3" />
+                      <span>Bold</span>
+                    </button>
+                    <button
+                      onClick={() => updateStyle(style.id, { preserveItalic: !style.preserveItalic })}
+                      className={cn(
+                        'flex items-center gap-1 px-2 py-1 rounded transition-all',
+                        style.preserveItalic
+                          ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                          : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                      )}
+                      title={style.preserveItalic ? 'Preserve existing italic formatting' : 'Apply italic setting'}
+                    >
+                      <Lock className="w-3 h-3" />
+                      <span>Italic</span>
+                    </button>
+                    <button
+                      onClick={() => updateStyle(style.id, { preserveUnderline: !style.preserveUnderline })}
+                      className={cn(
+                        'flex items-center gap-1 px-2 py-1 rounded transition-all',
+                        style.preserveUnderline
+                          ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                          : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                      )}
+                      title={style.preserveUnderline ? 'Preserve existing underline formatting' : 'Apply underline setting'}
+                    >
+                      <Lock className="w-3 h-3" />
+                      <span>Underline</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -388,23 +511,23 @@ export const StylesEditor = memo(function StylesEditor({ initialStyles, onStyles
           </div>
         </div>
 
-        {/* Normal style specific option */}
-        {style.id === 'normal' && (
+        {/* Style-specific options: Normal and List Paragraph */}
+        {(style.id === 'normal' || style.id === 'listParagraph') && (
           <label className="flex items-center gap-3 cursor-pointer">
             <div className="relative">
               <input
                 type="checkbox"
-                checked={!style.noSpaceBetweenSame}
+                checked={style.noSpaceBetweenSame}
                 onChange={() => updateStyle(style.id, { noSpaceBetweenSame: !style.noSpaceBetweenSame })}
                 className="sr-only"
               />
               <div className={cn(
                 'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                !style.noSpaceBetweenSame
+                style.noSpaceBetweenSame
                   ? 'bg-primary border-primary checkbox-checked'
                   : 'border-border'
               )}>
-                {!style.noSpaceBetweenSame && (
+                {style.noSpaceBetweenSame && (
                   <Check className="w-3 h-3 text-white checkbox-checkmark" />
                 )}
               </div>
@@ -413,33 +536,74 @@ export const StylesEditor = memo(function StylesEditor({ initialStyles, onStyles
           </label>
         )}
 
+        {/* List Paragraph indentation controls */}
+        {style.id === 'listParagraph' && (
+          <div className="border-t border-border pt-4 mt-4">
+            <h4 className="text-sm font-medium mb-3">Indentation Settings</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Bullet Position (inches)</label>
+                <input
+                  type="number"
+                  value={style.indentation?.left ?? 0.25}
+                  onChange={(e) => updateStyle(style.id, {
+                    indentation: {
+                      ...style.indentation,
+                      left: Number(e.target.value)
+                    }
+                  })}
+                  className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                  min="0"
+                  max="2"
+                  step="0.25"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Text Position (inches)</label>
+                <input
+                  type="number"
+                  value={style.indentation?.firstLine ?? 0.5}
+                  onChange={(e) => updateStyle(style.id, {
+                    indentation: {
+                      ...style.indentation,
+                      firstLine: Number(e.target.value)
+                    }
+                  })}
+                  className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                  min="0"
+                  max="2"
+                  step="0.25"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Preview */}
         <div className="p-3 bg-white rounded-md border border-border">
           <div
             style={{
               fontSize: `${style.fontSize}pt`,
               fontFamily: style.fontFamily,
-              fontWeight: style.bold ? 'bold' : 'normal',
-              fontStyle: style.italic ? 'italic' : 'normal',
-              textDecoration: style.underline ? 'underline' : 'none',
+              fontWeight: style.bold === undefined ? 'normal' : style.bold ? 'bold' : 'normal',
+              fontStyle: style.italic === undefined ? 'normal' : style.italic ? 'italic' : 'normal',
+              textDecoration: style.underline === undefined ? 'none' : style.underline ? 'underline' : 'none',
               textAlign: style.alignment,
               color: style.color
             }}
           >
             Sample text for {style.name} style
+            {(style.bold === undefined || style.italic === undefined || style.underline === undefined) && (
+              <span className="text-xs text-muted-foreground ml-2">(preview only - actual formatting preserved)</span>
+            )}
           </div>
         </div>
       </div>
     );
   };
 
-  const handleSaveStyles = () => {
-    // Save all three configuration objects
-    onStylesChange?.(styles);
-    onListBulletSettingsChange?.(listBulletSettings);
-    onTableUniformitySettingsChange?.(tableUniformitySettings);
-    setShowSuccess(true);
-  };
+  // Note: handleSaveStyles function removed - auto-save is now implemented
+  // All changes are persisted immediately via the update helper functions
 
   const renderListBulletSettings = () => {
     return (
@@ -455,7 +619,12 @@ export const StylesEditor = memo(function StylesEditor({ initialStyles, onStyles
               <input
                 type="checkbox"
                 checked={listBulletSettings.enabled}
-                onChange={(e) => setListBulletSettings({ ...listBulletSettings, enabled: e.target.checked })}
+                onChange={(e) => {
+                  const newSettings = { ...listBulletSettings, enabled: e.target.checked };
+                  setListBulletSettings(newSettings);
+                  // Auto-save: immediately persist changes
+                  onListBulletSettingsChange?.(newSettings);
+                }}
                 className="sr-only"
               />
               <div className={cn(
@@ -475,84 +644,180 @@ export const StylesEditor = memo(function StylesEditor({ initialStyles, onStyles
         {listBulletSettings.enabled && (
           <>
             <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground">Indentation & Bullet Styles by Level</h4>
-              {listBulletSettings.indentationLevels.map((level, index) => (
-                <div key={level.level} className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 bg-muted/30 rounded-md">
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Level {level.level}</label>
-                    <input
-                      type="text"
-                      value={`${level.indentation}pt`}
-                      disabled
-                      className="w-full px-2 py-1 text-sm border border-border rounded-md bg-muted/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Indentation (pt)</label>
-                    <input
-                      type="number"
-                      value={level.indentation}
-                      onChange={(e) => {
-                        const newLevels = [...listBulletSettings.indentationLevels];
-                        newLevels[index] = { ...newLevels[index], indentation: Number(e.target.value) };
-                        setListBulletSettings({ ...listBulletSettings, indentationLevels: newLevels });
-                      }}
-                      className="w-full px-2 py-1 text-sm border border-border rounded-md bg-background"
-                      min="0"
-                      max="288"
-                      step="12"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Bullet Character</label>
-                    <input
-                      type="text"
-                      value={level.bulletChar || ''}
-                      onChange={(e) => {
-                        const newLevels = [...listBulletSettings.indentationLevels];
-                        newLevels[index] = { ...newLevels[index], bulletChar: e.target.value };
-                        setListBulletSettings({ ...listBulletSettings, indentationLevels: newLevels });
-                      }}
-                      className="w-full px-2 py-1 text-sm border border-border rounded-md bg-background text-center"
-                      maxLength={1}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Numbered Format</label>
-                    <select
-                      value={level.numberedFormat || '1.'}
-                      onChange={(e) => {
-                        const newLevels = [...listBulletSettings.indentationLevels];
-                        newLevels[index] = { ...newLevels[index], numberedFormat: e.target.value };
-                        setListBulletSettings({ ...listBulletSettings, indentationLevels: newLevels });
-                      }}
-                      className="w-full px-2 py-1 text-sm border border-border rounded-md bg-background"
-                    >
-                      <option value="1.">1.</option>
-                      <option value="a.">a.</option>
-                      <option value="A.">A.</option>
-                      <option value="i.">i.</option>
-                      <option value="I.">I.</option>
-                      <option value="1)">1)</option>
-                      <option value="a)">a)</option>
-                      <option value="A)">A)</option>
-                    </select>
-                  </div>
+              <h4 className="text-sm font-medium text-muted-foreground">Indentation Increments (Auto-applies to all 5 levels)</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Symbol Position Increment (inches)
+                    <span className="text-xxs block text-muted-foreground/60">Bullet/number position per level</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25}
+                    onChange={(e) => {
+                      const increment = Number(e.target.value);
+                      const newLevels: IndentationLevel[] = [
+                        { level: 1, symbolIndent: increment * 1, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 1, bulletChar: '•', numberedFormat: '1.' },
+                        { level: 2, symbolIndent: increment * 2, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 2, bulletChar: '○', numberedFormat: 'a.' },
+                        { level: 3, symbolIndent: increment * 3, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 3, bulletChar: '•', numberedFormat: 'i.' },
+                        { level: 4, symbolIndent: increment * 4, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 4, bulletChar: '○', numberedFormat: '1)' },
+                        { level: 5, symbolIndent: increment * 5, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 5, bulletChar: '•', numberedFormat: 'a)' }
+                      ];
+                      const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
+                      setListBulletSettings(newSettings);
+                      onListBulletSettingsChange?.(newSettings);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                    min="0"
+                    max="2"
+                    step="0.25"
+                  />
                 </div>
-              ))}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Text Position Increment (inches)
+                    <span className="text-xxs block text-muted-foreground/60">Text start position per level</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={listBulletSettings.indentationLevels[0]?.textIndent || 0.5}
+                    onChange={(e) => {
+                      const increment = Number(e.target.value);
+                      const newLevels: IndentationLevel[] = [
+                        { level: 1, symbolIndent: listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25, textIndent: increment * 1, bulletChar: '•', numberedFormat: '1.' },
+                        { level: 2, symbolIndent: listBulletSettings.indentationLevels[1]?.symbolIndent || 0.5, textIndent: increment * 2, bulletChar: '○', numberedFormat: 'a.' },
+                        { level: 3, symbolIndent: listBulletSettings.indentationLevels[2]?.symbolIndent || 0.75, textIndent: increment * 3, bulletChar: '•', numberedFormat: 'i.' },
+                        { level: 4, symbolIndent: listBulletSettings.indentationLevels[3]?.symbolIndent || 1.0, textIndent: increment * 4, bulletChar: '○', numberedFormat: '1)' },
+                        { level: 5, symbolIndent: listBulletSettings.indentationLevels[4]?.symbolIndent || 1.25, textIndent: increment * 5, bulletChar: '•', numberedFormat: 'a)' }
+                      ];
+                      const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
+                      setListBulletSettings(newSettings);
+                      onListBulletSettingsChange?.(newSettings);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                    min="0"
+                    max="4"
+                    step="0.25"
+                  />
+                </div>
+              </div>
+
+              {/* Preview of calculated levels */}
+              <div className="p-3 bg-muted/20 rounded-md">
+                <div className="text-xs text-muted-foreground mb-2">Calculated Indentations:</div>
+                <div className="grid grid-cols-5 gap-2 text-xxs">
+                  {listBulletSettings.indentationLevels.map((level) => (
+                    <div key={level.level} className="text-center">
+                      <div className="font-medium">L{level.level}</div>
+                      <div className="text-muted-foreground">{level.symbolIndent.toFixed(2)}" / {level.textIndent.toFixed(2)}"</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Spacing Between Items (pt)</label>
-              <input
-                type="number"
-                value={listBulletSettings.spacingBetweenItems}
-                onChange={(e) => setListBulletSettings({ ...listBulletSettings, spacingBetweenItems: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background max-w-xs"
-                min="0"
-                max="24"
-                step="1"
-              />
+            {/* Bullet Points Format */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-muted-foreground">Bullet Points Format</h4>
+              <div className="text-xs text-muted-foreground mb-2">
+                Select bullet symbols for the first 3 levels. Levels 4-5 will alternate between Level 2 and Level 3 symbols.
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Level 1 */}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Level 1</label>
+                  <select
+                    value={listBulletSettings.indentationLevels[0]?.bulletChar || '•'}
+                    onChange={(e) => {
+                      const newLevels = [...listBulletSettings.indentationLevels];
+                      newLevels[0] = { ...newLevels[0], bulletChar: e.target.value };
+                      const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
+                      setListBulletSettings(newSettings);
+                      onListBulletSettingsChange?.(newSettings);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                  >
+                    <option value="•">● Closed Circle (•)</option>
+                    <option value="○">○ Open Circle (○)</option>
+                    <option value="■">■ Closed Square (■)</option>
+                    <option value="□">□ Open Square (□)</option>
+                    <option value="▪">▪ Small Square (▪)</option>
+                    <option value="▫">▫ Small Open Square (▫)</option>
+                    <option value="◆">◆ Diamond (◆)</option>
+                    <option value="►">► Triangle (►)</option>
+                    <option value="✓">✓ Checkmark (✓)</option>
+                    <option value="-">− Dash (−)</option>
+                  </select>
+                </div>
+                {/* Level 2 */}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Level 2</label>
+                  <select
+                    value={listBulletSettings.indentationLevels[1]?.bulletChar || '○'}
+                    onChange={(e) => {
+                      const newLevels = [...listBulletSettings.indentationLevels];
+                      newLevels[1] = { ...newLevels[1], bulletChar: e.target.value };
+                      // Update Level 4 to match Level 2 (alternating pattern)
+                      newLevels[3] = { ...newLevels[3], bulletChar: e.target.value };
+                      const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
+                      setListBulletSettings(newSettings);
+                      onListBulletSettingsChange?.(newSettings);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                  >
+                    <option value="•">● Closed Circle (•)</option>
+                    <option value="○">○ Open Circle (○)</option>
+                    <option value="■">■ Closed Square (■)</option>
+                    <option value="□">□ Open Square (□)</option>
+                    <option value="▪">▪ Small Square (▪)</option>
+                    <option value="▫">▫ Small Open Square (▫)</option>
+                    <option value="◆">◆ Diamond (◆)</option>
+                    <option value="►">► Triangle (►)</option>
+                    <option value="✓">✓ Checkmark (✓)</option>
+                    <option value="-">− Dash (−)</option>
+                  </select>
+                </div>
+                {/* Level 3 */}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Level 3</label>
+                  <select
+                    value={listBulletSettings.indentationLevels[2]?.bulletChar || '•'}
+                    onChange={(e) => {
+                      const newLevels = [...listBulletSettings.indentationLevels];
+                      newLevels[2] = { ...newLevels[2], bulletChar: e.target.value };
+                      // Update Level 5 to match Level 3 (alternating pattern)
+                      newLevels[4] = { ...newLevels[4], bulletChar: e.target.value };
+                      const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
+                      setListBulletSettings(newSettings);
+                      onListBulletSettingsChange?.(newSettings);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                  >
+                    <option value="•">● Closed Circle (•)</option>
+                    <option value="○">○ Open Circle (○)</option>
+                    <option value="■">■ Closed Square (■)</option>
+                    <option value="□">□ Open Square (□)</option>
+                    <option value="▪">▪ Small Square (▪)</option>
+                    <option value="▫">▫ Small Open Square (▫)</option>
+                    <option value="◆">◆ Diamond (◆)</option>
+                    <option value="►">► Triangle (►)</option>
+                    <option value="✓">✓ Checkmark (✓)</option>
+                    <option value="-">− Dash (−)</option>
+                  </select>
+                </div>
+              </div>
+              {/* Preview of bullet pattern */}
+              <div className="p-3 bg-muted/20 rounded-md">
+                <div className="text-xs text-muted-foreground mb-2">Bullet Pattern Preview:</div>
+                <div className="grid grid-cols-5 gap-2 text-sm">
+                  {listBulletSettings.indentationLevels.map((level) => (
+                    <div key={level.level} className="text-center">
+                      <div className="font-medium text-xs text-muted-foreground">L{level.level}</div>
+                      <div className="text-lg">{level.bulletChar}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </>
         )}
@@ -560,688 +825,80 @@ export const StylesEditor = memo(function StylesEditor({ initialStyles, onStyles
     );
   };
 
-  const renderTableUniformitySettings = () => {
+  // Table Shading Settings - moved from Processing Options to Styles for better organization
+  const renderTableShadingSettings = () => {
+    const handleHeader2ShadingChange = (value: string) => {
+      setLocalTableHeader2Shading(value);
+      onTableShadingChange?.(value, localTableOtherShading);
+    };
+
+    const handleOtherShadingChange = (value: string) => {
+      setLocalTableOtherShading(value);
+      onTableShadingChange?.(localTableHeader2Shading, value);
+    };
+
     return (
       <div className="space-y-4 p-4 border border-border rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Table className="w-5 h-5 text-primary" />
-            <h3 className="font-semibold text-base">Table Uniformity</h3>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <span className="text-sm text-muted-foreground">Enable</span>
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={tableUniformitySettings.enabled}
-                onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, enabled: e.target.checked })}
-                className="sr-only"
-              />
-              <div className={cn(
-                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                tableUniformitySettings.enabled
-                  ? 'bg-primary border-primary checkbox-checked'
-                  : 'border-border'
-              )}>
-                {tableUniformitySettings.enabled && (
-                  <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                )}
-              </div>
-            </div>
-          </label>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-base">Table Shading Colors</span>
         </div>
-
-        {tableUniformitySettings.enabled && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Border Style</label>
-              <select
-                value={tableUniformitySettings.borderStyle}
-                onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, borderStyle: e.target.value as any })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-              >
-                <option value="none">None</option>
-                <option value="single">Single</option>
-                <option value="double">Double</option>
-                <option value="dashed">Dashed</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Border Width (pt)</label>
+        <p className="text-sm text-muted-foreground">
+          Configure default shading colors for table cells
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm text-muted-foreground mb-2 block">Header 2 Table Shading</label>
+            <div className="flex gap-2">
               <input
-                type="number"
-                value={tableUniformitySettings.borderWidth}
-                onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, borderWidth: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                min="0.5"
-                max="3"
-                step="0.5"
+                type="color"
+                value={localTableHeader2Shading}
+                onChange={(e) => handleHeader2ShadingChange(e.target.value)}
+                className="h-9 w-16 border border-border rounded cursor-pointer"
               />
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Cell Padding (pt)</label>
-              <input
-                type="number"
-                value={tableUniformitySettings.cellPadding}
-                onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, cellPadding: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                min="2"
-                max="12"
-                step="1"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Auto-Fit</label>
-              <select
-                value={tableUniformitySettings.autoFit}
-                onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, autoFit: e.target.value as any })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-              >
-                <option value="content">Fit to Content</option>
-                <option value="window">Fit to Window</option>
-              </select>
-            </div>
-
-            <div className="col-span-full space-y-2">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={tableUniformitySettings.headerRowBold}
-                    onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, headerRowBold: e.target.checked })}
-                    className="sr-only"
-                  />
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    tableUniformitySettings.headerRowBold
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}>
-                    {tableUniformitySettings.headerRowBold && (
-                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                    )}
-                  </div>
-                </div>
-                <span className="text-sm">Bold header row</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={tableUniformitySettings.headerRowShaded}
-                    onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, headerRowShaded: e.target.checked })}
-                    className="sr-only"
-                  />
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    tableUniformitySettings.headerRowShaded
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}>
-                    {tableUniformitySettings.headerRowShaded && (
-                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                    )}
-                  </div>
-                </div>
-                <span className="text-sm">Shaded header row background</span>
-              </label>
-
-              {tableUniformitySettings.headerRowShaded && (
-                <div className="pl-8">
-                  <label className="text-sm text-muted-foreground mb-1 block">Header Row Shading Color</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="color"
-                      value={tableUniformitySettings.headerRowShadingColor}
-                      onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, headerRowShadingColor: e.target.value })}
-                      className="h-9 w-16 border border-border rounded cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={tableUniformitySettings.headerRowShadingColor}
-                      onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, headerRowShadingColor: e.target.value })}
-                      className="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background max-w-xs"
-                      placeholder="#D3D3D3"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={tableUniformitySettings.alternatingRowColors}
-                    onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, alternatingRowColors: e.target.checked })}
-                    className="sr-only"
-                  />
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    tableUniformitySettings.alternatingRowColors
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}>
-                    {tableUniformitySettings.alternatingRowColors && (
-                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                    )}
-                  </div>
-                </div>
-                <span className="text-sm">Alternating row colors</span>
-              </label>
-            </div>
-
-            {/* Divider */}
-            <div className="col-span-full border-t border-border my-2"></div>
-
-            {/* Header 2 in 1x1 Table Settings */}
-            <div className="col-span-full">
-              <h4 className="text-sm font-medium mb-3">Header 2 in 1x1 Table Cell</h4>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Cell Shading Color</label>
-              <div className="flex gap-2">
-                <input
-                  type="color"
-                  value={tableUniformitySettings.header2In1x1CellShading}
-                  onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, header2In1x1CellShading: e.target.value })}
-                  className="h-9 w-16 border border-border rounded cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={tableUniformitySettings.header2In1x1CellShading}
-                  onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, header2In1x1CellShading: e.target.value })}
-                  className="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                  placeholder="#D3D3D3"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Alignment</label>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setTableUniformitySettings({ ...tableUniformitySettings, header2In1x1Alignment: 'left' })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.header2In1x1Alignment === 'left'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <AlignLeft className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setTableUniformitySettings({ ...tableUniformitySettings, header2In1x1Alignment: 'center' })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.header2In1x1Alignment === 'center'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <AlignCenter className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setTableUniformitySettings({ ...tableUniformitySettings, header2In1x1Alignment: 'right' })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.header2In1x1Alignment === 'right'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <AlignRight className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setTableUniformitySettings({ ...tableUniformitySettings, header2In1x1Alignment: 'justify' })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.header2In1x1Alignment === 'justify'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <AlignJustify className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="col-span-full border-t border-border my-2"></div>
-
-            {/* Large Table Settings */}
-            <div className="col-span-full">
-              <h4 className="text-sm font-medium mb-3">Large Tables (&gt;1x1) - Conditional Formatting</h4>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Font Family</label>
-              <select
-                value={tableUniformitySettings.largeTableSettings.font}
-                onChange={(e) => setTableUniformitySettings({
-                  ...tableUniformitySettings,
-                  largeTableSettings: { ...tableUniformitySettings.largeTableSettings, font: e.target.value }
-                })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-              >
-                {fontFamilies.map(font => (
-                  <option key={font} value={font}>{font}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Font Size</label>
-              <select
-                value={tableUniformitySettings.largeTableSettings.fontSize}
-                onChange={(e) => setTableUniformitySettings({
-                  ...tableUniformitySettings,
-                  largeTableSettings: { ...tableUniformitySettings.largeTableSettings, fontSize: Number(e.target.value) }
-                })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-              >
-                {fontSizes.map(size => (
-                  <option key={size} value={size}>{size}pt</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Formatting</label>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setTableUniformitySettings({
-                    ...tableUniformitySettings,
-                    largeTableSettings: { ...tableUniformitySettings.largeTableSettings, bold: !tableUniformitySettings.largeTableSettings.bold }
-                  })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.largeTableSettings.bold
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <Bold className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setTableUniformitySettings({
-                    ...tableUniformitySettings,
-                    largeTableSettings: { ...tableUniformitySettings.largeTableSettings, italic: !tableUniformitySettings.largeTableSettings.italic }
-                  })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.largeTableSettings.italic
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <Italic className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setTableUniformitySettings({
-                    ...tableUniformitySettings,
-                    largeTableSettings: { ...tableUniformitySettings.largeTableSettings, underline: !tableUniformitySettings.largeTableSettings.underline }
-                  })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.largeTableSettings.underline
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <Underline className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Alignment</label>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setTableUniformitySettings({
-                    ...tableUniformitySettings,
-                    largeTableSettings: { ...tableUniformitySettings.largeTableSettings, alignment: 'left' }
-                  })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.largeTableSettings.alignment === 'left'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <AlignLeft className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setTableUniformitySettings({
-                    ...tableUniformitySettings,
-                    largeTableSettings: { ...tableUniformitySettings.largeTableSettings, alignment: 'center' }
-                  })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.largeTableSettings.alignment === 'center'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <AlignCenter className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setTableUniformitySettings({
-                    ...tableUniformitySettings,
-                    largeTableSettings: { ...tableUniformitySettings.largeTableSettings, alignment: 'right' }
-                  })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.largeTableSettings.alignment === 'right'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <AlignRight className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setTableUniformitySettings({
-                    ...tableUniformitySettings,
-                    largeTableSettings: { ...tableUniformitySettings.largeTableSettings, alignment: 'justify' }
-                  })}
-                  className={cn(
-                    'p-2 rounded transition-all',
-                    tableUniformitySettings.largeTableSettings.alignment === 'justify'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  )}
-                >
-                  <AlignJustify className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Cell Padding (pt)</label>
-              <input
-                type="number"
-                value={tableUniformitySettings.largeTableSettings.cellPadding}
-                onChange={(e) => setTableUniformitySettings({
-                  ...tableUniformitySettings,
-                  largeTableSettings: { ...tableUniformitySettings.largeTableSettings, cellPadding: Number(e.target.value) }
-                })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                min="2"
-                max="12"
-                step="1"
-              />
-            </div>
-
-            <div className="col-span-full space-y-2 mt-2">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={tableUniformitySettings.applyToIfThenPattern}
-                    onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, applyToIfThenPattern: e.target.checked })}
-                    className="sr-only"
-                  />
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    tableUniformitySettings.applyToIfThenPattern
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}>
-                    {tableUniformitySettings.applyToIfThenPattern && (
-                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                    )}
-                  </div>
-                </div>
-                <span className="text-sm">Apply to cells with "If...Then" pattern</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={tableUniformitySettings.applyToTopRow}
-                    onChange={(e) => setTableUniformitySettings({ ...tableUniformitySettings, applyToTopRow: e.target.checked })}
-                    className="sr-only"
-                  />
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    tableUniformitySettings.applyToTopRow
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}>
-                    {tableUniformitySettings.applyToTopRow && (
-                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                    )}
-                  </div>
-                </div>
-                <span className="text-sm">Apply to top row (if not 1x1)</span>
-              </label>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderTableOfContentsSettings = () => {
-    return (
-      <div className="space-y-4 p-4 border border-border rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-primary" />
-            <h3 className="font-semibold text-base">Table of Contents</h3>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <span className="text-sm text-muted-foreground">Enable</span>
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={tableOfContentsSettings.enabled}
-                onChange={(e) => setTableOfContentsSettings({ ...tableOfContentsSettings, enabled: e.target.checked })}
-                className="sr-only"
-              />
-              <div className={cn(
-                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                tableOfContentsSettings.enabled
-                  ? 'bg-primary border-primary checkbox-checked'
-                  : 'border-border'
-              )}>
-                {tableOfContentsSettings.enabled && (
-                  <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                )}
-              </div>
-            </div>
-          </label>
-        </div>
-
-        {tableOfContentsSettings.enabled && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">TOC Title</label>
               <input
                 type="text"
-                value={tableOfContentsSettings.tocTitle}
-                onChange={(e) => setTableOfContentsSettings({ ...tableOfContentsSettings, tocTitle: e.target.value })}
-                disabled={!tableOfContentsSettings.showTocTitle}
-                className={cn(
-                  "w-full px-3 py-1.5 text-sm border border-border rounded-md transition-all",
-                  tableOfContentsSettings.showTocTitle
-                    ? "bg-background"
-                    : "bg-muted/50 opacity-50 cursor-not-allowed"
-                )}
-                placeholder="Table of Contents"
+                value={localTableHeader2Shading}
+                onChange={(e) => handleHeader2ShadingChange(e.target.value)}
+                className="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                placeholder="#BFBFBF"
               />
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Tab Leader Style</label>
-              <select
-                value={tableOfContentsSettings.tabLeaderStyle}
-                onChange={(e) => setTableOfContentsSettings({ ...tableOfContentsSettings, tabLeaderStyle: e.target.value as any })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-              >
-                <option value="none">None</option>
-                <option value="dots">Dots (...)</option>
-                <option value="dashes">Dashes (---)</option>
-                <option value="underline">Underline (___)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Spacing Between Hyperlinks (pt)</label>
-              <input
-                type="number"
-                value={tableOfContentsSettings.spacingBetweenHyperlinks}
-                onChange={(e) => setTableOfContentsSettings({ ...tableOfContentsSettings, spacingBetweenHyperlinks: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                min="0"
-                max="24"
-                step="1"
-              />
-            </div>
-
-            <div className="col-span-full">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={tableOfContentsSettings.showTocTitle}
-                    onChange={(e) => setTableOfContentsSettings({ ...tableOfContentsSettings, showTocTitle: e.target.checked })}
-                    className="sr-only"
-                  />
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    tableOfContentsSettings.showTocTitle
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}>
-                    {tableOfContentsSettings.showTocTitle && (
-                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                    )}
-                  </div>
-                </div>
-                <span className="text-sm">Show TOC Title</span>
-              </label>
-            </div>
-
-            <div className="col-span-full">
-              <label className="text-sm text-muted-foreground mb-2 block">Include Heading Levels</label>
-              <div className="flex gap-2 flex-wrap">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(level => (
-                  <button
-                    key={level}
-                    onClick={() => {
-                      const currentLevels = tableOfContentsSettings.includeHeadingLevels;
-                      const newLevels = currentLevels.includes(level)
-                        ? currentLevels.filter(l => l !== level)
-                        : [...currentLevels, level].sort((a, b) => a - b);
-                      setTableOfContentsSettings({ ...tableOfContentsSettings, includeHeadingLevels: newLevels });
-                    }}
-                    className={cn(
-                      'px-3 py-1.5 rounded text-sm transition-all',
-                      tableOfContentsSettings.includeHeadingLevels.includes(level)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted hover:bg-muted/80'
-                    )}
-                  >
-                    Level {level}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="col-span-full space-y-2">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={tableOfContentsSettings.showPageNumbers}
-                    onChange={(e) => setTableOfContentsSettings({ ...tableOfContentsSettings, showPageNumbers: e.target.checked })}
-                    className="sr-only"
-                  />
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    tableOfContentsSettings.showPageNumbers
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}>
-                    {tableOfContentsSettings.showPageNumbers && (
-                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                    )}
-                  </div>
-                </div>
-                <span className="text-sm">Show page numbers</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={tableOfContentsSettings.rightAlignPageNumbers}
-                    onChange={(e) => setTableOfContentsSettings({ ...tableOfContentsSettings, rightAlignPageNumbers: e.target.checked })}
-                    className="sr-only"
-                    disabled={!tableOfContentsSettings.showPageNumbers}
-                  />
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    tableOfContentsSettings.rightAlignPageNumbers && tableOfContentsSettings.showPageNumbers
-                      ? 'bg-primary border-primary'
-                      : 'border-border',
-                    !tableOfContentsSettings.showPageNumbers && 'opacity-50'
-                  )}>
-                    {tableOfContentsSettings.rightAlignPageNumbers && tableOfContentsSettings.showPageNumbers && (
-                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                    )}
-                  </div>
-                </div>
-                <span className={cn(
-                  'text-sm',
-                  !tableOfContentsSettings.showPageNumbers && 'opacity-50'
-                )}>Right-align page numbers</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={tableOfContentsSettings.useHyperlinks}
-                    onChange={(e) => setTableOfContentsSettings({ ...tableOfContentsSettings, useHyperlinks: e.target.checked })}
-                    className="sr-only"
-                  />
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    tableOfContentsSettings.useHyperlinks
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}>
-                    {tableOfContentsSettings.useHyperlinks && (
-                      <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                    )}
-                  </div>
-                </div>
-                <span className="text-sm">Use hyperlinks for navigation</span>
-              </label>
             </div>
           </div>
-        )}
+
+          <div>
+            <label className="text-sm text-muted-foreground mb-2 block">Other Table Shading</label>
+            <div className="flex gap-2">
+              <input
+                type="color"
+                value={localTableOtherShading}
+                onChange={(e) => handleOtherShadingChange(e.target.value)}
+                className="h-9 w-16 border border-border rounded cursor-pointer"
+              />
+              <input
+                type="text"
+                value={localTableOtherShading}
+                onChange={(e) => handleOtherShadingChange(e.target.value)}
+                className="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                placeholder="#E9E9E9"
+              />
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
+
+  // Note: Table of Contents settings removed - TOC is now managed automatically via "Update Table of Contents Hyperlinks" checkbox in Processing Options
 
   return (
     <div className="space-y-4">
-      {/* Render the button via callback if provided */}
-      {renderSaveButton && renderSaveButton(handleSaveStyles, showSuccess, () => setShowSuccess(false))}
+      {/* Note: Save button removed - all changes auto-save immediately */}
 
       {/* Document Uniformity Settings */}
       {renderListBulletSettings()}
-      {renderTableUniformitySettings()}
-      {renderTableOfContentsSettings()}
+
+      {/* Table Shading Colors */}
+      {renderTableShadingSettings()}
 
       {/* Divider */}
       <div className="relative py-4">

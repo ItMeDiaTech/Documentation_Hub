@@ -65,8 +65,8 @@ export class DocXMLaterProcessor {
    */
   async loadFromFile(filePath: string): Promise<ProcessorResult<Document>> {
     try {
-      // Use non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
-      const doc = await Document.load(filePath, { strictParsing: false });
+      // Use framework defaults to ensure no corruption
+      const doc = await Document.load(filePath);
       return {
         success: true,
         data: doc,
@@ -84,8 +84,8 @@ export class DocXMLaterProcessor {
    */
   async loadFromBuffer(buffer: Buffer): Promise<ProcessorResult<Document>> {
     try {
-      // Use non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
-      const doc = await Document.loadFromBuffer(buffer, { strictParsing: false });
+      // Use framework defaults to ensure no corruption
+      const doc = await Document.loadFromBuffer(buffer);
       return {
         success: true,
         data: doc,
@@ -153,9 +153,9 @@ export class DocXMLaterProcessor {
         type: 'paragraph',
         basedOn: 'Normal',
         runFormatting: {
-          bold: properties.bold,
-          italic: properties.italic,
-          underline: properties.underline ? 'single' : undefined,
+          bold: properties.preserveBold ? undefined : properties.bold,
+          italic: properties.preserveItalic ? undefined : properties.italic,
+          underline: properties.preserveUnderline ? undefined : (properties.underline ? 'single' : undefined),
           font: properties.fontFamily,
           size: properties.fontSize,
           color: properties.color?.replace('#', ''),
@@ -482,8 +482,8 @@ export class DocXMLaterProcessor {
    */
   async readDocument(filePath: string): Promise<DocumentReadResult> {
     try {
-      // Use non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
-      const doc = await Document.load(filePath, { strictParsing: false });
+      // Use framework defaults to ensure no corruption
+      const doc = await Document.load(filePath);
 
       // Extract document structure
       const paragraphs = doc.getParagraphs();
@@ -545,8 +545,8 @@ export class DocXMLaterProcessor {
     modifications: (doc: Document) => Promise<void> | void
   ): Promise<DocumentModifyResult> {
     try {
-      // Load document with non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
-      const doc = await Document.load(filePath, { strictParsing: false });
+      // Use framework defaults to ensure no corruption
+      const doc = await Document.load(filePath);
 
       // Apply modifications
       await modifications(doc);
@@ -577,8 +577,8 @@ export class DocXMLaterProcessor {
     modifications: (doc: Document) => Promise<void> | void
   ): Promise<DocumentModifyResult> {
     try {
-      // Load from buffer with non-strict parsing to skip invalid hyperlinks (e.g., about:blank)
-      const doc = await Document.loadFromBuffer(buffer, { strictParsing: false });
+      // Use framework defaults to ensure no corruption
+      const doc = await Document.loadFromBuffer(buffer);
 
       // Apply modifications
       await modifications(doc);

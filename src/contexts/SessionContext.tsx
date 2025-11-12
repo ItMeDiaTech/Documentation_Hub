@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
-import { Session, Document, SessionStats, SessionContextType, ReplacementRule, SessionStyle, ListBulletSettings, TableUniformitySettings } from '@/types/session';
+import { Session, Document, SessionStats, SessionContextType, ReplacementRule, SessionStyle, ListBulletSettings, TableUniformitySettings, TableShadingSettings, TableOfContentsSettings } from '@/types/session';
 import type { HyperlinkProcessingOptions } from '@/types/hyperlink';
 import {
   loadSessions,
@@ -352,6 +352,92 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [debouncedPersistSessions, log]);
 
   const createSession = (name: string): Session => {
+    // Default styles for new sessions (matching StylesEditor defaults)
+    const defaultStyles: SessionStyle[] = [
+      {
+        id: 'header1',
+        name: 'Header 1',
+        fontSize: 18,
+        fontFamily: 'Verdana',
+        bold: true,
+        italic: false,
+        underline: false,
+        alignment: 'left',
+        spaceBefore: 0,
+        spaceAfter: 12,
+        lineSpacing: 1.0,
+        color: '#000000'
+      },
+      {
+        id: 'header2',
+        name: 'Header 2',
+        fontSize: 14,
+        fontFamily: 'Verdana',
+        bold: true,
+        italic: false,
+        underline: false,
+        alignment: 'left',
+        spaceBefore: 6,
+        spaceAfter: 6,
+        lineSpacing: 1.0,
+        color: '#000000'
+      },
+      {
+        id: 'header3',
+        name: 'Header 3',
+        fontSize: 12,
+        fontFamily: 'Verdana',
+        bold: true,
+        italic: false,
+        underline: false,
+        alignment: 'left',
+        spaceBefore: 3,
+        spaceAfter: 3,
+        lineSpacing: 1.0,
+        color: '#000000'
+      },
+      {
+        id: 'normal',
+        name: 'Normal',
+        fontSize: 12,
+        fontFamily: 'Verdana',
+        bold: false, // Not bold by default
+        italic: false, // Not italic by default
+        underline: false, // Not underlined by default
+        preserveBold: true, // Preserve existing bold formatting (Requirement 5)
+        preserveItalic: false, // Apply italic setting (not preserved)
+        preserveUnderline: false, // Apply underline setting (not preserved)
+        alignment: 'left',
+        spaceBefore: 3,
+        spaceAfter: 3,
+        lineSpacing: 1.0,
+        color: '#000000',
+        noSpaceBetweenSame: false // Allow spacing between Normal paragraphs (Requirement 5)
+      },
+      {
+        id: 'listParagraph',
+        name: 'List Paragraph',
+        fontSize: 12,
+        fontFamily: 'Verdana',
+        bold: false, // Not bold by default
+        italic: false, // Not italic by default
+        underline: false, // Not underlined by default
+        preserveBold: true, // Preserve existing bold formatting (Requirement 6)
+        preserveItalic: false, // Apply italic setting (not preserved)
+        preserveUnderline: false, // Apply underline setting (not preserved)
+        alignment: 'left',
+        spaceBefore: 0,
+        spaceAfter: 6,
+        lineSpacing: 1.0,
+        color: '#000000',
+        noSpaceBetweenSame: true, // No spacing between list items (Requirement 6)
+        indentation: {
+          left: 0.25,     // Bullet position at 0.25 inches
+          firstLine: 0.5  // Text position at 0.5 inches (0.25 additional from left)
+        }
+      }
+    ];
+
     const newSession: Session = {
       id: `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       name,
@@ -365,6 +451,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         timeSaved: 0,
       },
       status: 'active',
+      styles: defaultStyles, // Initialize with default styles
     };
 
     setSessions((prev) => [...prev, newSession]);
@@ -728,6 +815,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       log.debug('Final customStyleSpacing object:', customStyleSpacing);
       log.debug('Will pass to processor:', Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined);
 
+      // DEBUG: Log enabled operations before processing
+      log.info('\n=== PROCESSING DOCUMENT - OPTIONS DEBUG ===');
+      log.info('Session enabled operations:', session.processingOptions?.enabledOperations || []);
+
       const processingOptions: HyperlinkProcessingOptions & {
         // Text Formatting Options
         removeWhitespace?: boolean;
@@ -737,11 +828,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Content Structure Options
         assignStyles?: boolean;
         centerImages?: boolean;
+        removeHeadersFooters?: boolean;
+        addDocumentWarning?: boolean;
 
         // Lists & Tables Options
         listBulletSettings?: ListBulletSettings;
         bulletUniformity?: boolean;
         tableUniformity?: boolean;
+        tableShadingSettings?: {
+          header2Shading: string;
+          otherShading: string;
+        };
+        tableOfContentsSettings?: TableOfContentsSettings;
 
         // Legacy
         tableUniformitySettings?: TableUniformitySettings;
@@ -758,11 +856,48 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           updateTocHyperlinks: session.processingOptions?.enabledOperations?.includes('update-toc-hyperlinks'),
           fixKeywords: session.processingOptions?.enabledOperations?.includes('fix-keywords'),
           standardizeHyperlinkColor: session.processingOptions?.enabledOperations?.includes('standardize-hyperlink-color'),
+          validateHeader2Tables: session.processingOptions?.enabledOperations?.includes('validate-header2-tables'),
+          validateDocumentStyles: session.processingOptions?.enabledOperations?.includes('validate-document-styles'),
         },
 
         // Text replacements and styles
         textReplacements: session.replacements?.filter(r => r.enabled) || [],
-        styles: session.styles || {},
+        // Transform session styles array to include all formatting properties
+        // This matches the format expected by WordDocumentProcessor for custom style application
+        styles: session.styles && Array.isArray(session.styles) && session.styles.length > 0
+          ? session.styles.map((style: any) => {
+              // DUAL TOGGLE FORMATTING SYSTEM
+              // For formatting properties (bold, italic, underline):
+              //   - If preserveBold/preserveItalic/preserveUnderline === true: Don't call setter (preserve existing)
+              //   - If preserve flag === false/undefined: Apply bold/italic/underline value (true = apply, false = remove)
+              // WordDocumentProcessor checks preserve flags before calling setters!
+
+              return {
+                id: style.id,
+                name: style.name,
+                fontFamily: style.fontFamily,
+                fontSize: style.fontSize,
+                // Pass through formatting values
+                bold: style.bold ?? false,
+                italic: style.italic ?? false,
+                underline: style.underline ?? false,
+                // Pass through preserve flags
+                preserveBold: style.preserveBold,
+                preserveItalic: style.preserveItalic,
+                preserveUnderline: style.preserveUnderline,
+                alignment: style.alignment,
+                color: style.color,
+                spaceBefore: style.spaceBefore ?? 0,
+                spaceAfter: style.spaceAfter ?? 0,
+                lineSpacing: style.lineSpacing ?? 1.0,
+                noSpaceBetweenSame: style.noSpaceBetweenSame,
+                indentation: style.indentation ? {
+                  left: style.indentation.left,
+                  firstLine: style.indentation.firstLine
+                } : undefined
+              };
+            })
+          : [],
         customStyleSpacing: Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined,
 
         // Text Formatting Options (mapped from ProcessingOptions UI)
@@ -770,9 +905,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         removeParagraphLines: session.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
         removeItalics: session.processingOptions?.enabledOperations?.includes('remove-italics'),
 
-        // Content Structure Options (mapped from ProcessingOptions UI)
-        assignStyles: session.processingOptions?.enabledOperations?.includes('assign-styles'),
-        centerImages: session.processingOptions?.enabledOperations?.includes('center-images'),
+        // Content Structure Options (ALWAYS ENABLED - automatic processing)
+        // These operations are now always applied when processing documents
+        // UI checkboxes have been removed as these are essential formatting operations
+        assignStyles: true, // Always apply custom styles from Styles tab
+        centerImages: true, // Always center images in processed documents
+        removeHeadersFooters: session.processingOptions?.enabledOperations?.includes('remove-headers-footers'),
+        addDocumentWarning: session.processingOptions?.enabledOperations?.includes('add-document-warning'),
 
         // Lists & Tables Options (mapped from ProcessingOptions UI)
         listBulletSettings: session.processingOptions?.enabledOperations?.includes('list-indentation')
@@ -780,10 +919,59 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           : undefined,
         bulletUniformity: session.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
         tableUniformity: session.processingOptions?.enabledOperations?.includes('table-uniformity'),
+        tableShadingSettings: session.tableShadingSettings
+          ? {
+              header2Shading: session.tableShadingSettings.header2Shading,
+              otherShading: session.tableShadingSettings.otherShading,
+            }
+          : undefined,
+
+        // Table of Contents Settings (NEW - was missing!)
+        tableOfContentsSettings: session.tableOfContentsSettings
+          ? {
+              enabled: session.tableOfContentsSettings.enabled,
+              includeHeadingLevels: session.tableOfContentsSettings.includeHeadingLevels,
+              showPageNumbers: session.tableOfContentsSettings.showPageNumbers,
+              rightAlignPageNumbers: session.tableOfContentsSettings.rightAlignPageNumbers,
+              useHyperlinks: session.tableOfContentsSettings.useHyperlinks,
+              tabLeaderStyle: session.tableOfContentsSettings.tabLeaderStyle,
+              tocTitle: session.tableOfContentsSettings.tocTitle,
+              showTocTitle: session.tableOfContentsSettings.showTocTitle,
+              spacingBetweenHyperlinks: session.tableOfContentsSettings.spacingBetweenHyperlinks,
+            }
+          : undefined,
 
         // Legacy (deprecated, kept for backwards compatibility)
         tableUniformitySettings: session.tableUniformitySettings,
       };
+
+      // DEBUG: Log final operations object being passed to processor
+      log.info('Operations object being passed to WordDocumentProcessor:');
+      log.info('  - updateTocHyperlinks:', processingOptions.operations?.updateTocHyperlinks);
+      log.info('  - validateDocumentStyles:', processingOptions.operations?.validateDocumentStyles);
+      log.info('  - validateHeader2Tables:', processingOptions.operations?.validateHeader2Tables);
+      log.info('  - styles length:', processingOptions.styles?.length || 0);
+      if (processingOptions.styles && processingOptions.styles.length > 0) {
+        log.info('  - Available style IDs:', processingOptions.styles.map((s: any) => s.id).join(', '));
+      }
+      log.info('  - tableOfContentsSettings:', processingOptions.tableOfContentsSettings ? 'PRESENT' : 'UNDEFINED');
+      if (processingOptions.tableOfContentsSettings) {
+        log.info('    - enabled:', processingOptions.tableOfContentsSettings.enabled);
+        log.info('    - includeHeadingLevels:', processingOptions.tableOfContentsSettings.includeHeadingLevels);
+        log.info('    - tocTitle:', processingOptions.tableOfContentsSettings.tocTitle);
+      }
+      // DEBUG: Show formatting preservation for Normal/ListParagraph styles
+      const normalStyleInOptions = processingOptions.styles?.find((s: any) => s.id === 'normal');
+      const listParaStyleInOptions = processingOptions.styles?.find((s: any) => s.id === 'listParagraph');
+      if (normalStyleInOptions || listParaStyleInOptions) {
+        log.info('  - Formatting Preservation (bold & alignment only):');
+        if (normalStyleInOptions) {
+          log.info(`    - Normal: bold=${normalStyleInOptions.bold}, alignment=${normalStyleInOptions.alignment} (undefined = preserve), italic=${normalStyleInOptions.italic}, underline=${normalStyleInOptions.underline}`);
+        }
+        if (listParaStyleInOptions) {
+          log.info(`    - ListParagraph: bold=${listParaStyleInOptions.bold}, alignment=${listParaStyleInOptions.alignment} (undefined = preserve), italic=${listParaStyleInOptions.italic}, underline=${listParaStyleInOptions.underline}`);
+        }
+      }
 
       // Process the document using Electron IPC
       const result = await window.electronAPI.processHyperlinkDocument(
@@ -1043,6 +1231,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
 
   const updateSessionOptions = (sessionId: string, processingOptions: Session['processingOptions']) => {
+    // DEBUG: Log session options update
+    log.info('[SessionContext] Updating session options for session:', sessionId);
+    log.info('  - Enabled operations:', processingOptions?.enabledOperations || []);
+    log.info('  - Options object:', processingOptions);
+
     setSessions((prev) =>
       prev.map((session) =>
         session.id === sessionId
@@ -1202,6 +1395,72 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateSessionTableShadingSettings = (sessionId: string, tableShadingSettings: TableShadingSettings) => {
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              tableShadingSettings,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update active sessions
+    setActiveSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              tableShadingSettings,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update current session if it's being modified
+    if (currentSession?.id === sessionId) {
+      setCurrentSession((prev) => (prev ? { ...prev, tableShadingSettings, lastModified: new Date() } : null));
+    }
+  };
+
+  const updateSessionTableOfContentsSettings = (sessionId: string, tableOfContentsSettings: TableOfContentsSettings) => {
+    log.info('[SessionContext] Updating Table of Contents settings for session:', sessionId);
+
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              tableOfContentsSettings,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update active sessions
+    setActiveSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              tableOfContentsSettings,
+              lastModified: new Date(),
+            }
+          : session
+      )
+    );
+
+    // Update current session if it's being modified
+    if (currentSession?.id === sessionId) {
+      setCurrentSession((prev) => (prev ? { ...prev, tableOfContentsSettings, lastModified: new Date() } : null));
+    }
+  };
+
   const saveSession = (session: Session) => {
     const jsonString = safeJsonStringify(session, undefined, 'SessionContext.saveSession');
     if (jsonString) {
@@ -1253,6 +1512,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         updateSessionStyles,
         updateSessionListBulletSettings,
         updateSessionTableUniformitySettings,
+        updateSessionTableShadingSettings,
+        updateSessionTableOfContentsSettings,
         saveSession,
         loadSessionFromStorage,
       }}

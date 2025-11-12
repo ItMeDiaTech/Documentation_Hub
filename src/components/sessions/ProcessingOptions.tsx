@@ -12,30 +12,32 @@ export interface ProcessingOption {
 
 export const defaultOptions: ProcessingOption[] = [
   // Text Formatting Group
-  { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'text', enabled: false },
-  { id: 'remove-paragraph-lines', label: 'Remove Extra Paragraph Lines', group: 'text', enabled: false },
-  { id: 'remove-italics', label: 'Remove Italics', group: 'text', enabled: false },
-  { id: 'normalize-spacing', label: 'Smart Spacing Normalization (New)', group: 'text', enabled: false },
+  { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'text', enabled: true },
+  { id: 'remove-paragraph-lines', label: 'Remove Extra Paragraph Lines', group: 'text', enabled: true },
+  { id: 'remove-italics', label: 'Remove Italics', group: 'text', enabled: true },
+  { id: 'normalize-spacing', label: 'Smart Spacing Normalization (New)', group: 'text', enabled: true },
 
   // Hyperlinks Group
-  { id: 'update-top-hyperlinks', label: 'Update Top of Document Hyperlinks', group: 'hyperlinks', enabled: false },
-  { id: 'update-toc-hyperlinks', label: 'Update Table of Contents Hyperlinks', group: 'hyperlinks', enabled: false },
-  { id: 'replace-outdated-titles', label: 'Replace Outdated Titles', group: 'hyperlinks', enabled: false },
-  { id: 'fix-internal-hyperlinks', label: 'Fix Internal Hyperlinks (Enhanced)', group: 'hyperlinks', enabled: false },
-  { id: 'fix-content-ids', label: 'Fix / Append Content IDs', group: 'hyperlinks', enabled: false },
-  { id: 'standardize-hyperlink-color', label: 'Standardize Hyperlink Color', group: 'hyperlinks', enabled: false },
-  { id: 'validate-hyperlinks', label: 'Validate & Auto-Fix All Links (New)', group: 'hyperlinks', enabled: false },
+  { id: 'update-top-hyperlinks', label: 'Update Top of Document Hyperlinks', group: 'hyperlinks', enabled: true },
+  { id: 'update-toc-hyperlinks', label: 'Generate/Update Table of Contents', group: 'hyperlinks', enabled: true },
+  { id: 'replace-outdated-titles', label: 'Replace Outdated Titles', group: 'hyperlinks', enabled: true },
+  { id: 'fix-internal-hyperlinks', label: 'Fix Internal Hyperlinks (Enhanced)', group: 'hyperlinks', enabled: true },
+  { id: 'fix-content-ids', label: 'Fix / Append Content IDs', group: 'hyperlinks', enabled: true },
+  { id: 'standardize-hyperlink-color', label: 'Standardize Hyperlink Color (#0000FF)', group: 'hyperlinks', enabled: true },
+  { id: 'validate-hyperlinks', label: 'Validate & Auto-Fix All Links (New)', group: 'hyperlinks', enabled: true },
 
   // Content Structure Group
-  { id: 'assign-styles', label: 'Assign Styles (Smart Detection)', group: 'structure', enabled: false },
-  { id: 'center-images', label: 'Center Images', group: 'structure', enabled: false },
-  { id: 'fix-keywords', label: 'Fix Key Words (Enhanced)', group: 'structure', enabled: false },
+  // Note: assign-styles and center-images are now applied automatically during processing
+  { id: 'remove-headers-footers', label: 'Remove Headers / Footers', group: 'structure', enabled: true },
+  { id: 'add-document-warning', label: 'Add Document Warning', group: 'structure', enabled: true },
+  { id: 'validate-header2-tables', label: 'Validate Header 2 Table Formatting', group: 'structure', enabled: true },
+  { id: 'validate-document-styles', label: 'Validate Document Styles', group: 'structure', enabled: true },
 
   // Lists & Tables Group
-  { id: 'list-indentation', label: 'List Indentation Uniformity', group: 'lists', enabled: false },
-  { id: 'bullet-uniformity', label: 'Bullet Style Uniformity', group: 'lists', enabled: false },
-  { id: 'table-uniformity', label: 'Table Uniformity (Enhanced)', group: 'lists', enabled: false },
-  { id: 'smart-tables', label: 'Smart Table Detection & Formatting (New)', group: 'lists', enabled: false },
+  { id: 'list-indentation', label: 'List Indentation Uniformity', group: 'lists', enabled: true },
+  { id: 'bullet-uniformity', label: 'Bullet Style Uniformity', group: 'lists', enabled: true },
+  { id: 'table-uniformity', label: 'Table Uniformity (Enhanced)', group: 'lists', enabled: true },
+  { id: 'smart-tables', label: 'Smart Table Detection & Formatting (New)', group: 'lists', enabled: true },
 ];
 
 const groupLabels = {
@@ -49,9 +51,13 @@ interface ProcessingOptionsProps {
   sessionId?: string;
   options: ProcessingOption[]; // Fully controlled - no "initial" prefix
   onOptionsChange: (options: ProcessingOption[]) => void; // Required, not optional
+  // Note: Table shading colors moved to StylesEditor for better organization
 }
 
-export function ProcessingOptions({ options, onOptionsChange }: ProcessingOptionsProps) {
+export function ProcessingOptions({
+  options,
+  onOptionsChange
+}: ProcessingOptionsProps) {
   // REFACTORED: Fully controlled component - no local state
   // All state lives in parent (SessionContext)
   // This eliminates race conditions and state synchronization issues
@@ -65,6 +71,12 @@ export function ProcessingOptions({ options, onOptionsChange }: ProcessingOption
     const updatedOptions = options.map(opt =>
       opt.id === optionId ? { ...opt, enabled: !opt.enabled } : opt
     );
+
+    // DEBUG: Log option changes
+    const changedOption = updatedOptions.find(opt => opt.id === optionId);
+    console.log(`[ProcessingOptions] Toggled "${optionId}":`, changedOption?.enabled ? 'ENABLED' : 'DISABLED');
+    console.log('[ProcessingOptions] All enabled options:', updatedOptions.filter(opt => opt.enabled).map(opt => opt.id));
+
     onOptionsChange(updatedOptions);
   };
 
@@ -183,6 +195,8 @@ export function ProcessingOptions({ options, onOptionsChange }: ProcessingOption
           );
         })}
       </div>
+
+      {/* Note: Table shading colors moved to StylesEditor for better organization */}
     </div>
   );
 }

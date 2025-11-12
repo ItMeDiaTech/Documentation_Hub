@@ -97,6 +97,8 @@ export interface HyperlinkProcessingOptions {
     updateTocHyperlinks?: boolean;
     fixKeywords?: boolean;
     standardizeHyperlinkColor?: boolean;
+    validateHeader2Tables?: boolean; // NEW in 1.6.0: Validate Header 2 table formatting
+    validateDocumentStyles?: boolean; // NEW in 1.6.0: Validate all document styles using applyStylesFromObjects()
   };
   textReplacements?: any[];
   styles?: any;
