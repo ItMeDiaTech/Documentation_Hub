@@ -1418,15 +1418,16 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Remove extra paragraph lines - ENHANCED with docxmlater v1.16.0
+   * Remove extra paragraph lines - ENHANCED with Header 2 table preservation
    *
-   * Uses the new Document.removeExtraBlankParagraphs() method which:
+   * Manual implementation using docxmlater APIs:
    * - Removes consecutive empty paragraphs safely
    * - Handles tables, SDTs, and complex structures automatically
    * - Preserves list items and numbered paragraphs
    * - Works inside table cells
    * - Protects paragraphs adjacent to tables
-   * - NEW v1.16.0: Optionally preserves blank lines after Header 2 tables
+   * - NEW: Optionally preserves blank lines after Header 2 tables
+   * - Safety threshold: Aborts if > 30% of paragraphs would be deleted
    *
    * @param doc - The document to process
    * @param preserveBlankLinesAfterHeader2Tables - Whether to preserve blank lines after Header 2 tables
@@ -1436,44 +1437,208 @@ export class WordDocumentProcessor {
     doc: Document,
     preserveBlankLinesAfterHeader2Tables: boolean = true
   ): Promise<number> {
-    this.log.debug('Removing duplicate empty paragraphs using docxmlater v1.16.0 API');
+    this.log.debug('Removing duplicate empty paragraphs');
+    if (preserveBlankLinesAfterHeader2Tables) {
+      this.log.debug('  Option: Preserving blank lines after Header 2 tables');
+    }
 
-    const originalCount = doc.getParagraphs().length;
+    const paragraphs = doc.getParagraphs();
+    const paragraphsToRemove: Paragraph[] = [];
 
-    // Use the new docxmlater v1.16.0 API with preservation options
-    // This replaces our manual implementation with the battle-tested library method
-    const options = {
-      preserveBlankLinesAfterHeader2Tables: preserveBlankLinesAfterHeader2Tables,
-      safetyThreshold: 0.3, // Abort if > 30% of paragraphs would be deleted
-    };
+    // ✅ FIX: Get body elements to identify table positions
+    // This prevents deleting paragraphs adjacent to tables which could destabilize structure
+    const bodyElements = doc.getBodyElements();
+    const tableIndices = new Set<number>();
 
-    this.log.debug(`Blank line preservation options:`, options);
+    // Mark which body-level indices are tables
+    bodyElements.forEach((element, index) => {
+      if (element.constructor.name === 'Table') {
+        tableIndices.add(index);
+      }
+    });
 
-    try {
-      // Call the new removeExtraBlankParagraphs() method from docxmlater v1.16.0
-      const removedCount = doc.removeExtraBlankParagraphs(options);
+    this.log.debug(
+      `Found ${tableIndices.size} top-level tables in document. Protecting adjacent paragraphs.`
+    );
 
-      const currentCount = doc.getParagraphs().length;
-      const deletionRate = (originalCount - currentCount) / originalCount;
+    // ✅ ADDITIONAL FIX: Also check for Structured Document Tags (SDTs) containing tables
+    // These are special locked content (like If/Then decision tables) wrapped in SDTs
+    // The SDT itself is a body element, so we need to protect adjacent paragraphs
+    const sdtIndices = new Set<number>();
+    bodyElements.forEach((element, index) => {
+      if (
+        element.constructor.name === 'StructuredDocumentTag' ||
+        element.constructor.name === 'SDT' ||
+        (element as any)._type === 'sdt'
+      ) {
+        sdtIndices.add(index);
+        this.log.debug(`  ⚠️  Found Structured Document Tag (SDT) at body index ${index}`);
+      }
+    });
 
-      this.log.info(
-        `Removed ${removedCount} consecutive empty paragraphs ` +
-          `(${(deletionRate * 100).toFixed(1)}% of document)`
-      );
+    // NEW v1.16.0 FEATURE: Identify Header 2 tables to preserve blank lines after them
+    const header2TableIndices = new Set<number>();
+    if (preserveBlankLinesAfterHeader2Tables) {
+      // Find tables that have Header 2 style in their first row
+      bodyElements.forEach((element, index) => {
+        if (element.constructor.name === 'Table') {
+          const table = element as Table;
+          const rows = table.getRows();
+          if (rows.length > 0) {
+            const firstRow = rows[0];
+            const cells = firstRow.getCells();
+            if (cells.length > 0) {
+              const firstCell = cells[0];
+              const cellParas = firstCell.getParagraphs();
+              if (cellParas.length > 0) {
+                const firstPara = cellParas[0];
+                const style = firstPara.getStyle();
+                // Check if this is a Header 2 table (first cell has Heading2 or Heading 2 style)
+                if (style === 'Heading2' || style === 'Heading 2') {
+                  header2TableIndices.add(index);
+                  this.log.debug(`  ✓ Found Header 2 table at body index ${index}`);
+                }
+              }
+            }
+          }
+        }
+      });
 
-      // Log preservation status
-      if (options.preserveBlankLinesAfterHeader2Tables) {
-        this.log.debug('✓ Preserved blank lines after Header 2 tables');
+      if (header2TableIndices.size > 0) {
+        this.log.debug(`Found ${header2TableIndices.size} Header 2 tables - preserving blank lines after them`);
+      }
+    }
+
+    // Create a map of paragraph objects to their context
+    // This helps us detect if a paragraph is adjacent to a table or Header 2 table
+    const paraToContext = new Map<
+      any,
+      { isAdjacentToTable: boolean; isAfterHeader2Table: boolean }
+    >();
+
+    let paraIndex = 0;
+    for (let bodyIndex = 0; bodyIndex < bodyElements.length; bodyIndex++) {
+      const element = bodyElements[bodyIndex];
+
+      if (element.constructor.name === 'Paragraph') {
+        const para = paragraphs[paraIndex];
+
+        // Check if this paragraph is adjacent to a table or SDT
+        const isAdjacentToTable =
+          tableIndices.has(bodyIndex - 1) || tableIndices.has(bodyIndex + 1);
+        const isAdjacentToSDT = sdtIndices.has(bodyIndex - 1) || sdtIndices.has(bodyIndex + 1);
+        const isAdjacentToStructure = isAdjacentToTable || isAdjacentToSDT;
+
+        // NEW: Check if this paragraph is immediately after a Header 2 table
+        const isAfterHeader2Table = preserveBlankLinesAfterHeader2Tables && header2TableIndices.has(bodyIndex - 1);
+
+        paraToContext.set(para, {
+          isAdjacentToTable: isAdjacentToStructure,
+          isAfterHeader2Table: isAfterHeader2Table,
+        });
+
+        if (isAdjacentToStructure) {
+          if (isAdjacentToSDT) {
+            this.log.debug(
+              `  ⚠️  Protecting paragraph at index ${paraIndex} (adjacent to Structured Document Tag/locked content)`
+            );
+          } else {
+            this.log.debug(`  ⚠️  Protecting paragraph at index ${paraIndex} (adjacent to table)`);
+          }
+        }
+
+        if (isAfterHeader2Table) {
+          this.log.debug(
+            `  ✓ Paragraph at index ${paraIndex} is after Header 2 table (blank lines will be preserved)`
+          );
+        }
+
+        paraIndex++;
+      }
+    }
+
+    this.log.debug('Analyzing paragraphs for empty-line removal...');
+
+    for (let i = 0; i < paragraphs.length - 1; i++) {
+      const current = paragraphs[i];
+      const next = paragraphs[i + 1];
+
+      // ✅ FIX: Protect paragraphs adjacent to tables
+      const currentContext = paraToContext.get(current);
+      const nextContext = paraToContext.get(next);
+
+      if (currentContext?.isAdjacentToTable || nextContext?.isAdjacentToTable) {
+        this.log.debug(`  ⚠️  Skipping paragraph ${i} or ${i + 1} (adjacent to table)`);
+        continue; // Never delete table-adjacent paragraphs
       }
 
-      return removedCount;
-    } catch (error) {
-      // The new API throws on safety threshold violations
-      this.log.error(
-        `Failed to remove blank paragraphs: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-      throw error;
+      // NEW: Skip if current paragraph is after a Header 2 table (preserve spacing)
+      if (currentContext?.isAfterHeader2Table || nextContext?.isAfterHeader2Table) {
+        this.log.debug(`  ✓ Skipping paragraph ${i} or ${i + 1} (preserving blank line after Header 2 table)`);
+        continue;
+      }
+
+      // ✅ FIX #1 & #2: Use isParagraphTrulyEmpty() helper with DocXMLater APIs
+      const currentEmpty = this.isParagraphTrulyEmpty(current);
+      const nextEmpty = this.isParagraphTrulyEmpty(next);
+
+      // Only delete if BOTH consecutive paragraphs are truly empty
+      if (currentEmpty && nextEmpty) {
+        this.log.debug(`Marking paragraph ${i + 1} for deletion (consecutive empty)`);
+        paragraphsToRemove.push(next); // Store the Paragraph object
+      }
     }
+
+    // ✅ FIX #3: Remove using Paragraph objects (not indices)
+    // This avoids index invalidation because we're not modifying the array during iteration
+    let removedCount = 0;
+    for (const para of paragraphsToRemove) {
+      const success = doc.removeParagraph(para); // DocXMLater handles object-based removal
+      if (success) {
+        removedCount++;
+        this.log.debug(`Successfully removed empty paragraph`);
+      } else {
+        this.log.warn(`Failed to remove empty paragraph (already removed?)`);
+      }
+    }
+
+    this.log.info(`Removed ${removedCount} consecutive empty paragraphs`);
+
+    // ✅ SAFETY CHECK: Verify we didn't delete too much content
+    // Threshold: 30% allows documents with legitimate spacing/structure while catching catastrophic failures
+    const currentParaCount = doc.getParagraphs().length;
+    const deletionRate = (paragraphs.length - currentParaCount) / paragraphs.length;
+
+    if (deletionRate > 0.3) {
+      // > 30% deletion
+      this.log.error(
+        `⚠️  SAFETY ALERT: Deleted ${(deletionRate * 100).toFixed(1)}% of paragraphs!`
+      );
+      this.log.error(`Original count: ${paragraphs.length}, After deletion: ${currentParaCount}`);
+      this.log.error(
+        `This suggests a bug in paragraph deletion logic. Document integrity may be compromised.`
+      );
+      throw new Error(
+        `[SAFETY CHECK FAILED] Document integrity compromised: ${(deletionRate * 100).toFixed(1)}% of ` +
+          `paragraphs were deleted. This exceeds the safety threshold of 30%. ` +
+          `Original: ${paragraphs.length} paragraphs, After: ${currentParaCount} paragraphs. ` +
+          `Processing aborted to prevent data loss. Please report this issue.`
+      );
+    } else if (deletionRate > 0.15) {
+      // Warning: significant but not catastrophic
+      this.log.warn(
+        `⚠️  NOTICE: Deleted ${(deletionRate * 100).toFixed(1)}% of paragraphs ` +
+          `(Original: ${paragraphs.length}, After: ${currentParaCount}). ` +
+          `This is higher than typical (usually < 5%) but below safety threshold (30%).`
+      );
+    }
+
+    // Log final preservation status
+    if (preserveBlankLinesAfterHeader2Tables && header2TableIndices.size > 0) {
+      this.log.debug('✓ Preserved blank lines after Header 2 tables');
+    }
+
+    return removedCount;
   }
 
   /**
