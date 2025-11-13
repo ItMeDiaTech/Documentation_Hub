@@ -2445,7 +2445,7 @@ export class WordDocumentProcessor {
    * This uses low-level XML access to add w:rPr elements that docxmlater doesn't expose via API
    *
    * Adds the following to each numbering level:
-   * - Font family: Arial (universal support)
+   * - Font family: Calibri (correct bullet character rendering)
    * - Font size: 12pt (24 half-points)
    * - Bold: true
    * - Color: black (000000)
@@ -2485,7 +2485,7 @@ export class WordDocumentProcessor {
           const updatedContent = levelContent.replace(
             /<w:rPr>[\s\S]*?<\/w:rPr>/,
             `<w:rPr>
-              <w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>
+              <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
               <w:b/>
               <w:bCs/>
               <w:sz w:val="24"/>
@@ -2499,7 +2499,7 @@ export class WordDocumentProcessor {
           // Insert new w:rPr before closing </w:lvl> tag
           const newRPr = `
             <w:rPr>
-              <w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>
+              <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
               <w:b/>
               <w:bCs/>
               <w:sz w:val="24"/>
