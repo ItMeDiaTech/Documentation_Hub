@@ -2117,7 +2117,7 @@ export class WordDocumentProcessor {
         level: index,
         format: 'bullet',
         text: levelConfig.bulletChar || '\uF0B7',  // U+F0B7 is Symbol font standard bullet
-        // Let framework use default 'Symbol' font for correct bullet rendering
+        // Let framework use default 'Calibri' font for correct bullet rendering
         leftIndent: symbolTwips,  // Bullet position (where bullet appears)
         hangingIndent: hangingTwips  // Text offset from bullet
       });
