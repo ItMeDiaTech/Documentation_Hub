@@ -55,6 +55,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   // ═══════════════════════════════════════════════════════════
   removeWhitespace?: boolean; // remove-whitespace: Collapse multiple spaces to single space
   removeParagraphLines?: boolean; // remove-paragraph-lines: Remove consecutive empty paragraphs
+  preserveBlankLinesAfterHeader2Tables?: boolean; // preserve-header2-blank-lines: Preserve blank lines after Header 2 tables (v1.16.0)
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
 
   // ═══════════════════════════════════════════════════════════
@@ -1321,157 +1322,58 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Remove extra paragraph lines
+   * Remove extra paragraph lines - ENHANCED with docxmlater v1.16.0
    *
-   * Removes consecutive empty paragraphs while:
-   * - Handling tables, SDTs, and complex structures safely
-   * - Preserving list items and numbered paragraphs
-   * - Working inside table cells
-   * - Protecting paragraphs adjacent to tables
+   * Uses the new Document.removeExtraBlankParagraphs() method which:
+   * - Removes consecutive empty paragraphs safely
+   * - Handles tables, SDTs, and complex structures automatically
+   * - Preserves list items and numbered paragraphs
+   * - Works inside table cells
+   * - Protects paragraphs adjacent to tables
+   * - NEW v1.16.0: Optionally preserves blank lines after Header 2 tables
+   *
+   * @param doc - The document to process
+   * @returns Number of paragraphs removed
    */
   private async removeExtraParagraphLines(doc: Document): Promise<number> {
-    this.log.debug('Removing duplicate empty paragraphs');
+    this.log.debug('Removing duplicate empty paragraphs using docxmlater v1.16.0 API');
 
-    const paragraphs = doc.getParagraphs();
-    const paragraphsToRemove: Paragraph[] = [];
+    const originalCount = doc.getParagraphs().length;
 
-    // ✅ FIX: Get body elements to identify table positions
-    // This prevents deleting paragraphs adjacent to tables which could destabilize structure
-    const bodyElements = doc.getBodyElements();
-    const tableIndices = new Set<number>();
+    // Use the new docxmlater v1.16.0 API with preservation options
+    // This replaces our manual implementation with the battle-tested library method
+    const options = {
+      preserveBlankLinesAfterHeader2Tables: this.options.preserveBlankLinesAfterHeader2Tables ?? true,
+      safetyThreshold: 0.3, // Abort if > 30% of paragraphs would be deleted
+    };
 
-    // Mark which body-level indices are tables
-    bodyElements.forEach((element, index) => {
-      if (element.constructor.name === 'Table') {
-        tableIndices.add(index);
-      }
-    });
+    this.log.debug(`Blank line preservation options:`, options);
 
-    this.log.debug(
-      `Found ${tableIndices.size} top-level tables in document. Protecting adjacent paragraphs.`
-    );
+    try {
+      // Call the new removeExtraBlankParagraphs() method from docxmlater v1.16.0
+      const removedCount = doc.removeExtraBlankParagraphs(options);
 
-    // ✅ ADDITIONAL FIX: Also check for Structured Document Tags (SDTs) containing tables
-    // These are special locked content (like If/Then decision tables) wrapped in SDTs
-    // The SDT itself is a body element, so we need to protect adjacent paragraphs
-    const sdtIndices = new Set<number>();
-    bodyElements.forEach((element, index) => {
-      if (
-        element.constructor.name === 'StructuredDocumentTag' ||
-        element.constructor.name === 'SDT' ||
-        (element as any)._type === 'sdt'
-      ) {
-        sdtIndices.add(index);
-        this.log.debug(`  ⚠️  Found Structured Document Tag (SDT) at body index ${index}`);
-      }
-    });
+      const currentCount = doc.getParagraphs().length;
+      const deletionRate = (originalCount - currentCount) / originalCount;
 
-    // Create a map of paragraph objects to their context
-    // This helps us detect if a paragraph is adjacent to a table
-    const paraToContext = new Map<any, { isAdjacentToTable: boolean }>();
+      this.log.info(
+        `Removed ${removedCount} consecutive empty paragraphs ` +
+          `(${(deletionRate * 100).toFixed(1)}% of document)`
+      );
 
-    let paraIndex = 0;
-    for (let bodyIndex = 0; bodyIndex < bodyElements.length; bodyIndex++) {
-      const element = bodyElements[bodyIndex];
-
-      if (element.constructor.name === 'Paragraph') {
-        const para = paragraphs[paraIndex];
-
-        // Check if this paragraph is adjacent to a table or SDT
-        // Tables can be regular or nested in Structured Document Tags (SDTs)
-        const isAdjacentToTable =
-          tableIndices.has(bodyIndex - 1) || tableIndices.has(bodyIndex + 1);
-        const isAdjacentToSDT = sdtIndices.has(bodyIndex - 1) || sdtIndices.has(bodyIndex + 1);
-        const isAdjacentToStructure = isAdjacentToTable || isAdjacentToSDT;
-
-        paraToContext.set(para, { isAdjacentToTable: isAdjacentToStructure });
-
-        if (isAdjacentToStructure) {
-          if (isAdjacentToSDT) {
-            this.log.debug(
-              `  ⚠️  Protecting paragraph at index ${paraIndex} (adjacent to Structured Document Tag/locked content)`
-            );
-          } else {
-            this.log.debug(`  ⚠️  Protecting paragraph at index ${paraIndex} (adjacent to table)`);
-          }
-        }
-
-        paraIndex++;
-      }
-    }
-
-    this.log.debug('Analyzing paragraphs for empty-line removal...');
-
-    for (let i = 0; i < paragraphs.length - 1; i++) {
-      const current = paragraphs[i];
-      const next = paragraphs[i + 1];
-
-      // ✅ FIX: Protect paragraphs adjacent to tables
-      const currentContext = paraToContext.get(current);
-      const nextContext = paraToContext.get(next);
-
-      if (currentContext?.isAdjacentToTable || nextContext?.isAdjacentToTable) {
-        this.log.debug(`  ⚠️  Skipping paragraph ${i} or ${i + 1} (adjacent to table)`);
-        continue; // Never delete table-adjacent paragraphs
+      // Log preservation status
+      if (options.preserveBlankLinesAfterHeader2Tables) {
+        this.log.debug('✓ Preserved blank lines after Header 2 tables');
       }
 
-      // ✅ FIX #1 & #2: Use isParagraphTrulyEmpty() helper with DocXMLater APIs
-      const currentEmpty = this.isParagraphTrulyEmpty(current);
-      const nextEmpty = this.isParagraphTrulyEmpty(next);
-
-      // Only delete if BOTH consecutive paragraphs are truly empty
-      if (currentEmpty && nextEmpty) {
-        this.log.debug(`Marking paragraph ${i + 1} for deletion (consecutive empty)`);
-        paragraphsToRemove.push(next); // Store the Paragraph object
-      }
-    }
-
-    // ✅ FIX #3: Remove using Paragraph objects (not indices)
-    // This avoids index invalidation because we're not modifying the array during iteration
-    let removedCount = 0;
-    for (const para of paragraphsToRemove) {
-      const success = doc.removeParagraph(para); // DocXMLater handles object-based removal
-      if (success) {
-        removedCount++;
-        this.log.debug(`Successfully removed empty paragraph`);
-      } else {
-        this.log.warn(`Failed to remove empty paragraph (already removed?)`);
-      }
-    }
-
-    this.log.info(`Removed ${removedCount} consecutive empty paragraphs`);
-
-    // ✅ SAFETY CHECK: Verify we didn't delete too much content
-    // Threshold: 30% allows documents with legitimate spacing/structure while catching catastrophic failures
-    // (Previous buggy version: 40.5% loss; Fixed version: should be < 30% for reasonable documents)
-    const currentParaCount = doc.getParagraphs().length;
-    const deletionRate = (paragraphs.length - currentParaCount) / paragraphs.length;
-
-    if (deletionRate > 0.3) {
-      // > 30% deletion
+      return removedCount;
+    } catch (error) {
+      // The new API throws on safety threshold violations
       this.log.error(
-        `⚠️  SAFETY ALERT: Deleted ${(deletionRate * 100).toFixed(1)}% of paragraphs!`
+        `Failed to remove blank paragraphs: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
-      this.log.error(`Original count: ${paragraphs.length}, After deletion: ${currentParaCount}`);
-      this.log.error(
-        `This suggests a bug in paragraph deletion logic. Document integrity may be compromised.`
-      );
-      throw new Error(
-        `[SAFETY CHECK FAILED] Document integrity compromised: ${(deletionRate * 100).toFixed(1)}% of ` +
-          `paragraphs were deleted. This exceeds the safety threshold of 30%. ` +
-          `Original: ${paragraphs.length} paragraphs, After: ${currentParaCount} paragraphs. ` +
-          `Processing aborted to prevent data loss. Please report this issue.`
-      );
-    } else if (deletionRate > 0.15) {
-      // Warning: significant but not catastrophic
-      this.log.warn(
-        `⚠️  NOTICE: Deleted ${(deletionRate * 100).toFixed(1)}% of paragraphs ` +
-          `(Original: ${paragraphs.length}, After: ${currentParaCount}). ` +
-          `This is higher than typical (usually < 5%) but below safety threshold (30%).`
-      );
+      throw error;
     }
-
-    return removedCount;
   }
 
   /**
@@ -1736,9 +1638,20 @@ export class WordDocumentProcessor {
     // Convert SessionStyle array to docXMLater format
     const config = this.convertSessionStylesToDocXMLaterConfig(styles, tableShadingSettings);
 
-    // Use docXMLater's native method with preserve flag support
+    // Add v1.16.0 blank line preservation option
+    // This prevents accidental removal of spacing after Header 2 tables
+    const options = {
+      ...config,
+      preserveBlankLinesAfterHeader2Tables: this.options.preserveBlankLinesAfterHeader2Tables ?? true,
+    };
+
+    this.log.debug('Applying custom formatting with options:', {
+      preserveBlankLinesAfterHeader2Tables: options.preserveBlankLinesAfterHeader2Tables,
+    });
+
+    // Use docXMLater's native method with preserve flag support (v1.16.0)
     // This handles both style definition updates and direct formatting clearing
-    const results = doc.applyCustomFormattingToExistingStyles(config);
+    const results = doc.applyCustomFormattingToExistingStyles(options);
 
     return results;
   }
@@ -2174,8 +2087,8 @@ export class WordDocumentProcessor {
       if (!numbering) continue;
 
       const level = numbering.level || 0;
-      // Find setting for this level (levels are 1-indexed in UI, 0-indexed in doc)
-      const indentSetting = settings.indentationLevels.find((l) => l.level === level + 1);
+      // Find setting for this level (levels are 0-indexed per DOCX standard)
+      const indentSetting = settings.indentationLevels.find((l) => l.level === level);
 
       if (indentSetting) {
         // NOTE: Indentation is already set at the NumberingLevel in applyBulletUniformity()
@@ -2301,6 +2214,15 @@ export class WordDocumentProcessor {
       }
     }
 
+    // Inject complete run properties (font, size, bold, color) into numbering.xml
+    // This adds 12pt bold Arial black formatting to all bullet symbols
+    const injectionSuccess = await this.injectCompleteRunPropertiesToNumbering(doc, numId);
+    if (injectionSuccess) {
+      this.log.debug('Applied 12pt bold black formatting to bullet list symbols');
+    } else {
+      this.log.warn('Failed to inject complete formatting to bullet list - symbols may not be styled correctly');
+    }
+
     return standardizedCount;
   }
 
@@ -2382,6 +2304,15 @@ export class WordDocumentProcessor {
       }
     }
 
+    // Inject complete run properties (font, size, bold, color) into numbering.xml
+    // This adds 12pt bold Arial black formatting to all numbered list symbols
+    const injectionSuccess = await this.injectCompleteRunPropertiesToNumbering(doc, numId);
+    if (injectionSuccess) {
+      this.log.debug('Applied 12pt bold black formatting to numbered list symbols');
+    } else {
+      this.log.warn('Failed to inject complete formatting to numbered list - symbols may not be styled correctly');
+    }
+
     return standardizedCount;
   }
 
@@ -2423,33 +2354,109 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Standardize numbering colors to black to fix green bullet issue
-   * This processes the numbering.xml to ensure all bullets/numbers are black
+   * Helper: Inject complete run properties (font, size, bold, color) into numbering.xml
+   * This uses low-level XML access to add w:rPr elements that docxmlater doesn't expose via API
+   *
+   * Adds the following to each numbering level:
+   * - Font family: Calibri (correct bullet character rendering)
+   * - Font size: 12pt (24 half-points)
+   * - Bold: true
+   * - Color: black (000000)
+   *
+   * @param doc - Document to modify
+   * @param numId - Numbering ID to enhance (optional, if not provided applies to all)
+   * @returns true if successful, false otherwise
    */
-  private async standardizeNumberingColors(doc: Document): Promise<boolean> {
+  private async injectCompleteRunPropertiesToNumbering(
+    doc: Document,
+    numId?: number
+  ): Promise<boolean> {
     try {
-      const manager = doc.getNumberingManager();
-      const abstractNumbers = manager.getAllAbstractNumberings();
+      // Access numbering.xml
+      const numberingPart = await doc.getPart('word/numbering.xml');
+      if (!numberingPart || typeof numberingPart.content !== 'string') {
+        this.log.warn('Unable to access numbering.xml');
+        return false;
+      }
 
+      let xmlContent = numberingPart.content;
+
+      // Find all <w:lvl> elements in the XML
+      // Each level should have run properties for consistent formatting
+      const lvlRegex = /<w:lvl w:ilvl="(\d+)"[^>]*>([\s\S]*?)<\/w:lvl>/g;
+      let match;
       let modified = false;
 
-      // Process each abstract numbering
-      for (const abstractNum of abstractNumbers) {
-        // Get all levels in this numbering definition
-        for (let level = 0; level < 9; level++) {
-          const numLevel = abstractNum.getLevel(level);
-          if (numLevel) {
-            // Set font color to black for consistency
-            // Note: The actual implementation would need to access the run properties
-            // For now, we'll rely on the framework's default behavior
-            modified = true;
-          }
+      while ((match = lvlRegex.exec(numberingPart.content)) !== null) {
+        const levelIndex = match[1];
+        const levelContent = match[2];
+        const fullMatch = match[0];
+
+        // Check if w:rPr already exists in this level
+        if (levelContent.includes('<w:rPr>')) {
+          // Update existing w:rPr with complete formatting
+          const updatedContent = levelContent.replace(
+            /<w:rPr>[\s\S]*?<\/w:rPr>/,
+            `<w:rPr>
+              <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
+              <w:b/>
+              <w:bCs/>
+              <w:sz w:val="24"/>
+              <w:szCs w:val="24"/>
+              <w:color w:val="000000"/>
+            </w:rPr>`
+          );
+          xmlContent = xmlContent.replace(fullMatch, fullMatch.replace(levelContent, updatedContent));
+          modified = true;
+        } else {
+          // Insert new w:rPr before closing </w:lvl> tag
+          const newRPr = `
+            <w:rPr>
+              <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
+              <w:b/>
+              <w:bCs/>
+              <w:sz w:val="24"/>
+              <w:szCs w:val="24"/>
+              <w:color w:val="000000"/>
+            </w:rPr>`;
+
+          const updatedLevel = fullMatch.replace('</w:lvl>', `${newRPr}</w:lvl>`);
+          xmlContent = xmlContent.replace(fullMatch, updatedLevel);
+          modified = true;
         }
       }
 
-      // The docXMLater framework should handle the actual XML color updates
-      // when the document is saved with the modified numbering levels
-      return modified;
+      if (modified) {
+        // Save modified XML back to document
+        await doc.setPart('word/numbering.xml', xmlContent);
+        this.log.debug('Successfully injected complete run properties into numbering.xml');
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      this.log.warn('Error injecting run properties to numbering:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Standardize numbering colors to black to fix green bullet issue
+   * This processes the numbering.xml to ensure all bullets/numbers are black
+   *
+   * NOW FULLY IMPLEMENTED using low-level XML access
+   */
+  private async standardizeNumberingColors(doc: Document): Promise<boolean> {
+    try {
+      // Use the helper function to inject complete run properties including black color
+      const success = await this.injectCompleteRunPropertiesToNumbering(doc);
+
+      if (success) {
+        this.log.debug('Standardized all numbering colors to black with 12pt bold formatting');
+        return true;
+      }
+
+      return false;
     } catch (error) {
       this.log.warn('Unable to standardize numbering colors:', error);
       return false;
