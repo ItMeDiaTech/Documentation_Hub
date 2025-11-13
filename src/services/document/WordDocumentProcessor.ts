@@ -566,7 +566,10 @@ export class WordDocumentProcessor {
       if (options.removeParagraphLines) {
         this.log.debug('=== REMOVING EXTRA PARAGRAPH LINES (ENHANCED) ===');
         // Now uses docxmlater 1.1.0 normalizeSpacing() helper for better reliability
-        const paragraphsRemoved = await this.removeExtraParagraphLines(doc);
+        const paragraphsRemoved = await this.removeExtraParagraphLines(
+          doc,
+          options.preserveBlankLinesAfterHeader2Tables ?? true
+        );
         this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
       }
 
@@ -586,7 +589,8 @@ export class WordDocumentProcessor {
         const styleResults = await this.applyCustomStylesFromUI(
           doc,
           options.styles,
-          options.tableShadingSettings
+          options.tableShadingSettings,
+          options.preserveBlankLinesAfterHeader2Tables ?? true
         );
         this.log.info(
           `Applied custom formatting: Heading1=${styleResults.heading1}, Heading2=${styleResults.heading2}, Heading3=${styleResults.heading3}, Normal=${styleResults.normal}, ListParagraph=${styleResults.listParagraph}`
@@ -1333,9 +1337,13 @@ export class WordDocumentProcessor {
    * - NEW v1.16.0: Optionally preserves blank lines after Header 2 tables
    *
    * @param doc - The document to process
+   * @param preserveBlankLinesAfterHeader2Tables - Whether to preserve blank lines after Header 2 tables
    * @returns Number of paragraphs removed
    */
-  private async removeExtraParagraphLines(doc: Document): Promise<number> {
+  private async removeExtraParagraphLines(
+    doc: Document,
+    preserveBlankLinesAfterHeader2Tables: boolean = true
+  ): Promise<number> {
     this.log.debug('Removing duplicate empty paragraphs using docxmlater v1.16.0 API');
 
     const originalCount = doc.getParagraphs().length;
@@ -1343,7 +1351,7 @@ export class WordDocumentProcessor {
     // Use the new docxmlater v1.16.0 API with preservation options
     // This replaces our manual implementation with the battle-tested library method
     const options = {
-      preserveBlankLinesAfterHeader2Tables: this.options.preserveBlankLinesAfterHeader2Tables ?? true,
+      preserveBlankLinesAfterHeader2Tables: preserveBlankLinesAfterHeader2Tables,
       safetyThreshold: 0.3, // Abort if > 30% of paragraphs would be deleted
     };
 
@@ -1627,7 +1635,8 @@ export class WordDocumentProcessor {
     tableShadingSettings?: {
       header2Shading: string;
       otherShading: string;
-    }
+    },
+    preserveBlankLinesAfterHeader2Tables: boolean = true
   ): Promise<{
     heading1: boolean;
     heading2: boolean;
@@ -1642,7 +1651,7 @@ export class WordDocumentProcessor {
     // This prevents accidental removal of spacing after Header 2 tables
     const options = {
       ...config,
-      preserveBlankLinesAfterHeader2Tables: this.options.preserveBlankLinesAfterHeader2Tables ?? true,
+      preserveBlankLinesAfterHeader2Tables: preserveBlankLinesAfterHeader2Tables,
     };
 
     this.log.debug('Applying custom formatting with options:', {
