@@ -1,0 +1,45 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "./src/services/document/DocXMLaterProcessor.ts",
+    "./src/services/document/types/docx-processing.ts",
+    "./src/utils/textSanitizer.ts"
+  ],
+  "out": "./docs/api",
+  "plugin": [],
+  "compilerOptions": {
+    "skipLibCheck": true
+  },
+  "readme": "./docs/api/API_README.md",
+  "name": "Documentation Hub - API Documentation",
+  "includeVersion": true,
+  "entryPointStrategy": "expand",
+  "categorizeByGroup": true,
+  "sort": ["source-order"],
+  "groupOrder": [
+    "Document I/O",
+    "Style Operations",
+    "Table Operations",
+    "Paragraph Formatting",
+    "High-Level Operations",
+    "Hyperlink Operations",
+    "Search & Replace",
+    "Document Statistics",
+    "Utilities",
+    "*"
+  ],
+  "exclude": [
+    "**/*+(test|spec).ts",
+    "**/node_modules/**",
+    "**/dist/**"
+  ],
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeInternal": false,
+  "hideGenerator": false,
+  "disableSources": false,
+  "searchInComments": true,
+  "navigationLinks": {
+    "GitHub": "https://github.com/ItMeDiaTech/Documentation_Hub"
+  }
+}
