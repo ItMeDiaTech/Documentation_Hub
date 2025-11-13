@@ -11,36 +11,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version Overview
 
-| Version | Date       | Highlights                                      | Tests  |
-|---------|------------|-------------------------------------------------|--------|
-| 1.16.0  | 2025-11-14 | Current release - All phases complete           | 2,073  |
-| 1.15.0  | 2025-11-14 | Hyperlink defragmentation API                   | 1,188+ |
-| 1.14.0  | 2025-11-13 | List formatting helpers, special characters     | 1,188  |
-| 1.13.0  | 2025-11-12 | Fixed hyperlink duplication from Google Docs    | 1,167  |
-| 1.0.0   | 2025-10-XX | Initial production release                      | 1,098  |
+| Version | Date       | Highlights                                   | Tests  |
+| ------- | ---------- | -------------------------------------------- | ------ |
+| 1.16.0  | 2025-11-14 | Current release - All phases complete        | 2,073  |
+| 1.15.0  | 2025-11-14 | Hyperlink defragmentation API                | 1,188+ |
+| 1.14.0  | 2025-11-13 | List formatting helpers, special characters  | 1,188  |
+| 1.13.0  | 2025-11-12 | Fixed hyperlink duplication from Google Docs | 1,167  |
+| 1.0.0   | 2025-10-XX | Initial production release                   | 1,098  |
 
 ---
 
 ## [1.15.0] - 2025-11-14
 
 ### Added
+
 - **Hyperlink Defragmentation API**: New methods to fix fragmented hyperlinks from Google Docs
   - `Document.defragmentHyperlinks(options)` - Merges fragmented hyperlinks with same URL across paragraphs
   - `Hyperlink.resetToStandardFormatting()` - Resets hyperlink to standard style (Calibri, blue, underline)
   - Enhanced `DocumentParser.mergeConsecutiveHyperlinks()` to handle non-consecutive fragments
 
 ### Improved
+
 - **Hyperlink Merging Algorithm**: Now groups ALL hyperlinks by URL, not just consecutive ones
   - Handles hyperlinks separated by runs or other content
   - Optional formatting reset to fix corrupted fonts (e.g., Caveat from Google Docs)
   - Processes hyperlinks in both main content and tables
 
 ### Fixed
+
 - **Hyperlink Fragmentation**: Fixed issue where hyperlinks with same URL were split into multiple fragments
 - **Corrupted Hyperlink Fonts**: Added ability to reset hyperlinks to standard formatting
 - **Non-Consecutive Hyperlink Merging**: Now properly merges hyperlinks even when separated by other content
 
 ### API Additions
+
 ```typescript
 // Defragment hyperlinks in document
 doc.defragmentHyperlinks({
@@ -53,6 +57,7 @@ hyperlink.resetToStandardFormatting();
 ```
 
 ### Technical Changes
+
 - Enhanced `DocumentParser.mergeConsecutiveHyperlinks()` with URL grouping and optional formatting reset
 - Added `getStandardHyperlinkFormatting()` helper in DocumentParser
 - Added `resetToStandardFormatting()` method to Hyperlink class
@@ -63,12 +68,14 @@ hyperlink.resetToStandardFormatting();
 ## [1.14.0] - 2025-11-13
 
 ### Added
+
 - **New Helper Methods** for list formatting:
   - `NumberingLevel.getBulletSymbolWithFont(level, style)` - Get recommended bullet symbols with proper fonts for 5 different bullet styles (standard, circle, square, arrow, check)
   - `NumberingLevel.calculateStandardIndentation(level)` - Calculate standard Microsoft Word-compatible indentation values
   - `NumberingLevel.getStandardNumberFormat(level)` - Get recommended number format for any level (decimal, lowerLetter, lowerRoman, upperLetter, upperRoman)
 
 ### Changed
+
 - **BREAKING (Minor)**: Default bullet font changed from 'Symbol' to 'Calibri' for better UI compatibility across platforms
 - **List Indentation Formula**: Updated from `720 * (level + 1)` to `720 + (level * 360)` to match Microsoft Word standards
   - Level 0: 720 twips (0.5")
@@ -85,6 +92,7 @@ hyperlink.resetToStandardFormatting();
   - Level 5+: cycles back to decimal
 
 ### Fixed
+
 - **Special Characters Serialization**: Tabs, newlines, and non-breaking hyphens now properly serialize as XML elements
   - `\t` (tab) → `<w:tab/>`
   - `\n` (newline) → `<w:br/>`
@@ -96,6 +104,7 @@ hyperlink.resetToStandardFormatting();
 - **Bullet Display**: Improved bullet symbol display in UI contexts by using Calibri instead of Symbol font
 
 ### Technical Changes
+
 - Added `parseTextWithSpecialCharacters()` private method to Run class for proper special character handling
 - Updated Run constructor and setText() to use character parsing
 - Enhanced Run.getText() to convert content elements back to their string representations
@@ -103,6 +112,7 @@ hyperlink.resetToStandardFormatting();
 - Updated NumberingManager.getStandardIndentation() to use new formula
 
 ### Tests
+
 - All 1188 tests passing (+21 from previous version)
 - Added comprehensive test coverage for special character handling (19 tests)
 - Updated test expectations for new list indentation and formatting behavior
@@ -110,6 +120,7 @@ hyperlink.resetToStandardFormatting();
 ## [1.13.0] - 2025-11-12
 
 ### Fixed
+
 - **Hyperlink Duplication**: Fixed issue where hyperlinks from Google Docs would duplicate multiple times
   - Parse ALL runs within hyperlink elements, not just the first run
   - Added `mergeConsecutiveHyperlinks()` method to combine fragmented hyperlinks
@@ -120,18 +131,22 @@ hyperlink.resetToStandardFormatting();
 - **List Indentation**: Fixed blank paragraph detection after Header 2 tables
 
 ### Added
+
 - `Paragraph.clearContent()` method for removing all content from a paragraph
 
 ### Changed
+
 - DocumentParser now correctly handles multi-run hyperlinks
 - Enhanced blank paragraph insertion logic for better Word compatibility
 
 ## [1.12.0] - 2025-11-11
 
 ### Added
+
 - Explicit spacing to Header 2 blank paragraphs (120 twips = 6pt) to ensure visibility in Word
 
 ### Fixed
+
 - Blank paragraph spacing after Header 2 sections
 
 ## [1.11.0] - Previous Release
@@ -146,11 +161,13 @@ hyperlink.resetToStandardFormatting();
 
 **List Indentation Changes:**
 If you were relying on the specific indentation values, note that levels 1+ now have smaller indents:
+
 - Old Level 1: 1440 twips → New Level 1: 1080 twips
 - Old Level 2: 2160 twips → New Level 2: 1440 twips
 - Old Level 3: 2880 twips → New Level 3: 1800 twips
 
 To maintain old behavior, explicitly set indentation:
+
 ```typescript
 const level = NumberingLevel.createBulletLevel(1);
 level.setLeftIndent(1440); // Old value
@@ -158,6 +175,7 @@ level.setLeftIndent(1440); // Old value
 
 **Bullet Font Changes:**
 Bullets now use Calibri font by default instead of Symbol font. If you need Symbol font:
+
 ```typescript
 const level = NumberingLevel.createBulletLevel(0, '•');
 level.setFont('Symbol');
@@ -165,6 +183,7 @@ level.setFont('Symbol');
 
 **Numbered List Formats:**
 Level 3 now shows uppercase letters (A., B., C.) instead of numbers (1., 2., 3.). To maintain old behavior:
+
 ```typescript
 const formats = ['decimal', 'lowerLetter', 'lowerRoman']; // 3-level cycle
 const abstractNum = AbstractNumbering.createNumberedList(1, 9, formats);
@@ -172,6 +191,7 @@ const abstractNum = AbstractNumbering.createNumberedList(1, 9, formats);
 
 **Special Characters:**
 Text containing tabs, newlines, etc. now automatically converts to proper XML elements. This is generally what you want, but if you need literal characters:
+
 ```typescript
 // Tabs and newlines now auto-convert to XML elements
 const run = new Run('Text\tWith\nSpecial');

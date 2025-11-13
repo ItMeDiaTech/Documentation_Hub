@@ -67,7 +67,6 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   centerImages?: boolean; // center-images: Center all image-containing paragraphs
   removeHeadersFooters?: boolean; // remove-headers-footers: Remove all headers and footers from document
   addDocumentWarning?: boolean; // add-document-warning: Add standardized warning at end of document
-  fixKeywords?: boolean; // fix-keywords: Fix common spelling/typo errors
 
   styles?: Array<{
     // Session styles to apply when assignStyles is true
@@ -596,7 +595,7 @@ export class WordDocumentProcessor {
         this.log.debug('=== DEFRAGMENTING HYPERLINKS ===');
         const merged = doc.defragmentHyperlinks({
           resetFormatting: true,
-          cleanupRelationships: true
+          cleanupRelationships: true,
         });
         this.log.info(`Merged ${merged} fragmented hyperlinks`);
         result.mergedHyperlinks = merged;
@@ -650,6 +649,28 @@ export class WordDocumentProcessor {
         this.log.info(
           `Applied custom formatting: Heading1=${styleResults.heading1}, Heading2=${styleResults.heading2}, Heading3=${styleResults.heading3}, Normal=${styleResults.normal}, ListParagraph=${styleResults.listParagraph}`
         );
+
+        // NEW v2.1.0: Apply styles and clean direct formatting with simpler API
+        this.log.debug('=== APPLYING STYLES WITH CLEAN FORMATTING ===');
+        const h1Count = doc.applyH1();
+        const h2Count = doc.applyH2();
+        const h3Count = doc.applyH3();
+        const numListCount = doc.applyNumList();
+        const bulletListCount = doc.applyBulletList();
+        const tocCount = doc.applyTOC();
+        const todCount = doc.applyTOD();
+        const cautionCount = doc.applyCaution();
+        const cellHeaderCount = doc.applyCellHeader();
+        const hyperlinkCount = doc.applyHyperlink();
+        const normalCount = doc.applyNormal();
+        const cleanedCount = doc.cleanFormatting();
+
+        this.log.info(
+          `Applied clean styles: H1=${h1Count}, H2=${h2Count}, H3=${h3Count}, ` +
+          `NumList=${numListCount}, Bullet=${bulletListCount}, TOC=${tocCount}, ` +
+          `TOD=${todCount}, Caution=${cautionCount}, CellHeader=${cellHeaderCount}, ` +
+          `Hyperlink=${hyperlinkCount}, Normal=${normalCount}, Cleaned=${cleanedCount}`
+        );
       }
 
       // ENSURE BLANK LINES AFTER 1x1 TABLES (with conditional preserve flag)
@@ -664,15 +685,15 @@ export class WordDocumentProcessor {
         const shouldPreserve = options.removeParagraphLines === true;
 
         const result = doc.ensureBlankLinesAfter1x1Tables({
-          spacingAfter: 120,              // 6pt spacing
+          spacingAfter: 120, // 6pt spacing
           markAsPreserved: shouldPreserve, // Conditional preserve flag
         });
 
         this.log.info(
           `Processed ${result.tablesProcessed} 1x1 tables: ` +
-          `Added ${result.blankLinesAdded} blank lines, ` +
-          `Marked ${result.existingLinesMarked} existing blank lines as preserved ` +
-          `(preserve=${shouldPreserve} based on removeParagraphLines=${options.removeParagraphLines})`
+            `Added ${result.blankLinesAdded} blank lines, ` +
+            `Marked ${result.existingLinesMarked} existing blank lines as preserved ` +
+            `(preserve=${shouldPreserve} based on removeParagraphLines=${options.removeParagraphLines})`
         );
       }
 
@@ -750,12 +771,6 @@ export class WordDocumentProcessor {
         this.log.debug('=== REMOVING HEADERS/FOOTERS ===');
         const headersFootersRemoved = doc.removeAllHeadersFooters();
         this.log.info(`Removed ${headersFootersRemoved} headers/footers from document`);
-      }
-
-      if (options.fixKeywords) {
-        this.log.debug('=== FIXING KEYWORDS ===');
-        const keywordsFixed = await this.fixCommonKeywords(doc, options);
-        this.log.info(`Fixed ${keywordsFixed} keyword errors`);
       }
 
       // LISTS & TABLES GROUP
@@ -1320,9 +1335,7 @@ export class WordDocumentProcessor {
       // Log details of each failure for debugging
       failedUrls.forEach(({ oldUrl, newUrl, error, paragraphIndex }) => {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        this.log.error(
-          `  - Paragraph ${paragraphIndex}: ${oldUrl} → ${newUrl} (${errorMessage})`
-        );
+        this.log.error(`  - Paragraph ${paragraphIndex}: ${oldUrl} → ${newUrl} (${errorMessage})`);
       });
     } else {
       this.log.info(`✅ Successfully updated ${updatedCount} hyperlink URLs`);
@@ -1547,10 +1560,7 @@ export class WordDocumentProcessor {
 
     // Create a map of paragraph objects to their context
     // This helps us detect if a paragraph is adjacent to a table or SDT
-    const paraToContext = new Map<
-      any,
-      { isAdjacentToTable: boolean }
-    >();
+    const paraToContext = new Map<any, { isAdjacentToTable: boolean }>();
 
     let paraIndex = 0;
     for (let bodyIndex = 0; bodyIndex < bodyElements.length; bodyIndex++) {
@@ -1677,7 +1687,6 @@ export class WordDocumentProcessor {
     return removedCount;
   }
 
-
   /**
    * Remove italic formatting - Strip italics from all text runs
    */
@@ -1748,7 +1757,9 @@ export class WordDocumentProcessor {
         }
       }
 
-      this.log.info(`Successfully standardized ${standardizedCount} of ${hyperlinks.length} hyperlinks`);
+      this.log.info(
+        `Successfully standardized ${standardizedCount} of ${hyperlinks.length} hyperlinks`
+      );
     } catch (error) {
       this.log.error(`Error standardizing hyperlink formatting: ${error}`);
       throw error;
@@ -1842,10 +1853,7 @@ export class WordDocumentProcessor {
             </w:rPr>`;
 
           // Replace all w:rPr instances
-          updatedContent = updatedContent.replace(
-            /<w:rPr>[\s\S]*?<\/w:rPr>/g,
-            rPrXml
-          );
+          updatedContent = updatedContent.replace(/<w:rPr>[\s\S]*?<\/w:rPr>/g, rPrXml);
 
           // Replace the entire level in xmlContent
           const updatedLevel = fullMatch.replace(levelContent, updatedContent);
@@ -1853,7 +1861,9 @@ export class WordDocumentProcessor {
           modified = true;
           standardizedCount++;
 
-          this.log.debug(`Standardized ${rPrMatches.length} w:rPr in list level ${levelIndex}: Verdana 12pt black${hasBold ? ' (bold preserved)' : ''}`);
+          this.log.debug(
+            `Standardized ${rPrMatches.length} w:rPr in list level ${levelIndex}: Verdana 12pt black${hasBold ? ' (bold preserved)' : ''}`
+          );
         } else {
           // No w:rPr found - insert one before closing tag
           // Place it right before </w:lvl> for better OOXML compliance
@@ -1862,14 +1872,18 @@ export class WordDocumentProcessor {
           modified = true;
           standardizedCount++;
 
-          this.log.debug(`Added standardized w:rPr to list level ${levelIndex}: Verdana 12pt black (new formatting)`);
+          this.log.debug(
+            `Added standardized w:rPr to list level ${levelIndex}: Verdana 12pt black (new formatting)`
+          );
         }
       }
 
       if (modified) {
         // Save modified XML back to document
         await doc.setPart('word/numbering.xml', xmlContent);
-        this.log.info(`Successfully standardized ${standardizedCount} list prefix levels to Verdana 12pt black`);
+        this.log.info(
+          `Successfully standardized ${standardizedCount} list prefix levels to Verdana 12pt black`
+        );
       } else {
         this.log.info('No list levels found to standardize');
       }
@@ -1899,11 +1913,13 @@ export class WordDocumentProcessor {
   private async insertBlankLinesAfter1x1Tables(doc: Document): Promise<number> {
     // DEPRECATED: This method is no longer used
     // New implementation uses: doc.ensureBlankLinesAfter1x1Tables()
-    this.log.warn('DEPRECATED: insertBlankLinesAfter1x1Tables() called - use doc.ensureBlankLinesAfter1x1Tables() instead');
+    this.log.warn(
+      'DEPRECATED: insertBlankLinesAfter1x1Tables() called - use doc.ensureBlankLinesAfter1x1Tables() instead'
+    );
     return 0;
   }
 
-    /**
+  /**
    * Assign styles to document - ENHANCED with docxmlater 1.1.0
    *
    * Now uses detectHeadingLevel() helper for smart heading detection:
@@ -2779,7 +2795,9 @@ export class WordDocumentProcessor {
     if (injectionSuccess) {
       this.log.debug('Applied 12pt bold black formatting to bullet list symbols');
     } else {
-      this.log.warn('Failed to inject complete formatting to bullet list - symbols may not be styled correctly');
+      this.log.warn(
+        'Failed to inject complete formatting to bullet list - symbols may not be styled correctly'
+      );
     }
 
     return standardizedCount;
@@ -2869,7 +2887,9 @@ export class WordDocumentProcessor {
     if (injectionSuccess) {
       this.log.debug('Applied 12pt bold black formatting to numbered list symbols');
     } else {
-      this.log.warn('Failed to inject complete formatting to numbered list - symbols may not be styled correctly');
+      this.log.warn(
+        'Failed to inject complete formatting to numbered list - symbols may not be styled correctly'
+      );
     }
 
     return standardizedCount;
@@ -2966,7 +2986,10 @@ export class WordDocumentProcessor {
               <w:szCs w:val="24"/>
             </w:rPr>`
           );
-          xmlContent = xmlContent.replace(fullMatch, fullMatch.replace(levelContent, updatedContent));
+          xmlContent = xmlContent.replace(
+            fullMatch,
+            fullMatch.replace(levelContent, updatedContent)
+          );
           modified = true;
         } else {
           // Insert new w:rPr before closing </w:lvl> tag
@@ -3066,11 +3089,11 @@ export class WordDocumentProcessor {
             // Check if w:ind exists within w:pPr
             if (levelContent.includes('<w:ind')) {
               // Update existing w:ind
-              const updatedContent = levelContent.replace(
-                /<w:ind[^>]*\/>/,
-                indentXml
+              const updatedContent = levelContent.replace(/<w:ind[^>]*\/>/, indentXml);
+              xmlContent = xmlContent.replace(
+                fullMatch,
+                fullMatch.replace(levelContent, updatedContent)
               );
-              xmlContent = xmlContent.replace(fullMatch, fullMatch.replace(levelContent, updatedContent));
               modified = true;
             } else {
               // Insert w:ind into existing w:pPr (right after opening tag)
@@ -3078,7 +3101,10 @@ export class WordDocumentProcessor {
                 /<w:pPr>/,
                 `<w:pPr>\n              ${indentXml}`
               );
-              xmlContent = xmlContent.replace(fullMatch, fullMatch.replace(levelContent, updatedContent));
+              xmlContent = xmlContent.replace(
+                fullMatch,
+                fullMatch.replace(levelContent, updatedContent)
+              );
               modified = true;
             }
           } else {
@@ -3093,16 +3119,10 @@ export class WordDocumentProcessor {
 
             // Check if w:rPr exists - insert before it if so (correct ECMA-376 order)
             if (levelContent.includes('<w:rPr>')) {
-              updatedLevel = fullMatch.replace(
-                /(<w:rPr>)/,
-                `${pPrXml}\n            $1`
-              );
+              updatedLevel = fullMatch.replace(/(<w:rPr>)/, `${pPrXml}\n            $1`);
             } else {
               // No w:rPr exists - insert before closing tag (also correct per ECMA-376)
-              updatedLevel = fullMatch.replace(
-                /<\/w:lvl>/,
-                `${pPrXml}\n          </w:lvl>`
-              );
+              updatedLevel = fullMatch.replace(/<\/w:lvl>/, `${pPrXml}\n          </w:lvl>`);
             }
 
             xmlContent = xmlContent.replace(fullMatch, updatedLevel);
@@ -3130,7 +3150,7 @@ export class WordDocumentProcessor {
     }
   }
 
-    /**
+  /**
    * Standardize numbering colors to black to fix green bullet issue
    * This processes the numbering.xml to ensure all bullets/numbers are black
    *
