@@ -23,7 +23,7 @@ Implemented a complete formatting standardization system that ensures all hyperl
 
 #### Hyperlink Formatting Standardization
 
-**Current Implementation (v1.0.45):**
+**Current Implementation (v1.0.47 - BUG FIX):**
 
 - Font: **Verdana 12pt** (updated from Calibri 11pt)
 - Color: **#0000FF** (bright blue, updated from #0563C1)
@@ -35,6 +35,15 @@ Implemented a complete formatting standardization system that ensures all hyperl
 - Matches document body text standards
 - Better readability and professional appearance
 - Consistent with organizational style guidelines
+
+**IMPORTANT BUG FIX (v1.0.47):**
+- **Issue**: Hyperlinks were rendering as 24pt instead of 12pt
+- **Root Cause**: Incorrect assumption about docxmlater's `setFormatting()` method
+  - We passed `size: 24` thinking it expected half-points (12pt = 24 half-points)
+  - But docxmlater expects `size` in **points** and converts internally (size * 2)
+  - Result: 24 points → 48 half-points → **24pt font** (wrong!)
+- **Fix**: Changed `size: 24` to `size: 12` (docxmlater handles conversion)
+- **Technical Note**: Unlike direct XML manipulation, docxmlater's API uses user-friendly point values
 
 #### List Prefix Formatting Standardization (NEW)
 
