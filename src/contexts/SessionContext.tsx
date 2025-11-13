@@ -826,6 +826,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         preserveBlankLinesAfterHeader2Tables?: boolean;
         removeItalics?: boolean;
         standardizeHyperlinkFormatting?: boolean;
+        standardizeListPrefixFormatting?: boolean;
 
         // Content Structure Options
         assignStyles?: boolean;
@@ -914,6 +915,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // This is intentional and required for the work environment to maintain professional document standards.
         // Hyperlinks should never be bolded or italicized - they must always use standard blue underlined style.
         standardizeHyperlinkFormatting: true,
+
+        // ALWAYS ENABLED: Standardize list prefix formatting (Verdana 12pt black for all lists)
+        // This ensures all bullet points and numbered list symbols have consistent professional formatting.
+        standardizeListPrefixFormatting: true,
 
         // Content Structure Options (ALWAYS ENABLED - automatic processing)
         // These operations are now always applied when processing documents
