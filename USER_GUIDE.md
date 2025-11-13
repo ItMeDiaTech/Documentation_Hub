@@ -92,6 +92,7 @@ Four main metric cards display your all-time statistics:
 4. **Time Saved** - Estimated time saved (calculated at 101 seconds per hyperlink)
 
 Each card shows:
+
 - Current total value
 - Today's activity count
 - Comparison to yesterday (trending up/down/no change)
@@ -135,18 +136,21 @@ The session workspace features multiple tabs for different aspects of your work:
 #### Session Tab (Main)
 
 **Statistics Cards:**
+
 - Documents processed
 - Hyperlinks checked
 - Feedback imported
 - Time saved (with breakdown)
 
 **Document Upload Area:**
+
 - Drag and drop Word documents (.docx files) into the designated area
 - Or click **Select Files** to browse and choose documents
 - Multiple files can be added at once
 
 **Document List:**
 Each document in your session displays:
+
 - File name
 - File size
 - Status icon:
@@ -178,6 +182,7 @@ Configure which operations to apply to your documents:
 - **Apply Table Shading** - Applies background colors to table rows
 
 **Table Shading Options:**
+
 - Configure different colors for Header2 tables vs. other tables
 - Use the color picker dialogs to choose custom colors
 
@@ -188,6 +193,7 @@ Toggle each option on/off using the switches. Your selections are saved with the
 Customize the visual appearance of your processed documents:
 
 **Main Text Customization:**
+
 - Font family
 - Font size
 - Font color
@@ -196,6 +202,7 @@ Customize the visual appearance of your processed documents:
 - Line height
 
 **Secondary Text Customization:**
+
 - Same options as main text but for secondary elements
 - Descriptions and supporting content
 
@@ -203,11 +210,13 @@ Customize the visual appearance of your processed documents:
 Shows how your text styling will appear in the document.
 
 **List Bullet Settings:**
+
 - Choose between standard bullets or custom characters
 - Configure indentation and spacing
 - Set bullet colors
 
 **Quick Save Button:**
+
 - Saves all style preferences to the session
 
 #### Replacements Tab
@@ -221,6 +230,7 @@ Set up automatic text replacements to apply during processing:
 5. Remove rules by clicking the trash icon
 
 Useful for:
+
 - Standardizing terminology
 - Correcting common typos
 - Updating product names or abbreviations
@@ -236,6 +246,7 @@ View a detailed diff of what changed in your documents after processing:
 ### Saving and Closing Sessions
 
 Click **Save and Close Session** (top-right) to:
+
 - Save all session settings and document states
 - Close the session workspace
 - Return to the Dashboard
@@ -257,11 +268,13 @@ Click **Sessions** in the sidebar to view all your sessions in one place.
 Switch between two view styles using the toggle buttons in the top-right:
 
 **Grid View:**
+
 - Card-based layout showing sessions in a grid
 - Shows 3 columns on large screens, 2 on medium, 1 on small
 - Best for visual browsing and quick identification
 
 **List View:**
+
 - Compact list format with additional details
 - Shows extended statistics inline
 - Best for viewing many sessions at once
@@ -275,20 +288,24 @@ Use the search box at the top to quickly find sessions by name. Results filter i
 Each session card displays:
 
 **Header:**
+
 - Folder icon
 - Session name
 - Status badge (active/inactive in green or gray)
 - Delete button (appears on hover)
 
 **Statistics:**
+
 - Number of documents in the session
 - Total time saved (in minutes)
 
 **Metadata:**
+
 - Creation date
 - Last modified date
 
 **Additional Info (List View Only):**
+
 - Documents processed count
 - Hyperlinks checked count
 - Feedback imported count
@@ -297,11 +314,13 @@ Each session card displays:
 ### Session Actions
 
 **Opening a Session:**
+
 - Click anywhere on the session card
 - The session opens in the Session Workspace
 - Recent activity updates automatically
 
 **Deleting a Session:**
+
 - Hover over the session card
 - Click the trash icon in the top-right corner
 - Confirm deletion in the dialog that appears
@@ -363,14 +382,16 @@ The Documents page provides a centralized library view of all documents across a
 
 Click **Documents** in the sidebar to browse your entire document collection.
 
-### Search and Filter
+### Search and Filtering
 
 **Search Box:**
+
 - Located at the top with a magnifying glass icon
 - Search by document name or session name
 - Results update instantly as you type
 
 **Status Filter:**
+
 - Filter by document processing status
 - Options: All, Completed, Pending, Error
 - Shows count for each status category
@@ -381,17 +402,20 @@ Click **Documents** in the sidebar to browse your entire document collection.
 Each document is displayed in a card showing:
 
 **Document Information:**
+
 - File icon (colored by status)
 - Document name
 - Session name (which session it belongs to)
 - File path (where it's stored)
 
 **Status Indicators:**
+
 - Green checkmark = Completed
 - Yellow clock = Pending
 - Red alert = Error
 
 **Quick Actions:**
+
 - **Open in Word** - Opens the document in Microsoft Word (completed documents only)
 - **Show in Folder** - Opens File Explorer to the document's location
 - Hover over any document for action buttons
@@ -399,19 +423,22 @@ Each document is displayed in a card showing:
 ### Viewing Options
 
 Documents are organized in a clean list format with:
+
 - Session grouping (documents from the same session appear together)
 - Status badges for quick visual identification
 - File metadata display
 
-### Empty State
+### Empty States
 
 If you don't have any documents yet, you'll see a message encouraging you to:
+
 - Create a new session
 - Add documents to existing sessions
 
 ### Use Cases
 
 The Documents page is ideal for:
+
 - Finding a specific document across multiple sessions
 - Reviewing all completed documents at once
 - Identifying documents with processing errors
@@ -430,7 +457,7 @@ The Documents page is ideal for:
 
 The Analytics page provides powerful visualizations of your productivity over time.
 
-### View Modes
+### View All Modes
 
 Choose between three time ranges:
 
@@ -443,6 +470,7 @@ Switch views using the buttons at the top.
 ### Statistics Summary
 
 Four metric cards show your all-time totals:
+
 - Documents Processed
 - Hyperlinks Checked
 - Feedback Imported
@@ -451,20 +479,24 @@ Four metric cards show your all-time totals:
 ### Charts
 
 **Documents Processed Over Time:**
+
 - Line chart showing document processing trends
 - Helps identify busy periods and productivity patterns
 
 **Activity Breakdown:**
+
 - Bar chart showing all metrics side-by-side
 - Compare documents, hyperlinks, feedback, and time saved
 
 **Performance Comparison:**
+
 - Multi-line chart showing all metrics on one graph
 - Spot correlations and trends across different activities
 
 ### Resetting Statistics
 
 The **Reset All Stats** button (top-right) clears all historical data:
+
 - Use with caution - this cannot be undone
 - Confirmation dialog ensures you don't accidentally reset
 
@@ -485,12 +517,14 @@ The Search page lets you find documents across all sessions with powerful filter
 Click the **Filter icon** in the search box to reveal:
 
 **Status Filter:**
+
 - All Status - Show everything
 - Completed - Only processed documents
 - Pending - Only unprocessed documents
 - Error - Only failed documents
 
 **Session Filter:**
+
 - Dropdown to select a specific session
 - Or choose "All Sessions" to search everywhere
 
@@ -507,6 +541,7 @@ The selected result is highlighted and auto-scrolls into view.
 ### Search Results
 
 Each result shows:
+
 - Document name
 - Session name it belongs to
 - File path
@@ -534,6 +569,7 @@ Browse by category:
 ### Plugin Statistics
 
 Three cards at the top show:
+
 - **Installed** - Number of plugins you've installed
 - **Active** - Number of plugins currently enabled
 - **Available** - Total plugins in the marketplace
@@ -543,6 +579,7 @@ Three cards at the top show:
 Each plugin displays:
 
 **Information:**
+
 - Name and description
 - Version number
 - Author (DocHub Team or Community)
@@ -552,6 +589,7 @@ Each plugin displays:
 - Verified badge (for official plugins)
 
 **Actions:**
+
 - **Install** - Download and install the plugin
 - **Enable/Disable Toggle** - Turn the plugin on/off
 - **Uninstall** - Remove the plugin completely
@@ -584,14 +622,17 @@ The Projects and Team pages provide collaboration features for team-based workfl
 The Projects page helps you manage multiple projects with team collaboration.
 
 **Accessing the Projects Page:**
+
 - Click **Projects** in the sidebar (visible under Team navigation item)
 
 **Project View Options:**
+
 - **Grid View** - Visual card layout with project tiles
 - **List View** - Detailed table format with all project information
 
 **Project Information:**
 Each project card displays:
+
 - Project name and description
 - Current status (Planning, In Progress, Review, etc.)
 - Progress bar showing completion percentage
@@ -600,12 +641,14 @@ Each project card displays:
 - Color-coded status indicator
 
 **Project Actions:**
+
 - Click any project to view details
 - Create new projects with the "New Project" button
 - Search projects by name or description
 - Filter by status or team assignment
 
 **Use Cases:**
+
 - Coordinate document processing across multiple projects
 - Track team progress on large documentation initiatives
 - Organize sessions by project context
@@ -616,9 +659,11 @@ Each project card displays:
 The Team page facilitates collaboration with colleagues.
 
 **Accessing the Team Page:**
+
 - Click **Team** in the sidebar
 
 **Team Features:**
+
 - View all team members
 - See who's working on which sessions
 - Track collective productivity
@@ -626,6 +671,7 @@ The Team page facilitates collaboration with colleagues.
 - Share sessions and processing configurations
 
 **Collaboration Benefits:**
+
 - Consistent document processing across the team
 - Shared style templates and replacement rules
 - Centralized statistics and analytics
@@ -644,6 +690,7 @@ Click **Profile** in the bottom section of the sidebar.
 ### Profile Information
 
 **Personal Details:**
+
 - Profile picture or avatar
 - Display name
 - Email address
@@ -651,11 +698,13 @@ Click **Profile** in the bottom section of the sidebar.
 - Account creation date
 
 **Quick Stats:**
+
 - Your personal contribution to team metrics
 - Individual productivity statistics
 - Recent activity summary
 
 **Account Actions:**
+
 - Edit profile information
 - Update contact details
 - Change password (if applicable)
@@ -664,6 +713,7 @@ Click **Profile** in the bottom section of the sidebar.
 
 **Integration:**
 Your profile integrates with:
+
 - Session history (shows your sessions)
 - Global statistics (tracks your contributions)
 - Team collaboration (displays your role)
@@ -700,6 +750,7 @@ Manage your personal information:
 - Email Address
 
 **Quick Actions:**
+
 - Export Settings - Save all your preferences to a file
 - Import Settings - Load preferences from a backup file
 - Save Changes - Apply your edits
@@ -708,21 +759,25 @@ Manage your personal information:
 
 **Theme Mode:**
 Choose between Light and Dark themes:
+
 - **Light** - Bright, clean interface for daytime use
 - **Dark** - Easy on the eyes for low-light environments
 
 **Interface Density:**
 Control spacing and compactness:
+
 - **Comfortable** - Spacious, relaxed layout
 - **Compact** - Tighter spacing, more content visible
 - **Minimal** - Maximum density, minimal padding
 
 **Accent Color:**
 Choose from 8 preset colors or create a custom color:
+
 - Blue, Purple, Green, Orange, Pink, Cyan, Indigo
 - **Custom** - Opens a color picker for any color you want
 
 **Visual Effects:**
+
 - **Glass morphism effects** - Blur and transparency effects
 - **Smooth animations** - Transitions and micro-interactions
 
@@ -730,6 +785,7 @@ Toggle each on/off based on your preference and system performance.
 
 **Custom Theme Colors:**
 For advanced users, enable custom colors to override:
+
 - Primary color
 - Background color (text color auto-adjusts for contrast)
 - Header color (text color auto-adjusts)
@@ -745,18 +801,21 @@ See your changes in real-time with sample text.
 
 **Quick Presets:**
 Four one-click presets:
+
 - **Reading** - Comfortable for long-form content
 - **Compact** - Dense for information-heavy screens
 - **Presentation** - Large, bold for displays
 - **Default** - Reset to factory settings
 
 **Font Settings:**
+
 - **Family** - Choose from 11 fonts including Inter, Roboto, Poppins, monospace fonts, and even Webdings for fun
 - **Size** - 12px to 20px slider
 - **Weight** - Light, Regular, Medium, Semibold, Bold
 - **Style** - Normal or Italic
 
 **Spacing Settings:**
+
 - **Letter Spacing** - Tight to Wide (-0.05em to 0.1em)
 - **Line Height** - Compact to Spacious (1.0 to 2.0)
 
@@ -766,17 +825,20 @@ All changes update the preview in real-time.
 
 **Language:**
 Choose your display language:
+
 - English (US)
 - Español (Spanish)
 - 中文 (Mandarin Chinese)
 
 **Timezone:**
 Select from US timezones and common international zones:
+
 - US: Hawaii, Alaska, Pacific, Mountain, Central, Eastern
 - International: UTC, London, Paris, Cairo, Moscow, Mumbai, Beijing, Tokyo, Sydney
 
 **Date Format:**
 Choose how dates are displayed:
+
 - MM/DD/YYYY (US format)
 - DD/MM/YYYY (European format)
 - YYYY-MM-DD (ISO format)
@@ -788,17 +850,20 @@ Displays the installed version number.
 
 **Check for Updates:**
 Click the button to manually check for new versions:
+
 - Shows "Checking..." while searching
 - Displays "Update available" if a new version is found
 - Shows "You are up to date" if you're current
 
 **Download Update:**
 When an update is available:
+
 - Click to download (progress bar shows percentage)
 - "Install & Restart" button appears when download completes
 - Application closes, updates, and reopens automatically
 
 **Auto-Update Settings:**
+
 - **Auto-update on launch** - Automatically check when starting the app
 - **Check for pre-releases** - Include beta versions in update checks
 
@@ -809,6 +874,7 @@ Toggle these on/off based on your preference.
 Configure external service integrations.
 
 **Hyperlink Processing:**
+
 - **PowerAutomate Dictionary URL** - API endpoint for hyperlink metadata
   - Paste your PowerAutomate workflow URL
   - Real-time validation shows any issues
@@ -817,6 +883,7 @@ Configure external service integrations.
   - Detailed error messages guide you to fix problems
 
 **Feedback & Reporting:**
+
 - **Bug Report API URL** - Where bug reports are sent
 - **Submit Idea API URL** - Where feature suggestions are sent
 
@@ -837,10 +904,12 @@ Your idea is sent via the configured API or email. Confirmation appears when suc
 Manage your data and storage:
 
 **Storage Used:**
+
 - Visual progress bar shows usage (e.g., 2.4 GB of 10 GB = 24%)
 - Percentage displayed prominently
 
 **Data Management:**
+
 - **Clear Cache** - Free up space by removing temporary files
 - **Export Settings & Data** - Backup everything to a JSON file
 - **Import Settings & Data** - Restore from a backup file
@@ -855,10 +924,12 @@ Manage your data and storage:
 The Command Palette is your productivity powerhouse, accessible from anywhere in the application.
 
 **Opening the Command Palette:**
+
 - Press **Ctrl+K** (or **Cmd+K** on Mac)
 - Or click the lightning bolt icon in the header
 
 **Using the Command Palette:**
+
 1. Type to search for any command
 2. Use ↑↓ arrow keys to navigate results
 3. Press Enter to execute selected command
@@ -867,6 +938,7 @@ The Command Palette is your productivity powerhouse, accessible from anywhere in
 **Available Commands:**
 
 **Navigation:**
+
 - "Go to Dashboard" - Jump to the Dashboard
 - "Open Projects" - Navigate to Projects page
 - "Browse Documents" - Open Documents library
@@ -875,15 +947,18 @@ The Command Palette is your productivity powerhouse, accessible from anywhere in
 - "Open Settings" - Access Settings page
 
 **Theme:**
+
 - "Switch to Light Theme" - Enable light mode
 - "Switch to Dark Theme" - Enable dark mode
 
 **Smart Search:**
+
 - The command palette understands keywords
 - Try typing "dark", "home", "plugins", or "settings"
 - Results are filtered in real-time as you type
 
 **Why Use the Command Palette:**
+
 - Faster than clicking through menus
 - No need to remember exact locations
 - Works from any page in the app
@@ -900,7 +975,7 @@ The Command Palette is your productivity powerhouse, accessible from anywhere in
 - **↓ Arrow Down** - Move to next result
 - **Enter** - Open selected result
 
-### Session Workspace
+### Session Workspaces
 
 - **Click logo 5 times quickly** - Open developer tools (easter egg)
 
@@ -915,7 +990,7 @@ The Command Palette is your productivity powerhouse, accessible from anywhere in
 3. **Save Frequently** - Click "Save and Close" regularly to preserve your work
 4. **Check Tracked Changes** - Always review the Tracked Changes tab before finalizing
 
-### Document Processing
+### Doc Processing
 
 1. **Test With One Document First** - Before batch processing, test settings on a single document
 2. **Enable Relevant Options Only** - Don't enable operations you don't need - faster processing
@@ -1004,6 +1079,7 @@ The Command Palette is your productivity powerhouse, accessible from anywhere in
 Documentation Hub is designed to streamline your document processing workflow with powerful automation, intuitive organization, and extensive customization. This guide covers all major features, but don't hesitate to explore and experiment - the application is designed to be forgiving and all changes are reversible.
 
 **Remember:**
+
 - Sessions organize your work
 - Processing options give you control
 - Analytics show your impact
@@ -1013,5 +1089,5 @@ Happy document processing!
 
 ---
 
-*Last Updated: November 2025*
-*Documentation Hub Version: 1.0.40+*
+_Last Updated: November 2025_
+_Documentation Hub Version: 1.0.40+_
