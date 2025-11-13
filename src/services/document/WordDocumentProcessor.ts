@@ -162,6 +162,20 @@ export interface WordProcessingResult extends HyperlinkProcessingResult {
 }
 
 /**
+ * Interface for tracking URL update results with error handling
+ * Used by applyUrlUpdates() to report both successes and failures
+ */
+export interface UrlUpdateResult {
+  updated: number; // Number of URLs successfully updated
+  failed: Array<{
+    oldUrl: string; // Original URL that failed to update
+    newUrl: string; // Target URL that was attempted
+    error: unknown; // The error that occurred
+    paragraphIndex?: number; // Index of paragraph where failure occurred
+  }>;
+}
+
+/**
  * Modern Word document processor using DocXMLater
  */
 export class WordDocumentProcessor {
@@ -484,11 +498,40 @@ export class WordDocumentProcessor {
                 this.log.debug(`=== APPLYING URL UPDATES (BATCH) ===`);
                 this.log.debug(`Updating ${urlUpdateMap.size} URLs via paragraph reconstruction`);
 
-                const appliedCount = await this.applyUrlUpdates(doc, urlUpdateMap);
-                result.modifiedHyperlinks += appliedCount;
-                result.updatedUrls = (result.updatedUrls || 0) + appliedCount;
+                const urlUpdateResult = await this.applyUrlUpdates(doc, urlUpdateMap);
 
-                this.log.info(`Applied ${appliedCount} URL updates`);
+                // Update statistics with successful updates
+                result.modifiedHyperlinks += urlUpdateResult.updated;
+                result.updatedUrls = (result.updatedUrls || 0) + urlUpdateResult.updated;
+
+                this.log.info(`Applied ${urlUpdateResult.updated} URL updates`);
+
+                // Handle failures if any occurred
+                if (urlUpdateResult.failed.length > 0) {
+                  this.log.error('⚠️ URL update failures detected:', {
+                    totalAttempted: urlUpdateMap.size,
+                    succeeded: urlUpdateResult.updated,
+                    failed: urlUpdateResult.failed.length,
+                    failureDetails: urlUpdateResult.failed,
+                  });
+
+                  // Add error message to result
+                  const failureMessage =
+                    `Partial URL update failure: ${urlUpdateResult.failed.length} of ${urlUpdateMap.size} URLs failed to update. ` +
+                    `Document saved with ${urlUpdateResult.updated} successful updates.`;
+
+                  result.errorMessages.push(failureMessage);
+                  result.errorCount++;
+
+                  // Strategy: Log and continue (partial update)
+                  // The document is saved with the successful updates
+                  // Failed URLs remain unchanged
+                  // This prevents data loss while alerting the user
+                  this.log.warn(
+                    '📝 Document will be saved with partial URL updates. ' +
+                      'Failed URLs remain unchanged and require manual review.'
+                  );
+                }
               }
 
               this.log.info(
@@ -1128,19 +1171,29 @@ export class WordDocumentProcessor {
    * Apply URL updates to hyperlinks using DocXMLater's setUrl() method
    * Updated to use the new setUrl() API added to DocXMLater library
    *
+   * Enhanced with comprehensive error handling to prevent data corruption
+   * from partial updates when some URL updates fail.
+   *
    * @param doc - The document being processed
    * @param urlMap - Map of old URL -> new URL
-   * @returns Number of URLs updated
+   * @returns UrlUpdateResult with success count and failure details
    */
-  private async applyUrlUpdates(doc: Document, urlMap: Map<string, string>): Promise<number> {
-    if (urlMap.size === 0) return 0;
+  private async applyUrlUpdates(
+    doc: Document,
+    urlMap: Map<string, string>
+  ): Promise<UrlUpdateResult> {
+    if (urlMap.size === 0) {
+      return { updated: 0, failed: [] };
+    }
 
+    const failedUrls: UrlUpdateResult['failed'] = [];
     let updatedCount = 0;
     const paragraphs = doc.getParagraphs();
 
     this.log.debug(`Processing ${paragraphs.length} paragraphs for URL updates`);
 
-    for (const para of paragraphs) {
+    for (let paraIndex = 0; paraIndex < paragraphs.length; paraIndex++) {
+      const para = paragraphs[paraIndex];
       const content = para.getContent();
 
       // Find hyperlinks in this paragraph that need URL updates
@@ -1152,18 +1205,57 @@ export class WordDocumentProcessor {
             // This hyperlink needs URL update
             const newUrl = urlMap.get(oldUrl)!;
 
-            // Use DocXMLater's new setUrl() method to update the hyperlink
-            item.setUrl(newUrl);
-            updatedCount++;
+            // Skip if URLs are identical (no-op update)
+            if (oldUrl === newUrl) {
+              this.log.debug(`Skipping no-op update: ${oldUrl}`);
+              continue;
+            }
 
-            this.log.debug(`✅ Updated hyperlink URL: ${oldUrl} → ${newUrl}`);
+            try {
+              // Use DocXMLater's new setUrl() method to update the hyperlink
+              item.setUrl(newUrl);
+              updatedCount++;
+
+              this.log.debug(`✅ Updated hyperlink URL: ${oldUrl} → ${newUrl}`);
+            } catch (error) {
+              // Log the failure with context
+              this.log.error(
+                `❌ Failed to update URL at paragraph ${paraIndex}: ${oldUrl} → ${newUrl}`,
+                error
+              );
+
+              // Track the failure for reporting
+              failedUrls.push({
+                oldUrl,
+                newUrl,
+                error,
+                paragraphIndex: paraIndex,
+              });
+            }
           }
         }
       }
     }
 
-    this.log.info(`Successfully updated ${updatedCount} hyperlink URLs`);
-    return updatedCount;
+    // Log summary with appropriate level
+    if (failedUrls.length > 0) {
+      this.log.warn(
+        `⚠️ URL update completed with ${failedUrls.length} failures. ` +
+          `Updated: ${updatedCount}, Failed: ${failedUrls.length}, Total Attempted: ${urlMap.size}`
+      );
+
+      // Log details of each failure for debugging
+      failedUrls.forEach(({ oldUrl, newUrl, error, paragraphIndex }) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.log.error(
+          `  - Paragraph ${paragraphIndex}: ${oldUrl} → ${newUrl} (${errorMessage})`
+        );
+      });
+    } else {
+      this.log.info(`✅ Successfully updated ${updatedCount} hyperlink URLs`);
+    }
+
+    return { updated: updatedCount, failed: failedUrls };
   }
 
   // Extraction method moved to centralized utility: src/utils/urlPatterns.ts
