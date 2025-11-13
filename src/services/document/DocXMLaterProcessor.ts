@@ -727,6 +727,8 @@ export class DocXMLaterProcessor {
       modifiedHyperlinks: number;
     }>
   > {
+    let doc: Document | null = null;
+
     try {
       // Load document
       const loadResult = await this.loadFromFile(filePath);
@@ -737,7 +739,7 @@ export class DocXMLaterProcessor {
         };
       }
 
-      const doc = loadResult.data;
+      doc = loadResult.data;
       const hyperlinks = await this.extractHyperlinks(doc);
       let modifiedCount = 0;
 
@@ -758,12 +760,8 @@ export class DocXMLaterProcessor {
               // Append #content
               const newUrl = url + contentId;
 
-              // Create new hyperlink with modified URL
-              const newHyperlink = Hyperlink.createExternal(
-                newUrl,
-                hyperlink.getText(),
-                hyperlink.getFormatting()
-              );
+              // Modify existing hyperlink URL in-place
+              hyperlink.setUrl(newUrl);
               modifiedCount++;
             }
           }
@@ -791,6 +789,15 @@ export class DocXMLaterProcessor {
         success: false,
         error: `Failed to append content IDs: ${error.message}`,
       };
+    } finally {
+      // Clean up resources
+      if (doc) {
+        try {
+          doc.dispose();
+        } catch (disposeError) {
+          console.warn('Failed to dispose document:', disposeError);
+        }
+      }
     }
   }
 
