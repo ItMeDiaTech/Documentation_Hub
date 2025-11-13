@@ -1,7 +1,7 @@
 # docXMLater - Professional DOCX Framework
 
 [![npm version](https://img.shields.io/npm/v/docxmlater.svg)](https://www.npmjs.com/package/docxmlater)
-[![Tests](https://img.shields.io/badge/tests-1098%20passing-brightgreen)](https://github.com/ItMeDiaTech/docXMLater)
+[![Tests](https://img.shields.io/badge/tests-2073%20passing-brightgreen)](https://github.com/ItMeDiaTech/docXMLater)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -9,13 +9,13 @@ A comprehensive, production-ready TypeScript/JavaScript library for creating, re
 
 Built for professional documentation work, docXMLater provides a complete solution for programmatic DOCX manipulation with an intuitive API and helper functions for all aspects of document creation and modification.
 
-## Latest Updates - v1.0.0
+## Latest Updates - v1.16.0
 
 **Production Release!** All major features complete:
 
-### What's New in v1.0.0
+### What's New in v1.16.0
 
-- **Complete Feature Set:** All 102 major features implemented
+- **Complete Feature Set:** All 102 major features implemented across 5 phases
 - **Table Styles:** Full support with 12 conditional formatting types
 - **Content Controls:** 9 control types (rich text, plain text, combo box, dropdown, date picker, checkbox, picture, building block, group)
 - **Field Types:** 11 field types (PAGE, NUMPAGES, DATE, TIME, FILENAME, AUTHOR, TITLE, REF, HYPERLINK, SEQ, TC/XE)
@@ -23,7 +23,35 @@ Built for professional documentation work, docXMLater provides a complete soluti
 - **Document Properties:** Core, extended, and custom properties
 - **Production Ready:** Full ECMA-376 compliance, zero regressions
 
-**Test Results:** 1,098/1,098 tests passing (100% - exceeding v1.0 goal by 29%)
+**Test Results:** 2,073/2,073 tests passing (100% - comprehensive test coverage)
+
+### Implementation Phases - All Complete ✅
+
+| Phase                            | Status      | Features                                              |
+| -------------------------------- | ----------- | ----------------------------------------------------- |
+| **Phase 1: Foundation**          | ✅ Complete | ZIP handling, XML generation, validation              |
+| **Phase 2: Core Elements**       | ✅ Complete | Paragraph, Run, text formatting                       |
+| **Phase 3: Advanced Formatting** | ✅ Complete | Styles, tables, sections, lists                       |
+| **Phase 4: Rich Content**        | ✅ Complete | Images, headers, footers, hyperlinks                  |
+| **Phase 5: Polish**              | ✅ Complete | Track changes, comments, TOC, hyperlink defragmentation |
+
+### Phase 4 & 5 Highlights (v1.13.0 - v1.16.0)
+
+#### Phase 4: Rich Content Features
+- **Images**: PNG, JPEG, GIF support with positioning and sizing
+- **Headers & Footers**: Different first/odd/even pages with dynamic fields
+- **Hyperlinks**: External, internal, and email links with full relationship management
+- **Hyperlink Extraction**: Comprehensive API covering main content, tables, headers, and footers
+- **Batch URL Updates**: Efficient bulk hyperlink URL modification with error tracking
+
+#### Phase 5: Polish & Advanced Features
+- **Hyperlink Defragmentation** (v1.15.0): Fix fragmented hyperlinks from Google Docs imports
+- **List Formatting Helpers** (v1.14.0): Smart bullet and numbering with proper indentation
+- **Special Character Support** (v1.14.0): Tabs, newlines, non-breaking hyphens serialize correctly
+- **Track Changes**: Insertions and deletions with author attribution
+- **Comments**: Threading and replies for collaboration
+- **Table of Contents**: Multiple TOC styles with customization
+- **XML Corruption Prevention**: Automatic sanitization of XML patterns in text
 
 ## Quick Start
 
@@ -503,12 +531,42 @@ doc.insertTocAt(0, toc);
 
 ### Hyperlinks
 
+#### Creating Hyperlinks
+
 | Method                                            | Description      | Example                                                    |
 | ------------------------------------------------- | ---------------- | ---------------------------------------------------------- |
 | `Hyperlink.createExternal(url, text, format?)`    | Web link         | `Hyperlink.createExternal('https://example.com', 'Click')` |
 | `Hyperlink.createEmail(email, text?, format?)`    | Email link       | `Hyperlink.createEmail('user@example.com')`                |
 | `Hyperlink.createInternal(anchor, text, format?)` | Internal link    | `Hyperlink.createInternal('Section1', 'Go to')`            |
 | `para.addHyperlink(hyperlink)`                    | Add to paragraph | `para.addHyperlink(link)`                                  |
+
+#### Hyperlink Defragmentation (v1.15.0+)
+
+Fix fragmented hyperlinks caused by Google Docs imports or formatting changes:
+
+| Method                                     | Description                          | Example                                            |
+| ------------------------------------------ | ------------------------------------ | -------------------------------------------------- |
+| `doc.defragmentHyperlinks(options?)`       | Merge fragmented hyperlinks by URL   | `doc.defragmentHyperlinks({ resetFormatting: true })` |
+| `hyperlink.resetToStandardFormatting()`    | Reset to standard blue underlined    | `hyperlink.resetToStandardFormatting()`            |
+
+**Options:**
+- `resetFormatting?: boolean` - Reset hyperlinks to standard style (Calibri, blue, underline)
+- `cleanupRelationships?: boolean` - Remove orphaned relationship entries
+
+**Example:**
+```typescript
+// Load document with fragmented hyperlinks from Google Docs
+const doc = await Document.load('google-docs-export.docx');
+
+// Fix fragmented hyperlinks and reset corrupted formatting
+doc.defragmentHyperlinks({
+  resetFormatting: true,      // Fix Caveat font and other issues
+  cleanupRelationships: true  // Clean up relationship table
+});
+
+// Save cleaned document
+await doc.save('fixed.docx');
+```
 
 ### Headers & Footers
 
@@ -902,6 +960,81 @@ const parts = await doc.listParts();
 console.log("Document contains:", parts.length, "parts");
 ```
 
+### Fix Fragmented Hyperlinks from Google Docs
+
+**Problem:** Documents exported from Google Docs often have fragmented hyperlinks where a single URL appears multiple times as separate hyperlinks, sometimes with corrupted fonts (e.g., Caveat instead of Calibri).
+
+**Solution:** Use the hyperlink defragmentation API to automatically merge and fix these issues.
+
+```typescript
+import { Document } from "docxmlater";
+
+async function fixGoogleDocsHyperlinks(inputPath: string, outputPath: string) {
+  // Load document
+  const doc = await Document.load(inputPath);
+
+  // Get hyperlinks before defragmentation
+  const hyperlinksBefore = doc.getHyperlinks();
+  console.log(`Found ${hyperlinksBefore.length} hyperlinks before defragmentation`);
+
+  // Defragment hyperlinks and reset formatting
+  doc.defragmentHyperlinks({
+    resetFormatting: true,      // Fix corrupted fonts (Caveat → Calibri)
+    cleanupRelationships: true  // Remove orphaned relationships
+  });
+
+  // Check results
+  const hyperlinksAfter = doc.getHyperlinks();
+  console.log(`Reduced to ${hyperlinksAfter.length} hyperlinks after defragmentation`);
+  console.log(`Merged ${hyperlinksBefore.length - hyperlinksAfter.length} duplicate hyperlinks`);
+
+  // Save fixed document
+  await doc.save(outputPath);
+  doc.dispose();
+
+  console.log(`✅ Fixed document saved to ${outputPath}`);
+}
+
+// Example usage
+await fixGoogleDocsHyperlinks('input.docx', 'output.docx');
+```
+
+**What it fixes:**
+- Merges hyperlinks with the same URL across paragraphs and tables
+- Handles non-consecutive fragments (hyperlinks separated by other content)
+- Resets corrupted fonts to standard Calibri
+- Applies standard hyperlink style (blue, underlined)
+- Removes orphaned relationship entries
+
+**Advanced usage - Manual control:**
+```typescript
+// Get all hyperlinks grouped by URL
+const hyperlinks = doc.getHyperlinks();
+const urlGroups = new Map<string, typeof hyperlinks>();
+
+hyperlinks.forEach(({ hyperlink, paragraph }) => {
+  const url = hyperlink.getUrl();
+  if (!urlGroups.has(url)) {
+    urlGroups.set(url, []);
+  }
+  urlGroups.get(url)!.push({ hyperlink, paragraph });
+});
+
+// Identify fragmented hyperlinks (URLs appearing multiple times)
+urlGroups.forEach((group, url) => {
+  if (group.length > 1) {
+    console.log(`URL "${url}" is fragmented into ${group.length} hyperlinks`);
+
+    // Manually reset formatting for each fragment
+    group.forEach(({ hyperlink }) => {
+      hyperlink.resetToStandardFormatting();
+    });
+  }
+});
+
+await doc.save('manually-fixed.docx');
+```
+
 ## Features
 
 - **Full OpenXML Compliance** - Follows ECMA-376 standard
@@ -912,14 +1045,19 @@ console.log("Document contains:", parts.length, "parts");
 - **Tables** - Full support with borders, shading, merging
 - **Images** - PNG, JPEG, GIF with sizing and positioning
 - **Hyperlinks** - External, internal, and email links
+- **Hyperlink Defragmentation** - Fix fragmented hyperlinks from Google Docs imports (v1.15.0+)
 - **Styles** - 13 built-in styles + custom style creation
-- **Lists** - Bullets, numbering, multi-level
-- **Headers/Footers** - Different first/even/odd pages
+- **Lists** - Bullets, numbering, multi-level with smart indentation
+- **Special Characters** - Tabs, newlines, non-breaking hyphens (v1.14.0+)
+- **Headers/Footers** - Different first/even/odd pages with dynamic fields
 - **Search & Replace** - With case and whole word options
 - **Document Stats** - Word count, character count, size estimation
 - **Track Changes** - Insertions and deletions with authors
 - **Comments** - With replies and threading
 - **Bookmarks** - For internal navigation
+- **Table of Contents** - Multiple TOC styles with customization
+- **Content Controls** - 9 control types for interactive documents
+- **Fields** - 11 field types including page numbers and cross-references
 - **Low-level Access** - Direct ZIP and XML manipulation
 
 ## Performance
@@ -938,7 +1076,7 @@ npm run test:watch      # Watch mode
 npm run test:coverage   # Coverage report
 ```
 
-**Current:** 474 tests passing | 98.1% pass rate | 100% core functionality covered
+**Current:** 2,073 tests passing | 100% pass rate | 100% core functionality covered
 
 ## Development
 
