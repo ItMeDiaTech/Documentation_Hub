@@ -152,12 +152,12 @@ describe('WordDocumentProcessor', () => {
       const mockHyperlinks = [
         {
           hyperlink: createMockHyperlink(
-            'https://thesource.caci.com/nuxeo/thesource/#!/view?docid=abc123',
+            'https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123',
             'Document'
           ),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
-          url: 'https://thesource.caci.com/nuxeo/thesource/#!/view?docid=abc123',
+          url: 'https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123',
           text: 'Document',
         },
       ];
@@ -183,12 +183,12 @@ describe('WordDocumentProcessor', () => {
       const mockHyperlinks = [
         {
           hyperlink: createMockHyperlink(
-            'https://thesource.caci.com/nuxeo/thesource/#!/view?docid=abc123#content',
+            'https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123#content',
             'Document'
           ),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
-          url: 'https://thesource.caci.com/nuxeo/thesource/#!/view?docid=abc123#content',
+          url: 'https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123#content',
           text: 'Document',
         },
       ];
@@ -219,12 +219,12 @@ describe('WordDocumentProcessor', () => {
       const mockHyperlinks = [
         {
           hyperlink: createMockHyperlink(
-            'https://thesource.caci.com/doc?Content_ID=TSRC-ABC-123456',
+            'https://thesource.cvshealth.com/doc?Content_ID=TSRC-ABC-123456',
             'Old Title'
           ),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
-          url: 'https://thesource.caci.com/doc?Content_ID=TSRC-ABC-123456',
+          url: 'https://thesource.cvshealth.com/doc?Content_ID=TSRC-ABC-123456',
           text: 'Old Title',
         },
       ];
@@ -300,12 +300,12 @@ describe('WordDocumentProcessor', () => {
       const mockHyperlinks = [
         {
           hyperlink: createMockHyperlink(
-            'https://thesource.caci.com/doc?Content_ID=TSRC-XYZ-999999',
+            'https://thesource.cvshealth.com/doc?Content_ID=TSRC-XYZ-999999',
             'Unknown Doc'
           ),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
-          url: 'https://thesource.caci.com/doc?Content_ID=TSRC-XYZ-999999',
+          url: 'https://thesource.cvshealth.com/doc?Content_ID=TSRC-XYZ-999999',
           text: 'Unknown Doc',
         },
       ];
