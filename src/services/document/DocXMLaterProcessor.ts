@@ -481,9 +481,10 @@ export class DocXMLaterProcessor {
    * Read an existing document and extract its structure
    */
   async readDocument(filePath: string): Promise<DocumentReadResult> {
+    let doc: Document | null = null;
     try {
       // Use framework defaults to ensure no corruption
-      const doc = await Document.load(filePath, { strictParsing: false });
+      doc = await Document.load(filePath, { strictParsing: false });
 
       // Extract document structure
       const paragraphs = doc.getParagraphs();
@@ -534,6 +535,9 @@ export class DocXMLaterProcessor {
         success: false,
         error: `Failed to read document: ${error.message}`,
       };
+    } finally {
+      // Always cleanup document to prevent memory leaks
+      doc?.dispose();
     }
   }
 
@@ -544,9 +548,10 @@ export class DocXMLaterProcessor {
     filePath: string,
     modifications: (doc: Document) => Promise<void> | void
   ): Promise<DocumentModifyResult> {
+    let doc: Document | null = null;
     try {
       // Use framework defaults to ensure no corruption
-      const doc = await Document.load(filePath, { strictParsing: false });
+      doc = await Document.load(filePath, { strictParsing: false });
 
       // Apply modifications
       await modifications(doc);
@@ -566,6 +571,9 @@ export class DocXMLaterProcessor {
         success: false,
         error: `Failed to modify document: ${error.message}`,
       };
+    } finally {
+      // Always cleanup document to prevent memory leaks
+      doc?.dispose();
     }
   }
 
@@ -576,9 +584,10 @@ export class DocXMLaterProcessor {
     buffer: Buffer,
     modifications: (doc: Document) => Promise<void> | void
   ): Promise<DocumentModifyResult> {
+    let doc: Document | null = null;
     try {
       // Use framework defaults to ensure no corruption
-      const doc = await Document.loadFromBuffer(buffer);
+      doc = await Document.loadFromBuffer(buffer);
 
       // Apply modifications
       await modifications(doc);
@@ -595,6 +604,9 @@ export class DocXMLaterProcessor {
         success: false,
         error: `Failed to modify document buffer: ${error.message}`,
       };
+    } finally {
+      // Always cleanup document to prevent memory leaks
+      doc?.dispose();
     }
   }
 
