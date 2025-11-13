@@ -58,20 +58,20 @@ export const URL_PATTERNS: Readonly<{
     name: 'ContentId',
     pattern: /(TSRC|CMS)-([a-zA-Z0-9]+)-(\d{6})/i,
     description: 'Matches theSource Content IDs',
-    action: 'append'
+    action: 'append',
   },
   DOCUMENT_ID: {
     name: 'DocumentId',
     pattern: /docid=([a-zA-Z0-9-]+)(?:[^a-zA-Z0-9-]|$)/i,
     description: 'Matches theSource Document IDs',
-    action: 'append'
+    action: 'append',
   },
   THE_SOURCE: {
     name: 'TheSource',
     pattern: /thesource\.cvshealth\.com/i,
     description: 'Matches theSource domain URLs',
-    action: 'validate'
-  }
+    action: 'validate',
+  },
 };
 
 // Hyperlink processing options
@@ -95,7 +95,6 @@ export interface HyperlinkProcessingOptions {
     fixInternalHyperlinks?: boolean;
     updateTopHyperlinks?: boolean;
     updateTocHyperlinks?: boolean;
-    fixKeywords?: boolean;
     standardizeHyperlinkColor?: boolean;
     validateHeader2Tables?: boolean; // NEW in 1.6.0: Validate Header 2 table formatting
     validateDocumentStyles?: boolean; // NEW in 1.6.0: Validate all document styles using applyStylesFromObjects()
@@ -210,7 +209,7 @@ export enum HyperlinkChangeType {
   BOTH_UPDATED = 'both_updated',
   ADDED = 'added',
   REMOVED = 'removed',
-  CONTENT_ID_APPENDED = 'content_id_appended'
+  CONTENT_ID_APPENDED = 'content_id_appended',
 }
 
 // Hyperlink API integration
