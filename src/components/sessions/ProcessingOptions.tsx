@@ -15,7 +15,6 @@ export const defaultOptions: ProcessingOption[] = [
   { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'text', enabled: true },
   { id: 'remove-paragraph-lines', label: 'Remove Extra Paragraph Lines', group: 'text', enabled: true },
   { id: 'remove-italics', label: 'Remove Italics', group: 'text', enabled: true },
-  { id: 'standardize-hyperlink-formatting', label: 'Standardize Hyperlink Formatting (Remove Bold/Italic)', group: 'text', enabled: true },
   { id: 'normalize-spacing', label: 'Smart Spacing Normalization (New)', group: 'text', enabled: true },
 
   // Hyperlinks Group
