@@ -60,6 +60,11 @@ release.ps1
 **/CLAUDE.md
 .claude.md
 
+# MCP (Model Context Protocol) cache and runtime data
+# NOTE: .mcp.json is NOT ignored - it should be committed for team RAG setup
+.mcp-cache/
+.serena/
+
 # Personal development notes and workspace files
 **/TODO.md
 **/NOTES.md
