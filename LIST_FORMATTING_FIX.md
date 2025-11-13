@@ -22,7 +22,7 @@ return new NumberingLevel({
 **After**:
 - Created `injectCompleteRunPropertiesToNumbering()` helper function (lines 2439-2510)
 - Helper injects `<w:rPr>` elements with:
-  - Font: Arial (w:rFonts)
+  - Font: Calibri (w:rFonts) - for correct bullet character rendering
   - Size: 12pt / 24 half-points (w:sz)
   - Bold: true (w:b)
   - Color: black / 000000 (w:color)
@@ -87,7 +87,7 @@ This helper function uses low-level XML manipulation to add complete formatting 
 ```typescript
 /**
  * Adds the following to each numbering level:
- * - Font family: Arial (universal support)
+ * - Font family: Calibri (correct bullet character rendering)
  * - Font size: 12pt (24 half-points)
  * - Bold: true
  * - Color: black (000000)
@@ -110,7 +110,7 @@ private async injectCompleteRunPropertiesToNumbering(
 **XML Structure Added**:
 ```xml
 <w:rPr>
-  <w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>
+  <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
   <w:b/>
   <w:bCs/>
   <w:sz w:val="24"/>
