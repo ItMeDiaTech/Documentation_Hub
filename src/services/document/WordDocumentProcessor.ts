@@ -57,6 +57,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   removeParagraphLines?: boolean; // remove-paragraph-lines: Remove consecutive empty paragraphs
   preserveBlankLinesAfterHeader2Tables?: boolean; // preserve-header2-blank-lines: Preserve blank lines after Header 2 tables (v1.16.0)
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
+  standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
 
   // ═══════════════════════════════════════════════════════════
   // Content Structure Options (ProcessingOptions group: 'structure')
@@ -620,6 +621,12 @@ export class WordDocumentProcessor {
         this.log.debug('=== REMOVING ITALIC FORMATTING ===');
         const italicsRemoved = await this.removeItalicFormatting(doc);
         this.log.info(`Removed italics from ${italicsRemoved} runs`);
+      }
+
+      if (options.standardizeHyperlinkFormatting) {
+        this.log.debug('=== STANDARDIZING HYPERLINK FORMATTING ===');
+        const hyperlinksStandardized = await this.standardizeHyperlinkFormatting(doc);
+        this.log.info(`Standardized formatting for ${hyperlinksStandardized} hyperlinks`);
       }
 
       // CONTENT STRUCTURE GROUP
@@ -1661,6 +1668,57 @@ export class WordDocumentProcessor {
     }
 
     return removedCount;
+  }
+
+  /**
+   * Standardize hyperlink formatting - Remove bold/italic and reset to standard style
+   *
+   * Uses docxmlater's resetToStandardFormatting() method to ensure all hyperlinks
+   * have consistent formatting: Calibri 11pt, blue (#0563C1), underlined, no bold/italic.
+   *
+   * This prevents hyperlinks from inheriting unwanted formatting from surrounding text
+   * or from being manually bolded/italicized by users.
+   *
+   * @param doc - The document to process
+   * @returns Number of hyperlinks standardized
+   * @since v1.0.44 (docxmlater v1.15.0+)
+   */
+  private async standardizeHyperlinkFormatting(doc: Document): Promise<number> {
+    let standardizedCount = 0;
+
+    try {
+      // Extract all hyperlinks using DocXMLaterProcessor
+      const hyperlinks = await this.docXMLater.extractHyperlinks(doc);
+
+      this.log.debug(`Found ${hyperlinks.length} hyperlinks to standardize`);
+
+      // Reset each hyperlink to standard formatting
+      for (const { hyperlink, url, text } of hyperlinks) {
+        try {
+          // Use docxmlater's built-in method to reset formatting
+          // This removes bold, italic, and ensures proper hyperlink style:
+          // - Font: Calibri 11pt
+          // - Color: Blue (#0563C1)
+          // - Underline: Single
+          // - Bold: false
+          // - Italic: false
+          hyperlink.resetToStandardFormatting();
+          standardizedCount++;
+
+          this.log.debug(`Standardized hyperlink: "${text}" (${url})`);
+        } catch (error) {
+          this.log.warn(`Failed to standardize hyperlink "${text}": ${error}`);
+          // Continue processing other hyperlinks even if one fails
+        }
+      }
+
+      this.log.info(`Successfully standardized ${standardizedCount} of ${hyperlinks.length} hyperlinks`);
+    } catch (error) {
+      this.log.error(`Error standardizing hyperlink formatting: ${error}`);
+      throw error;
+    }
+
+    return standardizedCount;
   }
 
   /**
