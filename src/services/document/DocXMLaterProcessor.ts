@@ -1372,7 +1372,7 @@ export class DocXMLaterProcessor {
     return hyperlinks.map((h, index) => ({
       hyperlink: h.hyperlink,
       paragraph: h.paragraph,
-      paragraphIndex: h.paragraphIndex ?? index,
+      paragraphIndex: (h as any).paragraphIndex ?? index,
       url: h.hyperlink.getUrl(),
       text: sanitizeHyperlinkText(h.hyperlink.getText()),
     }));
@@ -2212,9 +2212,25 @@ export class DocXMLaterProcessor {
     try {
       const stats = doc.getSizeStats();
 
+      // Get hyperlink count
+      const hyperlinks = doc.getHyperlinks();
+
+      // Parse total size string (e.g., "1.2 MB") to number
+      const totalSizeMatch = stats.size.total.match(/^([\d.]+)\s*MB$/i);
+      const totalEstimatedMB = totalSizeMatch ? parseFloat(totalSizeMatch[1]) : 0;
+
       return {
         success: true,
-        data: stats,
+        data: {
+          elements: {
+            ...stats.elements,
+            hyperlinks: hyperlinks.length,
+          },
+          size: {
+            totalEstimatedMB,
+          },
+          warnings: stats.warnings,
+        },
       };
     } catch (error: any) {
       return {
