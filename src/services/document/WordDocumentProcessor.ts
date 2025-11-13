@@ -1714,7 +1714,7 @@ export class WordDocumentProcessor {
           // - Italic: false
           hyperlink.setFormatting({
             font: 'Verdana',
-            size: 24, // 12pt = 24 half-points
+            size: 12, // 12pt (docxmlater converts to 24 half-points internally)
             color: '0000FF', // Blue (hex without #)
             underline: 'single',
             bold: false,
