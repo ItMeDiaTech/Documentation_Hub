@@ -29,7 +29,8 @@ Implemented automatic standardization of hyperlink formatting to ensure all hype
 
 **Implementation:**
 
-- **New Processing Option**: "Standardize Hyperlink Formatting (Remove Bold/Italic)" in Text Formatting group
+- **Always Enabled**: This feature is ALWAYS active and cannot be disabled via UI
+- **Reason**: Required for work environment to maintain professional document standards
 - **Method**: `standardizeHyperlinkFormatting()` in `WordDocumentProcessor.ts:1680-1716`
 - **Technology**: Uses docxmlater v1.15.0+ `resetToStandardFormatting()` method
 - **Integration**: Automatic processing during document workflow
@@ -49,8 +50,7 @@ Implemented automatic standardization of hyperlink formatting to ensure all hype
 **Files Modified:**
 
 - `src/services/document/WordDocumentProcessor.ts` - Added standardizeHyperlinkFormatting() method and integration
-- `src/contexts/SessionContext.tsx` - Added option mapping from UI to processing
-- `src/components/sessions/ProcessingOptions.tsx` - Added UI toggle in Text Formatting group
+- `src/contexts/SessionContext.tsx` - Set standardizeHyperlinkFormatting to always true (hardcoded)
 
 **Benefits:**
 
@@ -58,14 +58,12 @@ Implemented automatic standardization of hyperlink formatting to ensure all hype
 - ✅ Follows industry-standard hyperlink conventions
 - ✅ Prevents user errors from manual formatting
 - ✅ Leverages battle-tested docxmlater API
-- ✅ Enabled by default for all new sessions
+- ✅ **Always enabled** - no user configuration needed
+- ✅ Enforces professional document standards for work environment
 
 **Usage:**
 
-The option is enabled by default. To disable:
-1. Navigate to Current Session → Processing Options tab
-2. Locate "Standardize Hyperlink Formatting (Remove Bold/Italic)" in Text Formatting group
-3. Toggle off if bold/italic hyperlinks are desired
+This feature is **permanently enabled** and runs automatically on all processed documents. There is no UI toggle - hyperlink formatting standardization is a core requirement for maintaining professional document standards in the work environment. All hyperlinks will always be reset to standard blue underlined style without bold or italic formatting.
 
 ### MCP RAG Configuration (November 2025)
 
