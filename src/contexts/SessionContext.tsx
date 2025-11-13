@@ -909,7 +909,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // This ensures we don't accidentally remove spacing after Header 2 tables (docxmlater v1.16.0)
         preserveBlankLinesAfterHeader2Tables: session.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
         removeItalics: session.processingOptions?.enabledOperations?.includes('remove-italics'),
-        standardizeHyperlinkFormatting: session.processingOptions?.enabledOperations?.includes('standardize-hyperlink-formatting'),
+
+        // ALWAYS ENABLED: Standardize hyperlink formatting (remove bold/italic from all hyperlinks)
+        // This is intentional and required for the work environment to maintain professional document standards.
+        // Hyperlinks should never be bolded or italicized - they must always use standard blue underlined style.
+        standardizeHyperlinkFormatting: true,
 
         // Content Structure Options (ALWAYS ENABLED - automatic processing)
         // These operations are now always applied when processing documents
