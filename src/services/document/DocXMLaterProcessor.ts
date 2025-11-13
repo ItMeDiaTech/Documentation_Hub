@@ -626,6 +626,9 @@ export class DocXMLaterProcessor {
    *
    * IMPORTANT: Applies defensive text sanitization to handle potential XML corruption
    * from docxmlater's Hyperlink.getText() method.
+   *
+   * NOTE: This now uses doc.getHyperlinks() built-in API for better performance
+   * and comprehensive coverage (includes tables, headers, footers).
    */
   async extractHyperlinks(doc: Document): Promise<
     Array<{
@@ -636,6 +639,44 @@ export class DocXMLaterProcessor {
       text: string;
     }>
   > {
+    try {
+      // Use built-in doc.getHyperlinks() for better performance and coverage
+      const docHyperlinks = doc.getHyperlinks();
+      const paragraphs = doc.getParagraphs();
+
+      // Map to enhanced format with paragraph indices and sanitized text
+      const results = docHyperlinks.map((item: any) => {
+        const { hyperlink, paragraph } = item;
+        const paragraphIndex = paragraphs.indexOf(paragraph);
+
+        return {
+          hyperlink,
+          paragraph,
+          paragraphIndex: paragraphIndex >= 0 ? paragraphIndex : -1,
+          url: hyperlink.getUrl(),
+          text: sanitizeHyperlinkText(hyperlink.getText()),
+        };
+      });
+
+      return results;
+    } catch (error: any) {
+      // Fallback to manual extraction if doc.getHyperlinks() fails
+      console.warn('doc.getHyperlinks() failed, falling back to manual extraction:', error.message);
+      return this.extractHyperlinksManual(doc);
+    }
+  }
+
+  /**
+   * Manual hyperlink extraction (fallback method)
+   * Used if doc.getHyperlinks() is unavailable or fails
+   */
+  private extractHyperlinksManual(doc: Document): Array<{
+    hyperlink: Hyperlink;
+    paragraph: Paragraph;
+    paragraphIndex: number;
+    url?: string;
+    text: string;
+  }> {
     const results: Array<{
       hyperlink: Hyperlink;
       paragraph: Paragraph;
@@ -651,9 +692,6 @@ export class DocXMLaterProcessor {
 
       for (const item of content) {
         if (item instanceof Hyperlink) {
-          // Extract hyperlink data using docxmlater API
-          // Sanitize text to remove any XML corruption that may have been
-          // returned by Hyperlink.getText()
           results.push({
             hyperlink: item,
             paragraph: para,
@@ -669,10 +707,51 @@ export class DocXMLaterProcessor {
   }
 
   /**
+   * Update hyperlink URLs using built-in batch update API
+   * This is the recommended method for bulk URL updates (30-50% faster than modifyHyperlinks)
+   *
+   * @param doc - Document to modify
+   * @param urlMap - Map of old URL to new URL mappings
+   * @returns Result with count of modified hyperlinks
+   */
+  async updateHyperlinkUrls(
+    doc: Document,
+    urlMap: Map<string, string>
+  ): Promise<
+    ProcessorResult<{
+      totalHyperlinks: number;
+      modifiedHyperlinks: number;
+    }>
+  > {
+    try {
+      // Get initial hyperlink count
+      const hyperlinks = await this.extractHyperlinks(doc);
+      const totalHyperlinks = hyperlinks.length;
+
+      // Use built-in batch update API
+      const modifiedHyperlinks = doc.updateHyperlinkUrls(urlMap);
+
+      return {
+        success: true,
+        data: {
+          totalHyperlinks,
+          modifiedHyperlinks,
+        },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to update hyperlink URLs: ${error.message}`,
+      };
+    }
+  }
+
+  /**
    * Modify hyperlinks in a document based on a transformation function
    * The URL transform function receives the current URL and returns the modified URL
    *
    * IMPORTANT: Applies defensive text sanitization to display text
+   * NOTE: For simple URL replacements, use updateHyperlinkUrls() instead (faster)
    */
   async modifyHyperlinks(
     doc: Document,
@@ -681,32 +760,30 @@ export class DocXMLaterProcessor {
     ProcessorResult<{
       totalHyperlinks: number;
       modifiedHyperlinks: number;
+      failedUpdates?: Array<{ url: string; error: string }>;
     }>
   > {
     try {
-      const paragraphs = doc.getParagraphs();
-      let totalHyperlinks = 0;
+      const hyperlinks = await this.extractHyperlinks(doc);
       let modifiedHyperlinks = 0;
+      const failedUpdates: Array<{ url: string; error: string }> = [];
 
-      for (const para of paragraphs) {
-        const content = para.getContent();
+      for (const { hyperlink, text: displayText, url: oldUrl } of hyperlinks) {
+        if (oldUrl) {
+          try {
+            const newUrl = urlTransform(oldUrl, displayText);
 
-        for (const item of content) {
-          if (item instanceof Hyperlink) {
-            totalHyperlinks++;
-            const oldUrl = item.getUrl();
-            // Sanitize text to remove any XML corruption
-            const displayText = sanitizeHyperlinkText(item.getText());
-
-            if (oldUrl) {
-              const newUrl = urlTransform(oldUrl, displayText);
-
-              // Modify hyperlink URL in-place (no paragraph reconstruction needed)
-              if (newUrl !== oldUrl) {
-                item.setUrl(newUrl);
-                modifiedHyperlinks++;
-              }
+            // Modify hyperlink URL in-place (no paragraph reconstruction needed)
+            if (newUrl !== oldUrl) {
+              hyperlink.setUrl(newUrl);
+              modifiedHyperlinks++;
             }
+          } catch (error: any) {
+            // Track failed updates instead of failing entire operation
+            failedUpdates.push({
+              url: oldUrl,
+              error: error.message,
+            });
           }
         }
       }
@@ -714,8 +791,9 @@ export class DocXMLaterProcessor {
       return {
         success: true,
         data: {
-          totalHyperlinks,
+          totalHyperlinks: hyperlinks.length,
           modifiedHyperlinks,
+          failedUpdates: failedUpdates.length > 0 ? failedUpdates : undefined,
         },
       };
     } catch (error: any) {
@@ -853,6 +931,209 @@ export class DocXMLaterProcessor {
       return {
         success: false,
         error: `Failed to replace hyperlink text: ${error.message}`,
+      };
+    }
+  }
+
+  // ========== Search & Replace Operations ==========
+
+  /**
+   * Find text in document using built-in search
+   *
+   * @param doc - Document to search
+   * @param pattern - Text or regex pattern to search for
+   * @param options - Search options (caseSensitive, wholeWord)
+   * @returns Array of search results with locations
+   */
+  async findText(
+    doc: Document,
+    pattern: string | RegExp,
+    options?: {
+      caseSensitive?: boolean;
+      wholeWord?: boolean;
+    }
+  ): Promise<
+    ProcessorResult<
+      Array<{
+        text: string;
+        paragraphIndex: number;
+        runIndex: number;
+      }>
+    >
+  > {
+    try {
+      const searchPattern = typeof pattern === 'string' ? pattern : pattern.source;
+
+      // Use built-in findText API
+      const results = doc.findText(searchPattern, {
+        caseSensitive: options?.caseSensitive,
+        wholeWord: options?.wholeWord,
+      });
+
+      return {
+        success: true,
+        data: results,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to find text: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Replace text in document using built-in replace
+   *
+   * @param doc - Document to modify
+   * @param find - Text or regex pattern to find
+   * @param replace - Replacement text
+   * @param options - Replace options (caseSensitive, wholeWord)
+   * @returns Number of replacements made
+   */
+  async replaceText(
+    doc: Document,
+    find: string | RegExp,
+    replace: string,
+    options?: {
+      caseSensitive?: boolean;
+      wholeWord?: boolean;
+    }
+  ): Promise<ProcessorResult<{ replacedCount: number }>> {
+    try {
+      const searchPattern = typeof find === 'string' ? find : find.source;
+
+      // Use built-in replaceText API
+      const replacedCount = doc.replaceText(searchPattern, replace, {
+        caseSensitive: options?.caseSensitive,
+        wholeWord: options?.wholeWord,
+      });
+
+      return {
+        success: true,
+        data: { replacedCount },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to replace text: ${error.message}`,
+      };
+    }
+  }
+
+  // ========== Document Statistics ==========
+
+  /**
+   * Get word count from document
+   *
+   * @param doc - Document to analyze
+   * @returns Total word count
+   */
+  async getWordCount(doc: Document): Promise<ProcessorResult<{ wordCount: number }>> {
+    try {
+      const wordCount = doc.getWordCount();
+
+      return {
+        success: true,
+        data: { wordCount },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to get word count: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Get character count from document
+   *
+   * @param doc - Document to analyze
+   * @param includeSpaces - Whether to include spaces in count (default: true)
+   * @returns Character count
+   */
+  async getCharacterCount(
+    doc: Document,
+    includeSpaces: boolean = true
+  ): Promise<ProcessorResult<{ characterCount: number }>> {
+    try {
+      const characterCount = doc.getCharacterCount(includeSpaces);
+
+      return {
+        success: true,
+        data: { characterCount },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to get character count: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Estimate document size before saving
+   * Useful for validating documents before save operations
+   *
+   * @param doc - Document to estimate
+   * @returns Size estimation with warnings if size is too large
+   */
+  async estimateSize(
+    doc: Document
+  ): Promise<
+    ProcessorResult<{
+      totalEstimatedMB: number;
+      warning?: string;
+    }>
+  > {
+    try {
+      const sizeEstimate = doc.estimateSize();
+
+      return {
+        success: true,
+        data: sizeEstimate,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to estimate size: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Get detailed size statistics
+   *
+   * @param doc - Document to analyze
+   * @returns Detailed statistics about document elements and size
+   */
+  async getSizeStats(
+    doc: Document
+  ): Promise<
+    ProcessorResult<{
+      elements: {
+        paragraphs: number;
+        tables: number;
+        images: number;
+        hyperlinks: number;
+      };
+      size: {
+        totalEstimatedMB: number;
+      };
+      warnings?: string[];
+    }>
+  > {
+    try {
+      const stats = doc.getSizeStats();
+
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to get size stats: ${error.message}`,
       };
     }
   }
