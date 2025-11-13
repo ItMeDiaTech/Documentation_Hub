@@ -653,6 +653,14 @@ export class WordDocumentProcessor {
       }
 
       // PARAGRAPH REMOVAL (with 1x1 table blank line insertion)
+      // EXECUTION ORDER NOTE:
+      // Current order: (1) Remove paragraphs → (2) Ensure table linebreaks
+      // This order works because ensureTableLinebreaks() adds back needed linebreaks after removal.
+      //
+      // OPTIMIZATION PATH: If we migrate removeExtraParagraphLines() to docxmlater's native
+      // removeExtraBlankParagraphs() method, we should reverse the order:
+      // (1) Ensure table linebreaks (marked as preserved) → (2) Remove paragraphs (skipping preserved)
+      // This would eliminate the remove-then-re-add cycle and be more efficient.
       if (options.removeParagraphLines) {
         this.log.debug('=== REMOVING EXTRA PARAGRAPH LINES ===');
         const paragraphsRemoved = await this.removeExtraParagraphLines(
@@ -661,13 +669,19 @@ export class WordDocumentProcessor {
         );
         this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
 
-        // NEW v1.16.0: Insert blank lines after 1x1 tables
-        // This runs AFTER paragraph removal to ensure inserted lines aren't deleted
-        this.log.debug('=== INSERTING BLANK LINES AFTER 1x1 TABLES ===');
-        const blankLinesInserted = await this.insertBlankLinesAfter1x1Tables(doc);
-        if (blankLinesInserted > 0) {
-          this.log.info(`Inserted ${blankLinesInserted} blank lines after 1x1 tables`);
-        }
+        // NEW v1.18.0: Use docxmlater's native ensureTableLinebreaks() method
+        // This uses the library's battle-tested implementation with xml:space="preserve"
+        // and marks paragraphs as "preserved" to prevent future cleanup removal
+        this.log.debug('=== ENSURING TABLE LINEBREAKS (DOCXMLATER v1.18.0) ===');
+        const linebreakResult = doc.ensureTableLinebreaks({
+          spacingAfter: 120,        // 6pt spacing after blank paragraph (default)
+          markAsPreserved: true     // Mark as preserved to prevent cleanup removal
+        });
+        this.log.info(
+          `Table linebreaks: ${linebreakResult.added} added, ` +
+          `${linebreakResult.skipped} skipped, ` +
+          `${linebreakResult.total} total 1x1 tables`
+        );
       }
 
       // NEW VALIDATION OPERATIONS (DocXMLater 1.6.0)
@@ -1521,56 +1535,6 @@ export class WordDocumentProcessor {
       }
     });
 
-    // DEPRECATED v1.16.0: Header 2 table preservation logic (replaced with 1x1 table insertion)
-    // OLD APPROACH: Tried to preserve blank lines after Header 2 tables by detecting style
-    // PROBLEM: Style detection timing issues (ran before styles were applied)
-    // NEW APPROACH: insertBlankLinesAfter1x1Tables() runs after paragraph removal (see below)
-    /*
-    let header2TableIndices = this.header2TableBodyIndices;
-
-    if (preserveBlankLinesAfterHeader2Tables) {
-      if (header2TableIndices.size > 0) {
-        this.log.debug(
-          `Using ${header2TableIndices.size} captured Header 2 table indices - preserving blank lines after them`
-        );
-      } else {
-        // Fallback: If no styles were applied, try direct detection
-        // This handles edge cases where removeParagraphLines is called without assignStyles
-        this.log.debug(
-          'No captured Header 2 tables (styles may not have been applied). Attempting direct detection...'
-        );
-        header2TableIndices = new Set<number>();
-        bodyElements.forEach((element, index) => {
-          if (element.constructor.name === 'Table') {
-            const table = element as Table;
-            const rows = table.getRows();
-            if (rows.length > 0) {
-              const firstRow = rows[0];
-              const cells = firstRow.getCells();
-              if (cells.length > 0) {
-                const firstCell = cells[0];
-                const cellParas = firstCell.getParagraphs();
-                if (cellParas.length > 0) {
-                  const firstPara = cellParas[0];
-                  const style = firstPara.getStyle();
-                  // Check if this is a Header 2 table (first cell has Heading2 or Heading 2 style)
-                  if (style === 'Heading2' || style === 'Heading 2') {
-                    header2TableIndices.add(index);
-                    this.log.debug(`  ✓ Found Header 2 table at body index ${index} (fallback detection)`);
-                  }
-                }
-              }
-            }
-          }
-        });
-
-        if (header2TableIndices.size > 0) {
-          this.log.debug(`Fallback detection found ${header2TableIndices.size} Header 2 tables`);
-        }
-      }
-    }
-    */
-
     // Create a map of paragraph objects to their context
     // This helps us detect if a paragraph is adjacent to a table or SDT
     const paraToContext = new Map<
@@ -1700,81 +1664,9 @@ export class WordDocumentProcessor {
       );
     }
 
-    // DEPRECATED: Final preservation status logging (replaced with insertBlankLinesAfter1x1Tables)
-    // if (preserveBlankLinesAfterHeader2Tables && header2TableIndices.size > 0) {
-    //   this.log.debug('✓ Preserved blank lines after Header 2 tables');
-    // }
-
     return removedCount;
   }
 
-  /**
-   * Insert blank paragraph lines after all 1x1 tables
-   * NEW v1.16.0: Replaces the Header 2 style detection approach
-   *
-   * This method:
-   * - Identifies tables with exactly 1 row and 1 cell (1x1 tables)
-   * - Inserts an empty paragraph with Normal style after each 1x1 table
-   * - Runs AFTER paragraph removal to ensure inserted lines aren't deleted
-   *
-   * @param doc - Document to process
-   * @returns Number of blank lines inserted
-   */
-  private async insertBlankLinesAfter1x1Tables(doc: Document): Promise<number> {
-    this.log.debug('Inserting blank lines after 1x1 tables');
-
-    const bodyElements = doc.getBodyElements();
-    let insertedCount = 0;
-
-    // Collect 1x1 tables in reverse order (to avoid index shifting when inserting)
-    const oneByOneTables: Array<{ element: any; index: number }> = [];
-
-    bodyElements.forEach((element, index) => {
-      if (element.constructor.name === 'Table') {
-        const table = element as Table;
-        const rows = table.getRows();
-        const cells = rows.length > 0 ? rows[0].getCells() : [];
-
-        // Check if this is a 1x1 table
-        if (rows.length === 1 && cells.length === 1) {
-          oneByOneTables.push({ element, index });
-          this.log.debug(`  Found 1x1 table at body index ${index}`);
-        }
-      }
-    });
-
-    // Insert blank paragraphs after each 1x1 table
-    // Note: Using addParagraph adds to document body; blank lines are added for spacing preservation
-    for (const { element, index } of oneByOneTables) {
-      try {
-        // Create an empty paragraph with Normal style
-        const blankPara = new Paragraph();
-        blankPara.setStyle('Normal');
-        blankPara.setSpaceBefore(0);
-        blankPara.setSpaceAfter(0);
-
-        // Add paragraph to document
-        doc.addParagraph(blankPara);
-        insertedCount++;
-
-        this.log.debug(`  Inserted blank line after 1x1 table at body index ${index}`);
-      } catch (error) {
-        this.log.warn(
-          `Failed to insert blank line after 1x1 table at index ${index}: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-      }
-    }
-
-    if (insertedCount > 0) {
-      this.log.info(`Inserted ${insertedCount} blank lines after 1x1 tables`);
-    } else {
-      this.log.debug('No 1x1 tables found in document');
-    }
-
-    return insertedCount;
-  }
 
   /**
    * Remove italic formatting - Strip italics from all text runs
