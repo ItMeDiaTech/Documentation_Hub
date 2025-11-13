@@ -738,7 +738,7 @@ export const StylesEditor = memo(function StylesEditor({
                     }}
                     className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   >
-                    <option value="•">● Closed Circle (•)</option>
+                    <option value="&#xF0B7;">• Bullet (Symbol font)</option>
                     <option value="○">○ Open Circle (○)</option>
                     <option value="■">■ Closed Square (■)</option>
                     <option value="□">□ Open Square (□)</option>
@@ -766,7 +766,7 @@ export const StylesEditor = memo(function StylesEditor({
                     }}
                     className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   >
-                    <option value="•">● Closed Circle (•)</option>
+                    <option value="&#xF0B7;">• Bullet (Symbol font)</option>
                     <option value="○">○ Open Circle (○)</option>
                     <option value="■">■ Closed Square (■)</option>
                     <option value="□">□ Open Square (□)</option>
@@ -794,7 +794,7 @@ export const StylesEditor = memo(function StylesEditor({
                     }}
                     className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   >
-                    <option value="•">● Closed Circle (•)</option>
+                    <option value="&#xF0B7;">• Bullet (Symbol font)</option>
                     <option value="○">○ Open Circle (○)</option>
                     <option value="■">■ Closed Square (■)</option>
                     <option value="□">□ Open Square (□)</option>
