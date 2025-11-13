@@ -23,18 +23,18 @@ export function UpdateNotification() {
     }
 
     // Listen for update available
-    const unsubAvailable = window.electronAPI.onUpdateAvailable((info) => {
+    const unsubAvailable = window.electronAPI.onUpdateAvailable((info: { version: string; releaseDate: string; releaseNotes: string }) => {
       setUpdateInfo(info);
       setIsVisible(true);
     });
 
     // Listen for download progress
-    const unsubProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
+    const unsubProgress = window.electronAPI.onUpdateDownloadProgress((progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => {
       setDownloadProgress(progress.percent);
     });
 
     // Listen for update downloaded
-    const unsubDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
+    const unsubDownloaded = window.electronAPI.onUpdateDownloaded((info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => {
       setIsDownloading(false);
       setIsExtracting(false);
       setIsDownloaded(true);
@@ -45,7 +45,7 @@ export function UpdateNotification() {
     });
 
     // Listen for errors
-    const unsubError = window.electronAPI.onUpdateError((error) => {
+    const unsubError = window.electronAPI.onUpdateError((error: { message: string }) => {
       setIsDownloading(false);
       setIsExtracting(false);
       setErrorCount(prev => prev + 1);
@@ -86,19 +86,19 @@ export function UpdateNotification() {
     });
 
     // Listen for fallback mode activation
-    const unsubFallback = window.electronAPI.onUpdateFallbackMode?.((data) => {
+    const unsubFallback = window.electronAPI.onUpdateFallbackMode?.((data: { message: string }) => {
       setIsFallbackMode(true);
       setStatusMessage(data.message || 'Using alternative download method...');
     });
 
     // Listen for extraction status
-    const unsubExtracting = window.electronAPI.onUpdateExtracting?.((data) => {
+    const unsubExtracting = window.electronAPI.onUpdateExtracting?.((data: { message: string }) => {
       setIsExtracting(true);
       setStatusMessage(data.message || 'Extracting update...');
     });
 
     // Listen for general status updates
-    const unsubStatus = window.electronAPI.onUpdateStatus?.((data) => {
+    const unsubStatus = window.electronAPI.onUpdateStatus?.((data: { message: string }) => {
       setStatusMessage(data.message || '');
     });
 

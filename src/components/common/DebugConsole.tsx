@@ -31,27 +31,27 @@ export function DebugConsole() {
     window.addEventListener('keydown', handleKeyPress);
 
     // Listen for network requests
-    const unsubNetworkRequest = window.electronAPI?.onDebugNetworkRequest?.((data) => {
+    const unsubNetworkRequest = window.electronAPI?.onDebugNetworkRequest?.((data: any) => {
       addLog('network', `${data.method} ${data.url}`, data);
     });
 
     // Listen for certificate errors
-    const unsubCertError = window.electronAPI?.onDebugCertError?.((data) => {
+    const unsubCertError = window.electronAPI?.onDebugCertError?.((data: any) => {
       addLog('cert-error', `Certificate Error: ${data.url}`, data);
     });
 
     // Listen for network errors
-    const unsubNetworkError = window.electronAPI?.onDebugNetworkError?.((data) => {
+    const unsubNetworkError = window.electronAPI?.onDebugNetworkError?.((data: any) => {
       addLog('network-error', `Network Error: ${data.error}`, data);
     });
 
     // Listen for TLS errors
-    const unsubTLSError = window.electronAPI?.onDebugTLSError?.((data) => {
+    const unsubTLSError = window.electronAPI?.onDebugTLSError?.((data: any) => {
       addLog('tls-error', `TLS Error: ${data.message}`, data);
     });
 
     // Listen for update status
-    const unsubUpdateStatus = window.electronAPI?.onUpdateStatus?.((data) => {
+    const unsubUpdateStatus = window.electronAPI?.onUpdateStatus?.((data: any) => {
       if (data.message?.includes('PowerShell') || data.message?.includes('Mutual TLS')) {
         addLog('info', `Update: ${data.message}`, data);
       }
