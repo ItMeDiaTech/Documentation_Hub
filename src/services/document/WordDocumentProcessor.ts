@@ -1768,9 +1768,12 @@ export class WordDocumentProcessor {
       let xmlContent = numberingPart.content;
       let modified = false;
 
+      // FIX: Use matchAll to get all matches upfront (prevents regex state corruption)
       // Find all <w:lvl> elements (all list levels in the document)
       const lvlRegex = /<w:lvl w:ilvl="(\d+)"[^>]*>([\s\S]*?)<\/w:lvl>/g;
-      let match;
+      const matches = Array.from(xmlContent.matchAll(lvlRegex));
+
+      this.log.debug(`Found ${matches.length} list levels to process`);
 
       // Standard formatting for list prefixes
       // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
@@ -1781,17 +1784,26 @@ export class WordDocumentProcessor {
               <w:szCs w:val="24"/>
             </w:rPr>`;
 
-      while ((match = lvlRegex.exec(numberingPart.content)) !== null) {
+      // Process matches in reverse order to maintain string positions
+      for (let i = matches.length - 1; i >= 0; i--) {
+        const match = matches[i];
         const levelIndex = match[1];
         const levelContent = match[2];
         const fullMatch = match[0];
 
-        // Check if w:rPr already exists
-        if (levelContent.includes('<w:rPr>')) {
-          // Update existing w:rPr - preserve bold if present, but standardize font/size/color
+        // Check if w:rPr already exists anywhere in the level
+        const rPrRegex = /<w:rPr>([\s\S]*?)<\/w:rPr>/g;
+        const rPrMatches = Array.from(levelContent.matchAll(rPrRegex));
+
+        if (rPrMatches.length > 0) {
+          // Replace ALL w:rPr instances in this level with standardized formatting
+          let updatedContent = levelContent;
+
+          // Check if any rPr has bold
           const hasBold = levelContent.includes('<w:b/>') || levelContent.includes('<w:b ');
           const hasBoldCs = levelContent.includes('<w:bCs/>') || levelContent.includes('<w:bCs ');
 
+          // Build standardized rPr
           // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
           let rPrXml = `<w:rPr>
               <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>`;
@@ -1810,23 +1822,28 @@ export class WordDocumentProcessor {
               <w:szCs w:val="24"/>
             </w:rPr>`;
 
-          const updatedContent = levelContent.replace(
-            /<w:rPr>[\s\S]*?<\/w:rPr>/,
+          // Replace all w:rPr instances
+          updatedContent = updatedContent.replace(
+            /<w:rPr>[\s\S]*?<\/w:rPr>/g,
             rPrXml
           );
-          xmlContent = xmlContent.replace(fullMatch, fullMatch.replace(levelContent, updatedContent));
-          modified = true;
-          standardizedCount++;
 
-          this.log.debug(`Standardized list prefix level ${levelIndex}: Verdana 12pt black${hasBold ? ' (bold preserved)' : ''}`);
-        } else {
-          // Insert new w:rPr with standard formatting (no bold for new lists)
-          const updatedLevel = fullMatch.replace('</w:lvl>', `${standardRPr}</w:lvl>`);
+          // Replace the entire level in xmlContent
+          const updatedLevel = fullMatch.replace(levelContent, updatedContent);
           xmlContent = xmlContent.replace(fullMatch, updatedLevel);
           modified = true;
           standardizedCount++;
 
-          this.log.debug(`Standardized list prefix level ${levelIndex}: Verdana 12pt black (new formatting)`);
+          this.log.debug(`Standardized ${rPrMatches.length} w:rPr in list level ${levelIndex}: Verdana 12pt black${hasBold ? ' (bold preserved)' : ''}`);
+        } else {
+          // No w:rPr found - insert one before closing tag
+          // Place it right before </w:lvl> for better OOXML compliance
+          const updatedLevel = fullMatch.replace('</w:lvl>', `${standardRPr}\n          </w:lvl>`);
+          xmlContent = xmlContent.replace(fullMatch, updatedLevel);
+          modified = true;
+          standardizedCount++;
+
+          this.log.debug(`Added standardized w:rPr to list level ${levelIndex}: Verdana 12pt black (new formatting)`);
         }
       }
 
@@ -1834,6 +1851,8 @@ export class WordDocumentProcessor {
         // Save modified XML back to document
         await doc.setPart('word/numbering.xml', xmlContent);
         this.log.info(`Successfully standardized ${standardizedCount} list prefix levels to Verdana 12pt black`);
+      } else {
+        this.log.info('No list levels found to standardize');
       }
 
       return standardizedCount;
