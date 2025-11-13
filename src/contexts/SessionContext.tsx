@@ -825,6 +825,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         removeParagraphLines?: boolean;
         preserveBlankLinesAfterHeader2Tables?: boolean;
         removeItalics?: boolean;
+        standardizeHyperlinkFormatting?: boolean;
 
         // Content Structure Options
         assignStyles?: boolean;
@@ -908,6 +909,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // This ensures we don't accidentally remove spacing after Header 2 tables (docxmlater v1.16.0)
         preserveBlankLinesAfterHeader2Tables: session.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
         removeItalics: session.processingOptions?.enabledOperations?.includes('remove-italics'),
+        standardizeHyperlinkFormatting: session.processingOptions?.enabledOperations?.includes('standardize-hyperlink-formatting'),
 
         // Content Structure Options (ALWAYS ENABLED - automatic processing)
         // These operations are now always applied when processing documents
