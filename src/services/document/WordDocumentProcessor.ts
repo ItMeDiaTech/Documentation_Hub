@@ -1782,11 +1782,12 @@ export class WordDocumentProcessor {
       let match;
 
       // Standard formatting for list prefixes
+      // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
       const standardRPr = `<w:rPr>
-              <w:rFonts w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
+              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
+              <w:color w:val="000000"/>
               <w:sz w:val="24"/>
               <w:szCs w:val="24"/>
-              <w:color w:val="000000"/>
             </w:rPr>`;
 
       while ((match = lvlRegex.exec(numberingPart.content)) !== null) {
@@ -1800,8 +1801,9 @@ export class WordDocumentProcessor {
           const hasBold = levelContent.includes('<w:b/>') || levelContent.includes('<w:b ');
           const hasBoldCs = levelContent.includes('<w:bCs/>') || levelContent.includes('<w:bCs ');
 
+          // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
           let rPrXml = `<w:rPr>
-              <w:rFonts w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>`;
+              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>`;
 
           // Preserve bold if it was there
           if (hasBold) {
@@ -1811,9 +1813,10 @@ export class WordDocumentProcessor {
             rPrXml += `\n              <w:bCs/>`;
           }
 
-          rPrXml += `\n              <w:sz w:val="24"/>
+          // OOXML Compliance: w:color must appear before w:sz per ECMA-376 Part 1, Section 17.3.2
+          rPrXml += `\n              <w:color w:val="000000"/>
+              <w:sz w:val="24"/>
               <w:szCs w:val="24"/>
-              <w:color w:val="000000"/>
             </w:rPr>`;
 
           const updatedContent = levelContent.replace(
@@ -2900,29 +2903,31 @@ export class WordDocumentProcessor {
         // Check if w:rPr already exists in this level
         if (levelContent.includes('<w:rPr>')) {
           // Update existing w:rPr with complete formatting
+          // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
           const updatedContent = levelContent.replace(
             /<w:rPr>[\s\S]*?<\/w:rPr>/,
             `<w:rPr>
-              <w:rFonts w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
+              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
               <w:b/>
               <w:bCs/>
+              <w:color w:val="000000"/>
               <w:sz w:val="24"/>
               <w:szCs w:val="24"/>
-              <w:color w:val="000000"/>
             </w:rPr>`
           );
           xmlContent = xmlContent.replace(fullMatch, fullMatch.replace(levelContent, updatedContent));
           modified = true;
         } else {
           // Insert new w:rPr before closing </w:lvl> tag
+          // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
           const newRPr = `
             <w:rPr>
-              <w:rFonts w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
+              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
               <w:b/>
               <w:bCs/>
+              <w:color w:val="000000"/>
               <w:sz w:val="24"/>
               <w:szCs w:val="24"/>
-              <w:color w:val="000000"/>
             </w:rPr>`;
 
           const updatedLevel = fullMatch.replace('</w:lvl>', `${newRPr}</w:lvl>`);
@@ -3026,18 +3031,29 @@ export class WordDocumentProcessor {
               modified = true;
             }
           } else {
-            // Insert new w:pPr with w:ind at the beginning of the level
-            // Place it before w:numFmt or w:lvlText if they exist, otherwise at start
+            // Insert new w:pPr in correct ECMA-376 position
+            // OOXML Compliance: w:pPr should be near end of w:lvl, before w:rPr per ECMA-376 Part 1, Section 17.9.7
             const pPrXml = `
             <w:pPr>
               ${indentXml}
             </w:pPr>`;
 
-            // Insert after <w:lvl> opening tag
-            const updatedLevel = fullMatch.replace(
-              /(<w:lvl w:ilvl="\d+"[^>]*>)/,
-              `$1${pPrXml}`
-            );
+            let updatedLevel;
+
+            // Check if w:rPr exists - insert before it if so (correct ECMA-376 order)
+            if (levelContent.includes('<w:rPr>')) {
+              updatedLevel = fullMatch.replace(
+                /(<w:rPr>)/,
+                `${pPrXml}\n            $1`
+              );
+            } else {
+              // No w:rPr exists - insert before closing tag (also correct per ECMA-376)
+              updatedLevel = fullMatch.replace(
+                /<\/w:lvl>/,
+                `${pPrXml}\n          </w:lvl>`
+              );
+            }
+
             xmlContent = xmlContent.replace(fullMatch, updatedLevel);
             modified = true;
           }
