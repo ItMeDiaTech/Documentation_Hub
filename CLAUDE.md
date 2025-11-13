@@ -15,6 +15,40 @@ The docx / xml structure is well defined within the file located at the root dir
 **Check on issues periodically to update your status and to alert me when they are all done after 1 or more issues h as been pushed to issues in github**
 **Store Research in ./GH_Issues/scratchpads/**
 
+### MCP RAG Configuration (November 2025)
+
+**NEW: Semantic Code Search & RAG Capabilities**
+
+Implemented comprehensive RAG (Retrieval-Augmented Generation) configuration using MCP (Model Context Protocol) servers to enhance AI assistant capabilities and reduce token usage.
+
+**Features:**
+
+- **Claude Context Integration**: Semantic code search with vector embeddings (~40% token reduction)
+- **Local Processing**: All embeddings generated locally using Ollama (no external services)
+- **Hybrid Search**: Combines BM25 + dense vector search for optimal results
+- **Team Configuration**: `.mcp.json` committed to repo for consistent experience across developers
+
+**Files Added:**
+
+- `.mcp.json`: MCP server configuration (committed)
+- `MCP_RAG_SETUP.md`: Complete setup and usage documentation
+- `.mcp-cache/`: Vector database and cache directory (gitignored)
+
+**Benefits:**
+
+- Natural language code search: "Find all authentication logic"
+- Semantic understanding: Understands meaning, not just keywords
+- Reduced token usage: 40% less than traditional grep-based search
+- Better context: AI understands code relationships and dependencies
+
+**Setup Required:**
+
+1. Install Ollama: https://ollama.ai
+2. Pull embedding model: `ollama pull nomic-embed-text`
+3. Run: `claude mcp install`
+
+**Documentation:** See `MCP_RAG_SETUP.md` for complete setup guide and usage examples.
+
 ### Black Screen Prevention System (October 2025)
 
 **CRITICAL: Multi-Layer Protection Against Recurring Black Screen Issues**
