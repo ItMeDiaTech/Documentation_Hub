@@ -903,7 +903,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Text Formatting Options (mapped from ProcessingOptions UI)
         removeWhitespace: session.processingOptions?.enabledOperations?.includes('remove-whitespace'),
         removeParagraphLines: session.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
-        preserveBlankLinesAfterHeader2Tables: session.processingOptions?.enabledOperations?.includes('preserve-header2-blank-lines'),
+        // Preserve blank lines after Header 2 tables ONLY when removing paragraph lines
+        // This ensures we don't accidentally remove spacing after Header 2 tables (docxmlater v1.16.0)
+        preserveBlankLinesAfterHeader2Tables: session.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
         removeItalics: session.processingOptions?.enabledOperations?.includes('remove-italics'),
 
         // Content Structure Options (ALWAYS ENABLED - automatic processing)
