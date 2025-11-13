@@ -66,7 +66,7 @@ export class DocXMLaterProcessor {
   async loadFromFile(filePath: string): Promise<ProcessorResult<Document>> {
     try {
       // Use framework defaults to ensure no corruption
-      const doc = await Document.load(filePath);
+      const doc = await Document.load(filePath, { strictParsing: false });
       return {
         success: true,
         data: doc,
@@ -483,7 +483,7 @@ export class DocXMLaterProcessor {
   async readDocument(filePath: string): Promise<DocumentReadResult> {
     try {
       // Use framework defaults to ensure no corruption
-      const doc = await Document.load(filePath);
+      const doc = await Document.load(filePath, { strictParsing: false });
 
       // Extract document structure
       const paragraphs = doc.getParagraphs();
@@ -546,7 +546,7 @@ export class DocXMLaterProcessor {
   ): Promise<DocumentModifyResult> {
     try {
       // Use framework defaults to ensure no corruption
-      const doc = await Document.load(filePath);
+      const doc = await Document.load(filePath, { strictParsing: false });
 
       // Apply modifications
       await modifications(doc);
@@ -744,7 +744,7 @@ export class DocXMLaterProcessor {
       let modifiedCount = 0;
 
       // Pattern to detect theSource URLs
-      const theSourcePattern = /thesource\.caci\.com/i;
+      const theSourcePattern = /thesource\.cvshealth\.com/i;
       const hasContentIdPattern = /#content$/i;
       const docIdPattern = /docid=([A-Za-z0-9\-]+)/i;
 
