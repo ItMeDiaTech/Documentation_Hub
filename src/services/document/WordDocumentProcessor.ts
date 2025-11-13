@@ -2174,8 +2174,8 @@ export class WordDocumentProcessor {
       if (!numbering) continue;
 
       const level = numbering.level || 0;
-      // Find setting for this level (levels are 1-indexed in UI, 0-indexed in doc)
-      const indentSetting = settings.indentationLevels.find((l) => l.level === level + 1);
+      // Find setting for this level (levels are 0-indexed per DOCX standard)
+      const indentSetting = settings.indentationLevels.find((l) => l.level === level);
 
       if (indentSetting) {
         // NOTE: Indentation is already set at the NumberingLevel in applyBulletUniformity()

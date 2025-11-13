@@ -141,12 +141,13 @@ const lineSpacingOptions = [
 // Alternating between closed (•) and open (○) bullets
 // Symbol indent: 0.25" per level, Text indent: 0.5" per level
 // Using U+F0B7 () for standard bullets (rendered with Calibri in v1.14.0+)
+// NOTE: Levels are 0-based (0-8) per DOCX standard
 const defaultIndentationLevels: IndentationLevel[] = [
-  { level: 1, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '\uF0B7', numberedFormat: '1.' },
-  { level: 2, symbolIndent: 0.5, textIndent: 1.0, bulletChar: '○', numberedFormat: 'a.' },
-  { level: 3, symbolIndent: 0.75, textIndent: 1.5, bulletChar: '\uF0B7', numberedFormat: 'i.' },
-  { level: 4, symbolIndent: 1.0, textIndent: 2.0, bulletChar: '○', numberedFormat: '1)' },
-  { level: 5, symbolIndent: 1.25, textIndent: 2.5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
+  { level: 0, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '\uF0B7', numberedFormat: '1.' },
+  { level: 1, symbolIndent: 0.5, textIndent: 1.0, bulletChar: '○', numberedFormat: 'a.' },
+  { level: 2, symbolIndent: 0.75, textIndent: 1.5, bulletChar: '\uF0B7', numberedFormat: 'i.' },
+  { level: 3, symbolIndent: 1.0, textIndent: 2.0, bulletChar: '○', numberedFormat: '1)' },
+  { level: 4, symbolIndent: 1.25, textIndent: 2.5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {
@@ -658,11 +659,11 @@ export const StylesEditor = memo(function StylesEditor({
                     onChange={(e) => {
                       const increment = Number(e.target.value);
                       const newLevels: IndentationLevel[] = [
-                        { level: 1, symbolIndent: increment * 1, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 1, bulletChar: '\uF0B7', numberedFormat: '1.' },
-                        { level: 2, symbolIndent: increment * 2, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 2, bulletChar: '○', numberedFormat: 'a.' },
-                        { level: 3, symbolIndent: increment * 3, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 3, bulletChar: '\uF0B7', numberedFormat: 'i.' },
-                        { level: 4, symbolIndent: increment * 4, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 4, bulletChar: '○', numberedFormat: '1)' },
-                        { level: 5, symbolIndent: increment * 5, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
+                        { level: 0, symbolIndent: increment * 1, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 1, bulletChar: '\uF0B7', numberedFormat: '1.' },
+                        { level: 1, symbolIndent: increment * 2, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 2, bulletChar: '○', numberedFormat: 'a.' },
+                        { level: 2, symbolIndent: increment * 3, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 3, bulletChar: '\uF0B7', numberedFormat: 'i.' },
+                        { level: 3, symbolIndent: increment * 4, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 4, bulletChar: '○', numberedFormat: '1)' },
+                        { level: 4, symbolIndent: increment * 5, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
                       ];
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);
@@ -685,11 +686,11 @@ export const StylesEditor = memo(function StylesEditor({
                     onChange={(e) => {
                       const increment = Number(e.target.value);
                       const newLevels: IndentationLevel[] = [
-                        { level: 1, symbolIndent: listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25, textIndent: increment * 1, bulletChar: '\uF0B7', numberedFormat: '1.' },
-                        { level: 2, symbolIndent: listBulletSettings.indentationLevels[1]?.symbolIndent || 0.5, textIndent: increment * 2, bulletChar: '○', numberedFormat: 'a.' },
-                        { level: 3, symbolIndent: listBulletSettings.indentationLevels[2]?.symbolIndent || 0.75, textIndent: increment * 3, bulletChar: '\uF0B7', numberedFormat: 'i.' },
-                        { level: 4, symbolIndent: listBulletSettings.indentationLevels[3]?.symbolIndent || 1.0, textIndent: increment * 4, bulletChar: '○', numberedFormat: '1)' },
-                        { level: 5, symbolIndent: listBulletSettings.indentationLevels[4]?.symbolIndent || 1.25, textIndent: increment * 5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
+                        { level: 0, symbolIndent: listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25, textIndent: increment * 1, bulletChar: '\uF0B7', numberedFormat: '1.' },
+                        { level: 1, symbolIndent: listBulletSettings.indentationLevels[1]?.symbolIndent || 0.5, textIndent: increment * 2, bulletChar: '○', numberedFormat: 'a.' },
+                        { level: 2, symbolIndent: listBulletSettings.indentationLevels[2]?.symbolIndent || 0.75, textIndent: increment * 3, bulletChar: '\uF0B7', numberedFormat: 'i.' },
+                        { level: 3, symbolIndent: listBulletSettings.indentationLevels[3]?.symbolIndent || 1.0, textIndent: increment * 4, bulletChar: '○', numberedFormat: '1)' },
+                        { level: 4, symbolIndent: listBulletSettings.indentationLevels[4]?.symbolIndent || 1.25, textIndent: increment * 5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
                       ];
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);
@@ -707,7 +708,7 @@ export const StylesEditor = memo(function StylesEditor({
               <div className="p-3 bg-muted/20 rounded-md">
                 <div className="text-xs text-muted-foreground mb-2">Calculated Indentations:</div>
                 <div className="grid grid-cols-5 gap-2 text-xxs">
-                  {listBulletSettings.indentationLevels.map((level) => (
+                  {listBulletSettings.indentationLevels.map((level: IndentationLevel) => (
                     <div key={level.level} className="text-center">
                       <div className="font-medium">L{level.level}</div>
                       <div className="text-muted-foreground">{level.symbolIndent.toFixed(2)}" / {level.textIndent.toFixed(2)}"</div>
@@ -811,7 +812,7 @@ export const StylesEditor = memo(function StylesEditor({
               <div className="p-3 bg-muted/20 rounded-md">
                 <div className="text-xs text-muted-foreground mb-2">Bullet Pattern Preview:</div>
                 <div className="grid grid-cols-5 gap-2 text-sm">
-                  {listBulletSettings.indentationLevels.map((level) => (
+                  {listBulletSettings.indentationLevels.map((level: IndentationLevel) => (
                     <div key={level.level} className="text-center">
                       <div className="font-medium text-xs text-muted-foreground">L{level.level}</div>
                       <div className="text-lg">{level.bulletChar === '\uF0B7' ? '•' : level.bulletChar}</div>
