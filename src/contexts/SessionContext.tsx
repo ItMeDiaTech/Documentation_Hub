@@ -823,6 +823,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Text Formatting Options
         removeWhitespace?: boolean;
         removeParagraphLines?: boolean;
+        preserveBlankLinesAfterHeader2Tables?: boolean;
         removeItalics?: boolean;
 
         // Content Structure Options
