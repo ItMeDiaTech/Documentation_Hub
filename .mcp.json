@@ -1,0 +1,109 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema/mcp.json",
+  "description": "MCP Server Configuration for Documentation Hub - Enables RAG and semantic search capabilities",
+  "mcpServers": {
+    "claude-context": {
+      "description": "Semantic code search with vector embeddings - reduces token usage by ~40%",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@zilliztech/claude-context",
+        "--project-path",
+        "/home/user/Documentation_Hub",
+        "--embedding-provider",
+        "ollama",
+        "--vector-db",
+        "milvus-lite"
+      ],
+      "env": {
+        "CLAUDE_CONTEXT_DB_PATH": "/home/user/Documentation_Hub/.mcp-cache/claude-context"
+      },
+      "disabled": false,
+      "alwaysAllow": [
+        "search_code",
+        "get_code_context"
+      ]
+    },
+    "code-graph-rag": {
+      "description": "Graph-based RAG for understanding code relationships and dependencies",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@er77/code-graph-rag-mcp",
+        "/home/user/Documentation_Hub"
+      ],
+      "disabled": true,
+      "alwaysAllow": [
+        "search_graph",
+        "get_dependencies"
+      ]
+    },
+    "serena": {
+      "description": "Advanced semantic understanding using LSP integration - most powerful for large codebases",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena-mcp-server"
+      ],
+      "env": {
+        "SERENA_PROJECT_PATH": "/home/user/Documentation_Hub",
+        "SERENA_READ_ONLY": "false"
+      },
+      "disabled": true,
+      "alwaysAllow": [
+        "search_symbols",
+        "get_definition",
+        "find_references"
+      ]
+    }
+  },
+  "configuration": {
+    "indexing": {
+      "exclude": [
+        "node_modules/**",
+        "dist/**",
+        "dist-electron/**",
+        "release/**",
+        "coverage/**",
+        ".git/**",
+        "*.log",
+        "*.docx",
+        ".mcp-cache/**"
+      ],
+      "include": [
+        "src/**/*.{ts,tsx,js,jsx}",
+        "electron/**/*.ts",
+        "docs/**/*.md",
+        "*.md"
+      ]
+    },
+    "embeddingModel": {
+      "provider": "ollama",
+      "model": "nomic-embed-text",
+      "dimensions": 768
+    },
+    "vectorDatabase": {
+      "type": "milvus-lite",
+      "path": ".mcp-cache/vector-db"
+    }
+  },
+  "notes": {
+    "setup": "Run 'claude mcp install' to initialize MCP servers",
+    "dependencies": {
+      "ollama": "Install from https://ollama.ai for local embedding models",
+      "milvus": "Milvus Lite is embedded, no separate installation needed",
+      "python-uv": "Required for Serena MCP: https://docs.astral.sh/uv/"
+    },
+    "activation": {
+      "claude-context": "Enabled by default - provides semantic code search",
+      "code-graph-rag": "Disabled - enable in Claude Code settings if needed",
+      "serena": "Disabled - requires Python uv installation"
+    },
+    "usage": [
+      "Ask Claude to search for code semantically: 'Find all authentication logic'",
+      "Request context: 'Show me how hyperlinks are processed'",
+      "Explore relationships: 'What components use the SessionContext?'"
+    ]
+  }
+}
