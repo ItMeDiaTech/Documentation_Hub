@@ -49,6 +49,60 @@ Implemented comprehensive RAG (Retrieval-Augmented Generation) configuration usi
 
 **Documentation:** See `MCP_RAG_SETUP.md` for complete setup guide and usage examples.
 
+### Project Organization & Cleanup (November 2025)
+
+**Repository Cleanup: Removed Build Artifacts and Organized Documentation**
+
+Performed comprehensive cleanup of the root directory to improve repository hygiene and organization:
+
+**Changes Made:**
+
+1. **Removed Large Build Artifacts**:
+   - Removed from git tracking: `Documentation-Hub-Setup-1.0.40.exe` (100MB)
+   - Removed from git tracking: `__pycache__/` (Python bytecode cache)
+   - Removed from git tracking: `npm-audit-report.json` (auto-generated report)
+   - Deleted physical files from disk to free up space
+
+2. **Organized Technical Documentation**:
+   - Created `docs/fixes/` directory for technical fix documentation
+   - Moved 8 technical fix documents from root to organized location:
+     - `BULLET_CHARACTER_FIX.md` → `docs/fixes/`
+     - `CORRUPTION_FIX.md` → `docs/fixes/`
+     - `EXECUTION_LOG_TEST_BASE.md` → `docs/fixes/`
+     - `FIX_SUMMARY_DATA_LOSS_BUG.md` → `docs/fixes/`
+     - `HYPERLINK_TEXT_SANITIZATION.md` → `docs/fixes/`
+     - `LIST_FORMATTING_FIX.md` → `docs/fixes/`
+     - `SDT_PROTECTION_FIX.md` → `docs/fixes/`
+     - `TABLE_PROTECTION_FIX.md` → `docs/fixes/`
+   - Moved `DOCXMLATER_ANALYSIS_SUMMARY.txt` → `docs/analysis/`
+   - Created comprehensive `docs/fixes/README.md` documenting all fixes
+
+3. **Organized Diagnostic Scripts**:
+   - Created `scripts/diagnostics/` directory for development utilities
+   - Moved diagnostic scripts from root to organized location:
+     - `analyze-test6.js` → `scripts/diagnostics/`
+     - `diagnose-before-tables.ts` → `scripts/diagnostics/`
+     - `diagnose-styles.ts` → `scripts/diagnostics/`
+     - `diagnose-tables.ts` → `scripts/diagnostics/`
+   - Created `scripts/CLAUDE.md` documenting diagnostic tools
+
+4. **Enhanced .gitignore**:
+   - Added `*.exe` to ignore all executable installers
+   - Added explicit `__pycache__/` and Python bytecode patterns
+   - Added `npm-audit-report.json` to ignore audit reports
+   - Added `/scripts/diagnostics/` to ignore diagnostic scripts
+   - Fixed typo in existing gitignore entry
+
+**Benefits:**
+
+- ✅ Reduced repository size by removing 100MB+ build artifacts
+- ✅ Significantly cleaner root directory (moved 9 documentation files)
+- ✅ Logical organization: fixes in `docs/fixes/`, scripts in `scripts/diagnostics/`
+- ✅ Prevents accidental commits of build artifacts and temporary files
+- ✅ Organized development utilities in dedicated directories
+- ✅ Comprehensive documentation with README files in each directory
+- ✅ Improved developer experience with logical file structure
+
 ### Black Screen Prevention System (October 2025)
 
 **CRITICAL: Multi-Layer Protection Against Recurring Black Screen Issues**
@@ -617,6 +671,29 @@ src/
     colorConvert.ts    # Color manipulation
   types/
     session.ts         # TypeScript definitions
+
+scripts/
+  diagnostics/         # Diagnostic and testing scripts (gitignored)
+    analyze-test6.js   # Test analysis utilities
+    diagnose-*.ts      # Document processing diagnostics
+
+docs/                  # Project documentation
+  fixes/               # Technical fix documentation
+    BULLET_CHARACTER_FIX.md
+    CORRUPTION_FIX.md
+    EXECUTION_LOG_TEST_BASE.md
+    FIX_SUMMARY_DATA_LOSS_BUG.md
+    HYPERLINK_TEXT_SANITIZATION.md
+    LIST_FORMATTING_FIX.md
+    SDT_PROTECTION_FIX.md
+    TABLE_PROTECTION_FIX.md
+  analysis/            # Analysis reports and research
+    DOCXMLATER_ANALYSIS_SUMMARY.txt
+  architecture/        # System architecture documentation
+  implementation/      # Implementation guides and specifications
+  github-issues/       # GitHub issue documentation
+
+Test_Code/             # Test document structures
 ```
 
 ### Implementation Priorities
