@@ -140,7 +140,7 @@ const lineSpacingOptions = [
 // Default indentation levels based on documentation best practices
 // Alternating between closed (•) and open (○) bullets
 // Symbol indent: 0.25" per level, Text indent: 0.5" per level
-// Using U+F0B7 () for standard Symbol font bullets per Microsoft spec
+// Using U+F0B7 () for standard bullets (rendered with Calibri in v1.14.0+)
 const defaultIndentationLevels: IndentationLevel[] = [
   { level: 1, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '\uF0B7', numberedFormat: '1.' },
   { level: 2, symbolIndent: 0.5, textIndent: 1.0, bulletChar: '○', numberedFormat: 'a.' },
@@ -738,16 +738,16 @@ export const StylesEditor = memo(function StylesEditor({
                     }}
                     className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   >
-                    <option value="&#xF0B7;">• Bullet (Symbol font)</option>
-                    <option value="○">○ Open Circle (○)</option>
-                    <option value="■">■ Closed Square (■)</option>
-                    <option value="□">□ Open Square (□)</option>
-                    <option value="▪">▪ Small Square (▪)</option>
-                    <option value="▫">▫ Small Open Square (▫)</option>
-                    <option value="◆">◆ Diamond (◆)</option>
-                    <option value="►">► Triangle (►)</option>
-                    <option value="✓">✓ Checkmark (✓)</option>
-                    <option value="-">− Dash (−)</option>
+                    <option value={'\uF0B7'}>{'\uF0B7'} Bullet (Calibri)</option>
+                    <option value="○">○ Open Circle</option>
+                    <option value="■">■ Closed Square</option>
+                    <option value="□">□ Open Square</option>
+                    <option value="▪">▪ Small Square</option>
+                    <option value="▫">▫ Small Open Square</option>
+                    <option value="◆">◆ Diamond</option>
+                    <option value="►">► Triangle</option>
+                    <option value="✓">✓ Checkmark</option>
+                    <option value="-">− Dash</option>
                   </select>
                 </div>
                 {/* Level 2 */}
@@ -766,16 +766,16 @@ export const StylesEditor = memo(function StylesEditor({
                     }}
                     className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   >
-                    <option value="&#xF0B7;">• Bullet (Symbol font)</option>
-                    <option value="○">○ Open Circle (○)</option>
-                    <option value="■">■ Closed Square (■)</option>
-                    <option value="□">□ Open Square (□)</option>
-                    <option value="▪">▪ Small Square (▪)</option>
-                    <option value="▫">▫ Small Open Square (▫)</option>
-                    <option value="◆">◆ Diamond (◆)</option>
-                    <option value="►">► Triangle (►)</option>
-                    <option value="✓">✓ Checkmark (✓)</option>
-                    <option value="-">− Dash (−)</option>
+                    <option value={'\uF0B7'}>{'\uF0B7'} Bullet (Calibri)</option>
+                    <option value="○">○ Open Circle</option>
+                    <option value="■">■ Closed Square</option>
+                    <option value="□">□ Open Square</option>
+                    <option value="▪">▪ Small Square</option>
+                    <option value="▫">▫ Small Open Square</option>
+                    <option value="◆">◆ Diamond</option>
+                    <option value="►">► Triangle</option>
+                    <option value="✓">✓ Checkmark</option>
+                    <option value="-">− Dash</option>
                   </select>
                 </div>
                 {/* Level 3 */}
@@ -794,16 +794,16 @@ export const StylesEditor = memo(function StylesEditor({
                     }}
                     className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   >
-                    <option value="&#xF0B7;">• Bullet (Symbol font)</option>
-                    <option value="○">○ Open Circle (○)</option>
-                    <option value="■">■ Closed Square (■)</option>
-                    <option value="□">□ Open Square (□)</option>
-                    <option value="▪">▪ Small Square (▪)</option>
-                    <option value="▫">▫ Small Open Square (▫)</option>
-                    <option value="◆">◆ Diamond (◆)</option>
-                    <option value="►">► Triangle (►)</option>
-                    <option value="✓">✓ Checkmark (✓)</option>
-                    <option value="-">− Dash (−)</option>
+                    <option value={'\uF0B7'}>{'\uF0B7'} Bullet (Calibri)</option>
+                    <option value="○">○ Open Circle</option>
+                    <option value="■">■ Closed Square</option>
+                    <option value="□">□ Open Square</option>
+                    <option value="▪">▪ Small Square</option>
+                    <option value="▫">▫ Small Open Square</option>
+                    <option value="◆">◆ Diamond</option>
+                    <option value="►">► Triangle</option>
+                    <option value="✓">✓ Checkmark</option>
+                    <option value="-">− Dash</option>
                   </select>
                 </div>
               </div>
