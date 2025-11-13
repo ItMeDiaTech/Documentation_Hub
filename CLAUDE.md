@@ -15,6 +15,42 @@ The docx / xml structure is well defined within the file located at the root dir
 **Check on issues periodically to update your status and to alert me when they are all done after 1 or more issues h as been pushed to issues in github**
 **Store Research in ./GH_Issues/scratchpads/**
 
+### Project Organization & Cleanup (November 2025)
+
+**Repository Cleanup: Removed Build Artifacts and Organized Test Files**
+
+Performed comprehensive cleanup of the root directory to improve repository hygiene and organization:
+
+**Changes Made:**
+
+1. **Removed Large Build Artifacts from Git Tracking**:
+   - Removed `Documentation-Hub-Setup-1.0.40.exe` (100MB installer)
+   - Removed `__pycache__/` (Python bytecode cache)
+   - Removed `npm-audit-report.json` (auto-generated report)
+
+2. **Organized Diagnostic Scripts**:
+   - Created `scripts/diagnostics/` directory for development utilities
+   - Moved diagnostic scripts from root to organized location:
+     - `analyze-test6.js` → `scripts/diagnostics/`
+     - `diagnose-before-tables.ts` → `scripts/diagnostics/`
+     - `diagnose-styles.ts` → `scripts/diagnostics/`
+     - `diagnose-tables.ts` → `scripts/diagnostics/`
+
+3. **Enhanced .gitignore**:
+   - Added `*.exe` to ignore all executable installers
+   - Added explicit `__pycache__/` and Python bytecode patterns
+   - Added `npm-audit-report.json` to ignore audit reports
+   - Added `/scripts/diagnostics/` to ignore diagnostic scripts
+   - Fixed typo in existing gitignore entry
+
+**Benefits:**
+
+- ✅ Reduced repository size by removing 100MB+ build artifacts
+- ✅ Cleaner root directory with better organization
+- ✅ Prevents accidental commits of build artifacts and temporary files
+- ✅ Organized development utilities in dedicated directories
+- ✅ Improved developer experience with logical file structure
+
 ### Black Screen Prevention System (October 2025)
 
 **CRITICAL: Multi-Layer Protection Against Recurring Black Screen Issues**
@@ -583,6 +619,14 @@ src/
     colorConvert.ts    # Color manipulation
   types/
     session.ts         # TypeScript definitions
+
+scripts/
+  diagnostics/         # Diagnostic and testing scripts (gitignored)
+    analyze-test6.js   # Test analysis utilities
+    diagnose-*.ts      # Document processing diagnostics
+
+docs/                  # Project documentation
+Test_Code/             # Test document structures
 ```
 
 ### Implementation Priorities
