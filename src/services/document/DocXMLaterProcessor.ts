@@ -185,6 +185,12 @@ export class DocXMLaterProcessor {
    * Uses the docxmlater framework defaults to ensure no corruption during loading.
    * Supports both absolute and relative file paths.
    *
+   * **⚠️ IMPORTANT: Memory Management**
+   *
+   * Always call `dispose()` on the returned Document when finished to free resources
+   * and prevent memory leaks, especially in long-running applications or when processing
+   * multiple documents.
+   *
    * @async
    * @param {string} filePath - Absolute or relative path to the DOCX file
    * @returns {Promise<ProcessorResult<Document>>} Result containing the loaded Document or error
@@ -233,6 +239,12 @@ export class DocXMLaterProcessor {
    * Useful for processing documents from memory, HTTP responses, or other sources
    * that provide data as Buffer objects. Uses docxmlater framework defaults to
    * ensure no corruption during loading.
+   *
+   * **⚠️ IMPORTANT: Memory Management**
+   *
+   * Always call `dispose()` on the returned Document when finished to free resources
+   * and prevent memory leaks, especially in long-running applications or when processing
+   * multiple documents.
    *
    * @async
    * @param {Buffer} buffer - Buffer containing the DOCX file data
@@ -614,11 +626,11 @@ export class DocXMLaterProcessor {
    * });
    * ```
    */
-  private getParagraphText(para: any): string {
+  private getParagraphText(para: Paragraph): string {
     try {
       // Access the runs and extract text
       const runs = para.getRuns();
-      return runs.map((run: any) => run.getText() || '').join('');
+      return runs.map((run: Run) => run.getText() || '').join('');
     } catch {
       return '';
     }
@@ -837,12 +849,12 @@ export class DocXMLaterProcessor {
 
       if (formatting) {
         // Apply text formatting to runs
-        const runs = para.getRuns?.() || [];
-        runs.forEach((run: any) => {
-          if (formatting.bold) run.setBold?.(true);
-          if (formatting.italic) run.setItalic?.(true);
-          if (formatting.color) run.setColor?.(formatting.color.replace('#', ''));
-          if (formatting.fontSize) run.setSize?.(formatting.fontSize);
+        const runs = para.getRuns();
+        runs.forEach((run: Run) => {
+          if (formatting.bold) run.setBold(true);
+          if (formatting.italic) run.setItalic(true);
+          if (formatting.color) run.setColor(formatting.color.replace('#', ''));
+          if (formatting.fontSize) run.setSize(formatting.fontSize);
         });
       }
 
@@ -945,14 +957,14 @@ export class DocXMLaterProcessor {
         }
 
         // Apply text formatting to runs
-        const runs = para.getRuns?.() || [];
-        runs.forEach((run: any) => {
-          if (formatting.bold) run.setBold?.(true);
-          if (formatting.italic) run.setItalic?.(true);
-          if (formatting.underline) run.setUnderline?.('single');
-          if (formatting.color) run.setColor?.(formatting.color.replace('#', ''));
-          if (formatting.fontSize) run.setSize?.(formatting.fontSize);
-          if (formatting.fontFamily) run.setFont?.(formatting.fontFamily);
+        const runs = para.getRuns();
+        runs.forEach((run: Run) => {
+          if (formatting.bold) run.setBold(true);
+          if (formatting.italic) run.setItalic(true);
+          if (formatting.underline) run.setUnderline('single');
+          if (formatting.color) run.setColor(formatting.color.replace('#', ''));
+          if (formatting.fontSize) run.setSize(formatting.fontSize);
+          if (formatting.fontFamily) run.setFont(formatting.fontFamily);
         });
       }
 
@@ -1369,10 +1381,11 @@ export class DocXMLaterProcessor {
     const hyperlinks = doc.getHyperlinks();
 
     // Map to our existing format with sanitization
+    // Note: Using array index since paragraphIndex is not included in getHyperlinks() return type
     return hyperlinks.map((h, index) => ({
       hyperlink: h.hyperlink,
       paragraph: h.paragraph,
-      paragraphIndex: (h as any).paragraphIndex ?? index,
+      paragraphIndex: index,
       url: h.hyperlink.getUrl(),
       text: sanitizeHyperlinkText(h.hyperlink.getText()),
     }));
@@ -2246,8 +2259,13 @@ export class DocXMLaterProcessor {
    * Create a new blank document
    *
    * Creates an empty document with default settings and styles. The document is ready to
-   * accept content such as paragraphs, tables, and other elements. Remember to call
-   * dispose() when finished to free up resources.
+   * accept content such as paragraphs, tables, and other elements.
+   *
+   * **⚠️ IMPORTANT: Memory Management**
+   *
+   * Always call `dispose()` on the returned Document when finished to free resources
+   * and prevent memory leaks, especially in long-running applications or when processing
+   * multiple documents.
    *
    * @returns {Document} New blank Document instance
    *
