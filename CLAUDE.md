@@ -15,6 +15,58 @@ The docx / xml structure is well defined within the file located at the root dir
 **Check on issues periodically to update your status and to alert me when they are all done after 1 or more issues h as been pushed to issues in github**
 **Store Research in ./GH_Issues/scratchpads/**
 
+### Hyperlink Formatting Standardization (November 2025)
+
+**NEW: Remove Bold/Italic from Hyperlinks**
+
+Implemented automatic standardization of hyperlink formatting to ensure all hyperlinks maintain consistent, professional styling throughout documents.
+
+**Problem Solved:**
+
+- Hyperlinks were sometimes bolded or italicized, making them appear inconsistent
+- Users would manually apply formatting to hyperlinks, violating standard hyperlink conventions
+- Hyperlinks could inherit formatting from surrounding text
+
+**Implementation:**
+
+- **New Processing Option**: "Standardize Hyperlink Formatting (Remove Bold/Italic)" in Text Formatting group
+- **Method**: `standardizeHyperlinkFormatting()` in `WordDocumentProcessor.ts:1680-1716`
+- **Technology**: Uses docxmlater v1.15.0+ `resetToStandardFormatting()` method
+- **Integration**: Automatic processing during document workflow
+
+**Technical Details:**
+
+- Resets all hyperlinks to standard formatting:
+  - Font: Calibri 11pt
+  - Color: Blue (#0563C1)
+  - Underline: Single
+  - Bold: false (removed)
+  - Italic: false (removed)
+- Processes all hyperlinks in document using `extractHyperlinks()` API
+- Error handling: Continues processing even if individual hyperlinks fail
+- Logging: Detailed debug logging for each standardized hyperlink
+
+**Files Modified:**
+
+- `src/services/document/WordDocumentProcessor.ts` - Added standardizeHyperlinkFormatting() method and integration
+- `src/contexts/SessionContext.tsx` - Added option mapping from UI to processing
+- `src/components/sessions/ProcessingOptions.tsx` - Added UI toggle in Text Formatting group
+
+**Benefits:**
+
+- ✅ Consistent hyperlink appearance across all documents
+- ✅ Follows industry-standard hyperlink conventions
+- ✅ Prevents user errors from manual formatting
+- ✅ Leverages battle-tested docxmlater API
+- ✅ Enabled by default for all new sessions
+
+**Usage:**
+
+The option is enabled by default. To disable:
+1. Navigate to Current Session → Processing Options tab
+2. Locate "Standardize Hyperlink Formatting (Remove Bold/Italic)" in Text Formatting group
+3. Toggle off if bold/italic hyperlinks are desired
+
 ### MCP RAG Configuration (November 2025)
 
 **NEW: Semantic Code Search & RAG Capabilities**
