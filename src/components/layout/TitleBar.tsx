@@ -17,7 +17,7 @@ export function TitleBar() {
       return;
     }
 
-    window.electronAPI.getPlatform().then(setPlatform);
+    window.electronAPI.getPlatform().then((p: string) => setPlatform(p as NodeJS.Platform));
     window.electronAPI.isMaximized().then(setIsMaximized);
 
     const unsubMaximized = window.electronAPI.onWindowMaximized(() => setIsMaximized(true));
