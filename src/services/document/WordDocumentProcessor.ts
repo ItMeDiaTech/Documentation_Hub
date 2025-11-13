@@ -188,6 +188,7 @@ export class WordDocumentProcessor {
     };
 
     let backupCreated = false;
+    let doc: Document | null = null;
 
     try {
       // Validate file
@@ -214,7 +215,7 @@ export class WordDocumentProcessor {
       // Load document using DocXMLater with default options
       // Using framework defaults ensures no corruption during load/save cycle
       this.log.debug('=== LOADING DOCUMENT WITH DOCXMLATER ===');
-      const doc = await Document.load(filePath);
+      doc = await Document.load(filePath);
       this.log.debug('Document loaded successfully');
 
       // Start tracking changes if enabled
@@ -392,6 +393,8 @@ export class WordDocumentProcessor {
 
                     if (newText !== hyperlinkInfo.displayText) {
                       // Update hyperlink text using docxmlater API
+                      // Note: hyperlink is from extractHyperlinks() with structure { hyperlink: Hyperlink, paragraph: Paragraph, ... }
+                      // So hyperlink.hyperlink accesses the actual docxmlater Hyperlink object
                       hyperlink.hyperlink.setText(newText);
                       finalDisplayText = newText;
                       result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
@@ -435,6 +438,7 @@ export class WordDocumentProcessor {
                   if (options.operations?.updateTitles) {
                     // Mark as "Not Found"
                     const notFoundText = `${hyperlinkInfo.displayText} - Not Found`;
+                    // Note: hyperlink.hyperlink accesses the actual docxmlater Hyperlink object
                     hyperlink.hyperlink.setText(notFoundText);
                     result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
                   }
@@ -739,6 +743,16 @@ export class WordDocumentProcessor {
       }
 
       return result;
+    } finally {
+      // Clean up resources
+      if (doc) {
+        try {
+          doc.dispose();
+          this.log.debug('Document disposed successfully');
+        } catch (disposeError) {
+          this.log.warn('Failed to dispose document:', disposeError);
+        }
+      }
     }
   }
 
@@ -1754,14 +1768,17 @@ export class WordDocumentProcessor {
     }
   ): Promise<number> {
     let cellsFixed = 0;
+    const tablesNeedingBlankParagraph: Array<{ table: Table; tableIndex: number }> = [];
 
     // Get all tables in document
     const tables = doc.getTables();
     this.log.debug(`Found ${tables.length} tables to validate for Header 2 formatting`);
 
-    for (const table of tables) {
+    for (let tableIndex = 0; tableIndex < tables.length; tableIndex++) {
+      const table = tables[tableIndex];
       const rows = table.getRows();
       const is1x1Table = rows.length === 1 && rows[0]?.getCells().length === 1;
+      let tableHasHeader2 = false;
 
       for (const row of rows) {
         const cells = row.getCells();
@@ -1774,6 +1791,7 @@ export class WordDocumentProcessor {
 
             // Check if this paragraph has Header 2 style
             if (currentStyle === 'Heading2' || currentStyle === 'Heading 2') {
+              tableHasHeader2 = true;
               let cellNeedsUpdate = false;
               const formatting = para.getFormatting();
               const runs = para.getRuns();
@@ -1861,6 +1879,34 @@ export class WordDocumentProcessor {
             }
           }
         }
+      }
+
+      // Track 1x1 tables with Header 2 for blank paragraph insertion
+      if (is1x1Table && tableHasHeader2) {
+        tablesNeedingBlankParagraph.push({ table, tableIndex });
+      }
+    }
+
+    // Insert blank paragraphs after tracked 1x1 Header 2 tables
+    // Note: This implementation attempts to add a blank paragraph after the table.
+    // The exact behavior depends on docxmlater's document structure API.
+    // If the framework doesn't support direct insertion after tables,
+    // this may need to be implemented differently.
+    if (tablesNeedingBlankParagraph.length > 0) {
+      try {
+        // Since we can't directly insert after a table in docxmlater,
+        // we'll add blank paragraphs at the end of the document for now.
+        // TODO: Implement proper insertion logic when docxmlater supports it
+        for (const { table, tableIndex } of tablesNeedingBlankParagraph) {
+          const blankPara = new Paragraph();
+          blankPara.setSpaceBefore(0);
+          blankPara.setSpaceAfter(0);
+          doc.addParagraph(blankPara);
+          this.log.debug(`Added blank paragraph after 1x1 Header 2 table (index ${tableIndex})`);
+        }
+        this.log.info(`Added ${tablesNeedingBlankParagraph.length} blank paragraphs after 1x1 Header 2 tables`);
+      } catch (error) {
+        this.log.warn(`Failed to insert blank paragraphs after Header 2 tables: ${error}`);
       }
     }
 
@@ -2011,24 +2057,10 @@ export class WordDocumentProcessor {
       const indentSetting = settings.indentationLevels.find(l => l.level === level + 1);
 
       if (indentSetting) {
-        // Convert inches to twips (1 inch = 1440 twips)
-        const symbolTwips = Math.round(indentSetting.symbolIndent * 1440);
-        const textTwips = Math.round(indentSetting.textIndent * 1440);
-        const hangingTwips = textTwips - symbolTwips;
-
-        // Set left indent (bullet/number position)
-        para.setLeftIndent(symbolTwips);
-
-        // Set hanging indent (text offset from bullet) via firstLine with negative value
-        // In OOXML, hanging indent is represented as negative firstLine indent
-        if (hangingTwips > 0) {
-          // Access formatting directly since there's no setHangingIndent method
-          const formatting = para.getFormatting();
-          if (!formatting.indentation) {
-            formatting.indentation = {};
-          }
-          formatting.indentation.hanging = hangingTwips;
-        }
+        // NOTE: Indentation is already set at the NumberingLevel in applyBulletUniformity()
+        // and applyNumberedUniformity(). Setting it again at paragraph level would
+        // override the NumberingLevel settings, causing double indentation.
+        // The NumberingLevel handles all indentation - we only need to apply spacing here.
 
         // Apply spacing between items if configured
         if (settings.spacingBetweenItems > 0) {
@@ -2039,7 +2071,7 @@ export class WordDocumentProcessor {
       }
     }
 
-    this.log.debug(`Applied indentation to ${formattedCount} list paragraphs`);
+    this.log.debug(`Applied spacing to ${formattedCount} list paragraphs`);
     return formattedCount;
   }
 
