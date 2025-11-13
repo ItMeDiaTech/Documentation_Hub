@@ -15,55 +15,106 @@ The docx / xml structure is well defined within the file located at the root dir
 **Check on issues periodically to update your status and to alert me when they are all done after 1 or more issues h as been pushed to issues in github**
 **Store Research in ./GH_Issues/scratchpads/**
 
-### Hyperlink Formatting Standardization (November 2025)
+### Hyperlink & List Formatting Standardization - Complete Implementation (November 2025)
 
-**NEW: Remove Bold/Italic from Hyperlinks**
+**MAJOR UPDATE: Comprehensive Formatting Standardization System**
 
-Implemented automatic standardization of hyperlink formatting to ensure all hyperlinks maintain consistent, professional styling throughout documents.
+Implemented a complete formatting standardization system that ensures all hyperlinks and list elements maintain consistent, professional styling throughout documents.
+
+#### Hyperlink Formatting Standardization
+
+**Current Implementation (v1.0.45):**
+
+- Font: **Verdana 12pt** (updated from Calibri 11pt)
+- Color: **#0000FF** (bright blue, updated from #0563C1)
+- Underline: Single
+- Bold/Italic: Removed
+- Method: Custom `setFormatting()` instead of `resetToStandardFormatting()`
+
+**Why Verdana 12pt?**
+- Matches document body text standards
+- Better readability and professional appearance
+- Consistent with organizational style guidelines
+
+#### List Prefix Formatting Standardization (NEW)
 
 **Problem Solved:**
-
-- Hyperlinks were sometimes bolded or italicized, making them appear inconsistent
-- Users would manually apply formatting to hyperlinks, violating standard hyperlink conventions
-- Hyperlinks could inherit formatting from surrounding text
+- Bullet points and numbered list symbols had inconsistent fonts, sizes, and colors
+- Existing documents retained legacy formatting (various fonts, sizes)
+- No global standardization across all lists in document
 
 **Implementation:**
+- **Always Enabled**: Feature is ALWAYS active (hardcoded like hyperlink standardization)
+- **Method**: `standardizeListPrefixFormatting()` in `WordDocumentProcessor.ts:1873-1977`
+- **Technology**: Low-level XML injection into `word/numbering.xml`
+- **Scope**: Applies to ALL lists in document (both new and existing)
 
-- **Always Enabled**: This feature is ALWAYS active and cannot be disabled via UI
-- **Reason**: Required for work environment to maintain professional document standards
-- **Method**: `standardizeHyperlinkFormatting()` in `WordDocumentProcessor.ts:1680-1716`
-- **Technology**: Uses docxmlater v1.15.0+ `resetToStandardFormatting()` method
-- **Integration**: Automatic processing during document workflow
+**Formatting Applied:**
+- Font: Verdana (matches hyperlinks and body text)
+- Size: 12pt (24 half-points)
+- Color: Black (#000000)
+- Bold: Preserved if present (for emphasis)
+
+#### List Indentation Fix (NEW)
+
+**Problem Solved:**
+- Custom indentation values from UI were being overridden by framework normalization
+- All lists would revert to default indentation regardless of user settings
+- `doc.normalizeAllListIndentation()` was wiping out custom NumberingLevel values
+
+**Root Cause:**
+Framework's normalization method resets indentation after custom values are set, causing them to be lost.
+
+**Solution:**
+- Created `injectIndentationToNumbering()` helper function (lines 3068-3174)
+- Uses XML injection pattern (same as formatting fixes)
+- Injects `<w:pPr><w:ind>` elements directly into numbering.xml
+- Called AFTER normalization to override defaults
+- Indentation values from StylesEditor UI are now respected
 
 **Technical Details:**
-
-- Resets all hyperlinks to standard formatting:
-  - Font: Calibri 11pt
-  - Color: Blue (#0563C1)
-  - Underline: Single
-  - Bold: false (removed)
-  - Italic: false (removed)
-- Processes all hyperlinks in document using `extractHyperlinks()` API
-- Error handling: Continues processing even if individual hyperlinks fail
-- Logging: Detailed debug logging for each standardized hyperlink
+- Calculates twips from inches (1440 twips = 1 inch)
+- Injects: `<w:pPr><w:ind w:left="X" w:hanging="Y"/></w:pPr>`
+- Supports 5 indentation levels (0-4)
+- Default increments: 0.25" for symbols, 0.5" for text per level
 
 **Files Modified:**
 
-- `src/services/document/WordDocumentProcessor.ts` - Added standardizeHyperlinkFormatting() method and integration
-- `src/contexts/SessionContext.tsx` - Set standardizeHyperlinkFormatting to always true (hardcoded)
+- `src/services/document/WordDocumentProcessor.ts`:
+  - Line 60-61: Added `standardizeListPrefixFormatting` type
+  - Lines 628-632: List prefix standardization call
+  - Lines 757-770: Indentation injection call
+  - Lines 1804-1822: Updated hyperlink formatting (Verdana 12pt #0000FF)
+  - Lines 1873-1977: NEW `standardizeListPrefixFormatting()` function
+  - Lines 2892-2912: Updated from Calibri to Verdana
+  - Lines 3068-3174: NEW `injectIndentationToNumbering()` function
+- `src/contexts/SessionContext.tsx`:
+  - Line 829: Added `standardizeListPrefixFormatting` type
+  - Lines 919-921: Hardcoded `standardizeListPrefixFormatting: true`
 
 **Benefits:**
 
-- ✅ Consistent hyperlink appearance across all documents
-- ✅ Follows industry-standard hyperlink conventions
-- ✅ Prevents user errors from manual formatting
-- ✅ Leverages battle-tested docxmlater API
-- ✅ **Always enabled** - no user configuration needed
-- ✅ Enforces professional document standards for work environment
+- Consistent Verdana 12pt formatting across hyperlinks AND lists
+- Professional document appearance (organizational standards)
+- Custom indentation now works correctly
+- Applies to all documents (new and legacy)
+- Always enabled (no user configuration needed)
+- XML injection ensures persistence through all processing steps
+- Comprehensive logging for debugging
+
+**Documentation:**
+
+See `docs/fixes/LIST_FORMATTING_FIX_v2.md` for complete technical details, testing plans, and implementation notes.
 
 **Usage:**
 
-This feature is **permanently enabled** and runs automatically on all processed documents. There is no UI toggle - hyperlink formatting standardization is a core requirement for maintaining professional document standards in the work environment. All hyperlinks will always be reset to standard blue underlined style without bold or italic formatting.
+All three features are **permanently enabled** and run automatically on all processed documents:
+1. Hyperlink standardization (Verdana 12pt #0000FF)
+2. List prefix standardization (Verdana 12pt black)
+3. Custom indentation injection (from UI settings)
+
+No UI toggles - these are core requirements for professional document standards.
+
 
 ### MCP RAG Configuration (November 2025)
 

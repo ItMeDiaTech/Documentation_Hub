@@ -58,6 +58,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   preserveBlankLinesAfterHeader2Tables?: boolean; // preserve-header2-blank-lines: Preserve blank lines after Header 2 tables (v1.16.0)
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
   standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
+  standardizeListPrefixFormatting?: boolean; // standardize-list-prefix-formatting: Apply consistent Verdana 12pt black formatting to all list symbols/numbers
 
   // ═══════════════════════════════════════════════════════════
   // Content Structure Options (ProcessingOptions group: 'structure')
@@ -625,6 +626,12 @@ export class WordDocumentProcessor {
         this.log.info(`Standardized formatting for ${hyperlinksStandardized} hyperlinks`);
       }
 
+      if (options.standardizeListPrefixFormatting) {
+        this.log.debug('=== STANDARDIZING LIST PREFIX FORMATTING ===');
+        const listPrefixesStandardized = await this.standardizeListPrefixFormatting(doc);
+        this.log.info(`Standardized formatting for ${listPrefixesStandardized} list prefix levels`);
+      }
+
       // CONTENT STRUCTURE GROUP
       // NOTE: Style application moved BEFORE paragraph removal (v1.16.0)
       // This ensures Header 2 table styles exist when preservation logic runs
@@ -754,6 +761,21 @@ export class WordDocumentProcessor {
         this.log.debug('=== NORMALIZING LIST INDENTATION ===');
         const normalizedCount = doc.normalizeAllListIndentation();
         this.log.info(`Normalized indentation for ${normalizedCount} lists to standard values`);
+
+        // Inject custom indentation back into numbering.xml (overrides normalization)
+        // This is necessary because normalizeAllListIndentation() resets our custom values
+        if (options.listBulletSettings?.indentationLevels) {
+          this.log.debug('=== INJECTING CUSTOM INDENTATION ===');
+          const indentInjected = await this.injectIndentationToNumbering(
+            doc,
+            options.listBulletSettings.indentationLevels
+          );
+          if (indentInjected) {
+            this.log.info('Injected custom indentation values into numbering.xml');
+          } else {
+            this.log.warn('Failed to inject custom indentation - using normalized defaults');
+          }
+        }
 
         // Standardize numbering colors to fix green bullet issue
         this.log.debug('=== STANDARDIZING NUMBERING COLORS ===');
@@ -1801,14 +1823,20 @@ export class WordDocumentProcessor {
       // Reset each hyperlink to standard formatting
       for (const { hyperlink, url, text } of hyperlinks) {
         try {
-          // Use docxmlater's built-in method to reset formatting
-          // This removes bold, italic, and ensures proper hyperlink style:
-          // - Font: Calibri 11pt
-          // - Color: Blue (#0563C1)
+          // Apply custom formatting to hyperlinks:
+          // - Font: Verdana 12pt
+          // - Color: Blue (#0000FF)
           // - Underline: Single
           // - Bold: false
           // - Italic: false
-          hyperlink.resetToStandardFormatting();
+          hyperlink.setFormatting({
+            font: 'Verdana',
+            size: 24, // 12pt = 24 half-points
+            color: '0000FF', // Blue (hex without #)
+            underline: 'single',
+            bold: false,
+            italic: false,
+          });
           standardizedCount++;
 
           this.log.debug(`Standardized hyperlink: "${text}" (${url})`);
@@ -1828,6 +1856,108 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Standardize list prefix formatting for ALL lists in the document
+   *
+   * Similar to standardizeHyperlinkFormatting(), this function ensures all bullet points
+   * and numbered list prefixes (symbols/numbers) have consistent professional formatting:
+   * - Font: Verdana
+   * - Size: 12pt (24 half-points)
+   * - Color: Black (#000000)
+   * - Bold: preserved (lists often use bold for emphasis)
+   *
+   * This applies to ALL existing lists in the document, not just newly created ones.
+   *
+   * @param doc - Document to process
+   * @returns Number of list levels standardized
+   * @since v1.0.45
+   */
+  private async standardizeListPrefixFormatting(doc: Document): Promise<number> {
+    let standardizedCount = 0;
+
+    try {
+      // Access numbering.xml to modify all list formatting
+      const numberingPart = await doc.getPart('word/numbering.xml');
+      if (!numberingPart || typeof numberingPart.content !== 'string') {
+        this.log.warn('Unable to access numbering.xml for list prefix standardization');
+        return 0;
+      }
+
+      let xmlContent = numberingPart.content;
+      let modified = false;
+
+      // Find all <w:lvl> elements (all list levels in the document)
+      const lvlRegex = /<w:lvl w:ilvl="(\d+)"[^>]*>([\s\S]*?)<\/w:lvl>/g;
+      let match;
+
+      // Standard formatting for list prefixes
+      const standardRPr = `<w:rPr>
+              <w:rFonts w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
+              <w:sz w:val="24"/>
+              <w:szCs w:val="24"/>
+              <w:color w:val="000000"/>
+            </w:rPr>`;
+
+      while ((match = lvlRegex.exec(numberingPart.content)) !== null) {
+        const levelIndex = match[1];
+        const levelContent = match[2];
+        const fullMatch = match[0];
+
+        // Check if w:rPr already exists
+        if (levelContent.includes('<w:rPr>')) {
+          // Update existing w:rPr - preserve bold if present, but standardize font/size/color
+          const hasBold = levelContent.includes('<w:b/>') || levelContent.includes('<w:b ');
+          const hasBoldCs = levelContent.includes('<w:bCs/>') || levelContent.includes('<w:bCs ');
+
+          let rPrXml = `<w:rPr>
+              <w:rFonts w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>`;
+
+          // Preserve bold if it was there
+          if (hasBold) {
+            rPrXml += `\n              <w:b/>`;
+          }
+          if (hasBoldCs) {
+            rPrXml += `\n              <w:bCs/>`;
+          }
+
+          rPrXml += `\n              <w:sz w:val="24"/>
+              <w:szCs w:val="24"/>
+              <w:color w:val="000000"/>
+            </w:rPr>`;
+
+          const updatedContent = levelContent.replace(
+            /<w:rPr>[\s\S]*?<\/w:rPr>/,
+            rPrXml
+          );
+          xmlContent = xmlContent.replace(fullMatch, fullMatch.replace(levelContent, updatedContent));
+          modified = true;
+          standardizedCount++;
+
+          this.log.debug(`Standardized list prefix level ${levelIndex}: Verdana 12pt black${hasBold ? ' (bold preserved)' : ''}`);
+        } else {
+          // Insert new w:rPr with standard formatting (no bold for new lists)
+          const updatedLevel = fullMatch.replace('</w:lvl>', `${standardRPr}</w:lvl>`);
+          xmlContent = xmlContent.replace(fullMatch, updatedLevel);
+          modified = true;
+          standardizedCount++;
+
+          this.log.debug(`Standardized list prefix level ${levelIndex}: Verdana 12pt black (new formatting)`);
+        }
+      }
+
+      if (modified) {
+        // Save modified XML back to document
+        await doc.setPart('word/numbering.xml', xmlContent);
+        this.log.info(`Successfully standardized ${standardizedCount} list prefix levels to Verdana 12pt black`);
+      }
+
+      return standardizedCount;
+    } catch (error) {
+      this.log.error(`Error standardizing list prefix formatting: ${error}`);
+      throw error;
+    }
+  }
+
+    /**
    * Assign styles to document - ENHANCED with docxmlater 1.1.0
    *
    * Now uses detectHeadingLevel() helper for smart heading detection:
@@ -2881,7 +3011,7 @@ export class WordDocumentProcessor {
           const updatedContent = levelContent.replace(
             /<w:rPr>[\s\S]*?<\/w:rPr>/,
             `<w:rPr>
-              <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
+              <w:rFonts w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
               <w:b/>
               <w:bCs/>
               <w:sz w:val="24"/>
@@ -2895,7 +3025,7 @@ export class WordDocumentProcessor {
           // Insert new w:rPr before closing </w:lvl> tag
           const newRPr = `
             <w:rPr>
-              <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
+              <w:rFonts w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
               <w:b/>
               <w:bCs/>
               <w:sz w:val="24"/>
@@ -2924,6 +3054,124 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Inject indentation properties into numbering.xml for consistent list indentation
+   *
+   * This function addresses the issue where doc.normalizeAllListIndentation() overrides
+   * the custom indentation values set in NumberingLevel objects. By injecting indentation
+   * directly into the XML, we ensure the values persist regardless of normalization.
+   *
+   * Injects <w:pPr><w:ind w:left="X" w:hanging="Y"/></w:pPr> for each level.
+   *
+   * @param doc - Document to modify
+   * @param indentationLevels - Array of indentation configurations from UI
+   * @returns true if successful, false otherwise
+   */
+  private async injectIndentationToNumbering(
+    doc: Document,
+    indentationLevels: Array<{
+      level: number;
+      symbolIndent: number; // in inches
+      textIndent: number; // in inches
+      bulletChar?: string;
+      numberedFormat?: string;
+    }>
+  ): Promise<boolean> {
+    try {
+      // Access numbering.xml
+      const numberingPart = await doc.getPart('word/numbering.xml');
+      if (!numberingPart || typeof numberingPart.content !== 'string') {
+        this.log.warn('Unable to access numbering.xml for indentation injection');
+        return false;
+      }
+
+      let xmlContent = numberingPart.content;
+      let modified = false;
+
+      // Process each indentation level
+      for (const levelConfig of indentationLevels) {
+        const levelIndex = levelConfig.level;
+
+        // Calculate indentation values in twips (1440 twips = 1 inch)
+        const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
+        const textTwips = Math.round(levelConfig.textIndent * 1440);
+        const hangingTwips = textTwips - symbolTwips;
+
+        // Create the indentation XML element
+        const indentXml = `<w:ind w:left="${textTwips}" w:hanging="${hangingTwips}"/>`;
+
+        // Find all <w:lvl> elements with this level index
+        const lvlRegex = new RegExp(
+          `<w:lvl w:ilvl="${levelIndex}"[^>]*>([\\s\\S]*?)<\\/w:lvl>`,
+          'g'
+        );
+
+        let match;
+        // Reset regex index for each iteration
+        lvlRegex.lastIndex = 0;
+
+        while ((match = lvlRegex.exec(numberingPart.content)) !== null) {
+          const levelContent = match[1];
+          const fullMatch = match[0];
+
+          // Check if w:pPr already exists in this level
+          if (levelContent.includes('<w:pPr>')) {
+            // Check if w:ind exists within w:pPr
+            if (levelContent.includes('<w:ind')) {
+              // Update existing w:ind
+              const updatedContent = levelContent.replace(
+                /<w:ind[^>]*\/>/,
+                indentXml
+              );
+              xmlContent = xmlContent.replace(fullMatch, fullMatch.replace(levelContent, updatedContent));
+              modified = true;
+            } else {
+              // Insert w:ind into existing w:pPr (right after opening tag)
+              const updatedContent = levelContent.replace(
+                /<w:pPr>/,
+                `<w:pPr>\n              ${indentXml}`
+              );
+              xmlContent = xmlContent.replace(fullMatch, fullMatch.replace(levelContent, updatedContent));
+              modified = true;
+            }
+          } else {
+            // Insert new w:pPr with w:ind at the beginning of the level
+            // Place it before w:numFmt or w:lvlText if they exist, otherwise at start
+            const pPrXml = `
+            <w:pPr>
+              ${indentXml}
+            </w:pPr>`;
+
+            // Insert after <w:lvl> opening tag
+            const updatedLevel = fullMatch.replace(
+              /(<w:lvl w:ilvl="\d+"[^>]*>)/,
+              `$1${pPrXml}`
+            );
+            xmlContent = xmlContent.replace(fullMatch, updatedLevel);
+            modified = true;
+          }
+        }
+
+        this.log.debug(
+          `Injected indentation for level ${levelIndex}: left=${textTwips} twips, hanging=${hangingTwips} twips`
+        );
+      }
+
+      if (modified) {
+        // Save modified XML back to document
+        await doc.setPart('word/numbering.xml', xmlContent);
+        this.log.info('Successfully injected indentation properties into numbering.xml');
+        return true;
+      }
+
+      this.log.debug('No indentation modifications needed');
+      return false;
+    } catch (error) {
+      this.log.warn('Error injecting indentation to numbering:', error);
+      return false;
+    }
+  }
+
+    /**
    * Standardize numbering colors to black to fix green bullet issue
    * This processes the numbering.xml to ensure all bullets/numbers are black
    *
