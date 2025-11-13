@@ -903,6 +903,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Text Formatting Options (mapped from ProcessingOptions UI)
         removeWhitespace: session.processingOptions?.enabledOperations?.includes('remove-whitespace'),
         removeParagraphLines: session.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
+        preserveBlankLinesAfterHeader2Tables: session.processingOptions?.enabledOperations?.includes('preserve-header2-blank-lines'),
         removeItalics: session.processingOptions?.enabledOperations?.includes('remove-italics'),
 
         // Content Structure Options (ALWAYS ENABLED - automatic processing)
