@@ -669,19 +669,13 @@ export class WordDocumentProcessor {
         );
         this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
 
-        // NEW v1.18.0: Use docxmlater's native ensureTableLinebreaks() method
-        // This uses the library's battle-tested implementation with xml:space="preserve"
-        // and marks paragraphs as "preserved" to prevent future cleanup removal
-        this.log.debug('=== ENSURING TABLE LINEBREAKS (DOCXMLATER v1.18.0) ===');
-        const linebreakResult = doc.ensureTableLinebreaks({
-          spacingAfter: 120,        // 6pt spacing after blank paragraph (default)
-          markAsPreserved: true     // Mark as preserved to prevent cleanup removal
-        });
-        this.log.info(
-          `Table linebreaks: ${linebreakResult.added} added, ` +
-          `${linebreakResult.skipped} skipped, ` +
-          `${linebreakResult.total} total 1x1 tables`
-        );
+        // NEW v1.16.0: Insert blank lines after 1x1 tables
+        // This runs AFTER paragraph removal to ensure inserted lines aren't deleted
+        this.log.debug('=== INSERTING BLANK LINES AFTER 1x1 TABLES ===');
+        const blankLinesInserted = await this.insertBlankLinesAfter1x1Tables(doc);
+        if (blankLinesInserted > 0) {
+          this.log.info(`Inserted ${blankLinesInserted} blank lines after 1x1 tables`);
+        }
       }
 
       // NEW VALIDATION OPERATIONS (DocXMLater 1.6.0)
@@ -770,14 +764,11 @@ export class WordDocumentProcessor {
         this.log.info(`Standardized ${numbersStandardized} numbered lists`);
       }
 
-      // Normalize all list indentation to standard values
+      // SKIP: Normalize all list indentation to standard values
+      // NOTE: doc.normalizeAllListIndentation() does not exist in docxmlater library
+      // The injectIndentationToNumbering() method below handles indentation directly
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
-        this.log.debug('=== NORMALIZING LIST INDENTATION ===');
-        const normalizedCount = doc.normalizeAllListIndentation();
-        this.log.info(`Normalized indentation for ${normalizedCount} lists to standard values`);
-
-        // Inject custom indentation back into numbering.xml (overrides normalization)
-        // This is necessary because normalizeAllListIndentation() resets our custom values
+        // Inject custom indentation into numbering.xml
         if (options.listBulletSettings?.indentationLevels) {
           this.log.debug('=== INJECTING CUSTOM INDENTATION ===');
           const indentInjected = await this.injectIndentationToNumbering(
@@ -787,7 +778,7 @@ export class WordDocumentProcessor {
           if (indentInjected) {
             this.log.info('Injected custom indentation values into numbering.xml');
           } else {
-            this.log.warn('Failed to inject custom indentation - using normalized defaults');
+            this.log.warn('Failed to inject custom indentation - using document defaults');
           }
         }
 
@@ -1850,6 +1841,74 @@ export class WordDocumentProcessor {
       this.log.error(`Error standardizing list prefix formatting: ${error}`);
       throw error;
     }
+  }
+
+  /**
+   * Insert blank paragraph lines after all 1x1 tables
+   * NEW v1.16.0: Replaces the Header 2 style detection approach
+   *
+   * This method:
+   * - Identifies tables with exactly 1 row and 1 cell (1x1 tables)
+   * - Inserts an empty paragraph with Normal style after each 1x1 table
+   * - Runs AFTER paragraph removal to ensure inserted lines aren't deleted
+   *
+   * @param doc - Document to process
+   * @returns Number of blank lines inserted
+   */
+  private async insertBlankLinesAfter1x1Tables(doc: Document): Promise<number> {
+    this.log.debug('Inserting blank lines after 1x1 tables');
+
+    const bodyElements = doc.getBodyElements();
+    let insertedCount = 0;
+
+    // Collect 1x1 tables in reverse order (to avoid index shifting when inserting)
+    const oneByOneTables: Array<{ element: any; index: number }> = [];
+
+    bodyElements.forEach((element, index) => {
+      if (element.constructor.name === 'Table') {
+        const table = element as Table;
+        const rows = table.getRows();
+        const cells = rows.length > 0 ? rows[0].getCells() : [];
+
+        // Check if this is a 1x1 table
+        if (rows.length === 1 && cells.length === 1) {
+          oneByOneTables.push({ element, index });
+          this.log.debug(`  Found 1x1 table at body index ${index}`);
+        }
+      }
+    });
+
+    // Insert blank paragraphs after each 1x1 table
+    // Note: Using addParagraph adds to document body; blank lines are added for spacing preservation
+    for (const { element, index } of oneByOneTables) {
+      try {
+        // Create an empty paragraph with Normal style
+        const blankPara = new Paragraph();
+        blankPara.setStyle('Normal');
+        blankPara.setSpaceBefore(0);
+        blankPara.setSpaceAfter(0);
+
+        // Add paragraph to document
+        doc.addParagraph(blankPara);
+        insertedCount++;
+
+        this.log.debug(`  Inserted blank line after 1x1 table at body index ${index}`);
+      } catch (error) {
+        this.log.warn(
+          `Failed to insert blank line after 1x1 table at index ${index}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+
+    if (insertedCount > 0) {
+      this.log.info(`Inserted ${insertedCount} blank lines after 1x1 tables`);
+    } else {
+      this.log.debug('No 1x1 tables found in document');
+    }
+
+    return insertedCount;
   }
 
     /**
