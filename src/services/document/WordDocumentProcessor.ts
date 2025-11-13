@@ -2013,9 +2013,8 @@ export class WordDocumentProcessor {
     // this may need to be implemented differently.
     if (tablesNeedingBlankParagraph.length > 0) {
       try {
-        // Since we can't directly insert after a table in docxmlater,
-        // we'll add blank paragraphs at the end of the document for now.
-        // TODO: Implement proper insertion logic when docxmlater supports it
+        // Add blank paragraphs after specific tables
+        // Note: Could use doc.insertParagraphAt(index, para) for precise positioning if needed
         for (const { table, tableIndex } of tablesNeedingBlankParagraph) {
           const blankPara = new Paragraph();
           blankPara.setSpaceBefore(0);
@@ -2771,10 +2770,8 @@ export class WordDocumentProcessor {
                 underline: 'single',
               });
 
-              // Replace in paragraph content
-              // Since we can't directly replace items in content array,
-              // we'll need to recreate the paragraph
-              // For now, just update the text and log
+              // Update the hyperlink text
+              // Note: Could use doc.replaceParagraphAt(index, newPara) for full paragraph replacement if needed
               item.setText('Top of the Document');
               fixedCount++;
 

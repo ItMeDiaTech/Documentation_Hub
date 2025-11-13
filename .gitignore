@@ -165,3 +165,6 @@ fix-imports/
 /FINAL_SOLUTION.md
 /EXECUTION_LOG_TEST_BASE.md
 /inspect-paragraph-xml.ts
+# Local data and config
+config/
+data/
