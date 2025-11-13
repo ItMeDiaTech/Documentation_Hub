@@ -652,15 +652,34 @@ export class WordDocumentProcessor {
         );
       }
 
-      // PARAGRAPH REMOVAL (with 1x1 table blank line insertion)
+      // ENSURE BLANK LINES AFTER 1x1 TABLES (with conditional preserve flag)
+      // NEW v1.19.0: Using docXMLater's ensureBlankLinesAfter1x1Tables() method
+      // This runs BEFORE paragraph removal so the preserved flag can protect the blank lines
+      if (options.preserveBlankLinesAfterHeader2Tables) {
+        this.log.debug('=== ENSURING BLANK LINES AFTER 1x1 TABLES ===');
+
+        // Set preserve flag based on whether paragraph removal is enabled
+        // If removal is ON → preserve = true (protect blank lines)
+        // If removal is OFF → preserve = false (no protection needed)
+        const shouldPreserve = options.removeParagraphLines === true;
+
+        const result = doc.ensureBlankLinesAfter1x1Tables({
+          spacingAfter: 120,              // 6pt spacing
+          markAsPreserved: shouldPreserve, // Conditional preserve flag
+        });
+
+        this.log.info(
+          `Processed ${result.tablesProcessed} 1x1 tables: ` +
+          `Added ${result.blankLinesAdded} blank lines, ` +
+          `Marked ${result.existingLinesMarked} existing blank lines as preserved ` +
+          `(preserve=${shouldPreserve} based on removeParagraphLines=${options.removeParagraphLines})`
+        );
+      }
+
+      // PARAGRAPH REMOVAL
       // EXECUTION ORDER NOTE:
-      // Current order: (1) Remove paragraphs → (2) Ensure table linebreaks
-      // This order works because ensureTableLinebreaks() adds back needed linebreaks after removal.
-      //
-      // OPTIMIZATION PATH: If we migrate removeExtraParagraphLines() to docxmlater's native
-      // removeExtraBlankParagraphs() method, we should reverse the order:
-      // (1) Ensure table linebreaks (marked as preserved) → (2) Remove paragraphs (skipping preserved)
-      // This would eliminate the remove-then-re-add cycle and be more efficient.
+      // NEW ORDER v1.19.0: (1) Ensure table linebreaks (marked as preserved) → (2) Remove paragraphs (skipping preserved)
+      // This eliminates the remove-then-re-add cycle and is more efficient.
       if (options.removeParagraphLines) {
         this.log.debug('=== REMOVING EXTRA PARAGRAPH LINES ===');
         const paragraphsRemoved = await this.removeExtraParagraphLines(
@@ -669,13 +688,13 @@ export class WordDocumentProcessor {
         );
         this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
 
-        // NEW v1.16.0: Insert blank lines after 1x1 tables
-        // This runs AFTER paragraph removal to ensure inserted lines aren't deleted
-        this.log.debug('=== INSERTING BLANK LINES AFTER 1x1 TABLES ===');
-        const blankLinesInserted = await this.insertBlankLinesAfter1x1Tables(doc);
-        if (blankLinesInserted > 0) {
-          this.log.info(`Inserted ${blankLinesInserted} blank lines after 1x1 tables`);
-        }
+        // DEPRECATED v1.19.0: Old custom implementation replaced with docXMLater's ensureBlankLinesAfter1x1Tables()
+        // The new method runs BEFORE paragraph removal (see above) with conditional preserve flag
+        // OLD CODE: this.log.debug('=== INSERTING BLANK LINES AFTER 1x1 TABLES ===');
+        // OLD CODE: const blankLinesInserted = await this.insertBlankLinesAfter1x1Tables(doc);
+        // OLD CODE: if (blankLinesInserted > 0) {
+        // OLD CODE:   this.log.info(`Inserted ${blankLinesInserted} blank lines after 1x1 tables`);
+        // OLD CODE: }
       }
 
       // NEW VALIDATION OPERATIONS (DocXMLater 1.6.0)
@@ -1863,71 +1882,25 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Insert blank paragraph lines after all 1x1 tables
-   * NEW v1.16.0: Replaces the Header 2 style detection approach
+   * DEPRECATED v1.19.0: Insert blank paragraph lines after all 1x1 tables
    *
-   * This method:
-   * - Identifies tables with exactly 1 row and 1 cell (1x1 tables)
-   * - Inserts an empty paragraph with Normal style after each 1x1 table
-   * - Runs AFTER paragraph removal to ensure inserted lines aren't deleted
+   * This custom implementation has been replaced with docXMLater's native
+   * ensureBlankLinesAfter1x1Tables() method which:
+   * - Runs BEFORE paragraph removal (more efficient)
+   * - Sets preserve flag conditionally (based on removeParagraphLines option)
+   * - Provides better statistics and filtering options
    *
+   * See: doc.ensureBlankLinesAfter1x1Tables() call in processDocument() method
+   *
+   * @deprecated Use doc.ensureBlankLinesAfter1x1Tables() instead
    * @param doc - Document to process
    * @returns Number of blank lines inserted
    */
   private async insertBlankLinesAfter1x1Tables(doc: Document): Promise<number> {
-    this.log.debug('Inserting blank lines after 1x1 tables');
-
-    const bodyElements = doc.getBodyElements();
-    let insertedCount = 0;
-
-    // Collect 1x1 tables in reverse order (to avoid index shifting when inserting)
-    const oneByOneTables: Array<{ element: any; index: number }> = [];
-
-    bodyElements.forEach((element, index) => {
-      if (element.constructor.name === 'Table') {
-        const table = element as Table;
-        const rows = table.getRows();
-        const cells = rows.length > 0 ? rows[0].getCells() : [];
-
-        // Check if this is a 1x1 table
-        if (rows.length === 1 && cells.length === 1) {
-          oneByOneTables.push({ element, index });
-          this.log.debug(`  Found 1x1 table at body index ${index}`);
-        }
-      }
-    });
-
-    // Insert blank paragraphs after each 1x1 table
-    // Note: Using addParagraph adds to document body; blank lines are added for spacing preservation
-    for (const { element, index } of oneByOneTables) {
-      try {
-        // Create an empty paragraph with Normal style
-        const blankPara = new Paragraph();
-        blankPara.setStyle('Normal');
-        blankPara.setSpaceBefore(0);
-        blankPara.setSpaceAfter(0);
-
-        // Add paragraph to document
-        doc.addParagraph(blankPara);
-        insertedCount++;
-
-        this.log.debug(`  Inserted blank line after 1x1 table at body index ${index}`);
-      } catch (error) {
-        this.log.warn(
-          `Failed to insert blank line after 1x1 table at index ${index}: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-      }
-    }
-
-    if (insertedCount > 0) {
-      this.log.info(`Inserted ${insertedCount} blank lines after 1x1 tables`);
-    } else {
-      this.log.debug('No 1x1 tables found in document');
-    }
-
-    return insertedCount;
+    // DEPRECATED: This method is no longer used
+    // New implementation uses: doc.ensureBlankLinesAfter1x1Tables()
+    this.log.warn('DEPRECATED: insertBlankLinesAfter1x1Tables() called - use doc.ensureBlankLinesAfter1x1Tables() instead');
+    return 0;
   }
 
     /**
