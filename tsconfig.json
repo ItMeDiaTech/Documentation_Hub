@@ -29,6 +29,7 @@
       "@contexts/*": ["./src/contexts/*"]
     }
   },
-  "include": ["src", "electron"],
+  "include": ["src"],
+  "exclude": ["electron", "node_modules", "dist", "release"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
