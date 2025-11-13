@@ -14,6 +14,7 @@
 
 import { Document, Paragraph, Hyperlink } from 'docxmlater';
 import { diffWords, Change } from 'diff';
+import { sanitizeHyperlinkText, isTextCorrupted } from '../../utils/textSanitizer';
 
 export interface ProcessingChange {
   id: string;
@@ -132,11 +133,21 @@ export class DocumentProcessingComparison {
       for (const item of content) {
         if (item instanceof Hyperlink) {
           const key = `${paraIndex}-${hyperlinkIndex}`;
+          const rawText = item.getText();
+
+          // Log if XML corruption detected
+          if (isTextCorrupted(rawText)) {
+            console.warn(
+              `[DocumentProcessingComparison] XML corruption detected in hyperlink text at paragraph ${paraIndex}, hyperlink ${hyperlinkIndex}:`,
+              rawText
+            );
+          }
+
           this.originalHyperlinks.set(key, {
             paragraphIndex: paraIndex,
             hyperlinkIndex,
             url: item.getUrl() || '',
-            text: item.getText(),
+            text: sanitizeHyperlinkText(rawText),
           });
           hyperlinkIndex++;
         }
@@ -351,7 +362,17 @@ export class DocumentProcessingComparison {
 
           if (original) {
             const currentUrl = item.getUrl() || '';
-            const currentText = item.getText();
+            const rawCurrentText = item.getText();
+
+            // Log if XML corruption detected
+            if (isTextCorrupted(rawCurrentText)) {
+              console.warn(
+                `[DocumentProcessingComparison] XML corruption detected in current hyperlink text at paragraph ${paraIndex}, hyperlink ${hyperlinkIndex}:`,
+                rawCurrentText
+              );
+            }
+
+            const currentText = sanitizeHyperlinkText(rawCurrentText);
 
             // Check if this change was already recorded
             const recorded = this.comparison!.hyperlinkChanges.find(
