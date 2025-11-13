@@ -14,7 +14,6 @@ export const defaultOptions: ProcessingOption[] = [
   // Text Formatting Group
   { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'text', enabled: true },
   { id: 'remove-paragraph-lines', label: 'Remove Extra Paragraph Lines', group: 'text', enabled: true },
-  { id: 'preserve-header2-blank-lines', label: 'Preserve Blank Lines After Header 2 Tables', group: 'text', enabled: true },
   { id: 'remove-italics', label: 'Remove Italics', group: 'text', enabled: true },
   { id: 'normalize-spacing', label: 'Smart Spacing Normalization (New)', group: 'text', enabled: true },
 
