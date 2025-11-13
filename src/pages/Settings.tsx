@@ -119,31 +119,31 @@ export function Settings() {
       return;
     }
 
-    const unsubAvailable = window.electronAPI.onUpdateAvailable((info) => {
+    const unsubAvailable = window.electronAPI.onUpdateAvailable((info: { version: string; releaseDate: string; releaseNotes: string }) => {
       setUpdateAvailable(true);
       setUpdateVersion(info.version);
       setUpdateStatus(`Update available: ${info.version}`);
       setCheckingForUpdates(false);
     });
 
-    const unsubProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
+    const unsubProgress = window.electronAPI.onUpdateDownloadProgress((progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => {
       setDownloadProgress(progress.percent);
       setUpdateStatus(`Downloading update: ${Math.round(progress.percent)}%`);
     });
 
-    const unsubDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
+    const unsubDownloaded = window.electronAPI.onUpdateDownloaded((info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => {
       setUpdateDownloaded(true);
       setDownloadProgress(100);
       setUpdateStatus(`Update ${info.version} downloaded. Ready to install.`);
     });
 
-    const unsubNotAvailable = window.electronAPI.onUpdateNotAvailable(() => {
+    const unsubNotAvailable = window.electronAPI.onUpdateNotAvailable((_info: { version: string }) => {
       setUpdateAvailable(false);
       setUpdateStatus('You are up to date');
       setCheckingForUpdates(false);
     });
 
-    const unsubError = window.electronAPI.onUpdateError((error) => {
+    const unsubError = window.electronAPI.onUpdateError((error: { message: string }) => {
       setUpdateStatus(`Update error: ${error.message}`);
       setCheckingForUpdates(false);
     });

@@ -82,7 +82,12 @@ export function CertificateManager() {
 
   const loadExistingCertificates = async () => {
     try {
-      const certs = await window.electronAPI.getInstalledCertificates();
+      const certPaths = await window.electronAPI.getInstalledCertificates();
+      const certs: Certificate[] = certPaths.map((path: string) => ({
+        path,
+        name: path.split('/').pop() || path,
+        isActive: path === currentCertPath,
+      }));
       setCertificates(certs);
     } catch (error) {
       logger.error('Error loading certificates:', error);
