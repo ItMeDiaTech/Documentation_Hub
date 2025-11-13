@@ -99,6 +99,7 @@ export interface HyperlinkProcessingOptions {
     standardizeHyperlinkColor?: boolean;
     validateHeader2Tables?: boolean; // NEW in 1.6.0: Validate Header 2 table formatting
     validateDocumentStyles?: boolean; // NEW in 1.6.0: Validate all document styles using applyStylesFromObjects()
+    processHyperlinks?: boolean; // Enable hyperlink defragmentation using docxmlater v1.15.0+
   };
   textReplacements?: any[];
   styles?: any;
@@ -147,6 +148,7 @@ export interface HyperlinkProcessingResult {
   updatedUrls?: number;
   updatedDisplayTexts?: number;
   appendedContentIds?: number;
+  mergedHyperlinks?: number; // Count of defragmented hyperlinks (docxmlater v1.15.0+)
   errorCount: number;
   errorMessages: string[];
   processedLinks: HyperlinkSummary[];
