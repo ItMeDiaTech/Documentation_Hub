@@ -9,14 +9,14 @@
         "-y",
         "@zilliztech/claude-context",
         "--project-path",
-        "/home/user/Documentation_Hub",
+        "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI",
         "--embedding-provider",
         "ollama",
         "--vector-db",
         "milvus-lite"
       ],
       "env": {
-        "CLAUDE_CONTEXT_DB_PATH": "/home/user/Documentation_Hub/.mcp-cache/claude-context"
+        "CLAUDE_CONTEXT_DB_PATH": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI\\.mcp-cache\\claude-context"
       },
       "disabled": false,
       "alwaysAllow": [
@@ -30,7 +30,7 @@
       "args": [
         "-y",
         "@er77/code-graph-rag-mcp",
-        "/home/user/Documentation_Hub"
+        "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI"
       ],
       "disabled": true,
       "alwaysAllow": [
@@ -47,7 +47,7 @@
         "serena-mcp-server"
       ],
       "env": {
-        "SERENA_PROJECT_PATH": "/home/user/Documentation_Hub",
+        "SERENA_PROJECT_PATH": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI",
         "SERENA_READ_ONLY": "false"
       },
       "disabled": true,
