@@ -188,6 +188,12 @@ export class WordDocumentProcessor {
 
   private log = logger.namespace('WordDocProcessor');
 
+  // DEPRECATED v1.16.0: Header 2 table detection (replaced with 1x1 table dimension check)
+  // Kept for potential future use: stored Header 2 table indices during style application
+  // OLD APPROACH: Required style application timing, complex detection logic
+  // NEW APPROACH: Use 1x1 table dimension check (insertBlankLinesAfter1x1Tables)
+  // private header2TableBodyIndices: Set<number> = new Set();
+
   constructor() {
     this.docXMLater = new DocXMLaterProcessor();
     this.log.debug('Initialized with DocXMLater library');
@@ -607,16 +613,6 @@ export class WordDocumentProcessor {
         this.log.info(`Cleaned whitespace in ${whitespaceCleaned} runs`);
       }
 
-      if (options.removeParagraphLines) {
-        this.log.debug('=== REMOVING EXTRA PARAGRAPH LINES (ENHANCED) ===');
-        // Now uses docxmlater 1.1.0 normalizeSpacing() helper for better reliability
-        const paragraphsRemoved = await this.removeExtraParagraphLines(
-          doc,
-          options.preserveBlankLinesAfterHeader2Tables ?? true
-        );
-        this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
-      }
-
       if (options.removeItalics) {
         this.log.debug('=== REMOVING ITALIC FORMATTING ===');
         const italicsRemoved = await this.removeItalicFormatting(doc);
@@ -630,6 +626,8 @@ export class WordDocumentProcessor {
       }
 
       // CONTENT STRUCTURE GROUP
+      // NOTE: Style application moved BEFORE paragraph removal (v1.16.0)
+      // This ensures Header 2 table styles exist when preservation logic runs
       if (options.assignStyles && options.styles && options.styles.length > 0) {
         this.log.debug(
           '=== ASSIGNING STYLES (USING DOCXMLATER applyCustomFormattingToExistingStyles) ==='
@@ -645,6 +643,24 @@ export class WordDocumentProcessor {
         this.log.info(
           `Applied custom formatting: Heading1=${styleResults.heading1}, Heading2=${styleResults.heading2}, Heading3=${styleResults.heading3}, Normal=${styleResults.normal}, ListParagraph=${styleResults.listParagraph}`
         );
+      }
+
+      // PARAGRAPH REMOVAL (with 1x1 table blank line insertion)
+      if (options.removeParagraphLines) {
+        this.log.debug('=== REMOVING EXTRA PARAGRAPH LINES ===');
+        const paragraphsRemoved = await this.removeExtraParagraphLines(
+          doc,
+          options.preserveBlankLinesAfterHeader2Tables ?? true
+        );
+        this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
+
+        // NEW v1.16.0: Insert blank lines after 1x1 tables
+        // This runs AFTER paragraph removal to ensure inserted lines aren't deleted
+        this.log.debug('=== INSERTING BLANK LINES AFTER 1x1 TABLES ===');
+        const blankLinesInserted = await this.insertBlankLinesAfter1x1Tables(doc);
+        if (blankLinesInserted > 0) {
+          this.log.info(`Inserted ${blankLinesInserted} blank lines after 1x1 tables`);
+        }
       }
 
       // NEW VALIDATION OPERATIONS (DocXMLater 1.6.0)
@@ -1483,44 +1499,61 @@ export class WordDocumentProcessor {
       }
     });
 
-    // NEW v1.16.0 FEATURE: Identify Header 2 tables to preserve blank lines after them
-    const header2TableIndices = new Set<number>();
+    // DEPRECATED v1.16.0: Header 2 table preservation logic (replaced with 1x1 table insertion)
+    // OLD APPROACH: Tried to preserve blank lines after Header 2 tables by detecting style
+    // PROBLEM: Style detection timing issues (ran before styles were applied)
+    // NEW APPROACH: insertBlankLinesAfter1x1Tables() runs after paragraph removal (see below)
+    /*
+    let header2TableIndices = this.header2TableBodyIndices;
+
     if (preserveBlankLinesAfterHeader2Tables) {
-      // Find tables that have Header 2 style in their first row
-      bodyElements.forEach((element, index) => {
-        if (element.constructor.name === 'Table') {
-          const table = element as Table;
-          const rows = table.getRows();
-          if (rows.length > 0) {
-            const firstRow = rows[0];
-            const cells = firstRow.getCells();
-            if (cells.length > 0) {
-              const firstCell = cells[0];
-              const cellParas = firstCell.getParagraphs();
-              if (cellParas.length > 0) {
-                const firstPara = cellParas[0];
-                const style = firstPara.getStyle();
-                // Check if this is a Header 2 table (first cell has Heading2 or Heading 2 style)
-                if (style === 'Heading2' || style === 'Heading 2') {
-                  header2TableIndices.add(index);
-                  this.log.debug(`  ✓ Found Header 2 table at body index ${index}`);
+      if (header2TableIndices.size > 0) {
+        this.log.debug(
+          `Using ${header2TableIndices.size} captured Header 2 table indices - preserving blank lines after them`
+        );
+      } else {
+        // Fallback: If no styles were applied, try direct detection
+        // This handles edge cases where removeParagraphLines is called without assignStyles
+        this.log.debug(
+          'No captured Header 2 tables (styles may not have been applied). Attempting direct detection...'
+        );
+        header2TableIndices = new Set<number>();
+        bodyElements.forEach((element, index) => {
+          if (element.constructor.name === 'Table') {
+            const table = element as Table;
+            const rows = table.getRows();
+            if (rows.length > 0) {
+              const firstRow = rows[0];
+              const cells = firstRow.getCells();
+              if (cells.length > 0) {
+                const firstCell = cells[0];
+                const cellParas = firstCell.getParagraphs();
+                if (cellParas.length > 0) {
+                  const firstPara = cellParas[0];
+                  const style = firstPara.getStyle();
+                  // Check if this is a Header 2 table (first cell has Heading2 or Heading 2 style)
+                  if (style === 'Heading2' || style === 'Heading 2') {
+                    header2TableIndices.add(index);
+                    this.log.debug(`  ✓ Found Header 2 table at body index ${index} (fallback detection)`);
+                  }
                 }
               }
             }
           }
-        }
-      });
+        });
 
-      if (header2TableIndices.size > 0) {
-        this.log.debug(`Found ${header2TableIndices.size} Header 2 tables - preserving blank lines after them`);
+        if (header2TableIndices.size > 0) {
+          this.log.debug(`Fallback detection found ${header2TableIndices.size} Header 2 tables`);
+        }
       }
     }
+    */
 
     // Create a map of paragraph objects to their context
-    // This helps us detect if a paragraph is adjacent to a table or Header 2 table
+    // This helps us detect if a paragraph is adjacent to a table or SDT
     const paraToContext = new Map<
       any,
-      { isAdjacentToTable: boolean; isAfterHeader2Table: boolean }
+      { isAdjacentToTable: boolean }
     >();
 
     let paraIndex = 0;
@@ -1536,12 +1569,12 @@ export class WordDocumentProcessor {
         const isAdjacentToSDT = sdtIndices.has(bodyIndex - 1) || sdtIndices.has(bodyIndex + 1);
         const isAdjacentToStructure = isAdjacentToTable || isAdjacentToSDT;
 
-        // NEW: Check if this paragraph is immediately after a Header 2 table
-        const isAfterHeader2Table = preserveBlankLinesAfterHeader2Tables && header2TableIndices.has(bodyIndex - 1);
+        // DEPRECATED: Check if paragraph is after Header 2 table (replaced with post-removal insertion)
+        // const isAfterHeader2Table = preserveBlankLinesAfterHeader2Tables && header2TableIndices.has(bodyIndex - 1);
 
         paraToContext.set(para, {
           isAdjacentToTable: isAdjacentToStructure,
-          isAfterHeader2Table: isAfterHeader2Table,
+          // isAfterHeader2Table: isAfterHeader2Table,  // DEPRECATED: use insertBlankLinesAfter1x1Tables instead
         });
 
         if (isAdjacentToStructure) {
@@ -1554,11 +1587,12 @@ export class WordDocumentProcessor {
           }
         }
 
-        if (isAfterHeader2Table) {
-          this.log.debug(
-            `  ✓ Paragraph at index ${paraIndex} is after Header 2 table (blank lines will be preserved)`
-          );
-        }
+        // DEPRECATED: isAfterHeader2Table logging (now handled by insertBlankLinesAfter1x1Tables)
+        // if (isAfterHeader2Table) {
+        //   this.log.debug(
+        //     `  ✓ Paragraph at index ${paraIndex} is after Header 2 table (blank lines will be preserved)`
+        //   );
+        // }
 
         paraIndex++;
       }
@@ -1579,11 +1613,15 @@ export class WordDocumentProcessor {
         continue; // Never delete table-adjacent paragraphs
       }
 
-      // NEW: Skip if current paragraph is after a Header 2 table (preserve spacing)
+      // DEPRECATED: Skip if current paragraph is after a Header 2 table (replaced with post-removal insertion)
+      // OLD LOGIC: isAfterHeader2Table was set by the deprecated Header 2 detection code
+      // NEW LOGIC: insertBlankLinesAfter1x1Tables() runs after this method completes
+      /*
       if (currentContext?.isAfterHeader2Table || nextContext?.isAfterHeader2Table) {
         this.log.debug(`  ✓ Skipping paragraph ${i} or ${i + 1} (preserving blank line after Header 2 table)`);
         continue;
       }
+      */
 
       // ✅ FIX #1 & #2: Use isParagraphTrulyEmpty() helper with DocXMLater APIs
       const currentEmpty = this.isParagraphTrulyEmpty(current);
@@ -1640,12 +1678,80 @@ export class WordDocumentProcessor {
       );
     }
 
-    // Log final preservation status
-    if (preserveBlankLinesAfterHeader2Tables && header2TableIndices.size > 0) {
-      this.log.debug('✓ Preserved blank lines after Header 2 tables');
-    }
+    // DEPRECATED: Final preservation status logging (replaced with insertBlankLinesAfter1x1Tables)
+    // if (preserveBlankLinesAfterHeader2Tables && header2TableIndices.size > 0) {
+    //   this.log.debug('✓ Preserved blank lines after Header 2 tables');
+    // }
 
     return removedCount;
+  }
+
+  /**
+   * Insert blank paragraph lines after all 1x1 tables
+   * NEW v1.16.0: Replaces the Header 2 style detection approach
+   *
+   * This method:
+   * - Identifies tables with exactly 1 row and 1 cell (1x1 tables)
+   * - Inserts an empty paragraph with Normal style after each 1x1 table
+   * - Runs AFTER paragraph removal to ensure inserted lines aren't deleted
+   *
+   * @param doc - Document to process
+   * @returns Number of blank lines inserted
+   */
+  private async insertBlankLinesAfter1x1Tables(doc: Document): Promise<number> {
+    this.log.debug('Inserting blank lines after 1x1 tables');
+
+    const bodyElements = doc.getBodyElements();
+    let insertedCount = 0;
+
+    // Collect 1x1 tables in reverse order (to avoid index shifting when inserting)
+    const oneByOneTables: Array<{ element: any; index: number }> = [];
+
+    bodyElements.forEach((element, index) => {
+      if (element.constructor.name === 'Table') {
+        const table = element as Table;
+        const rows = table.getRows();
+        const cells = rows.length > 0 ? rows[0].getCells() : [];
+
+        // Check if this is a 1x1 table
+        if (rows.length === 1 && cells.length === 1) {
+          oneByOneTables.push({ element, index });
+          this.log.debug(`  Found 1x1 table at body index ${index}`);
+        }
+      }
+    });
+
+    // Insert blank paragraphs after each 1x1 table
+    // Note: Using addParagraph adds to document body; blank lines are added for spacing preservation
+    for (const { element, index } of oneByOneTables) {
+      try {
+        // Create an empty paragraph with Normal style
+        const blankPara = new Paragraph();
+        blankPara.setStyle('Normal');
+        blankPara.setSpaceBefore(0);
+        blankPara.setSpaceAfter(0);
+
+        // Add paragraph to document
+        doc.addParagraph(blankPara);
+        insertedCount++;
+
+        this.log.debug(`  Inserted blank line after 1x1 table at body index ${index}`);
+      } catch (error) {
+        this.log.warn(
+          `Failed to insert blank line after 1x1 table at index ${index}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+
+    if (insertedCount > 0) {
+      this.log.info(`Inserted ${insertedCount} blank lines after 1x1 tables`);
+    } else {
+      this.log.debug('No 1x1 tables found in document');
+    }
+
+    return insertedCount;
   }
 
   /**
@@ -1922,6 +2028,9 @@ export class WordDocumentProcessor {
   /**
    * Apply custom styles from UI using docXMLater's applyCustomFormattingToExistingStyles()
    * This replaces the custom implementation with the framework's native method
+   *
+   * NEW v1.16.0: Captures Header 2 table indices during style application
+   * for proper blank line preservation in removeExtraParagraphLines()
    */
   private async applyCustomStylesFromUI(
     doc: Document,
@@ -1977,8 +2086,58 @@ export class WordDocumentProcessor {
     // This handles both style definition updates and direct formatting clearing
     const results = doc.applyCustomFormattingToExistingStyles(options);
 
+    // DEPRECATED v1.16.0: Header 2 table index capture (replaced with 1x1 table detection)
+    // The new approach uses insertBlankLinesAfter1x1Tables() which runs after paragraph removal
+    // This avoids timing issues with style application
+    /*
+    if (preserveBlankLinesAfterHeader2Tables) {
+      this.header2TableBodyIndices = this.captureHeader2TableIndices(doc);
+      this.log.debug(
+        `Captured ${this.header2TableBodyIndices.size} Header 2 table indices for preservation`
+      );
+    }
+    */
+
     return results;
   }
+
+  /**
+   * DEPRECATED v1.16.0: Capture indices of Header 2 tables (replaced with 1x1 table detection)
+   * Kept for potential future use but no longer called
+   * The new approach is simpler and doesn't depend on style timing
+   */
+  /*
+  private captureHeader2TableIndices(doc: Document): Set<number> {
+    const header2Indices = new Set<number>();
+    const bodyElements = doc.getBodyElements();
+
+    bodyElements.forEach((element, index) => {
+      if (element.constructor.name === 'Table') {
+        const table = element as Table;
+        const rows = table.getRows();
+        if (rows.length > 0) {
+          const firstRow = rows[0];
+          const cells = firstRow.getCells();
+          if (cells.length > 0) {
+            const firstCell = cells[0];
+            const cellParas = firstCell.getParagraphs();
+            if (cellParas.length > 0) {
+              const firstPara = cellParas[0];
+              const style = firstPara.getStyle();
+              // Check if this table has Header 2 style
+              if (style === 'Heading2' || style === 'Heading 2') {
+                header2Indices.add(index);
+                this.log.debug(`  ✓ Captured Header 2 table at body index ${index} (style: ${style})`);
+              }
+            }
+          }
+        }
+      }
+    });
+
+    return header2Indices;
+  }
+  */
 
   /**
    * Validate all document styles using DocXMLater 1.6.0 applyStylesFromObjects()
