@@ -1,109 +1,83 @@
 {
-  "$schema": "https://modelcontextprotocol.io/schema/mcp.json",
-  "description": "MCP Server Configuration for Documentation Hub - Enables RAG and semantic search capabilities",
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/specification/main/schema/2024-11-05/schema.json",
   "mcpServers": {
-    "claude-context": {
-      "description": "Semantic code search with vector embeddings - reduces token usage by ~40%",
+    "github.com/modelcontextprotocol/servers/tree/main/src/filesystem": {
+      "description": "Filesystem operations server - read/write files, create directories, search files, and manage file system operations with directory access control",
       "command": "npx",
       "args": [
         "-y",
-        "@zilliztech/claude-context",
-        "--project-path",
-        "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI",
-        "--embedding-provider",
-        "ollama",
-        "--vector-db",
-        "milvus-lite"
-      ],
-      "env": {
-        "CLAUDE_CONTEXT_DB_PATH": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI\\.mcp-cache\\claude-context"
-      },
-      "disabled": false,
-      "alwaysAllow": [
-        "search_code",
-        "get_code_context"
-      ]
-    },
-    "code-graph-rag": {
-      "description": "Graph-based RAG for understanding code relationships and dependencies",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@er77/code-graph-rag-mcp",
+        "@modelcontextprotocol/server-filesystem",
         "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI"
       ],
-      "disabled": true,
+      "disabled": false,
       "alwaysAllow": [
-        "search_graph",
-        "get_dependencies"
+        "read_text_file",
+        "read_media_file",
+        "read_multiple_files",
+        "write_file",
+        "edit_file",
+        "create_directory",
+        "list_directory",
+        "list_directory_with_sizes",
+        "move_file",
+        "search_files",
+        "directory_tree",
+        "get_file_info",
+        "list_allowed_directories"
       ]
     },
-    "serena": {
-      "description": "Advanced semantic understanding using LSP integration - most powerful for large codebases",
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/oraios/serena",
-        "serena-mcp-server"
-      ],
+    "github.com/modelcontextprotocol/servers/tree/main/src/git": {
+      "description": "Git MCP server - Provides tools for Git repository interaction and automation including status, diff, commit, branch operations, and more",
+      "command": "python",
+      "args": ["-m", "mcp_server_git"],
+      "disabled": false,
+      "alwaysAllow": [
+        "git_status",
+        "git_diff_unstaged",
+        "git_diff_staged",
+        "git_diff",
+        "git_diff",
+        "git_commit",
+        "git_add",
+        "git_reset",
+        "git_log",
+        "git_create_branch",
+        "git_checkout",
+        "git_show",
+        "git_branch"
+      ]
+    },
+    "github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking": {
+      "description": "Sequential thinking server for enhanced reasoning and problem-solving workflows",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "disabled": false,
+      "alwaysAllow": []
+    },
+    "github.com/upstash/context7-mcp": {
+      "description": "Context7 MCP - Up-to-date code documentation for any prompt. Fetches version-specific documentation and code examples straight from the source.",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@upstash/context7-mcp"],
       "env": {
-        "SERENA_PROJECT_PATH": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI",
-        "SERENA_READ_ONLY": "false"
+        "CONTEXT7_API_KEY": "ctx7sk-1c54c4fb-4a43-426e-9609-a573ef52283c"
       },
-      "disabled": true,
-      "alwaysAllow": [
-        "search_symbols",
-        "get_definition",
-        "find_references"
-      ]
+      "disabled": false,
+      "alwaysAllow": ["resolve-library-id", "get-library-docs"]
+    },
+    "dt-cli-rag-maf": {
+      "description": "Local RAG with Multi-Agent Framework - advanced semantic search and intelligent agent orchestration",
+      "command": "python",
+      "args": ["-m", "src.mcp_server.server", "--host", "127.0.0.1", "--port", "8765"],
+      "cwd": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\dt-cli",
+      "env": {
+        "PYTHONPATH": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\dt-cli\\src",
+        "RAG_DB_PATH": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI\\.mcp-cache\\dt-cli-rag",
+        "EMBEDDING_MODEL": "all-MiniLM-L6-v2",
+        "CHUNK_SIZE": "1000",
+        "CHUNK_OVERLAP": "200"
+      },
+      "disabled": false,
+      "alwaysAllow": ["rag_query", "rag_index", "rag_status", "maf_orchestrate", "maf_status"]
     }
-  },
-  "configuration": {
-    "indexing": {
-      "exclude": [
-        "node_modules/**",
-        "dist/**",
-        "dist-electron/**",
-        "release/**",
-        "coverage/**",
-        ".git/**",
-        "*.log",
-        "*.docx",
-        ".mcp-cache/**"
-      ],
-      "include": [
-        "src/**/*.{ts,tsx,js,jsx}",
-        "electron/**/*.ts",
-        "docs/**/*.md",
-        "*.md"
-      ]
-    },
-    "embeddingModel": {
-      "provider": "ollama",
-      "model": "nomic-embed-text",
-      "dimensions": 768
-    },
-    "vectorDatabase": {
-      "type": "milvus-lite",
-      "path": ".mcp-cache/vector-db"
-    }
-  },
-  "notes": {
-    "setup": "Run 'claude mcp install' to initialize MCP servers",
-    "dependencies": {
-      "ollama": "Install from https://ollama.ai for local embedding models",
-      "milvus": "Milvus Lite is embedded, no separate installation needed",
-      "python-uv": "Required for Serena MCP: https://docs.astral.sh/uv/"
-    },
-    "activation": {
-      "claude-context": "Enabled by default - provides semantic code search",
-      "code-graph-rag": "Disabled - enable in Claude Code settings if needed",
-      "serena": "Disabled - requires Python uv installation"
-    },
-    "usage": [
-      "Ask Claude to search for code semantically: 'Find all authentication logic'",
-      "Request context: 'Show me how hyperlinks are processed'",
-      "Explore relationships: 'What components use the SessionContext?'"
-    ]
   }
 }
