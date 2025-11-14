@@ -62,6 +62,7 @@ release.ps1
 
 # MCP (Model Context Protocol) cache and runtime data
 # NOTE: .mcp.json is NOT ignored - it should be committed for team RAG setup
+.mcp.json
 .mcp-cache/
 .serena/
 
@@ -157,6 +158,27 @@ src/contexts/__tests__/*.bak
 
 # Electron test files (development only)
 electron/__tests__/
+
+# CLI Integration and Setup Files (Development/Automation only)
+dt-cli*.*
+cline-*.*
+*.cline/*
+claude_desktop_config.json
+test-dt-cli-integration.py
+setup-dt-cli-integration.bat
+install-dt-cli.bat
+refresh-path.bat
+DT_CLI_*.md
+DT_CLI_SETUP_COMPLETE.md
+MCP_*.md
+*.session-config.json
+*.cline-session-start.*
+CLINE_*.md
+CLINE_CLI_SETUP_COMPLETE.md
+CLINE_SESSION_HOOK_SETUP.md
+
+# Personal/AI Assistant Configuration (Development only)
+.context7-demo.md
 
 # Temporary fix/import scripts
 fix-imports/
