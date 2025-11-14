@@ -5,7 +5,11 @@
  * using the docxmlater library implementation.
  */
 
-import { WordDocumentProcessor, WordProcessingOptions, WordProcessingResult } from '../WordDocumentProcessor';
+import {
+  WordDocumentProcessor,
+  WordProcessingOptions,
+  WordProcessingResult,
+} from '../WordDocumentProcessor';
 import { DocXMLaterProcessor } from '../DocXMLaterProcessor';
 import { Document, Hyperlink, Paragraph } from 'docxmlater';
 import { hyperlinkService } from '../../HyperlinkService';
@@ -89,7 +93,7 @@ describe('WordDocumentProcessor', () => {
       const result = await processor.processDocument(filePath, options);
 
       expect(result.success).toBe(false);
-      expect(result.errorMessages.some(msg => msg.includes('File too large'))).toBe(true);
+      expect(result.errorMessages.some((msg) => msg.includes('File too large'))).toBe(true);
     });
 
     it('should create backup before processing', async () => {
@@ -415,11 +419,7 @@ describe('WordDocumentProcessor', () => {
 
   describe('Batch Processing', () => {
     it('should process multiple documents concurrently', async () => {
-      const filePaths = [
-        '/test/doc1.docx',
-        '/test/doc2.docx',
-        '/test/doc3.docx',
-      ];
+      const filePaths = ['/test/doc1.docx', '/test/doc2.docx', '/test/doc3.docx'];
 
       const batchResult = await processor.batchProcess(filePaths, {}, 2);
 
@@ -430,11 +430,7 @@ describe('WordDocumentProcessor', () => {
     });
 
     it('should handle individual document failures in batch', async () => {
-      const filePaths = [
-        '/test/doc1.docx',
-        '/test/doc2.docx',
-        '/test/doc3.docx',
-      ];
+      const filePaths = ['/test/doc1.docx', '/test/doc2.docx', '/test/doc3.docx'];
 
       // Make second document fail
       (Document.load as jest.Mock)

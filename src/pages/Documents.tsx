@@ -25,7 +25,9 @@ interface DocumentWithSession extends Document {
 export function Documents() {
   const { sessions } = useSession();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending' | 'error'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending' | 'error'>(
+    'all'
+  );
 
   // Collect all documents from all sessions
   const allDocuments = useMemo(() => {
@@ -52,8 +54,7 @@ export function Documents() {
         doc.sessionName.toLowerCase().includes(searchQuery.toLowerCase());
 
       // Filter by status
-      const matchesStatus =
-        statusFilter === 'all' || doc.status === statusFilter;
+      const matchesStatus = statusFilter === 'all' || doc.status === statusFilter;
 
       return matchesSearch && matchesStatus;
     });

@@ -12,7 +12,10 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type = 'text', label, error, helperText, leftIcon, rightIcon, onClear, ...props }, ref) => {
+  (
+    { className, type = 'text', label, error, helperText, leftIcon, rightIcon, onClear, ...props },
+    ref
+  ) => {
     const [showPassword, setShowPassword] = useState(false);
     const isPassword = type === 'password';
     const isSearch = type === 'search';
@@ -62,11 +65,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
               tabIndex={-1}
             >
-              {showPassword ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           )}
 
@@ -95,9 +94,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
 
         {helperText && !error && (
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            {helperText}
-          </p>
+          <p className="mt-1.5 text-sm text-muted-foreground">{helperText}</p>
         )}
       </div>
     );

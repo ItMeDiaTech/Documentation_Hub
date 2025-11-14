@@ -70,7 +70,7 @@ const pathUtils = {
 
   join(...paths: string[]): string {
     return this.normalize(paths.join('/'));
-  }
+  },
 };
 
 /**
@@ -180,13 +180,7 @@ export function validateFilePath(
   }
 
   // Check for system file access attempts
-  const systemPaths = [
-    '/etc',
-    '/sys',
-    '/proc',
-    'C:\\Windows\\System32',
-    'C:\\Program Files',
-  ];
+  const systemPaths = ['/etc', '/sys', '/proc', 'C:\\Windows\\System32', 'C:\\Program Files'];
 
   const resolvedPath = pathUtils.resolve(filePath);
   const isWindows = navigator.userAgent.includes('Windows');
@@ -223,10 +217,7 @@ export function getDefaultAllowedDirectories(): string[] {
  * Validates and sanitizes a file path
  * Returns the sanitized path or throws an error
  */
-export function validateAndSanitizePath(
-  filePath: string,
-  allowedDirectories?: string[]
-): string {
+export function validateAndSanitizePath(filePath: string, allowedDirectories?: string[]): string {
   const validation = validateFilePath(filePath, allowedDirectories);
 
   if (!validation.isValid) {

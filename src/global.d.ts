@@ -52,8 +52,14 @@ export type ElectronAPI = {
 
   // Hyperlink processing
   selectFiles: () => Promise<string[]>;
-  processHyperlinkDocument: (filePath: string, options: HyperlinkProcessingOptions) => Promise<HyperlinkProcessingResult>;
-  batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) => Promise<BatchProcessingResult>;
+  processHyperlinkDocument: (
+    filePath: string,
+    options: HyperlinkProcessingOptions
+  ) => Promise<HyperlinkProcessingResult>;
+  batchProcessDocuments: (
+    filePaths: string[],
+    options: BatchProcessingOptions
+  ) => Promise<BatchProcessingResult>;
   validateApi: (apiUrl: string) => Promise<{ valid: boolean; error?: string }>;
   cancelOperation: (operationId: string) => Promise<void>;
   onBatchProgress: (callback: (progress: BatchProgress) => void) => () => void;
@@ -90,11 +96,22 @@ export type ElectronAPI = {
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => () => void;
-  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string; releaseNotes: string }) => void) => () => void;
+  onUpdateAvailable: (
+    callback: (info: { version: string; releaseDate: string; releaseNotes: string }) => void
+  ) => () => void;
   onUpdateNotAvailable: (callback: (info: { version: string }) => void) => () => void;
   onUpdateError: (callback: (error: { message: string }) => void) => () => void;
-  onUpdateDownloadProgress: (callback: (progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => void) => () => void;
-  onUpdateDownloaded: (callback: (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => void) => () => void;
+  onUpdateDownloadProgress: (
+    callback: (progress: {
+      bytesPerSecond: number;
+      percent: number;
+      transferred: number;
+      total: number;
+    }) => void
+  ) => () => void;
+  onUpdateDownloaded: (
+    callback: (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => void
+  ) => () => void;
   onUpdateFallbackMode: (callback: (data: { message: string }) => void) => () => void;
   onUpdateExtracting: (callback: (data: { message: string }) => void) => () => void;
   onUpdateStatus: (callback: (data: { message: string }) => void) => () => void;
@@ -121,11 +138,17 @@ export type ElectronAPI = {
   onDebugCertError: (callback: (data: any) => void) => () => void;
   onDebugNetworkError: (callback: (data: any) => void) => () => void;
   onDebugTLSError: (callback: (data: any) => void) => () => void;
-  onUpdateManualDownload: (callback: (data: { message: string; downloadUrl: string }) => void) => () => void;
+  onUpdateManualDownload: (
+    callback: (data: { message: string; downloadUrl: string }) => void
+  ) => () => void;
 
   // Certificate check events
-  onCertificateCheckComplete: (callback: (data: { success: boolean; error?: string; timestamp: string }) => void) => () => void;
-  onCertificateConfigured: (callback: (data: { message: string; certPath?: string }) => void) => () => void;
+  onCertificateCheckComplete: (
+    callback: (data: { success: boolean; error?: string; timestamp: string }) => void
+  ) => () => void;
+  onCertificateConfigured: (
+    callback: (data: { message: string; certPath?: string }) => void
+  ) => () => void;
 };
 
 /**

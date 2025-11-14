@@ -34,9 +34,7 @@ import logger from '@/utils/logger';
 const settingsSections = [
   {
     group: 'Account',
-    items: [
-      { id: 'profile', label: 'Profile', icon: User, description: 'Personal information' },
-    ],
+    items: [{ id: 'profile', label: 'Profile', icon: User, description: 'Personal information' }],
   },
   {
     group: 'Customization',
@@ -50,7 +48,12 @@ const settingsSections = [
     items: [
       { id: 'language', label: 'Language', icon: Globe, description: 'Region & locale' },
       { id: 'updates', label: 'Updates', icon: Download, description: 'App updates & versioning' },
-      { id: 'api-connections', label: 'API Connections', icon: Link2, description: 'External services' },
+      {
+        id: 'api-connections',
+        label: 'API Connections',
+        icon: Link2,
+        description: 'External services',
+      },
       { id: 'data', label: 'Storage', icon: Database, description: 'Data management' },
       {
         id: 'submit-idea',
@@ -76,7 +79,15 @@ export function Settings() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
-  const { settings, updateProfile, updateNotifications, updateApiConnections, updateUpdateSettings, updateSettings, saveSettings } = useUserSettings();
+  const {
+    settings,
+    updateProfile,
+    updateNotifications,
+    updateApiConnections,
+    updateUpdateSettings,
+    updateSettings,
+    saveSettings,
+  } = useUserSettings();
   const { sessions } = useSession();
   const { stats } = useGlobalStats();
 
@@ -119,29 +130,42 @@ export function Settings() {
       return;
     }
 
-    const unsubAvailable = window.electronAPI.onUpdateAvailable((info: { version: string; releaseDate: string; releaseNotes: string }) => {
-      setUpdateAvailable(true);
-      setUpdateVersion(info.version);
-      setUpdateStatus(`Update available: ${info.version}`);
-      setCheckingForUpdates(false);
-    });
+    const unsubAvailable = window.electronAPI.onUpdateAvailable(
+      (info: { version: string; releaseDate: string; releaseNotes: string }) => {
+        setUpdateAvailable(true);
+        setUpdateVersion(info.version);
+        setUpdateStatus(`Update available: ${info.version}`);
+        setCheckingForUpdates(false);
+      }
+    );
 
-    const unsubProgress = window.electronAPI.onUpdateDownloadProgress((progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => {
-      setDownloadProgress(progress.percent);
-      setUpdateStatus(`Downloading update: ${Math.round(progress.percent)}%`);
-    });
+    const unsubProgress = window.electronAPI.onUpdateDownloadProgress(
+      (progress: {
+        bytesPerSecond: number;
+        percent: number;
+        transferred: number;
+        total: number;
+      }) => {
+        setDownloadProgress(progress.percent);
+        setUpdateStatus(`Downloading update: ${Math.round(progress.percent)}%`);
+      }
+    );
 
-    const unsubDownloaded = window.electronAPI.onUpdateDownloaded((info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => {
-      setUpdateDownloaded(true);
-      setDownloadProgress(100);
-      setUpdateStatus(`Update ${info.version} downloaded. Ready to install.`);
-    });
+    const unsubDownloaded = window.electronAPI.onUpdateDownloaded(
+      (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => {
+        setUpdateDownloaded(true);
+        setDownloadProgress(100);
+        setUpdateStatus(`Update ${info.version} downloaded. Ready to install.`);
+      }
+    );
 
-    const unsubNotAvailable = window.electronAPI.onUpdateNotAvailable((_info: { version: string }) => {
-      setUpdateAvailable(false);
-      setUpdateStatus('You are up to date');
-      setCheckingForUpdates(false);
-    });
+    const unsubNotAvailable = window.electronAPI.onUpdateNotAvailable(
+      (_info: { version: string }) => {
+        setUpdateAvailable(false);
+        setUpdateStatus('You are up to date');
+        setCheckingForUpdates(false);
+      }
+    );
 
     const unsubError = window.electronAPI.onUpdateError((error: { message: string }) => {
       setUpdateStatus(`Update error: ${error.message}`);
@@ -521,7 +545,10 @@ export function Settings() {
                   <Button variant="outline" icon={<Download className="w-4 h-4" />}>
                     Export Settings
                   </Button>
-                  <Button variant="outline" icon={<Download className="w-4 h-4" style={{ transform: 'rotate(180deg)' }} />}>
+                  <Button
+                    variant="outline"
+                    icon={<Download className="w-4 h-4" style={{ transform: 'rotate(180deg)' }} />}
+                  >
                     Import Settings
                   </Button>
                   <Button>Save Changes</Button>
@@ -757,7 +784,9 @@ export function Settings() {
                         aria-label="Toggle glass morphism effects"
                         className={cn(
                           'relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2',
-                          blur ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border hover:bg-accent'
+                          blur
+                            ? 'bg-primary border-primary toggle-checked'
+                            : 'bg-input border-border hover:bg-accent'
                         )}
                       >
                         <motion.span
@@ -780,7 +809,9 @@ export function Settings() {
                         aria-label="Toggle smooth animations"
                         className={cn(
                           'relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2',
-                          animations ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border hover:bg-accent'
+                          animations
+                            ? 'bg-primary border-primary toggle-checked'
+                            : 'bg-input border-border hover:bg-accent'
                         )}
                       >
                         <motion.span
@@ -807,7 +838,9 @@ export function Settings() {
                       aria-label="Toggle custom theme colors"
                       className={cn(
                         'relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2',
-                        useCustomColors ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border hover:bg-accent'
+                        useCustomColors
+                          ? 'bg-primary border-primary toggle-checked'
+                          : 'bg-input border-border hover:bg-accent'
                       )}
                     >
                       <motion.span
@@ -835,16 +868,14 @@ export function Settings() {
                             className="w-6 h-6 rounded"
                             style={{
                               backgroundColor: customPrimaryColor,
-                              border: `2px solid ${getContrastTextColor(customPrimaryColor)}`
+                              border: `2px solid ${getContrastTextColor(customPrimaryColor)}`,
                             }}
                           />
                         </button>
                       </div>
 
                       <div>
-                        <label className="text-xs text-foreground mb-1 block">
-                          Background
-                        </label>
+                        <label className="text-xs text-foreground mb-1 block">Background</label>
                         <button
                           aria-label="Select background color"
                           onClick={() => {
@@ -858,13 +889,17 @@ export function Settings() {
                             className="w-6 h-6 rounded"
                             style={{
                               backgroundColor: customBackgroundColor,
-                              border: `2px solid ${getContrastTextColor(customBackgroundColor)}`
+                              border: `2px solid ${getContrastTextColor(customBackgroundColor)}`,
                             }}
                           />
                         </button>
                         {/* Visual indicator for calculated text color */}
                         <p className="text-xs text-muted-foreground mt-1">
-                          Text: {getContrastTextColor(customBackgroundColor) === '#FFFFFF' ? '⚪ White' : '⚫ Black'} (auto)
+                          Text:{' '}
+                          {getContrastTextColor(customBackgroundColor) === '#FFFFFF'
+                            ? '⚪ White'
+                            : '⚫ Black'}{' '}
+                          (auto)
                         </p>
                       </div>
 
@@ -883,13 +918,17 @@ export function Settings() {
                             className="w-6 h-6 rounded"
                             style={{
                               backgroundColor: customHeaderColor,
-                              border: `2px solid ${getContrastTextColor(customHeaderColor)}`
+                              border: `2px solid ${getContrastTextColor(customHeaderColor)}`,
                             }}
                           />
                         </button>
                         {/* Visual indicator for calculated text color */}
                         <p className="text-xs text-muted-foreground mt-1">
-                          Text: {getContrastTextColor(customHeaderColor) === '#FFFFFF' ? '⚪ White' : '⚫ Black'} (auto)
+                          Text:{' '}
+                          {getContrastTextColor(customHeaderColor) === '#FFFFFF'
+                            ? '⚪ White'
+                            : '⚫ Black'}{' '}
+                          (auto)
                         </p>
                       </div>
 
@@ -908,13 +947,17 @@ export function Settings() {
                             className="w-6 h-6 rounded"
                             style={{
                               backgroundColor: customSidebarColor,
-                              border: `2px solid ${getContrastTextColor(customSidebarColor)}`
+                              border: `2px solid ${getContrastTextColor(customSidebarColor)}`,
                             }}
                           />
                         </button>
                         {/* Visual indicator for calculated text color */}
                         <p className="text-xs text-muted-foreground mt-1">
-                          Text: {getContrastTextColor(customSidebarColor) === '#FFFFFF' ? '⚪ White' : '⚫ Black'} (auto)
+                          Text:{' '}
+                          {getContrastTextColor(customSidebarColor) === '#FFFFFF'
+                            ? '⚪ White'
+                            : '⚫ Black'}{' '}
+                          (auto)
                         </p>
                       </div>
 
@@ -933,7 +976,7 @@ export function Settings() {
                             className="w-6 h-6 rounded"
                             style={{
                               backgroundColor: customBorderColor,
-                              border: `2px solid ${getContrastTextColor(customBorderColor)}`
+                              border: `2px solid ${getContrastTextColor(customBorderColor)}`,
                             }}
                           />
                         </button>
@@ -1178,9 +1221,7 @@ export function Settings() {
                   <h3 className="font-medium">Spacing</h3>
 
                   <div>
-                    <label className="text-sm text-foreground mb-2 block">
-                      Letter Spacing
-                    </label>
+                    <label className="text-sm text-foreground mb-2 block">Letter Spacing</label>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground">Tight</span>
                       <input
@@ -1299,7 +1340,11 @@ export function Settings() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleSaveSettings} showSuccess={saveSuccess} icon={<Save className="w-4 h-4" />}>
+                  <Button
+                    onClick={handleSaveSettings}
+                    showSuccess={saveSuccess}
+                    icon={<Save className="w-4 h-4" />}
+                  >
                     Save Settings
                   </Button>
                 </div>
@@ -1321,19 +1366,23 @@ export function Settings() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-medium">Current Version</h3>
-                      <p className="text-sm text-muted-foreground">{currentVersion || 'Loading...'}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {currentVersion || 'Loading...'}
+                      </p>
                     </div>
                     <Button
                       onClick={handleCheckForUpdates}
                       disabled={checkingForUpdates}
-                      icon={<RefreshCw className={cn('w-4 h-4', checkingForUpdates && 'animate-spin')} />}
+                      icon={
+                        <RefreshCw
+                          className={cn('w-4 h-4', checkingForUpdates && 'animate-spin')}
+                        />
+                      }
                     >
                       {checkingForUpdates ? 'Checking...' : 'Check for Updates'}
                     </Button>
                   </div>
-                  {updateStatus && (
-                    <p className="text-sm text-muted-foreground">{updateStatus}</p>
-                  )}
+                  {updateStatus && <p className="text-sm text-muted-foreground">{updateStatus}</p>}
                   {updateAvailable && !updateDownloaded && (
                     <Button
                       onClick={handleDownloadUpdate}
@@ -1341,7 +1390,9 @@ export function Settings() {
                       className="w-full"
                       disabled={downloadProgress > 0 && downloadProgress < 100}
                     >
-                      {downloadProgress > 0 ? `Downloading ${Math.round(downloadProgress)}%` : `Download Update ${updateVersion}`}
+                      {downloadProgress > 0
+                        ? `Downloading ${Math.round(downloadProgress)}%`
+                        : `Download Update ${updateVersion}`}
                     </Button>
                   )}
                   {downloadProgress > 0 && downloadProgress < 100 && (
@@ -1377,10 +1428,17 @@ export function Settings() {
                       id="auto-update"
                       role="switch"
                       aria-checked={updateSettingsForm.autoUpdateOnLaunch}
-                      onClick={() => setUpdateSettingsForm({ ...updateSettingsForm, autoUpdateOnLaunch: !updateSettingsForm.autoUpdateOnLaunch })}
+                      onClick={() =>
+                        setUpdateSettingsForm({
+                          ...updateSettingsForm,
+                          autoUpdateOnLaunch: !updateSettingsForm.autoUpdateOnLaunch,
+                        })
+                      }
                       className={cn(
                         'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
-                        updateSettingsForm.autoUpdateOnLaunch ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border'
+                        updateSettingsForm.autoUpdateOnLaunch
+                          ? 'bg-primary border-primary toggle-checked'
+                          : 'bg-input border-border'
                       )}
                     >
                       <span
@@ -1405,10 +1463,17 @@ export function Settings() {
                       id="pre-releases"
                       role="switch"
                       aria-checked={updateSettingsForm.checkForPreReleases}
-                      onClick={() => setUpdateSettingsForm({ ...updateSettingsForm, checkForPreReleases: !updateSettingsForm.checkForPreReleases })}
+                      onClick={() =>
+                        setUpdateSettingsForm({
+                          ...updateSettingsForm,
+                          checkForPreReleases: !updateSettingsForm.checkForPreReleases,
+                        })
+                      }
                       className={cn(
                         'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
-                        updateSettingsForm.checkForPreReleases ? 'bg-primary border-primary toggle-checked' : 'bg-input border-border'
+                        updateSettingsForm.checkForPreReleases
+                          ? 'bg-primary border-primary toggle-checked'
+                          : 'bg-input border-border'
                       )}
                     >
                       <span
@@ -1422,7 +1487,11 @@ export function Settings() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleSaveSettings} showSuccess={saveSuccess} icon={<Save className="w-4 h-4" />}>
+                  <Button
+                    onClick={handleSaveSettings}
+                    showSuccess={saveSuccess}
+                    icon={<Save className="w-4 h-4" />}
+                  >
                     Save Settings
                   </Button>
                 </div>
@@ -1468,12 +1537,12 @@ export function Settings() {
                           }}
                           placeholder="https://prod-11.westus.logic.azure.com/workflows/..."
                           className={cn(
-                            "w-full px-3 py-2 pr-10 rounded-md border bg-background focus:outline-none focus:ring-1",
+                            'w-full px-3 py-2 pr-10 rounded-md border bg-background focus:outline-none focus:ring-1',
                             urlValidation?.valid === false
-                              ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
+                              ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
                               : urlValidation?.warnings.length
-                              ? "border-yellow-500 focus:border-yellow-500 focus:ring-yellow-500/20"
-                              : "border-input focus:border-primary focus:ring-primary/20"
+                                ? 'border-yellow-500 focus:border-yellow-500 focus:ring-yellow-500/20'
+                                : 'border-input focus:border-primary focus:ring-primary/20'
                           )}
                         />
                         {urlValidation && (
@@ -1509,7 +1578,10 @@ export function Settings() {
                             <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
                             <div className="flex-1 space-y-1">
                               {urlValidation.warnings.map((warning, idx) => (
-                                <p key={idx} className="text-xs text-yellow-700 dark:text-yellow-300">
+                                <p
+                                  key={idx}
+                                  className="text-xs text-yellow-700 dark:text-yellow-300"
+                                >
                                   {warning}
                                 </p>
                               ))}
@@ -1530,8 +1602,9 @@ export function Settings() {
                       )}
 
                       <p className="text-xs text-muted-foreground mt-2">
-                        This URL is used by the Hyperlink Service to retrieve document metadata and validate links.
-                        The service will send collected document IDs to this endpoint and receive enriched data in response.
+                        This URL is used by the Hyperlink Service to retrieve document metadata and
+                        validate links. The service will send collected document IDs to this
+                        endpoint and receive enriched data in response.
                       </p>
                     </div>
                   </div>
@@ -1548,12 +1621,18 @@ export function Settings() {
                         id="bug-report-url"
                         type="url"
                         value={apiConnectionsForm.bugReportUrl}
-                        onChange={(e) => setApiConnectionsForm({ ...apiConnectionsForm, bugReportUrl: e.target.value })}
+                        onChange={(e) =>
+                          setApiConnectionsForm({
+                            ...apiConnectionsForm,
+                            bugReportUrl: e.target.value,
+                          })
+                        }
                         placeholder="https://www.example.com"
                         className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
                       />
                       <p className="text-xs text-muted-foreground mt-2">
-                        Bug reports will be sent to this API endpoint. Leave as default to use email instead.
+                        Bug reports will be sent to this API endpoint. Leave as default to use email
+                        instead.
                       </p>
                     </div>
 
@@ -1565,12 +1644,18 @@ export function Settings() {
                         id="submit-idea-url"
                         type="url"
                         value={apiConnectionsForm.submitIdeaUrl}
-                        onChange={(e) => setApiConnectionsForm({ ...apiConnectionsForm, submitIdeaUrl: e.target.value })}
+                        onChange={(e) =>
+                          setApiConnectionsForm({
+                            ...apiConnectionsForm,
+                            submitIdeaUrl: e.target.value,
+                          })
+                        }
                         placeholder="https://www.example.com"
                         className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
                       />
                       <p className="text-xs text-muted-foreground mt-2">
-                        Feature suggestions will be sent to this API endpoint. Leave as default to use email instead.
+                        Feature suggestions will be sent to this API endpoint. Leave as default to
+                        use email instead.
                       </p>
                     </div>
                   </div>
@@ -1584,15 +1669,20 @@ export function Settings() {
                     <div className="flex-1">
                       <h4 className="font-medium mb-1">About API Connections</h4>
                       <p className="text-sm text-muted-foreground">
-                        API connections allow Documentation Hub to integrate with external services for enhanced functionality.
-                        These endpoints are used during document processing to enrich data, validate content, and automate workflows.
+                        API connections allow Documentation Hub to integrate with external services
+                        for enhanced functionality. These endpoints are used during document
+                        processing to enrich data, validate content, and automate workflows.
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleSaveSettings} showSuccess={saveSuccess} icon={<Save className="w-4 h-4" />}>
+                  <Button
+                    onClick={handleSaveSettings}
+                    showSuccess={saveSuccess}
+                    icon={<Save className="w-4 h-4" />}
+                  >
                     Save Settings
                   </Button>
                 </div>

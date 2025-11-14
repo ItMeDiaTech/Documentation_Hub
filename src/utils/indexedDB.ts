@@ -87,7 +87,9 @@ class IndexedDBConnectionPool {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        const error = new Error(`Failed to open database: ${request.error?.message || 'Unknown error'}`);
+        const error = new Error(
+          `Failed to open database: ${request.error?.message || 'Unknown error'}`
+        );
         this.lastError = error;
         logger.error('[IndexedDB Pool] Connection failed:', error);
         reject(error);
@@ -142,10 +144,14 @@ class IndexedDBConnectionPool {
 
     if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
       this.reconnectAttempts++;
-      logger.info(`[IndexedDB Pool] Attempting reconnection (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`);
+      logger.info(
+        `[IndexedDB Pool] Attempting reconnection (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`
+      );
 
       // Wait before reconnecting
-      await new Promise(resolve => setTimeout(resolve, this.RECONNECT_DELAY * this.reconnectAttempts));
+      await new Promise((resolve) =>
+        setTimeout(resolve, this.RECONNECT_DELAY * this.reconnectAttempts)
+      );
 
       try {
         await this.getConnection();
@@ -251,7 +257,9 @@ class GlobalStatsConnectionPool {
       const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
 
       request.onerror = () => {
-        const error = new Error(`Failed to open GlobalStats database: ${request.error?.message || 'Unknown error'}`);
+        const error = new Error(
+          `Failed to open GlobalStats database: ${request.error?.message || 'Unknown error'}`
+        );
         this.lastError = error;
         logger.error('[GlobalStats Pool] Connection failed:', error);
         reject(error);
@@ -299,10 +307,14 @@ class GlobalStatsConnectionPool {
 
     if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
       this.reconnectAttempts++;
-      logger.info(`[GlobalStats Pool] Attempting reconnection (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`);
+      logger.info(
+        `[GlobalStats Pool] Attempting reconnection (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`
+      );
 
       // Wait before reconnecting
-      await new Promise(resolve => setTimeout(resolve, this.RECONNECT_DELAY * this.reconnectAttempts));
+      await new Promise((resolve) =>
+        setTimeout(resolve, this.RECONNECT_DELAY * this.reconnectAttempts)
+      );
 
       try {
         await this.getConnection();
@@ -502,7 +514,11 @@ export async function migrateFromLocalStorage(): Promise<void> {
       return;
     }
 
-    const sessions = safeJsonParse<SerializedSession[]>(storedSessions, [], 'localStorage migration');
+    const sessions = safeJsonParse<SerializedSession[]>(
+      storedSessions,
+      [],
+      'localStorage migration'
+    );
 
     if (!Array.isArray(sessions) || sessions.length === 0) {
       logger.debug('[IndexedDB] No valid sessions to migrate');
@@ -521,7 +537,6 @@ export async function migrateFromLocalStorage(): Promise<void> {
     // Optionally remove from localStorage after successful migration
     // Uncomment the following line if you want to remove old data
     // localStorage.removeItem('sessions');
-
   } catch (error) {
     logger.error('[IndexedDB] Migration failed:', error);
     throw error;
@@ -562,7 +577,9 @@ export async function calculateDBSize(): Promise<number> {
     const sizeInBytes = new Blob([jsonString]).size;
     const sizeInMB = sizeInBytes / (1024 * 1024);
 
-    logger.debug(`[IndexedDB] Database size: ${sizeInMB.toFixed(2)}MB (${sessions.length} sessions)`);
+    logger.debug(
+      `[IndexedDB] Database size: ${sizeInMB.toFixed(2)}MB (${sessions.length} sessions)`
+    );
     return sizeInMB;
   } catch (error) {
     logger.error('[IndexedDB] Failed to calculate database size:', error);
@@ -647,7 +664,9 @@ export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> 
       return; // Within limits
     }
 
-    logger.warn(`[IndexedDB] Database size (${currentSize.toFixed(2)}MB) exceeds limit (${maxSizeMB}MB)`);
+    logger.warn(
+      `[IndexedDB] Database size (${currentSize.toFixed(2)}MB) exceeds limit (${maxSizeMB}MB)`
+    );
     logger.info('[IndexedDB] Starting cleanup of oldest closed sessions...');
 
     // Delete oldest closed sessions in batches until under limit
@@ -679,7 +698,6 @@ export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> 
     if (iterationCount >= maxIterations) {
       logger.warn('[IndexedDB] Max cleanup iterations reached, size may still exceed limit');
     }
-
   } catch (error) {
     logger.error('[IndexedDB] Failed to ensure database size limit:', error);
   }
@@ -689,7 +707,10 @@ export async function ensureDBSizeLimit(maxSizeMB: number = 200): Promise<void> 
  * Truncate large change arrays in session documents
  * Prevents excessive storage of tracking data
  */
-export function truncateSessionChanges(session: SerializedSession, maxChanges: number = 100): SerializedSession {
+export function truncateSessionChanges(
+  session: SerializedSession,
+  maxChanges: number = 100
+): SerializedSession {
   if (!session.documents) {
     return session;
   }
@@ -702,12 +723,12 @@ export function truncateSessionChanges(session: SerializedSession, maxChanges: n
           ...doc,
           processingResult: {
             ...doc.processingResult,
-            changes: doc.processingResult.changes.slice(0, maxChanges)
-          }
+            changes: doc.processingResult.changes.slice(0, maxChanges),
+          },
         };
       }
       return doc;
-    })
+    }),
   };
 }
 
@@ -765,7 +786,9 @@ export async function handleQuotaExceededError(
     } catch (error) {
       if (error instanceof Error && error.message === 'DATABASE_QUOTA_EXCEEDED') {
         if (retries < maxRetries) {
-          logger.warn(`[IndexedDB] Quota exceeded, attempting cleanup (attempt ${retries + 1}/${maxRetries})`);
+          logger.warn(
+            `[IndexedDB] Quota exceeded, attempting cleanup (attempt ${retries + 1}/${maxRetries})`
+          );
 
           // Aggressive cleanup - delete oldest closed sessions
           const oldestSessions = await getOldestClosedSessions(20);
@@ -791,7 +814,7 @@ export async function handleQuotaExceededError(
           const sizeMB = await calculateDBSize();
           const error = new Error(
             `DATABASE_QUOTA_EXCEEDED_PERMANENTLY: Database is ${sizeMB.toFixed(2)}MB. ` +
-            `Please archive old sessions or export data to free up space.`
+              `Please archive old sessions or export data to free up space.`
           );
           logger.error('[IndexedDB] Permanent quota exceeded:', error);
           throw error;

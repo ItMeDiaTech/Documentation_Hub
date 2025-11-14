@@ -14,12 +14,7 @@ export function Skeleton({ className, variant = 'default', ...props }: SkeletonP
 
   return (
     <div
-      className={cn(
-        'skeleton',
-        'bg-muted animate-pulse',
-        variants[variant],
-        className
-      )}
+      className={cn('skeleton', 'bg-muted animate-pulse', variants[variant], className)}
       {...props}
     />
   );

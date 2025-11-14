@@ -16,14 +16,16 @@ import { useState, lazy, Suspense, useEffect } from 'react';
 import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 
 // Lazy load pages for code splitting and faster initial load
-const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
-const CurrentSession = lazy(() => import('@/pages/CurrentSession').then(m => ({ default: m.CurrentSession })));
-const Sessions = lazy(() => import('@/pages/Sessions').then(m => ({ default: m.Sessions })));
-const Documents = lazy(() => import('@/pages/Documents').then(m => ({ default: m.Documents })));
-const Analytics = lazy(() => import('@/pages/Analytics').then(m => ({ default: m.Analytics })));
-const Search = lazy(() => import('@/pages/Search').then(m => ({ default: m.Search })));
-const Plugins = lazy(() => import('@/pages/Plugins').then(m => ({ default: m.Plugins })));
+const Dashboard = lazy(() => import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const Settings = lazy(() => import('@/pages/Settings').then((m) => ({ default: m.Settings })));
+const CurrentSession = lazy(() =>
+  import('@/pages/CurrentSession').then((m) => ({ default: m.CurrentSession }))
+);
+const Sessions = lazy(() => import('@/pages/Sessions').then((m) => ({ default: m.Sessions })));
+const Documents = lazy(() => import('@/pages/Documents').then((m) => ({ default: m.Documents })));
+const Analytics = lazy(() => import('@/pages/Analytics').then((m) => ({ default: m.Analytics })));
+const Search = lazy(() => import('@/pages/Search').then((m) => ({ default: m.Search })));
+const Plugins = lazy(() => import('@/pages/Plugins').then((m) => ({ default: m.Plugins })));
 
 // Loading fallback component
 function PageLoader() {

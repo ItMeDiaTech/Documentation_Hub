@@ -80,9 +80,9 @@ export function DebugConsole() {
       timestamp: new Date().toISOString(),
       type,
       message,
-      details
+      details,
     };
-    setLogs(prev => [...prev.slice(-200), newLog]); // Keep last 200 logs
+    setLogs((prev) => [...prev.slice(-200), newLog]); // Keep last 200 logs
   };
 
   const clearLogs = () => {
@@ -101,13 +101,13 @@ export function DebugConsole() {
   };
 
   const copyLogs = () => {
-    const logsText = logs.map(log =>
-      `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}`
-    ).join('\n');
+    const logsText = logs
+      .map((log) => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}`)
+      .join('\n');
     navigator.clipboard.writeText(logsText);
   };
 
-  const filteredLogs = logs.filter(log => {
+  const filteredLogs = logs.filter((log) => {
     if (filter === 'all') return true;
     if (filter === 'network') return log.type === 'network';
     if (filter === 'errors') return log.type.includes('error');
@@ -156,9 +156,7 @@ export function DebugConsole() {
             <div className="flex items-center gap-2">
               <Terminal className="w-4 h-4 text-primary" />
               <span className="text-sm font-semibold">Debug Console</span>
-              <span className="text-xs text-muted-foreground">
-                ({filteredLogs.length} logs)
-              </span>
+              <span className="text-xs text-muted-foreground">({filteredLogs.length} logs)</span>
             </div>
             <div className="flex items-center gap-1">
               {/* Filter buttons */}
@@ -166,9 +164,7 @@ export function DebugConsole() {
                 onClick={() => setFilter('all')}
                 className={cn(
                   'px-2 py-1 text-xs rounded transition-colors',
-                  filter === 'all'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted'
+                  filter === 'all' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                 )}
               >
                 All
@@ -177,9 +173,7 @@ export function DebugConsole() {
                 onClick={() => setFilter('network')}
                 className={cn(
                   'px-2 py-1 text-xs rounded transition-colors',
-                  filter === 'network'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted'
+                  filter === 'network' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                 )}
               >
                 Network
@@ -188,9 +182,7 @@ export function DebugConsole() {
                 onClick={() => setFilter('errors')}
                 className={cn(
                   'px-2 py-1 text-xs rounded transition-colors',
-                  filter === 'errors'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted'
+                  filter === 'errors' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                 )}
               >
                 Errors

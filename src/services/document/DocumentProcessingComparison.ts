@@ -18,7 +18,13 @@ import { sanitizeHyperlinkText, isTextCorrupted } from '../../utils/textSanitize
 
 export interface ProcessingChange {
   id: string;
-  type: 'hyperlink_url' | 'hyperlink_text' | 'style' | 'content_added' | 'content_removed' | 'formatting';
+  type:
+    | 'hyperlink_url'
+    | 'hyperlink_text'
+    | 'style'
+    | 'content_added'
+    | 'content_removed'
+    | 'formatting';
   location: string; // e.g., "Paragraph 5, Hyperlink 2"
   before: any;
   after: any;
@@ -196,7 +202,7 @@ export class DocumentProcessingComparison {
 
     // Find if there's an existing hyperlink change for this position
     const existingChange = this.comparison.hyperlinkChanges.find(
-      c => c.paragraphIndex === paragraphIndex && c.hyperlinkIndex === hyperlinkIndex
+      (c) => c.paragraphIndex === paragraphIndex && c.hyperlinkIndex === hyperlinkIndex
     );
 
     if (existingChange) {
@@ -255,7 +261,7 @@ export class DocumentProcessingComparison {
 
     // Update hyperlink changes
     const existingChange = this.comparison.hyperlinkChanges.find(
-      c => c.paragraphIndex === paragraphIndex && c.hyperlinkIndex === hyperlinkIndex
+      (c) => c.paragraphIndex === paragraphIndex && c.hyperlinkIndex === hyperlinkIndex
     );
 
     if (existingChange) {
@@ -376,7 +382,7 @@ export class DocumentProcessingComparison {
 
             // Check if this change was already recorded
             const recorded = this.comparison!.hyperlinkChanges.find(
-              c => c.paragraphIndex === paraIndex && c.hyperlinkIndex === hyperlinkIndex
+              (c) => c.paragraphIndex === paraIndex && c.hyperlinkIndex === hyperlinkIndex
             );
 
             if (!recorded) {
@@ -642,24 +648,36 @@ export class DocumentProcessingComparison {
       `;
     }
 
-    const changes = comparison.hyperlinkChanges.map(change => `
+    const changes = comparison.hyperlinkChanges
+      .map(
+        (change) => `
       <div class="change-item">
         <div class="change-location">📍 Paragraph ${change.paragraphIndex + 1}, Hyperlink ${change.hyperlinkIndex + 1}</div>
         <div class="change-content">
-          ${change.originalUrl !== change.modifiedUrl ? `
+          ${
+            change.originalUrl !== change.modifiedUrl
+              ? `
             <div><strong>URL:</strong></div>
             <div class="before">🔴 ${this.escapeHtml(change.originalUrl)}</div>
             <div class="after">🟢 ${this.escapeHtml(change.modifiedUrl)}</div>
-          ` : ''}
-          ${change.originalText !== change.modifiedText ? `
+          `
+              : ''
+          }
+          ${
+            change.originalText !== change.modifiedText
+              ? `
             <div><strong>Display Text:</strong></div>
             <div class="before">🔴 ${this.escapeHtml(change.originalText)}</div>
             <div class="after">🟢 ${this.escapeHtml(change.modifiedText)}</div>
-          ` : ''}
+          `
+              : ''
+          }
         </div>
         <div class="change-reason">💡 ${change.changeReason}</div>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
 
     return `
       <div class="changes-section">
@@ -682,17 +700,21 @@ export class DocumentProcessingComparison {
       `;
     }
 
-    const changes = comparison.styleChanges.map(change => `
+    const changes = comparison.styleChanges
+      .map(
+        (change) => `
       <div class="change-item">
         <div class="change-location">📍 Paragraph ${change.paragraphIndex + 1}</div>
         <div class="change-content">
           <div><strong>Applied Style:</strong> ${change.styleName} (${change.styleId})</div>
-          ${Object.entries(change.properties).map(([key, value]) =>
-            `<div style="margin-left: 20px;">• ${key}: ${value}</div>`
-          ).join('')}
+          ${Object.entries(change.properties)
+            .map(([key, value]) => `<div style="margin-left: 20px;">• ${key}: ${value}</div>`)
+            .join('')}
         </div>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
 
     return `
       <div class="changes-section">
@@ -715,22 +737,32 @@ export class DocumentProcessingComparison {
       `;
     }
 
-    const changes = comparison.contentChanges.map(change => `
+    const changes = comparison.contentChanges
+      .map(
+        (change) => `
       <div class="change-item">
         <div class="change-location">📍 Paragraph ${change.paragraphIndex + 1}</div>
         <div class="change-content">
-          ${change.type === 'added' ? `
+          ${
+            change.type === 'added'
+              ? `
             <div class="after">🟢 Added: ${this.escapeHtml(change.modifiedContent || '')}</div>
-          ` : ''}
-          ${change.type === 'removed' ? `
-            <div class="before">🔴 Removed: ${this.escapeHtml(change.originalContent || '')}</div>
-          ` : ''}
-          ${change.type === 'modified' && change.diff ?
-            this.renderDiff(change.diff) : ''
+          `
+              : ''
           }
+          ${
+            change.type === 'removed'
+              ? `
+            <div class="before">🔴 Removed: ${this.escapeHtml(change.originalContent || '')}</div>
+          `
+              : ''
+          }
+          ${change.type === 'modified' && change.diff ? this.renderDiff(change.diff) : ''}
         </div>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
 
     return `
       <div class="changes-section">

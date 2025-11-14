@@ -10,7 +10,7 @@ import {
   Filter,
   Search,
   ExternalLink,
-  Hash
+  Hash,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { sanitizeUrl } from '@/utils/urlSanitizer';
@@ -49,14 +49,14 @@ export function HyperlinkPreview({
   onRejectAll,
   onApply,
   isReadOnly = false,
-  className
+  className,
 }: HyperlinkPreviewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'append' | 'update' | 'remove'>('all');
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
-  const filteredChanges = changes.filter(change => {
+  const filteredChanges = changes.filter((change) => {
     if (filterType !== 'all' && change.type !== filterType) return false;
     if (showOnlyPending && change.status !== 'pending') return false;
     if (searchTerm) {
@@ -70,12 +70,12 @@ export function HyperlinkPreview({
     return true;
   });
 
-  const pendingCount = changes.filter(c => c.status === 'pending').length;
-  const approvedCount = changes.filter(c => c.status === 'approved').length;
-  const rejectedCount = changes.filter(c => c.status === 'rejected').length;
+  const pendingCount = changes.filter((c) => c.status === 'pending').length;
+  const approvedCount = changes.filter((c) => c.status === 'approved').length;
+  const rejectedCount = changes.filter((c) => c.status === 'rejected').length;
 
   const toggleExpanded = (id: string) => {
-    setExpandedItems(prev => {
+    setExpandedItems((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
         newSet.delete(id);
@@ -145,18 +145,10 @@ export function HyperlinkPreview({
         </div>
         {!isReadOnly && pendingCount > 0 && (
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onRejectAll}
-            >
+            <Button variant="outline" size="sm" onClick={onRejectAll}>
               Reject All
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onApproveAll}
-            >
+            <Button variant="outline" size="sm" onClick={onApproveAll}>
               Approve All
             </Button>
           </div>
@@ -232,9 +224,7 @@ export function HyperlinkPreview({
             onClick={() => setShowOnlyPending(!showOnlyPending)}
             className={cn(
               'p-1.5 rounded-lg transition-colors',
-              showOnlyPending
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/70'
+              showOnlyPending ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/70'
             )}
           >
             <Filter className="w-4 h-4" />
@@ -271,9 +261,7 @@ export function HyperlinkPreview({
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium truncate">{change.displayText}</span>
                         {getStatusBadge(change.status)}
-                        <span className="text-xs text-muted-foreground">
-                          {change.location}
-                        </span>
+                        <span className="text-xs text-muted-foreground">{change.location}</span>
                       </div>
 
                       {/* URL Changes */}
@@ -398,10 +386,7 @@ export function HyperlinkPreview({
       {/* Apply Button */}
       {!isReadOnly && approvedCount > 0 && (
         <div className="flex justify-end">
-          <Button
-            onClick={onApply}
-            className="min-w-[120px]"
-          >
+          <Button onClick={onApply} className="min-w-[120px]">
             Apply {approvedCount} Change{approvedCount !== 1 ? 's' : ''}
           </Button>
         </div>

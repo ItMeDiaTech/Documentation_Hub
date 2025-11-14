@@ -51,7 +51,7 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: true
+      hour12: true,
     });
   }, []);
 
@@ -79,13 +79,16 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
   const description = pathDescriptions[currentPath] || '';
 
   const toggleThemeMenu = useCallback(() => {
-    setShowThemeMenu(prev => !prev);
+    setShowThemeMenu((prev) => !prev);
   }, []);
 
-  const handleThemeChange = useCallback((value: 'light' | 'dark') => {
-    setTheme(value);
-    setShowThemeMenu(false);
-  }, [setTheme]);
+  const handleThemeChange = useCallback(
+    (value: 'light' | 'dark') => {
+      setTheme(value);
+      setShowThemeMenu(false);
+    },
+    [setTheme]
+  );
 
   return (
     <header className="header-bg border-b border-border bg-background/50 backdrop-blur-xl px-6 py-2">

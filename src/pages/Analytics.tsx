@@ -66,13 +66,8 @@ export const Analytics = memo(function Analytics() {
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
-  const {
-    stats,
-    getDailyHistory,
-    getWeeklyHistory,
-    getMonthlyHistory,
-    resetAllStats,
-  } = useGlobalStats();
+  const { stats, getDailyHistory, getWeeklyHistory, getMonthlyHistory, resetAllStats } =
+    useGlobalStats();
 
   const handleResetStats = async () => {
     setIsResetting(true);
@@ -198,22 +193,19 @@ export const Analytics = memo(function Analytics() {
             <BarChart3 className="w-8 h-8" />
             Analytics
           </h1>
-          <p className="text-muted-foreground">
-            Visualize your productivity trends and insights
-          </p>
+          <p className="text-muted-foreground">Visualize your productivity trends and insights</p>
         </div>
-        <Button
-          variant="destructive"
-          onClick={() => setShowResetDialog(true)}
-          className="gap-2"
-        >
+        <Button variant="destructive" onClick={() => setShowResetDialog(true)} className="gap-2">
           <RotateCcw className="w-4 h-4" />
           Reset All Stats
         </Button>
       </motion.div>
 
       {/* Stats Summary */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <motion.div
+        variants={itemVariants}
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+      >
         {statsSummary.map((stat) => {
           const Icon = stat.icon;
           return (
@@ -265,7 +257,8 @@ export const Analytics = memo(function Analytics() {
               Documents Processed Over Time
             </CardTitle>
             <CardDescription>
-              Track document processing trends across {viewMode === 'daily' ? 'days' : viewMode === 'weekly' ? 'weeks' : 'months'}
+              Track document processing trends across{' '}
+              {viewMode === 'daily' ? 'days' : viewMode === 'weekly' ? 'weeks' : 'months'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -308,7 +301,8 @@ export const Analytics = memo(function Analytics() {
               Hyperlinks Checked Over Time
             </CardTitle>
             <CardDescription>
-              Track hyperlink validation trends across {viewMode === 'daily' ? 'days' : viewMode === 'weekly' ? 'weeks' : 'months'}
+              Track hyperlink validation trends across{' '}
+              {viewMode === 'daily' ? 'days' : viewMode === 'weekly' ? 'weeks' : 'months'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -350,9 +344,7 @@ export const Analytics = memo(function Analytics() {
               <BarChart3 className="w-5 h-5" />
               Activity Breakdown
             </CardTitle>
-            <CardDescription>
-              Compare different metrics side by side
-            </CardDescription>
+            <CardDescription>Compare different metrics side by side</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
