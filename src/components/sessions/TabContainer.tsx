@@ -21,7 +21,7 @@ export function TabContainer({ tabs, defaultTab, className, headerActions }: Tab
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
-  const activeTabData = tabs.find(tab => tab.id === activeTab);
+  const activeTabData = tabs.find((tab) => tab.id === activeTab);
 
   // Check for overflow and update arrow visibility
   useEffect(() => {
@@ -83,9 +83,7 @@ export function TabContainer({ tabs, defaultTab, className, headerActions }: Tab
               className={cn(
                 'relative px-4 py-2.5 text-sm font-medium transition-all whitespace-nowrap',
                 'hover:text-foreground',
-                activeTab === tab.id
-                  ? 'text-foreground'
-                  : 'text-muted-foreground'
+                activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground'
               )}
             >
               {tab.label}
@@ -95,9 +93,9 @@ export function TabContainer({ tabs, defaultTab, className, headerActions }: Tab
                   className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
                   initial={false}
                   transition={{
-                    type: "spring",
+                    type: 'spring',
                     stiffness: 500,
-                    damping: 30
+                    damping: 30,
                   }}
                 />
               )}

@@ -118,9 +118,7 @@ export function calculateLuminance(hex: string): number {
     // Apply gamma correction (sRGB to linear RGB)
     // WCAG 2.1 formula: if value <= 0.03928, divide by 12.92, else apply power function
     const gammaCorrect = (channel: number): number => {
-      return channel <= 0.03928
-        ? channel / 12.92
-        : Math.pow((channel + 0.055) / 1.055, 2.4);
+      return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
     };
 
     const rLinear = gammaCorrect(r);
@@ -164,7 +162,12 @@ export function getContrastTextColor(backgroundColor: string): string {
     // luminance <= 0.5 suggests dark background (use white text)
     return luminance > 0.5 ? '#000000' : '#FFFFFF';
   } catch (error) {
-    logger.error('[ColorConvert] Unexpected error in getContrastTextColor:', error, 'Input:', backgroundColor);
+    logger.error(
+      '[ColorConvert] Unexpected error in getContrastTextColor:',
+      error,
+      'Input:',
+      backgroundColor
+    );
     return '#000000'; // Safe fallback
   }
 }
@@ -183,7 +186,8 @@ export function getSecondaryTextColor(primaryTextColor: string): string {
       return '#4D4D4D'; // Default to gray
     }
 
-    const isWhite = primaryTextColor.toUpperCase() === '#FFFFFF' || primaryTextColor.toUpperCase() === 'FFFFFF';
+    const isWhite =
+      primaryTextColor.toUpperCase() === '#FFFFFF' || primaryTextColor.toUpperCase() === 'FFFFFF';
 
     if (isWhite) {
       // White text -> slightly darker (85% opacity equivalent = #D9D9D9)
@@ -193,7 +197,12 @@ export function getSecondaryTextColor(primaryTextColor: string): string {
       return '#4D4D4D';
     }
   } catch (error) {
-    logger.error('[ColorConvert] Unexpected error in getSecondaryTextColor:', error, 'Input:', primaryTextColor);
+    logger.error(
+      '[ColorConvert] Unexpected error in getSecondaryTextColor:',
+      error,
+      'Input:',
+      primaryTextColor
+    );
     return '#4D4D4D'; // Safe fallback
   }
 }

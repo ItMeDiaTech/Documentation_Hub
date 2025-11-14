@@ -3,11 +3,7 @@
  * Defines types for document operations, tracking, and undo/redo functionality
  */
 
-import type {
-  DocumentOperation,
-  ProcessingError,
-  ProcessingWarning
-} from './document-processing';
+import type { DocumentOperation, ProcessingError, ProcessingWarning } from './document-processing';
 import type { HyperlinkChange } from './hyperlink';
 
 // Operation status
@@ -17,7 +13,7 @@ export enum OperationStatus {
   COMPLETED = 'completed',
   FAILED = 'failed',
   CANCELLED = 'cancelled',
-  ROLLED_BACK = 'rolled_back'
+  ROLLED_BACK = 'rolled_back',
 }
 
 // Operation priority levels
@@ -26,7 +22,7 @@ export enum OperationPriority {
   HIGH = 2,
   NORMAL = 3,
   LOW = 4,
-  DEFERRED = 5
+  DEFERRED = 5,
 }
 
 // Base operation tracking
@@ -105,7 +101,7 @@ export enum QueueStatus {
   PAUSED = 'paused',
   COMPLETED = 'completed',
   FAILED = 'failed',
-  CANCELLED = 'cancelled'
+  CANCELLED = 'cancelled',
 }
 
 export interface QueueProgress {
@@ -296,7 +292,7 @@ export enum OperationEventType {
   RETRYING = 'retrying',
   ROLLED_BACK = 'rolled_back',
   QUEUED = 'queued',
-  DEQUEUED = 'dequeued'
+  DEQUEUED = 'dequeued',
 }
 
 // Operation context for execution
@@ -350,10 +346,7 @@ export interface CancellationToken {
 }
 
 // Export all operation-related types
-export type AnyOperation =
-  | TrackedOperation
-  | QueuedOperation
-  | ScheduledOperation;
+export type AnyOperation = TrackedOperation | QueuedOperation | ScheduledOperation;
 
 export type OperationCallback = (
   operation: TrackedOperation,

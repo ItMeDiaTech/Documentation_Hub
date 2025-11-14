@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+  useCallback,
+  useMemo,
+} from 'react';
 import {
   GlobalStats,
   GlobalStatsContextType,
@@ -283,41 +291,40 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
   // PERFORMANCE FIX: Memoize provider value to prevent unnecessary re-renders
   // This prevents all consumers (Dashboard, Analytics, etc.) from re-rendering
   // on every stats update when the methods haven't changed
-  const contextValue = useMemo(() => ({
-    stats,
-    updateStats,
-    getTodayStats,
-    getWeekStats,
-    getMonthStats,
-    getDailyHistory,
-    getWeeklyHistory,
-    getMonthlyHistory,
-    getTodayChange,
-    getWeekChange,
-    getMonthChange,
-    resetAllStats,
-    isLoading,
-  }), [
-    stats,
-    updateStats,
-    getTodayStats,
-    getWeekStats,
-    getMonthStats,
-    getDailyHistory,
-    getWeeklyHistory,
-    getMonthlyHistory,
-    getTodayChange,
-    getWeekChange,
-    getMonthChange,
-    resetAllStats,
-    isLoading,
-  ]);
-
-  return (
-    <GlobalStatsContext.Provider value={contextValue}>
-      {children}
-    </GlobalStatsContext.Provider>
+  const contextValue = useMemo(
+    () => ({
+      stats,
+      updateStats,
+      getTodayStats,
+      getWeekStats,
+      getMonthStats,
+      getDailyHistory,
+      getWeeklyHistory,
+      getMonthlyHistory,
+      getTodayChange,
+      getWeekChange,
+      getMonthChange,
+      resetAllStats,
+      isLoading,
+    }),
+    [
+      stats,
+      updateStats,
+      getTodayStats,
+      getWeekStats,
+      getMonthStats,
+      getDailyHistory,
+      getWeeklyHistory,
+      getMonthlyHistory,
+      getTodayChange,
+      getWeekChange,
+      getMonthChange,
+      resetAllStats,
+      isLoading,
+    ]
   );
+
+  return <GlobalStatsContext.Provider value={contextValue}>{children}</GlobalStatsContext.Provider>;
 }
 
 export function useGlobalStats() {

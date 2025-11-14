@@ -110,20 +110,28 @@ export function validatePowerAutomateUrl(url: string): {
       issues.push('Missing required parameter: api-version');
     }
     if (!searchParams.has('sp')) {
-      warnings.push('Missing "sp" parameter (shared access policy). May be required depending on your Logic App configuration.');
+      warnings.push(
+        'Missing "sp" parameter (shared access policy). May be required depending on your Logic App configuration.'
+      );
     }
     if (!searchParams.has('sv')) {
-      warnings.push('Missing "sv" parameter (signature version). May be required depending on your Logic App configuration.');
+      warnings.push(
+        'Missing "sv" parameter (signature version). May be required depending on your Logic App configuration.'
+      );
     }
     if (!searchParams.has('sig')) {
       warnings.push('Missing "sig" parameter (signature). May be required for authentication.');
     }
 
     // Check if URL looks like an Azure Logic Apps endpoint
-    if (!urlObj.hostname.includes('logic.azure.com') && !urlObj.hostname.includes('azure-api.net')) {
-      warnings.push('URL does not appear to be an Azure Logic Apps endpoint. Expected domain: *.logic.azure.com');
+    if (
+      !urlObj.hostname.includes('logic.azure.com') &&
+      !urlObj.hostname.includes('azure-api.net')
+    ) {
+      warnings.push(
+        'URL does not appear to be an Azure Logic Apps endpoint. Expected domain: *.logic.azure.com'
+      );
     }
-
   } catch (e) {
     issues.push(`Invalid URL format: ${e instanceof Error ? e.message : 'Unknown error'}`);
   }
@@ -264,12 +272,11 @@ export function validateUrlScheme(url: string): {
       return {
         valid: false,
         isHttp: false,
-        error: `Dangerous URL scheme detected: "${parsed.protocol}". Only http:// and https:// are allowed for security.`
+        error: `Dangerous URL scheme detected: "${parsed.protocol}". Only http:// and https:// are allowed for security.`,
       };
     }
 
     return { valid: true, isHttp: true };
-
   } catch (error) {
     // If URL parsing fails, it might be a relative URL or malformed
     // Check for obvious dangerous patterns even if URL parse fails
@@ -279,7 +286,7 @@ export function validateUrlScheme(url: string): {
       return {
         valid: false,
         isHttp: false,
-        error: 'JavaScript URLs are not allowed for security reasons.'
+        error: 'JavaScript URLs are not allowed for security reasons.',
       };
     }
 
@@ -287,7 +294,7 @@ export function validateUrlScheme(url: string): {
       return {
         valid: false,
         isHttp: false,
-        error: 'Data URLs are not allowed for security reasons.'
+        error: 'Data URLs are not allowed for security reasons.',
       };
     }
 
@@ -295,7 +302,7 @@ export function validateUrlScheme(url: string): {
       return {
         valid: false,
         isHttp: false,
-        error: 'File URLs are not allowed for security reasons.'
+        error: 'File URLs are not allowed for security reasons.',
       };
     }
 

@@ -1,5 +1,5 @@
 /* Tailwind CSS v4 - Modern CSS-First Configuration */
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* Enable class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -179,7 +179,9 @@
   [data-custom-colors='true'] {
     --color-primary: hsl(var(--custom-primary)) !important;
     --color-background: hsl(var(--custom-background)) !important;
-    --color-foreground: hsl(var(--custom-foreground)) !important; /* Auto-calculated based on luminance */
+    --color-foreground: hsl(
+      var(--custom-foreground)
+    ) !important; /* Auto-calculated based on luminance */
     --color-border: hsl(var(--custom-border)) !important;
     --color-card: hsl(var(--custom-background)) !important;
     --color-card-foreground: hsl(var(--custom-foreground)) !important;
@@ -189,10 +191,22 @@
     --color-secondary-foreground: hsl(var(--custom-secondary-font)) !important;
 
     /* Adaptive hover state colors - ensures readability with any custom color scheme */
-    --color-accent: color-mix(in srgb, hsl(var(--custom-foreground)) 12%, hsl(var(--custom-background))) !important;
+    --color-accent: color-mix(
+      in srgb,
+      hsl(var(--custom-foreground)) 12%,
+      hsl(var(--custom-background))
+    ) !important;
     --color-accent-foreground: hsl(var(--custom-foreground)) !important;
-    --color-muted: color-mix(in srgb, hsl(var(--custom-foreground)) 8%, hsl(var(--custom-background))) !important;
-    --color-secondary: color-mix(in srgb, hsl(var(--custom-foreground)) 6%, hsl(var(--custom-background))) !important;
+    --color-muted: color-mix(
+      in srgb,
+      hsl(var(--custom-foreground)) 8%,
+      hsl(var(--custom-background))
+    ) !important;
+    --color-secondary: color-mix(
+      in srgb,
+      hsl(var(--custom-foreground)) 6%,
+      hsl(var(--custom-background))
+    ) !important;
   }
 
   /* Custom header with auto-calculated text color */
@@ -221,7 +235,11 @@
 
   /* Clock widget background adapts to custom header color */
   [data-custom-colors='true'] .header-bg .clock-widget {
-    background-color: color-mix(in srgb, hsl(var(--custom-header)) 85%, hsl(var(--custom-header-text)) 15%) !important;
+    background-color: color-mix(
+      in srgb,
+      hsl(var(--custom-header)) 85%,
+      hsl(var(--custom-header-text)) 15%
+    ) !important;
   }
 
   /* Custom sidebar with auto-calculated text color */
@@ -231,17 +249,25 @@
   }
 
   /* Force base text elements in sidebar to use the auto-calculated sidebar text color */
-  [data-custom-colors='true'] .sidebar-bg span:not(.text-primary-foreground):not(.text-accent-foreground),
-  [data-custom-colors='true'] .sidebar-bg svg:not(.text-primary):not([class*="group-hover:text-primary"]) {
+  [data-custom-colors='true']
+    .sidebar-bg
+    span:not(.text-primary-foreground):not(.text-accent-foreground),
+  [data-custom-colors='true']
+    .sidebar-bg
+    svg:not(.text-primary):not([class*='group-hover:text-primary']) {
     color: hsl(var(--custom-sidebar-text)) !important;
   }
 
   /* Sidebar hover states - adaptive background with proper contrast */
-  [data-custom-colors='true'] .sidebar-bg [class*="hover:bg-accent"]:hover {
-    background-color: color-mix(in srgb, hsl(var(--custom-sidebar-text)) 12%, hsl(var(--custom-sidebar))) !important;
+  [data-custom-colors='true'] .sidebar-bg [class*='hover:bg-accent']:hover {
+    background-color: color-mix(
+      in srgb,
+      hsl(var(--custom-sidebar-text)) 12%,
+      hsl(var(--custom-sidebar))
+    ) !important;
   }
 
-  [data-custom-colors='true'] .sidebar-bg [class*="hover:text-accent-foreground"]:hover {
+  [data-custom-colors='true'] .sidebar-bg [class*='hover:text-accent-foreground']:hover {
     color: hsl(var(--custom-sidebar-text)) !important;
   }
 
@@ -325,14 +351,18 @@
   button[aria-label*='Toggle'] > span {
     top: 0 !important;
     border: 1px solid rgba(0, 0, 0, 0.1) !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.12),
+      0 1px 2px rgba(0, 0, 0, 0.08) !important;
   }
 
   /* Dark mode: lighter knob border */
   .dark button[role='switch'] > span,
   .dark button[aria-label*='Toggle'] > span {
     border-color: rgba(255, 255, 255, 0.15) !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.24) !important;
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.3),
+      0 1px 2px rgba(0, 0, 0, 0.24) !important;
   }
 
   /* ========================================
@@ -430,7 +460,9 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-feature-settings: 'rlig' 1, 'calt' 1;
+    font-feature-settings:
+      'rlig' 1,
+      'calt' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-size: var(--custom-font-size, 15px);
@@ -485,7 +517,11 @@
 
   /* Custom theme scrollbar colors */
   [data-custom-colors='true'] ::-webkit-scrollbar-track {
-    background-color: color-mix(in srgb, hsl(var(--custom-background)) 90%, hsl(var(--custom-foreground)) 10%);
+    background-color: color-mix(
+      in srgb,
+      hsl(var(--custom-background)) 90%,
+      hsl(var(--custom-foreground)) 10%
+    );
   }
 
   [data-custom-colors='true'] ::-webkit-scrollbar-thumb {
@@ -609,7 +645,9 @@
     height: 0;
     border-radius: 50%;
     background: radial-gradient(circle, rgba(255, 255, 255, 0.1), transparent 70%);
-    transition: width 0.3s, height 0.3s;
+    transition:
+      width 0.3s,
+      height 0.3s;
     pointer-events: none;
   }
 
@@ -627,7 +665,9 @@
   }
 
   .bento-item:hover {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    box-shadow:
+      0 10px 15px -3px rgba(0, 0, 0, 0.1),
+      0 4px 6px -4px rgba(0, 0, 0, 0.1);
   }
 
   /* Bento Grid Layout */

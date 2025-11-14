@@ -32,7 +32,11 @@ import { useSession } from '@/contexts/SessionContext';
 import { Session } from '@/types/session';
 import { Document } from '@/types/session';
 import { TabContainer } from '@/components/sessions/TabContainer';
-import { ProcessingOptions, ProcessingOption, defaultOptions } from '@/components/sessions/ProcessingOptions';
+import {
+  ProcessingOptions,
+  ProcessingOption,
+  defaultOptions,
+} from '@/components/sessions/ProcessingOptions';
 import { StylesEditor } from '@/components/sessions/StylesEditor';
 import { ReplacementsTab } from '@/components/sessions/ReplacementsTab';
 import { TrackedChanges } from '@/components/sessions/TrackedChanges';
@@ -169,7 +173,8 @@ export function CurrentSession() {
       if (validFiles.length === 0 && filePaths.length > 0) {
         toast({
           title: 'No Files Added',
-          description: 'None of the selected files could be accessed. Please check file permissions.',
+          description:
+            'None of the selected files could be accessed. Please check file permissions.',
           variant: 'destructive',
         });
       }
@@ -246,12 +251,15 @@ export function CurrentSession() {
                 path: path,
                 size: stats.size,
                 name: file.name,
-                type: file.type
+                type: file.type,
               }
             );
             validFiles.push(fileWithPath);
           } catch (error) {
-            logger.error(`[Drag-Drop] Failed to access file "${file.name}" at path "${path}":`, error);
+            logger.error(
+              `[Drag-Drop] Failed to access file "${file.name}" at path "${path}":`,
+              error
+            );
             invalidFiles.push(file.name);
           }
         }
@@ -267,7 +275,10 @@ export function CurrentSession() {
 
       // Log summary
       if (invalidFiles.length > 0) {
-        logger.warn(`[Drag-Drop] Rejected ${invalidFiles.length} file(s) due to invalid paths:`, invalidFiles);
+        logger.warn(
+          `[Drag-Drop] Rejected ${invalidFiles.length} file(s) due to invalid paths:`,
+          invalidFiles
+        );
 
         // Show toast notification to user
         toast({
@@ -297,10 +308,16 @@ export function CurrentSession() {
     const operationsCount = enabledOps.length;
 
     if (operationsCount > 0) {
-      const firstFewOps = enabledOps.slice(0, 3).map(op => {
-        // Convert kebab-case to human-readable
-        return op.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-      }).join(', ');
+      const firstFewOps = enabledOps
+        .slice(0, 3)
+        .map((op) => {
+          // Convert kebab-case to human-readable
+          return op
+            .split('-')
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+        })
+        .join(', ');
 
       toast({
         title: 'Processing Document',
@@ -356,16 +373,20 @@ export function CurrentSession() {
 
   const handleProcessingOptionsChange = (options: Array<{ id: string; enabled: boolean }>) => {
     // Update session with selected processing options
-    const enabledOperations = options
-      .filter(opt => opt.enabled)
-      .map(opt => opt.id);
+    const enabledOperations = options.filter((opt) => opt.enabled).map((opt) => opt.id);
 
     // DEBUG: Log processing options changes
     console.log('[CurrentSession] Processing options changed:');
     console.log('  - Enabled operations:', enabledOperations);
     console.log('  - TOC enabled:', enabledOperations.includes('update-toc-hyperlinks'));
-    console.log('  - Validate styles enabled:', enabledOperations.includes('validate-document-styles'));
-    console.log('  - Validate Header2 tables enabled:', enabledOperations.includes('validate-header2-tables'));
+    console.log(
+      '  - Validate styles enabled:',
+      enabledOperations.includes('validate-document-styles')
+    );
+    console.log(
+      '  - Validate Header2 tables enabled:',
+      enabledOperations.includes('validate-header2-tables')
+    );
 
     // Update session processing options using the context method
     updateSessionOptions(session.id, {
@@ -411,9 +432,9 @@ export function CurrentSession() {
   // This prevents stale closure issues that caused toggle auto-revert bug
   const processingOptions = useMemo((): ProcessingOption[] => {
     const enabledOps = session.processingOptions?.enabledOperations || [];
-    return defaultOptions.map(opt => ({
+    return defaultOptions.map((opt) => ({
       ...opt,
-      enabled: enabledOps.includes(opt.id)
+      enabled: enabledOps.includes(opt.id),
     }));
   }, [session.processingOptions]);
 
@@ -479,9 +500,7 @@ export function CurrentSession() {
                 <p className="text-2xl font-bold">
                   {Math.round((session.stats.hyperlinksChecked * 101) / 60)}m
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  101 seconds per hyperlink
-                </p>
+                <p className="text-xs text-muted-foreground">101 seconds per hyperlink</p>
               </div>
             </div>
           </CardContent>
@@ -523,14 +542,14 @@ export function CurrentSession() {
                   onClick={() => {
                     // Process all pending documents
                     session.documents
-                      .filter(doc => doc.status === 'pending')
-                      .forEach(doc => handleProcessDocument(doc.id));
+                      .filter((doc) => doc.status === 'pending')
+                      .forEach((doc) => handleProcessDocument(doc.id));
                   }}
                   size="sm"
                   variant="default"
                   className="bg-green-600 hover:bg-green-700 text-white"
                   icon={<Play className="w-4 h-4" />}
-                  disabled={!session.documents.some(doc => doc.status === 'pending')}
+                  disabled={!session.documents.some((doc) => doc.status === 'pending')}
                 >
                   Process Documents
                 </Button>
@@ -604,7 +623,8 @@ export function CurrentSession() {
                                 logger.error('Failed to open document:', err);
                                 toast({
                                   title: 'Error',
-                                  description: err instanceof Error ? err.message : 'Could not open document',
+                                  description:
+                                    err instanceof Error ? err.message : 'Could not open document',
                                   variant: 'destructive',
                                 });
                               }

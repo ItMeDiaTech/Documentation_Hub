@@ -116,11 +116,11 @@ export interface TableRow {
 }
 
 export interface TableCell {
-  text: string;              // Combined text from all paragraphs (for quick access)
-  colspan: number;           // Column span (1 = no merge, >1 = merged cells)
-  rowspan: number;           // Row span (1 = no merge, >1 = merged cells)
-  paragraphs: Paragraph[];   // Detailed paragraph structure within cell
-  style?: any;               // Cell style (deprecated, kept for compatibility)
+  text: string; // Combined text from all paragraphs (for quick access)
+  colspan: number; // Column span (1 = no merge, >1 = merged cells)
+  rowspan: number; // Row span (1 = no merge, >1 = merged cells)
+  paragraphs: Paragraph[]; // Detailed paragraph structure within cell
+  style?: any; // Cell style (deprecated, kept for compatibility)
 }
 
 export interface Section {

@@ -11,7 +11,7 @@ import {
   Share2,
   Archive,
   Hash,
-  ArrowRight
+  ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/common/Button';
@@ -32,7 +32,7 @@ export function ProcessingResults({
   onReprocess,
   onShare,
   onViewBackup,
-  className
+  className,
 }: ProcessingResultsProps) {
   const { processingResult } = document;
 
@@ -80,8 +80,8 @@ export function ProcessingResults({
           isSuccess
             ? 'bg-green-500/5 border-green-500/20'
             : hasErrors
-            ? 'bg-red-500/5 border-red-500/20'
-            : 'bg-muted/30 border-border'
+              ? 'bg-red-500/5 border-red-500/20'
+              : 'bg-muted/30 border-border'
         )}
       >
         <div className="flex items-start gap-4">
@@ -98,12 +98,10 @@ export function ProcessingResults({
               {isSuccess
                 ? 'Processing Completed Successfully'
                 : hasErrors
-                ? 'Processing Failed'
-                : 'Processing Results'}
+                  ? 'Processing Failed'
+                  : 'Processing Results'}
             </h3>
-            <p className="text-muted-foreground">
-              {document.name}
-            </p>
+            <p className="text-muted-foreground">{document.name}</p>
 
             {processingResult.duration && (
               <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
@@ -126,23 +124,13 @@ export function ProcessingResults({
 
           <div className="flex flex-col gap-2">
             {onDownload && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onDownload}
-                className="gap-2"
-              >
+              <Button variant="outline" size="sm" onClick={onDownload} className="gap-2">
                 <Download className="w-4 h-4" />
                 Download
               </Button>
             )}
             {onShare && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onShare}
-                className="gap-2"
-              >
+              <Button variant="outline" size="sm" onClick={onShare} className="gap-2">
                 <Share2 className="w-4 h-4" />
                 Share
               </Button>
@@ -266,11 +254,7 @@ export function ProcessingResults({
               </div>
             </div>
             {onViewBackup && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onViewBackup}
-              >
+              <Button variant="ghost" size="sm" onClick={onViewBackup}>
                 View Backup
               </Button>
             )}
@@ -290,11 +274,7 @@ export function ProcessingResults({
         </div>
         <div className="flex items-center gap-2">
           {onReprocess && (
-            <Button
-              variant="outline"
-              onClick={onReprocess}
-              className="gap-2"
-            >
+            <Button variant="outline" onClick={onReprocess} className="gap-2">
               <RotateCcw className="w-4 h-4" />
               Reprocess
             </Button>

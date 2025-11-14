@@ -65,9 +65,12 @@ export const Sidebar = memo(function Sidebar() {
     }
   }, [logoClickCount]);
 
-  const handleNavClick = useCallback((path: string) => {
-    navigate(path);
-  }, [navigate]);
+  const handleNavClick = useCallback(
+    (path: string) => {
+      navigate(path);
+    },
+    [navigate]
+  );
 
   // Build navigation items with dynamic sessions
   const navItems = useMemo(() => {
@@ -99,10 +102,13 @@ export const Sidebar = memo(function Sidebar() {
     return items;
   }, [activeSessions, closeSession]);
 
-  const bottomItems = useMemo<NavItem[]>(() => [
-    { id: 'profile', label: 'Profile', icon: User, path: '/profile' },
-    { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
-  ], []);
+  const bottomItems = useMemo<NavItem[]>(
+    () => [
+      { id: 'profile', label: 'Profile', icon: User, path: '/profile' },
+      { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
+    ],
+    []
+  );
 
   const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;

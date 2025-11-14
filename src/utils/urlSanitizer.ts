@@ -17,14 +17,7 @@ import logger from './logger';
 /**
  * List of allowed URL protocols that are safe for href attributes
  */
-const ALLOWED_PROTOCOLS = [
-  'http:',
-  'https:',
-  'mailto:',
-  'tel:',
-  'ftp:',
-  'ftps:',
-] as const;
+const ALLOWED_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:', 'ftp:', 'ftps:'] as const;
 
 /**
  * List of dangerous protocols that should be blocked
@@ -125,7 +118,6 @@ export function sanitizeUrl(url: string | null | undefined): string {
 
     // Unknown protocol - reject for safety
     return '#';
-
   } catch (error) {
     // If any error occurs during parsing, return safe fallback
     logger.warn('[URL Sanitizer] Failed to parse URL:', url, error);

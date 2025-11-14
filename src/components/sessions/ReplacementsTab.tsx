@@ -38,13 +38,13 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
   useEffect(() => {
     if (!sessionId) return;
 
-    const session = sessions.find(s => s.id === sessionId);
+    const session = sessions.find((s) => s.id === sessionId);
     if (session?.replacements) {
       // Convert ReplacementRule[] to HyperlinkRule[] and TextRule[]
       const hyperlinks: HyperlinkRule[] = [];
       const texts: TextRule[] = [];
 
-      session.replacements.forEach(rule => {
+      session.replacements.forEach((rule) => {
         if (rule.type === 'hyperlink') {
           hyperlinks.push({
             id: rule.id,
@@ -64,8 +64,8 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
 
       setHyperlinkRules(hyperlinks);
       setTextRules(texts);
-      setReplaceHyperlinksEnabled(hyperlinks.some(r => r.enabled));
-      setReplaceTextEnabled(texts.some(r => r.enabled));
+      setReplaceHyperlinksEnabled(hyperlinks.some((r) => r.enabled));
+      setReplaceTextEnabled(texts.some((r) => r.enabled));
     }
   }, [sessionId, sessions]);
 
@@ -75,14 +75,14 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
 
     // Convert back to ReplacementRule[]
     const replacements: ReplacementRule[] = [
-      ...hyperlinks.map(h => ({
+      ...hyperlinks.map((h) => ({
         id: h.id,
         enabled: h.enabled,
         type: 'hyperlink' as const,
         pattern: h.oldHyperlink,
         replacement: h.newContentId,
       })),
-      ...texts.map(t => ({
+      ...texts.map((t) => ({
         id: t.id,
         enabled: t.enabled,
         type: 'text' as const,
@@ -99,7 +99,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
       id: `hyperlink-${Date.now()}`,
       enabled: true,
       oldHyperlink: '',
-      newContentId: ''
+      newContentId: '',
     };
     const updatedRules = [...hyperlinkRules, newRule];
     setHyperlinkRules(updatedRules);
@@ -113,21 +113,21 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
 
       if (!validation.valid) {
         // Store validation error to show to user
-        setUrlValidationErrors(prev => ({
+        setUrlValidationErrors((prev) => ({
           ...prev,
-          [id]: validation.error || 'Invalid URL'
+          [id]: validation.error || 'Invalid URL',
         }));
 
         // Still update the field value (for user to see and correct)
         // but don't save to session until valid
-        const updatedRules = hyperlinkRules.map(rule =>
+        const updatedRules = hyperlinkRules.map((rule) =>
           rule.id === id ? { ...rule, ...updates } : rule
         );
         setHyperlinkRules(updatedRules);
         return; // Don't save to session with invalid URL
       } else {
         // Clear any previous validation error for this field
-        setUrlValidationErrors(prev => {
+        setUrlValidationErrors((prev) => {
           const newErrors = { ...prev };
           delete newErrors[id];
           return newErrors;
@@ -136,7 +136,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
     }
 
     // If validation passed or update doesn't include newContentId, proceed normally
-    const updatedRules = hyperlinkRules.map(rule =>
+    const updatedRules = hyperlinkRules.map((rule) =>
       rule.id === id ? { ...rule, ...updates } : rule
     );
     setHyperlinkRules(updatedRules);
@@ -144,7 +144,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
   };
 
   const removeHyperlinkRule = (id: string) => {
-    const updatedRules = hyperlinkRules.filter(rule => rule.id !== id);
+    const updatedRules = hyperlinkRules.filter((rule) => rule.id !== id);
     setHyperlinkRules(updatedRules);
     saveRulesToSession(updatedRules, textRules);
   };
@@ -154,7 +154,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
       id: `text-${Date.now()}`,
       enabled: true,
       oldText: '',
-      newText: ''
+      newText: '',
     };
     const updatedRules = [...textRules, newRule];
     setTextRules(updatedRules);
@@ -162,15 +162,13 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
   };
 
   const updateTextRule = (id: string, updates: Partial<TextRule>) => {
-    const updatedRules = textRules.map(rule =>
-      rule.id === id ? { ...rule, ...updates } : rule
-    );
+    const updatedRules = textRules.map((rule) => (rule.id === id ? { ...rule, ...updates } : rule));
     setTextRules(updatedRules);
     saveRulesToSession(hyperlinkRules, updatedRules);
   };
 
   const removeTextRule = (id: string) => {
-    const updatedRules = textRules.filter(rule => rule.id !== id);
+    const updatedRules = textRules.filter((rule) => rule.id !== id);
     setTextRules(updatedRules);
     saveRulesToSession(hyperlinkRules, updatedRules);
   };
@@ -196,7 +194,9 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
             </button>
             <div>
               <h3 className="font-medium">Replace Hyperlinks</h3>
-              <p className="text-sm text-muted-foreground">Replace hyperlink targets based on rules</p>
+              <p className="text-sm text-muted-foreground">
+                Replace hyperlink targets based on rules
+              </p>
             </div>
           </div>
           <Button
@@ -240,16 +240,20 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                             <input
                               type="checkbox"
                               checked={rule.enabled}
-                              onChange={(e) => updateHyperlinkRule(rule.id, { enabled: e.target.checked })}
+                              onChange={(e) =>
+                                updateHyperlinkRule(rule.id, { enabled: e.target.checked })
+                              }
                               disabled={!replaceHyperlinksEnabled}
                               className="sr-only"
                             />
-                            <div className={cn(
-                              'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                              rule.enabled && replaceHyperlinksEnabled
-                                ? 'bg-primary border-primary checkbox-checked'
-                                : 'border-border'
-                            )}>
+                            <div
+                              className={cn(
+                                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                                rule.enabled && replaceHyperlinksEnabled
+                                  ? 'bg-primary border-primary checkbox-checked'
+                                  : 'border-border'
+                              )}
+                            >
                               {rule.enabled && replaceHyperlinksEnabled && (
                                 <Check className="w-3 h-3 text-white checkbox-checkmark" />
                               )}
@@ -261,7 +265,9 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                         <input
                           type="text"
                           value={rule.oldHyperlink}
-                          onChange={(e) => updateHyperlinkRule(rule.id, { oldHyperlink: e.target.value })}
+                          onChange={(e) =>
+                            updateHyperlinkRule(rule.id, { oldHyperlink: e.target.value })
+                          }
                           disabled={!replaceHyperlinksEnabled}
                           placeholder="Enter old hyperlink text"
                           className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50"
@@ -272,14 +278,16 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                           <input
                             type="text"
                             value={rule.newContentId}
-                            onChange={(e) => updateHyperlinkRule(rule.id, { newContentId: e.target.value })}
+                            onChange={(e) =>
+                              updateHyperlinkRule(rule.id, { newContentId: e.target.value })
+                            }
                             disabled={!replaceHyperlinksEnabled}
                             placeholder="Enter new content ID"
                             className={cn(
-                              "w-full px-3 py-1.5 text-sm border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50",
+                              'w-full px-3 py-1.5 text-sm border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50',
                               urlValidationErrors[rule.id]
-                                ? "border-red-500 focus:border-red-500"
-                                : "border-border"
+                                ? 'border-red-500 focus:border-red-500'
+                                : 'border-border'
                             )}
                           />
                           {urlValidationErrors[rule.id] && (
@@ -359,10 +367,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -20 }}
-                      className={cn(
-                        'border-t border-border',
-                        !replaceTextEnabled && 'opacity-50'
-                      )}
+                      className={cn('border-t border-border', !replaceTextEnabled && 'opacity-50')}
                     >
                       <td className="px-4 py-3">
                         <label className="flex items-center cursor-pointer">
@@ -370,16 +375,20 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                             <input
                               type="checkbox"
                               checked={rule.enabled}
-                              onChange={(e) => updateTextRule(rule.id, { enabled: e.target.checked })}
+                              onChange={(e) =>
+                                updateTextRule(rule.id, { enabled: e.target.checked })
+                              }
                               disabled={!replaceTextEnabled}
                               className="sr-only"
                             />
-                            <div className={cn(
-                              'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                              rule.enabled && replaceTextEnabled
-                                ? 'bg-primary border-primary checkbox-checked'
-                                : 'border-border'
-                            )}>
+                            <div
+                              className={cn(
+                                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                                rule.enabled && replaceTextEnabled
+                                  ? 'bg-primary border-primary checkbox-checked'
+                                  : 'border-border'
+                              )}
+                            >
                               {rule.enabled && replaceTextEnabled && (
                                 <Check className="w-3 h-3 text-white checkbox-checkmark" />
                               )}

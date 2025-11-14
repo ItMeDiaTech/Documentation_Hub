@@ -633,10 +633,13 @@ export class HyperlinkService {
                   const rawStatus = result.Status?.trim() || 'Active';
                   // Normalize status to match HyperlinkApiResult type
                   const normalizedStatus: HyperlinkApiResult['status'] =
-                    rawStatus.toLowerCase() === 'deprecated' ? 'deprecated' :
-                    rawStatus.toLowerCase() === 'moved' ? 'moved' :
-                    rawStatus.toLowerCase() === 'not_found' ? 'not_found' :
-                    'active';
+                    rawStatus.toLowerCase() === 'deprecated'
+                      ? 'deprecated'
+                      : rawStatus.toLowerCase() === 'moved'
+                        ? 'moved'
+                        : rawStatus.toLowerCase() === 'not_found'
+                          ? 'not_found'
+                          : 'active';
 
                   const processed: HyperlinkApiResult = {
                     url: '', // Will be constructed from Document_ID
