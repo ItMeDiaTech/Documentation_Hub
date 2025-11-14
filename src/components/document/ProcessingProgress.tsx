@@ -8,7 +8,7 @@ import {
   Clock,
   Activity,
   Database,
-  Shield
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -47,36 +47,36 @@ const defaultSteps: ProcessingStep[] = [
     name: 'Creating Backup',
     description: 'Saving original document',
     status: 'pending',
-    icon: <Database className="w-4 h-4" />
+    icon: <Database className="w-4 h-4" />,
   },
   {
     id: 'validation',
     name: 'Validating Document',
     description: 'Checking document structure',
     status: 'pending',
-    icon: <Shield className="w-4 h-4" />
+    icon: <Shield className="w-4 h-4" />,
   },
   {
     id: 'scanning',
     name: 'Scanning Hyperlinks',
     description: 'Finding all hyperlinks',
     status: 'pending',
-    icon: <Activity className="w-4 h-4" />
+    icon: <Activity className="w-4 h-4" />,
   },
   {
     id: 'processing',
     name: 'Processing Hyperlinks',
     description: 'Applying modifications',
     status: 'pending',
-    icon: <Link className="w-4 h-4" />
+    icon: <Link className="w-4 h-4" />,
   },
   {
     id: 'saving',
     name: 'Saving Document',
     description: 'Writing changes to file',
     status: 'pending',
-    icon: <FileText className="w-4 h-4" />
-  }
+    icon: <FileText className="w-4 h-4" />,
+  },
 ];
 
 export function ProcessingProgress({
@@ -87,7 +87,7 @@ export function ProcessingProgress({
   statistics,
   estimatedTimeRemaining,
   onCancel,
-  className
+  className,
 }: ProcessingProgressProps) {
   const [animatedProgress, setAnimatedProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -98,7 +98,7 @@ export function ProcessingProgress({
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setElapsedTime(prev => prev + 1);
+      setElapsedTime((prev) => prev + 1);
     }, 1000);
 
     return () => clearInterval(interval);
@@ -113,8 +113,8 @@ export function ProcessingProgress({
 
   const getStepStatus = (step: ProcessingStep) => {
     if (currentStep === step.id) return 'processing';
-    const currentIndex = steps.findIndex(s => s.id === currentStep);
-    const stepIndex = steps.findIndex(s => s.id === step.id);
+    const currentIndex = steps.findIndex((s) => s.id === currentStep);
+    const stepIndex = steps.findIndex((s) => s.id === step.id);
     if (currentIndex > stepIndex) return 'completed';
     return step.status;
   };
@@ -147,9 +147,7 @@ export function ProcessingProgress({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-lg">Processing Document</h3>
-            <p className="text-sm text-muted-foreground truncate max-w-md">
-              {documentName}
-            </p>
+            <p className="text-sm text-muted-foreground truncate max-w-md">{documentName}</p>
           </div>
           {onCancel && (
             <button
@@ -221,9 +219,7 @@ export function ProcessingProgress({
                   )}
                 </div>
                 <p className="text-sm text-muted-foreground">{step.description}</p>
-                {step.error && (
-                  <p className="text-sm text-destructive">{step.error}</p>
-                )}
+                {step.error && <p className="text-sm text-destructive">{step.error}</p>}
                 {isActive && step.progress !== undefined && (
                   <div className="mt-2">
                     <div className="h-1 bg-muted rounded-full overflow-hidden">
@@ -257,21 +253,15 @@ export function ProcessingProgress({
             <p className="text-xs text-muted-foreground">Total Elements</p>
           </div>
           <div className="text-center p-3 bg-muted/30 rounded-lg">
-            <p className="text-lg font-bold text-primary">
-              {statistics.processedElements}
-            </p>
+            <p className="text-lg font-bold text-primary">{statistics.processedElements}</p>
             <p className="text-xs text-muted-foreground">Processed</p>
           </div>
           <div className="text-center p-3 bg-muted/30 rounded-lg">
-            <p className="text-lg font-bold text-green-500">
-              {statistics.modifiedElements}
-            </p>
+            <p className="text-lg font-bold text-green-500">{statistics.modifiedElements}</p>
             <p className="text-xs text-muted-foreground">Modified</p>
           </div>
           <div className="text-center p-3 bg-muted/30 rounded-lg">
-            <p className="text-lg font-bold text-blue-500">
-              {statistics.hyperlinksProcessed || 0}
-            </p>
+            <p className="text-lg font-bold text-blue-500">{statistics.hyperlinksProcessed || 0}</p>
             <p className="text-xs text-muted-foreground">Hyperlinks</p>
           </div>
         </div>
@@ -302,7 +292,7 @@ export function ProcessingProgress({
           transition={{
             duration: 20,
             repeat: Infinity,
-            ease: 'linear'
+            ease: 'linear',
           }}
         >
           <div className="w-full h-full bg-gradient-to-r from-primary to-transparent" />

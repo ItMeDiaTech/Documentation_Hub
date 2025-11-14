@@ -667,9 +667,9 @@ export class WordDocumentProcessor {
 
         this.log.info(
           `Applied clean styles: H1=${h1Count}, H2=${h2Count}, H3=${h3Count}, ` +
-          `NumList=${numListCount}, Bullet=${bulletListCount}, TOC=${tocCount}, ` +
-          `TOD=${todCount}, Caution=${cautionCount}, CellHeader=${cellHeaderCount}, ` +
-          `Hyperlink=${hyperlinkCount}, Normal=${normalCount}, Cleaned=${cleanedCount}`
+            `NumList=${numListCount}, Bullet=${bulletListCount}, TOC=${tocCount}, ` +
+            `TOD=${todCount}, Caution=${cautionCount}, CellHeader=${cellHeaderCount}, ` +
+            `Hyperlink=${hyperlinkCount}, Normal=${normalCount}, Cleaned=${cleanedCount}`
         );
       }
 

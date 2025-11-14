@@ -43,12 +43,15 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
     }
   }, [document, data]);
 
-  const handleProcess = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (data.onProcessDocument) {
-      data.onProcessDocument(document);
-    }
-  }, [document, data]);
+  const handleProcess = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (data.onProcessDocument) {
+        data.onProcessDocument(document);
+      }
+    },
+    [document, data]
+  );
 
   const getStatusIcon = () => {
     switch (document.status) {
@@ -75,7 +78,8 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
     return mb < 1 ? `${(bytes / 1024).toFixed(1)} KB` : `${mb.toFixed(1)} MB`;
   };
 
-  const hasChanges = document.processingResult?.changes && document.processingResult.changes.length > 0;
+  const hasChanges =
+    document.processingResult?.changes && document.processingResult.changes.length > 0;
   const changeCount = document.processingResult?.changes?.length || 0;
 
   return (
@@ -85,10 +89,10 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
         whileTap={{ scale: 0.995 }}
         onClick={handleClick}
         className={cn(
-          "mx-2 p-3 rounded-lg border cursor-pointer transition-all",
-          "hover:shadow-sm hover:border-primary/20",
-          isSelected && "border-primary bg-primary/5",
-          !isSelected && "border-border bg-card"
+          'mx-2 p-3 rounded-lg border cursor-pointer transition-all',
+          'hover:shadow-sm hover:border-primary/20',
+          isSelected && 'border-primary bg-primary/5',
+          !isSelected && 'border-border bg-card'
         )}
       >
         <div className="flex items-start justify-between gap-3">
@@ -139,33 +143,18 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
           {data.showActions && (
             <div className="flex items-center gap-1">
               {document.status === 'pending' && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleProcess}
-                  className="h-7 px-2"
-                >
+                <Button size="sm" variant="ghost" onClick={handleProcess} className="h-7 px-2">
                   Process
                 </Button>
               )}
 
               {document.status === 'completed' && (
                 <>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 w-7 p-0"
-                    title="Open document"
-                  >
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Open document">
                     <ExternalLink className="w-3.5 h-3.5" />
                   </Button>
 
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 w-7 p-0"
-                    title="Download"
-                  >
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Download">
                     <Download className="w-3.5 h-3.5" />
                   </Button>
                 </>
@@ -200,27 +189,30 @@ export const VirtualDocumentList = memo(function VirtualDocumentList({
   showActions = true,
 }: VirtualDocumentListProps) {
   // Calculate item size based on content
-  const getItemSize = useCallback((index: number) => {
-    const document = documents[index];
-    let baseHeight = 80; // Base height for minimal content
+  const getItemSize = useCallback(
+    (index: number) => {
+      const document = documents[index];
+      let baseHeight = 80; // Base height for minimal content
 
-    // Add height for error messages
-    if (document.status === 'error' && document.errors && document.errors.length > 0) {
-      baseHeight += 20;
-    }
+      // Add height for error messages
+      if (document.status === 'error' && document.errors && document.errors.length > 0) {
+        baseHeight += 20;
+      }
 
-    // Add height for processing results
-    if (document.processingResult?.changes?.length) {
-      baseHeight += 30;
-    }
+      // Add height for processing results
+      if (document.processingResult?.changes?.length) {
+        baseHeight += 30;
+      }
 
-    // Add height for progress bar
-    if (document.status === 'processing') {
-      baseHeight += 20;
-    }
+      // Add height for progress bar
+      if (document.status === 'processing') {
+        baseHeight += 20;
+      }
 
-    return baseHeight;
-  }, [documents]);
+      return baseHeight;
+    },
+    [documents]
+  );
 
   // Data passed to each row
   const itemData = {

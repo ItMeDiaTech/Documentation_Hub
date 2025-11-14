@@ -52,7 +52,7 @@ const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
   };
 
   const documentCount = session.documents?.length || 0;
-  const processedCount = session.documents?.filter(d => d.status === 'completed').length || 0;
+  const processedCount = session.documents?.filter((d) => d.status === 'completed').length || 0;
 
   return (
     <div style={style}>
@@ -61,10 +61,10 @@ const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
         whileTap={{ scale: 0.99 }}
         onClick={handleClick}
         className={cn(
-          "mx-2 p-4 rounded-lg border cursor-pointer transition-all",
-          "hover:shadow-md hover:border-primary/30",
-          isSelected && "border-primary bg-primary/5",
-          !isSelected && "border-border bg-card"
+          'mx-2 p-4 rounded-lg border cursor-pointer transition-all',
+          'hover:shadow-md hover:border-primary/30',
+          isSelected && 'border-primary bg-primary/5',
+          !isSelected && 'border-border bg-card'
         )}
       >
         <div className="flex items-start justify-between">

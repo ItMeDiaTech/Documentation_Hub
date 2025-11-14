@@ -80,10 +80,7 @@ export function sanitizeHyperlinkText(text: string): string {
  * // Returns: "Normal Text"
  * ```
  */
-export function sanitizeHyperlinkTextWithFallback(
-  text: string,
-  fallback?: string
-): string {
+export function sanitizeHyperlinkTextWithFallback(text: string, fallback?: string): string {
   const sanitized = sanitizeHyperlinkText(text);
 
   if (!sanitized && fallback) {

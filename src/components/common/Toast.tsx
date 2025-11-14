@@ -33,8 +33,7 @@ const Toast = React.forwardRef<
       className={cn(
         'group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-6 pr-8 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full',
         variant === 'default' && 'border bg-background text-foreground',
-        variant === 'destructive' &&
-          'destructive group border-red-500 bg-red-500 text-white',
+        variant === 'destructive' && 'destructive group border-red-500 bg-red-500 text-white',
         variant === 'success' && 'border-green-500 bg-green-500 text-white',
         className
       )}
@@ -81,11 +80,7 @@ const ToastTitle = React.forwardRef<
   React.ElementRef<typeof ToastPrimitives.Title>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitives.Title>
 >(({ className, ...props }, ref) => (
-  <ToastPrimitives.Title
-    ref={ref}
-    className={cn('text-sm font-semibold', className)}
-    {...props}
-  />
+  <ToastPrimitives.Title ref={ref} className={cn('text-sm font-semibold', className)} {...props} />
 ));
 ToastTitle.displayName = ToastPrimitives.Title.displayName;
 
@@ -130,9 +125,7 @@ export function Toaster({ toasts, onDismiss }: ToasterProps) {
         <Toast key={toast.id} variant={toast.variant} duration={toast.duration}>
           <div className="grid gap-1">
             <ToastTitle>{toast.title}</ToastTitle>
-            {toast.description && (
-              <ToastDescription>{toast.description}</ToastDescription>
-            )}
+            {toast.description && <ToastDescription>{toast.description}</ToastDescription>}
           </div>
           <ToastClose onClick={() => onDismiss(toast.id)} />
         </Toast>

@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/common/Card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { AlertCircle, CheckCircle2, Upload, Shield, Download, Info, Trash2 } from 'lucide-react';
@@ -18,8 +24,13 @@ interface Certificate {
 export function CertificateManager() {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [isZscalerDetected, setIsZscalerDetected] = useState(false);
-  const [certificateStatus, setCertificateStatus] = useState<'checking' | 'configured' | 'not-configured' | 'error'>('checking');
-  const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error' | 'info' | null; message: string }>({ type: null, message: '' });
+  const [certificateStatus, setCertificateStatus] = useState<
+    'checking' | 'configured' | 'not-configured' | 'error'
+  >('checking');
+  const [importStatus, setImportStatus] = useState<{
+    type: 'success' | 'error' | 'info' | null;
+    message: string;
+  }>({ type: null, message: '' });
   const [currentCertPath, setCurrentCertPath] = useState<string>('');
 
   // Timeout refs for cleanup
@@ -101,20 +112,20 @@ export function CertificateManager() {
       if (result.success) {
         setImportStatus({
           type: 'success',
-          message: `Certificate imported successfully: ${result.name}`
+          message: `Certificate imported successfully: ${result.name}`,
         });
         setCertificateStatus('configured');
         loadExistingCertificates();
       } else {
         setImportStatus({
           type: 'error',
-          message: result.error || 'Failed to import certificate'
+          message: result.error || 'Failed to import certificate',
         });
       }
     } catch (error) {
       setImportStatus({
         type: 'error',
-        message: 'Error importing certificate'
+        message: 'Error importing certificate',
       });
     }
 
@@ -131,7 +142,9 @@ export function CertificateManager() {
   const handleExportFromBrowser = async () => {
     try {
       // Open instructions in browser
-      await window.electronAPI.openExternal('https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Export-Certificate-From-Browser');
+      await window.electronAPI.openExternal(
+        'https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Export-Certificate-From-Browser'
+      );
     } catch (error) {
       logger.error('Error opening browser guide:', error);
     }
@@ -146,20 +159,20 @@ export function CertificateManager() {
       if (result.success) {
         setImportStatus({
           type: 'success',
-          message: `Found and configured ${result.count} certificate(s)`
+          message: `Found and configured ${result.count} certificate(s)`,
         });
         setCertificateStatus('configured');
         loadExistingCertificates();
       } else {
         setImportStatus({
           type: 'error',
-          message: 'No Zscaler certificates found. You may need to export manually.'
+          message: 'No Zscaler certificates found. You may need to export manually.',
         });
       }
     } catch (error) {
       setImportStatus({
         type: 'error',
-        message: 'Error detecting certificates'
+        message: 'Error detecting certificates',
       });
     }
 
@@ -192,18 +205,18 @@ export function CertificateManager() {
       if (result.success) {
         setImportStatus({
           type: 'success',
-          message: 'Connection successful! Updates should work now.'
+          message: 'Connection successful! Updates should work now.',
         });
       } else {
         setImportStatus({
           type: 'error',
-          message: `Connection failed: ${result.error}`
+          message: `Connection failed: ${result.error}`,
         });
       }
     } catch (error) {
       setImportStatus({
         type: 'error',
-        message: 'Error testing connection'
+        message: 'Error testing connection',
       });
     }
 
@@ -227,7 +240,8 @@ export function CertificateManager() {
               <CardTitle className="text-lg">Zscaler Detected</CardTitle>
             </div>
             <CardDescription>
-              Zscaler is performing SSL inspection on your network. Certificate configuration is required for automatic updates.
+              Zscaler is performing SSL inspection on your network. Certificate configuration is
+              required for automatic updates.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -252,29 +266,31 @@ export function CertificateManager() {
               )}
               <div>
                 <p className="font-medium">
-                  {certificateStatus === 'configured' ? 'Certificate Configured' : 'Certificate Not Configured'}
+                  {certificateStatus === 'configured'
+                    ? 'Certificate Configured'
+                    : 'Certificate Not Configured'}
                 </p>
                 {currentCertPath && (
                   <p className="text-sm text-muted-foreground">{currentCertPath}</p>
                 )}
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleTestConnection}
-            >
+            <Button variant="outline" size="sm" onClick={handleTestConnection}>
               Test Connection
             </Button>
           </div>
 
           {/* Import Status Message */}
           {importStatus.type && (
-            <div className={`p-3 rounded-lg flex items-center gap-2 ${
-              importStatus.type === 'success' ? 'bg-green-50 text-green-700 dark:bg-green-950/20' :
-              importStatus.type === 'error' ? 'bg-red-50 text-red-700 dark:bg-red-950/20' :
-              'bg-blue-50 text-blue-700 dark:bg-blue-950/20'
-            }`}>
+            <div
+              className={`p-3 rounded-lg flex items-center gap-2 ${
+                importStatus.type === 'success'
+                  ? 'bg-green-50 text-green-700 dark:bg-green-950/20'
+                  : importStatus.type === 'error'
+                    ? 'bg-red-50 text-red-700 dark:bg-red-950/20'
+                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/20'
+              }`}
+            >
               <Info className="h-4 w-4" />
               <span className="text-sm">{importStatus.message}</span>
             </div>
@@ -282,29 +298,17 @@ export function CertificateManager() {
 
           {/* Actions */}
           <div className="flex gap-2">
-            <Button
-              onClick={handleAutoDetect}
-              variant="default"
-              className="flex-1"
-            >
+            <Button onClick={handleAutoDetect} variant="default" className="flex-1">
               <Shield className="mr-2 h-4 w-4" />
               Auto-Detect Certificates
             </Button>
-            <Button
-              onClick={handleImportCertificate}
-              variant="outline"
-              className="flex-1"
-            >
+            <Button onClick={handleImportCertificate} variant="outline" className="flex-1">
               <Upload className="mr-2 h-4 w-4" />
               Import Certificate
             </Button>
           </div>
 
-          <Button
-            onClick={handleExportFromBrowser}
-            variant="ghost"
-            className="w-full"
-          >
+          <Button onClick={handleExportFromBrowser} variant="ghost" className="w-full">
             <Download className="mr-2 h-4 w-4" />
             How to Export Certificate from Browser
           </Button>
@@ -316,14 +320,15 @@ export function CertificateManager() {
         <Card>
           <CardHeader>
             <CardTitle>Installed Certificates</CardTitle>
-            <CardDescription>
-              Certificates currently available to the application
-            </CardDescription>
+            <CardDescription>Certificates currently available to the application</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {certificates.map((cert, index) => (
-                <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 rounded-lg border"
+                >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-medium">{cert.name}</p>
@@ -342,7 +347,9 @@ export function CertificateManager() {
                       <p className="text-sm text-muted-foreground">Issuer: {cert.issuer}</p>
                     )}
                     {cert.validUntil && (
-                      <p className="text-sm text-muted-foreground">Valid until: {cert.validUntil}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Valid until: {cert.validUntil}
+                      </p>
                     )}
                   </div>
                   <Button
@@ -390,8 +397,9 @@ export function CertificateManager() {
 
             <div className="mt-4 p-3 rounded-lg bg-muted">
               <p className="text-xs text-muted-foreground">
-                <strong>Note:</strong> If you continue to have issues, contact your IT department and request that
-                *.github.com and *.githubusercontent.com be bypassed from SSL inspection.
+                <strong>Note:</strong> If you continue to have issues, contact your IT department
+                and request that *.github.com and *.githubusercontent.com be bypassed from SSL
+                inspection.
               </p>
             </div>
           </div>

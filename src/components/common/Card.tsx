@@ -22,7 +22,8 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
         className={cn(
           'rounded-lg',
           variants[variant],
-          interactive && 'cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
+          interactive &&
+            'cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
           className
         )}
         whileHover={interactive ? { scale: 1.02 } : undefined}
@@ -58,11 +59,12 @@ const CardTitle = forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHead
 
 CardTitle.displayName = 'CardTitle';
 
-const CardDescription = forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
-  ({ className, ...props }, ref) => (
-    <p ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
-  )
-);
+const CardDescription = forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => (
+  <p ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
+));
 
 CardDescription.displayName = 'CardDescription';
 

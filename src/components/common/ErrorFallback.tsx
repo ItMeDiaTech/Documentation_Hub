@@ -46,9 +46,7 @@ export function ErrorFallback({ error, errorInfo, onReset }: ErrorFallbackProps)
             <AlertTriangle className="h-8 w-8 text-destructive" />
           </div>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-foreground">
-              Oops! Something went wrong
-            </h1>
+            <h1 className="text-2xl font-bold text-foreground">Oops! Something went wrong</h1>
             <p className="mt-2 text-muted-foreground">
               The application encountered an unexpected error. Don't worry, your data is safe.
             </p>
@@ -58,30 +56,20 @@ export function ErrorFallback({ error, errorInfo, onReset }: ErrorFallbackProps)
         {/* Error Details (collapsible) */}
         {error && (
           <details className="mb-6 rounded-md border border-border bg-muted/30 p-4">
-            <summary className="cursor-pointer font-medium text-foreground">
-              Error Details
-            </summary>
+            <summary className="cursor-pointer font-medium text-foreground">Error Details</summary>
             <div className="mt-3 space-y-2">
               <div className="rounded bg-destructive/5 p-3">
-                <p className="text-sm font-mono text-destructive">
-                  {error.toString()}
-                </p>
+                <p className="text-sm font-mono text-destructive">{error.toString()}</p>
               </div>
               {error.stack && (
                 <div className="max-h-48 overflow-y-auto rounded bg-muted p-3">
-                  <pre className="text-xs text-muted-foreground">
-                    {error.stack}
-                  </pre>
+                  <pre className="text-xs text-muted-foreground">{error.stack}</pre>
                 </div>
               )}
               {errorInfo?.componentStack && (
                 <div className="max-h-48 overflow-y-auto rounded bg-muted p-3">
-                  <p className="mb-2 text-xs font-semibold text-foreground">
-                    Component Stack:
-                  </p>
-                  <pre className="text-xs text-muted-foreground">
-                    {errorInfo.componentStack}
-                  </pre>
+                  <p className="mb-2 text-xs font-semibold text-foreground">Component Stack:</p>
+                  <pre className="text-xs text-muted-foreground">{errorInfo.componentStack}</pre>
                 </div>
               )}
             </div>
@@ -90,9 +78,7 @@ export function ErrorFallback({ error, errorInfo, onReset }: ErrorFallbackProps)
 
         {/* Recovery Actions */}
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            What would you like to do?
-          </p>
+          <p className="text-sm text-muted-foreground">What would you like to do?</p>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {onReset && (
@@ -122,8 +108,8 @@ export function ErrorFallback({ error, errorInfo, onReset }: ErrorFallbackProps)
         {/* Additional Help */}
         <div className="mt-6 rounded-md bg-muted/50 p-4">
           <p className="text-sm text-muted-foreground">
-            <strong>Tip:</strong> If this error persists, try restarting the application or
-            clearing your browser cache. Your session data is automatically saved.
+            <strong>Tip:</strong> If this error persists, try restarting the application or clearing
+            your browser cache. Your session data is automatically saved.
           </p>
         </div>
       </div>

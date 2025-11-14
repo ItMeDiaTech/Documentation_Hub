@@ -163,7 +163,7 @@ describe('DocXMLaterProcessor - Comprehensive Hyperlink Coverage', () => {
 
     // Verify all 4 hyperlinks found
     expect(hyperlinks).toHaveLength(4);
-    expect(hyperlinks.map(h => h.url).sort()).toEqual([
+    expect(hyperlinks.map((h) => h.url).sort()).toEqual([
       'https://body.com',
       'https://footer.com',
       'https://header.com',
@@ -191,8 +191,8 @@ describe('DocXMLaterProcessor - Comprehensive Hyperlink Coverage', () => {
 
     // Extract and verify all URLs changed
     const hyperlinks = await processor.extractHyperlinks(doc);
-    expect(hyperlinks.every(h => h.url?.includes('new'))).toBe(true);
-    expect(hyperlinks.every(h => !h.url?.includes('old'))).toBe(true);
+    expect(hyperlinks.every((h) => h.url?.includes('new'))).toBe(true);
+    expect(hyperlinks.every((h) => !h.url?.includes('old'))).toBe(true);
   });
 });
 ```
@@ -205,9 +205,9 @@ describe('DocXMLaterProcessor - Performance', () => {
     // Create document with 500 hyperlinks
     const doc = Document.create();
     for (let i = 0; i < 500; i++) {
-      doc.createParagraph().addHyperlink(
-        Hyperlink.createExternal(`https://example${i}.com`, `Link ${i}`)
-      );
+      doc
+        .createParagraph()
+        .addHyperlink(Hyperlink.createExternal(`https://example${i}.com`, `Link ${i}`));
     }
 
     const processor = new DocXMLaterProcessor();
@@ -226,9 +226,9 @@ describe('DocXMLaterProcessor - Performance', () => {
     // Create document with 500 hyperlinks
     const doc = Document.create();
     for (let i = 0; i < 500; i++) {
-      doc.createParagraph().addHyperlink(
-        Hyperlink.createExternal(`https://old${i}.com`, `Link ${i}`)
-      );
+      doc
+        .createParagraph()
+        .addHyperlink(Hyperlink.createExternal(`https://old${i}.com`, `Link ${i}`));
     }
 
     const processor = new DocXMLaterProcessor();

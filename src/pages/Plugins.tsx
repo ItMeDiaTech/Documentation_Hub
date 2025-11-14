@@ -143,32 +143,25 @@ export function Plugins() {
     const matchesSearch =
       plugin.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       plugin.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory =
-      selectedCategory === 'all' || plugin.category === selectedCategory;
+    const matchesCategory = selectedCategory === 'all' || plugin.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
   const handleToggle = (pluginId: string) => {
     setPlugins((prev) =>
-      prev.map((p) =>
-        p.id === pluginId ? { ...p, isEnabled: !p.isEnabled } : p
-      )
+      prev.map((p) => (p.id === pluginId ? { ...p, isEnabled: !p.isEnabled } : p))
     );
   };
 
   const handleInstall = (pluginId: string) => {
     setPlugins((prev) =>
-      prev.map((p) =>
-        p.id === pluginId ? { ...p, isInstalled: true, isEnabled: true } : p
-      )
+      prev.map((p) => (p.id === pluginId ? { ...p, isInstalled: true, isEnabled: true } : p))
     );
   };
 
   const handleUninstall = (pluginId: string) => {
     setPlugins((prev) =>
-      prev.map((p) =>
-        p.id === pluginId ? { ...p, isInstalled: false, isEnabled: false } : p
-      )
+      prev.map((p) => (p.id === pluginId ? { ...p, isInstalled: false, isEnabled: false } : p))
     );
   };
 
@@ -242,9 +235,7 @@ export function Plugins() {
               </div>
               <div>
                 <p className="text-sm text-foreground mb-1">Installed</p>
-                <p className="text-2xl font-bold">
-                  {plugins.filter((p) => p.isInstalled).length}
-                </p>
+                <p className="text-2xl font-bold">{plugins.filter((p) => p.isInstalled).length}</p>
               </div>
             </div>
           </CardContent>
@@ -258,9 +249,7 @@ export function Plugins() {
               </div>
               <div>
                 <p className="text-sm text-foreground mb-1">Active</p>
-                <p className="text-2xl font-bold">
-                  {plugins.filter((p) => p.isEnabled).length}
-                </p>
+                <p className="text-2xl font-bold">{plugins.filter((p) => p.isEnabled).length}</p>
               </div>
             </div>
           </CardContent>
@@ -298,21 +287,27 @@ export function Plugins() {
             const CategoryIcon = getCategoryIcon(plugin.category);
             return (
               <motion.div key={plugin.id} variants={itemVariants}>
-                <Card className={cn(
-                  'transition-all duration-150 hover:border-primary/50',
-                  plugin.isEnabled && 'border-primary/30 bg-accent/20'
-                )}>
+                <Card
+                  className={cn(
+                    'transition-all duration-150 hover:border-primary/50',
+                    plugin.isEnabled && 'border-primary/30 bg-accent/20'
+                  )}
+                >
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-4 flex-1">
-                        <div className={cn(
-                          'p-3 rounded-lg',
-                          plugin.isEnabled ? 'bg-primary/10' : 'bg-muted'
-                        )}>
-                          <CategoryIcon className={cn(
-                            'w-6 h-6',
-                            plugin.isEnabled ? 'text-primary' : 'text-muted-foreground'
-                          )} />
+                        <div
+                          className={cn(
+                            'p-3 rounded-lg',
+                            plugin.isEnabled ? 'bg-primary/10' : 'bg-muted'
+                          )}
+                        >
+                          <CategoryIcon
+                            className={cn(
+                              'w-6 h-6',
+                              plugin.isEnabled ? 'text-primary' : 'text-muted-foreground'
+                            )}
+                          />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
@@ -321,9 +316,7 @@ export function Plugins() {
                               <Shield className="w-4 h-4 text-blue-500" aria-label="Verified" />
                             )}
                           </div>
-                          <CardDescription className="mb-3">
-                            {plugin.description}
-                          </CardDescription>
+                          <CardDescription className="mb-3">{plugin.description}</CardDescription>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1">
                               <Star className="w-3.5 h-3.5 fill-yellow-500 text-yellow-500" />
