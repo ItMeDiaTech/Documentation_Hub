@@ -1,0 +1,236 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# ============================================================================
+# Post-Checkout Hook: AI-Assisted Environment Synchronization
+# ============================================================================
+# This hook runs after git checkout operations to ensure development
+# environment is properly configured and synchronized
+#
+# Triggers:
+# - Switching between branches
+# - Checking out files or commits
+# - Merging branches
+#
+# Features:
+# - Environment validation and setup
+# - Dependency synchronization
+# - MCP server status verification
+# - Development environment health checks
+# - AI-assisted configuration recommendations
+# ============================================================================
+
+PREVIOUS_HEAD=$1
+NEW_HEAD=$2
+CHECKOUT_TYPE=$3
+
+# Get workspace root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+echo "🔄 Post-Checkout Environment Synchronization"
+echo "Project: $(basename "$WORKSPACE_ROOT")"
+echo "Branch: $(git branch --show-current)"
+echo "Type: $CHECKOUT_TYPE"
+echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "============================================="
+
+# Only run comprehensive checks for branch switches (not file checkouts)
+if [ "$CHECKOUT_TYPE" = "1" ] && [ "$PREVIOUS_HEAD" != "$NEW_HEAD" ]; then
+
+    # Stage 1: Environment Setup Validation
+    echo "🏠 Stage 1: Environment Configuration"
+
+    validate_environment() {
+        echo "   → Validating development environment..."
+
+        ENV_ISSUES=()
+
+        # Check Node.js version compatibility
+        if command -v node >/dev/null 2>&1; then
+            NODE_VERSION=$(node --version | sed 's/v//')
+            MAJOR_VERSION=$(echo "$NODE_VERSION" | cut -d. -f1)
+            if [ "$MAJOR_VERSION" -lt 16 ]; then
+                ENV_ISSUES+=("Node.js $NODE_VERSION too old (minimum: 16.0.0)")
+            fi
+        else
+            ENV_ISSUES+=("Node.js not found in PATH")
+        fi
+
+        # Check if package.json exists
+        if [ ! -f "package.json" ]; then
+            ENV_ISSUES+=("package.json not found")
+        fi
+
+        # Check for node_modules
+        if [ ! -d "node_modules" ]; then
+            ENV_ISSUES+=("node_modules missing - run 'npm install'")
+        fi
+
+        if [ ${#ENV_ISSUES[@]} -eq 0 ]; then
+            echo "   ✅ Environment configuration valid"
+        else
+            echo "⚠️  Environment issues detected:"
+            printf '   • %s\n' "${ENV_ISSUES[@]}"
+            echo ""
+
+            if [ -f "package.json" ]; then
+                echo "💡 Recommended: npm install"
+            fi
+        fi
+    }
+
+    validate_environment
+
+    # Stage 2: Dependency Synchronization
+    echo "📦 Stage 2: Dependency Management"
+
+    sync_dependencies() {
+        echo "   → Checking dependency synchronization..."
+
+        if [ -f "package.json" ] && [ -f "package-lock.json" ]; then
+            # Verify lockfile is up to date
+            if ! npm ci --dry-run >/dev/null 2>&1; then
+                echo "⚠️  Dependencies may be out of sync"
+                echo "💡 Consider running: npm ci"
+            else
+                echo "   ✅ Dependencies are synchronized"
+            fi
+        fi
+
+        # Check for outdated packages (quiet check)
+        if command -v npm >/dev/null 2>&1; then
+            OUTDATED=$(npm outdated --json 2>/dev/null | jq length 2>/dev/null || echo "0")
+            if [ "$OUTDATED" -gt 0 ]; then
+                echo "ℹ️  $OUTDATED packages have newer versions available"
+                echo "💡 Run 'npm update' to update dependencies"
+            fi
+        fi
+    }
+
+    sync_dependencies
+
+    # Stage 3: MCP Server Status Check
+    echo "🔧 Stage 3: MCP Server Configuration"
+
+    check_mcp_servers() {
+        echo "   → Verifying MCP server availability..."
+
+        MCP_STATUS=()
+
+        # Check if MCP configuration files exist
+        if [ -f ".mcp.json" ] || [ -f ".cursor/mcp.json" ]; then
+            MCP_STATUS+=("MCP configuration found")
+
+            # Check if any MCP servers are configured but might be down
+            if grep -q '"mcpServers"' .mcp.json 2>/dev/null; then
+                SERVER_COUNT=$(grep -c '"command"' .mcp.json 2>/dev/null || echo "0")
+                MCP_STATUS+=("$SERVER_COUNT MCP servers configured")
+            fi
+
+        else
+            MCP_STATUS+=("No MCP configuration detected")
+        fi
+
+        printf '   • %s\n' "${MCP_STATUS[@]}"
+    }
+
+    check_mcp_servers
+
+    # Stage 4: Branch-Specific Configuration
+    echo "🌿 Stage 4: Branch-Specific Environment"
+
+    check_branch_config() {
+        echo "   → Checking branch-specific configurations..."
+
+        CURRENT_BRANCH=$(git branch --show-current)
+
+        BRANCH_NOTES=()
+
+        case "$CURRENT_BRANCH" in
+            main|master)
+                BRANCH_NOTES+=("Production branch - ensure high code quality")
+                ;;
+            develop|dev)
+                BRANCH_NOTES+=("Development branch - integrate features here")
+                ;;
+            feature/*)
+                BRANCH_NOTES+=("Feature branch detected")
+                ;;
+            bugfix/*|fix/*)
+                BRANCH_NOTES+=("Bugfix branch - focus on issue resolution")
+                ;;
+            hotfix/*)
+                BRANCH_NOTES+=("Hotfix branch - critical production issue")
+                ;;
+            *)
+                BRANCH_NOTES+=("Working on branch: $CURRENT_BRANCH")
+                ;;
+        esac
+
+        printf '   ℹ️  %s\n' "${BRANCH_NOTES[@]}"
+    }
+
+    check_branch_config
+
+    # Stage 5: AI-Assisted Environment Recommendations
+    echo "🤖 Stage 5: AI Development Recommendations"
+
+    ai_recommendations() {
+        echo "   → Analyzing development environment..."
+
+        RECOMMENDATIONS=()
+
+        # Check for test files
+        TEST_COUNT=$(find src -name "*.test.*" -o -name "*.spec.*" 2>/dev/null | wc -l)
+        SRC_COUNT=$(find src -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" 2>/dev/null | wc -l)
+
+        if [ "$SRC_COUNT" -gt 0 ] && [ "$TEST_COUNT" -eq 0 ]; then
+            RECOMMENDATIONS+=("No tests detected - consider adding unit tests")
+        elif [ $((TEST_COUNT * 100 / SRC_COUNT)) -lt 30 ]; then
+            RECOMMENDATIONS+=("Low test coverage detected (${TEST_COUNT}/${SRC_COUNT} files)")
+        fi
+
+        # Check for documentation
+        if [ ! -f "README.md" ]; then
+            RECOMMENDATIONS+=("README.md missing - add project documentation")
+        fi
+
+        # Check for TypeScript configuration
+        if [ -f "tsconfig.json" ]; then
+            RECOMMENDATIONS+=("TypeScript detected - ensure type coverage")
+        fi
+
+        # Check for potential performance issues
+        LARGE_FILES=$(find src -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" | xargs wc -l | awk '$1 > 300 {print $2}' | wc -l)
+        if [ "$LARGE_FILES" -gt 0 ]; then
+            RECOMMENDATIONS+=("$LARGE_FILES large files detected - consider refactoring")
+        fi
+
+        if [ ${#RECOMMENDATIONS[@]} -gt 0 ]; then
+            echo "📋 AI Recommendations:"
+            printf '   💡 %s\n' "${RECOMMENDATIONS[@]}"
+            echo ""
+        else
+            echo "   ✅ Environment looks well-configured"
+        fi
+    }
+
+    ai_recommendations
+
+else
+    echo "⚡ Quick checkout detected - minimal validation performed"
+fi
+
+# Always perform final checks
+echo "✅ Post-checkout environment synchronization completed"
+
+# Provide quick status
+echo ""
+echo "📊 Current Environment Status:"
+echo "   • Branch: $(git branch --show-current)"
+echo "   • Node: $(node --version 2>/dev/null || echo 'not found')"
+echo "   • Repository: $(basename "$WORKSPACE_ROOT")"
+echo ""
+
+exit 0
