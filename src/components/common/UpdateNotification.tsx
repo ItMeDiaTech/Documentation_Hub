@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, X, AlertCircle, FileArchive, Info, ExternalLink, AlertTriangle } from 'lucide-react';
+import {
+  Download,
+  X,
+  AlertCircle,
+  FileArchive,
+  Info,
+  ExternalLink,
+  AlertTriangle,
+} from 'lucide-react';
 import { Button } from './Button';
 
 export function UpdateNotification() {
   const [isVisible, setIsVisible] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<{ version: string; fallbackUsed?: boolean } | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; fallbackUsed?: boolean } | null>(
+    null
+  );
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloaded, setIsDownloaded] = useState(false);
@@ -23,56 +33,76 @@ export function UpdateNotification() {
     }
 
     // Listen for update available
-    const unsubAvailable = window.electronAPI.onUpdateAvailable((info: { version: string; releaseDate: string; releaseNotes: string }) => {
-      setUpdateInfo(info);
-      setIsVisible(true);
-    });
+    const unsubAvailable = window.electronAPI.onUpdateAvailable(
+      (info: { version: string; releaseDate: string; releaseNotes: string }) => {
+        setUpdateInfo(info);
+        setIsVisible(true);
+      }
+    );
 
     // Listen for download progress
-    const unsubProgress = window.electronAPI.onUpdateDownloadProgress((progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => {
-      setDownloadProgress(progress.percent);
-    });
+    const unsubProgress = window.electronAPI.onUpdateDownloadProgress(
+      (progress: {
+        bytesPerSecond: number;
+        percent: number;
+        transferred: number;
+        total: number;
+      }) => {
+        setDownloadProgress(progress.percent);
+      }
+    );
 
     // Listen for update downloaded
-    const unsubDownloaded = window.electronAPI.onUpdateDownloaded((info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => {
-      setIsDownloading(false);
-      setIsExtracting(false);
-      setIsDownloaded(true);
-      setUpdateInfo({ ...info, fallbackUsed: info.fallbackUsed });
-      if (info.fallbackUsed) {
-        setStatusMessage('Update ready to install (downloaded as compressed archive)');
+    const unsubDownloaded = window.electronAPI.onUpdateDownloaded(
+      (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => {
+        setIsDownloading(false);
+        setIsExtracting(false);
+        setIsDownloaded(true);
+        setUpdateInfo({ ...info, fallbackUsed: info.fallbackUsed });
+        if (info.fallbackUsed) {
+          setStatusMessage('Update ready to install (downloaded as compressed archive)');
+        }
       }
-    });
+    );
 
     // Listen for errors
     const unsubError = window.electronAPI.onUpdateError((error: { message: string }) => {
       setIsDownloading(false);
       setIsExtracting(false);
-      setErrorCount(prev => prev + 1);
+      setErrorCount((prev) => prev + 1);
 
       // Check for specific error types
-      const isCertError = error.message?.toLowerCase().includes('certificate') ||
-                          error.message?.toLowerCase().includes('issuer') ||
-                          error.message?.toLowerCase().includes('unable to verify');
+      const isCertError =
+        error.message?.toLowerCase().includes('certificate') ||
+        error.message?.toLowerCase().includes('issuer') ||
+        error.message?.toLowerCase().includes('unable to verify');
 
-      const isMutualTLS = error.message?.toLowerCase().includes('econnreset') ||
-                          error.message?.toLowerCase().includes('connection reset') ||
-                          error.message?.toLowerCase().includes('mutual');
+      const isMutualTLS =
+        error.message?.toLowerCase().includes('econnreset') ||
+        error.message?.toLowerCase().includes('connection reset') ||
+        error.message?.toLowerCase().includes('mutual');
 
-      const isProxyError = error.message?.toLowerCase().includes('proxy') ||
-                           error.message?.toLowerCase().includes('firewall') ||
-                           error.message?.toLowerCase().includes('localhost:8005');
+      const isProxyError =
+        error.message?.toLowerCase().includes('proxy') ||
+        error.message?.toLowerCase().includes('firewall') ||
+        error.message?.toLowerCase().includes('localhost:8005');
 
       // Show error state after multiple failures or if fallback also failed
       if (error.message?.includes('Fallback download failed') || errorCount >= 2) {
         setDownloadError(true);
 
         if (isMutualTLS) {
-          setStatusMessage('Enterprise network detected (Mutual TLS required). Your network requires special certificates. Please use manual download or contact IT.');
+          setStatusMessage(
+            'Enterprise network detected (Mutual TLS required). Your network requires special certificates. Please use manual download or contact IT.'
+          );
         } else if (isCertError) {
-          setStatusMessage('Certificate validation failed. Your organization may use custom certificates. Please download manually.');
+          setStatusMessage(
+            'Certificate validation failed. Your organization may use custom certificates. Please download manually.'
+          );
         } else if (isProxyError) {
-          setStatusMessage('Corporate proxy/firewall blocking download. Please use manual download or check with IT.');
+          setStatusMessage(
+            'Corporate proxy/firewall blocking download. Please use manual download or check with IT.'
+          );
         } else {
           setStatusMessage('Unable to download automatically. Please try manual download.');
         }
@@ -196,11 +226,7 @@ export function UpdateNotification() {
                 >
                   Download
                 </Button>
-                <Button
-                  onClick={handleDismiss}
-                  variant="outline"
-                  size="sm"
-                >
+                <Button onClick={handleDismiss} variant="outline" size="sm">
                   Later
                 </Button>
               </div>
@@ -210,7 +236,11 @@ export function UpdateNotification() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span>
-                    {isExtracting ? 'Extracting...' : isFallbackMode ? 'Downloading compressed update...' : 'Downloading...'}
+                    {isExtracting
+                      ? 'Extracting...'
+                      : isFallbackMode
+                        ? 'Downloading compressed update...'
+                        : 'Downloading...'}
                   </span>
                   {!isExtracting && (
                     <span className="text-muted-foreground">{Math.round(downloadProgress)}%</span>
@@ -240,11 +270,7 @@ export function UpdateNotification() {
                 >
                   Install & Restart
                 </Button>
-                <Button
-                  onClick={handleDismiss}
-                  variant="outline"
-                  size="sm"
-                >
+                <Button onClick={handleDismiss} variant="outline" size="sm">
                   Later
                 </Button>
               </div>
@@ -256,9 +282,7 @@ export function UpdateNotification() {
                   <AlertTriangle className="w-4 h-4" />
                   <p className="text-xs font-medium">Network Security Issue</p>
                 </div>
-                {statusMessage && (
-                  <p className="text-xs text-muted-foreground">{statusMessage}</p>
-                )}
+                {statusMessage && <p className="text-xs text-muted-foreground">{statusMessage}</p>}
                 <div className="flex gap-2">
                   <Button
                     onClick={handleManualDownload}

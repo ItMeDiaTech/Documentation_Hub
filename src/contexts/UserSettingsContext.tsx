@@ -84,7 +84,11 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         apiConnections: { ...prev.apiConnections, ...updates },
       };
       // Auto-save API settings to localStorage
-      const jsonString = safeJsonStringify(newSettings, undefined, 'UserSettings.updateApiConnections');
+      const jsonString = safeJsonStringify(
+        newSettings,
+        undefined,
+        'UserSettings.updateApiConnections'
+      );
       if (jsonString) {
         try {
           localStorage.setItem(STORAGE_KEY, jsonString);
@@ -103,7 +107,11 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         updateSettings: { ...prev.updateSettings, ...updates },
       };
       // Auto-save update settings to localStorage
-      const jsonString = safeJsonStringify(newSettings, undefined, 'UserSettings.updateUpdateSettings');
+      const jsonString = safeJsonStringify(
+        newSettings,
+        undefined,
+        'UserSettings.updateUpdateSettings'
+      );
       if (jsonString) {
         try {
           localStorage.setItem(STORAGE_KEY, jsonString);
@@ -136,11 +144,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     resetSettings,
   };
 
-  return (
-    <UserSettingsContext.Provider value={value}>
-      {children}
-    </UserSettingsContext.Provider>
-  );
+  return <UserSettingsContext.Provider value={value}>{children}</UserSettingsContext.Provider>;
 }
 
 export function useUserSettings() {

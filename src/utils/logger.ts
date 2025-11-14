@@ -138,21 +138,34 @@ function sanitizeLogData(data: any): any {
 
   // Handle arrays
   if (Array.isArray(data)) {
-    return data.map(item => sanitizeLogData(item));
+    return data.map((item) => sanitizeLogData(item));
   }
 
   // Handle objects
   if (typeof data === 'object') {
     const sanitized: any = {};
     const sensitiveKeys = [
-      'apiEndpoint', 'apiUrl', 'filePath', 'documentPath', 'path', 'fullPath',
-      'token', 'apiKey', 'password', 'secret', 'authorization', 'cookie',
-      'sessionId', 'userId', 'email', 'username'
+      'apiEndpoint',
+      'apiUrl',
+      'filePath',
+      'documentPath',
+      'path',
+      'fullPath',
+      'token',
+      'apiKey',
+      'password',
+      'secret',
+      'authorization',
+      'cookie',
+      'sessionId',
+      'userId',
+      'email',
+      'username',
     ];
 
     for (const [key, value] of Object.entries(data)) {
       // Redact sensitive fields entirely
-      if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk.toLowerCase()))) {
+      if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk.toLowerCase()))) {
         sanitized[key] = '[REDACTED]';
       } else {
         // Recursively sanitize nested objects

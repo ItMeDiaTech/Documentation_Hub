@@ -20,7 +20,7 @@ export function DocumentUploader({
   documents = [],
   maxFiles = 10,
   accept = '.docx,.doc',
-  className
+  className,
 }: DocumentUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export function DocumentUploader({
 
   const processFiles = (files: File[]) => {
     // Filter for valid document files
-    const validFiles = files.filter(file => {
+    const validFiles = files.filter((file) => {
       const extension = '.' + file.name.split('.').pop()?.toLowerCase();
       return accept.includes(extension);
     });
@@ -97,7 +97,7 @@ export function DocumentUploader({
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
   return (
@@ -146,10 +146,14 @@ export function DocumentUploader({
             </p>
           </div>
 
-          <Button variant="outline" size="sm" onClick={(e) => {
-            e.stopPropagation();
-            fileInputRef.current?.click();
-          }}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              fileInputRef.current?.click();
+            }}
+          >
             Browse Files
           </Button>
         </div>
@@ -178,10 +182,7 @@ export function DocumentUploader({
           >
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <p className="text-sm">{uploadError}</p>
-            <button
-              onClick={() => setUploadError(null)}
-              className="ml-auto hover:opacity-70"
-            >
+            <button onClick={() => setUploadError(null)} className="ml-auto hover:opacity-70">
               <X className="w-4 h-4" />
             </button>
           </motion.div>
@@ -219,9 +220,7 @@ export function DocumentUploader({
                       {doc.status === 'completed' && doc.processingResult && (
                         <>
                           <span>•</span>
-                          <span>
-                            {doc.processingResult.hyperlinksModified} links updated
-                          </span>
+                          <span>{doc.processingResult.hyperlinksModified} links updated</span>
                         </>
                       )}
                       {doc.status === 'error' && doc.errors?.[0] && (
@@ -266,21 +265,19 @@ export function DocumentUploader({
         <div className="grid grid-cols-3 gap-3">
           <div className="text-center p-3 bg-muted/30 rounded-lg">
             <p className="text-2xl font-bold text-primary">
-              {documents.filter(d => d.status === 'completed').length}
+              {documents.filter((d) => d.status === 'completed').length}
             </p>
             <p className="text-xs text-muted-foreground">Processed</p>
           </div>
           <div className="text-center p-3 bg-muted/30 rounded-lg">
             <p className="text-2xl font-bold text-yellow-500">
-              {documents.filter(d => d.status === 'processing').length}
+              {documents.filter((d) => d.status === 'processing').length}
             </p>
             <p className="text-xs text-muted-foreground">Processing</p>
           </div>
           <div className="text-center p-3 bg-muted/30 rounded-lg">
             <p className="text-2xl font-bold text-green-500">
-              {documents.reduce((acc, d) =>
-                acc + (d.processingResult?.hyperlinksModified || 0), 0
-              )}
+              {documents.reduce((acc, d) => acc + (d.processingResult?.hyperlinksModified || 0), 0)}
             </p>
             <p className="text-xs text-muted-foreground">Links Fixed</p>
           </div>

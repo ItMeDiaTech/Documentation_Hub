@@ -1,5 +1,13 @@
 import { useState, useMemo } from 'react';
-import { FileText, GitBranch, ChevronDown, ChevronRight, Settings, Check, RotateCcw } from 'lucide-react';
+import {
+  FileText,
+  GitBranch,
+  ChevronDown,
+  ChevronRight,
+  Settings,
+  Check,
+  RotateCcw,
+} from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from '@/contexts/SessionContext';
@@ -37,7 +45,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
   const { sessions, revertAllChanges } = useSession();
 
   // Get the current session
-  const session = sessions.find(s => s.id === sessionId);
+  const session = sessions.find((s) => s.id === sessionId);
 
   // Extract real changes from processed documents with intelligent filtering
   const documentChanges = useMemo(() => {
@@ -45,37 +53,44 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
 
     const changes: DocumentChange[] = [];
 
-    session.documents.forEach(doc => {
+    session.documents.forEach((doc) => {
       if (doc.status === 'completed' && doc.processingResult?.changes) {
         // First, filter out trivial changes and enhance descriptions
         const meaningfulChanges = doc.processingResult.changes
-          .filter(change => {
+          .filter((change) => {
             // Skip if before and after are identical
             if (change.before === change.after) return false;
 
             // Skip pure whitespace changes
-            if (change.type === 'text' &&
-                change.before?.trim() === '' &&
-                change.after?.trim() === '') {
+            if (
+              change.type === 'text' &&
+              change.before?.trim() === '' &&
+              change.after?.trim() === ''
+            ) {
               return false;
             }
 
             // Skip formatting changes that don't affect visible text
             // (unless it's about invisible hyperlinks which are important)
-            if (change.type === 'deletion' &&
-                !change.description?.toLowerCase().includes('hyperlink') &&
-                (!change.before || change.before.trim() === '')) {
+            if (
+              change.type === 'deletion' &&
+              !change.description?.toLowerCase().includes('hyperlink') &&
+              (!change.before || change.before.trim() === '')
+            ) {
               return false;
             }
 
             return true;
           })
-          .map(change => {
+          .map((change) => {
             // Enhance descriptions for better clarity
             let enhancedDescription = change.description || 'Change applied';
 
             // Special handling for invisible hyperlinks
-            if (change.type === 'hyperlink' || enhancedDescription.toLowerCase().includes('hyperlink')) {
+            if (
+              change.type === 'hyperlink' ||
+              enhancedDescription.toLowerCase().includes('hyperlink')
+            ) {
               if (change.type === 'deletion' && (!change.before || change.before.trim() === '')) {
                 enhancedDescription = 'Invisible hyperlink deleted';
               } else if (!change.before && change.after) {
@@ -108,9 +123,9 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
           .filter(Boolean); // Remove null entries
 
         // Group similar changes for consolidation
-        const changeGroups = new Map<string, { changes: typeof meaningfulChanges, key: string }>();
+        const changeGroups = new Map<string, { changes: typeof meaningfulChanges; key: string }>();
 
-        meaningfulChanges.forEach(change => {
+        meaningfulChanges.forEach((change) => {
           if (!change) return; // Skip null entries
 
           // Create a grouping key based on change type and pattern
@@ -139,7 +154,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
         // Convert groups to final changes with consolidation
         const docChanges: Change[] = [];
 
-        changeGroups.forEach(group => {
+        changeGroups.forEach((group) => {
           if (group.changes.length === 1) {
             // Single change - use as is
             const change = group.changes[0];
@@ -147,12 +162,16 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
               docChanges.push({
                 id: change.id || `${doc.id}-change-${docChanges.length}`,
                 description: change.description || 'Change applied',
-                type: change.type === 'hyperlink' ? 'modification' as const :
-                      change.type === 'text' ? 'modification' as const :
-                      change.type === 'style' ? 'modification' as const :
-                      'addition' as const,
+                type:
+                  change.type === 'hyperlink'
+                    ? ('modification' as const)
+                    : change.type === 'text'
+                      ? ('modification' as const)
+                      : change.type === 'style'
+                        ? ('modification' as const)
+                        : ('addition' as const),
                 originalText: change.before || '',
-                newText: change.after || ''
+                newText: change.after || '',
               });
             }
           } else if (group.changes.length > 0) {
@@ -164,19 +183,26 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
               // Add occurrence count
               if (group.changes.length > 1) {
                 // Remove any existing occurrence count and add new one
-                consolidatedDescription = consolidatedDescription.replace(/ \(\d+ occurrences\)$/, '');
+                consolidatedDescription = consolidatedDescription.replace(
+                  / \(\d+ occurrences\)$/,
+                  ''
+                );
                 consolidatedDescription += ` (${group.changes.length} occurrences)`;
               }
 
               docChanges.push({
                 id: `${doc.id}-group-${docChanges.length}`,
                 description: consolidatedDescription,
-                type: firstChange.type === 'hyperlink' ? 'modification' as const :
-                      firstChange.type === 'text' ? 'modification' as const :
-                      firstChange.type === 'style' ? 'modification' as const :
-                      'addition' as const,
+                type:
+                  firstChange.type === 'hyperlink'
+                    ? ('modification' as const)
+                    : firstChange.type === 'text'
+                      ? ('modification' as const)
+                      : firstChange.type === 'style'
+                        ? ('modification' as const)
+                        : ('addition' as const),
                 originalText: firstChange.before || '',
-                newText: firstChange.after || ''
+                newText: firstChange.after || '',
               });
             }
           }
@@ -187,7 +213,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
             id: doc.id,
             documentName: doc.name,
             totalChanges: docChanges.length, // Use consolidated count
-            changes: docChanges
+            changes: docChanges,
           });
         }
       }
@@ -211,9 +237,9 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
     if (!session?.processingOptions?.enabledOperations) return [];
 
     return session.processingOptions.enabledOperations
-      .map(optionId => defaultOptions.find(opt => opt.id === optionId))
+      .map((optionId) => defaultOptions.find((opt) => opt.id === optionId))
       .filter(Boolean)
-      .map(opt => opt!.label);
+      .map((opt) => opt!.label);
   }, [session]);
 
   // Handle revert all changes for a document
@@ -231,7 +257,9 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
       setDocumentToRevertAll(null);
     } catch (error) {
       logger.error('Failed to revert all changes:', error);
-      alert(`Failed to revert changes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(
+        `Failed to revert changes: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   };
 
@@ -283,10 +311,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
               >
                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-2">
                   {enabledOptions.map((option, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 p-2 rounded-lg bg-muted/30"
-                    >
+                    <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
                       <Check className="w-4 h-4 text-green-600" />
                       <span className="text-sm">{option}</span>
                     </div>
@@ -300,10 +325,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
 
       <div className="space-y-2">
         {documentChanges.map((doc) => (
-          <div
-            key={doc.id}
-            className="border border-border rounded-lg overflow-hidden"
-          >
+          <div key={doc.id} className="border border-border rounded-lg overflow-hidden">
             <div className="flex items-center justify-between">
               <button
                 onClick={() => toggleDocument(doc.id)}
@@ -397,9 +419,7 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
                           {change.newText && (
                             <div className="p-2 bg-green-50 rounded text-sm">
                               <span className="text-green-500 font-medium mr-2">+</span>
-                              <span className="text-green-700">
-                                {change.newText}
-                              </span>
+                              <span className="text-green-700">{change.newText}</span>
                             </div>
                           )}
                         </div>

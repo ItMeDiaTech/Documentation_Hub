@@ -116,9 +116,7 @@ export const Search = memo(function Search() {
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIndex((prev) =>
-          prev < filteredDocuments.length - 1 ? prev + 1 : prev
-        );
+        setSelectedIndex((prev) => (prev < filteredDocuments.length - 1 ? prev + 1 : prev));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
@@ -140,9 +138,7 @@ export const Search = memo(function Search() {
   // Auto-scroll selected item into view
   useEffect(() => {
     if (resultsRef.current) {
-      const selectedElement = resultsRef.current.querySelector(
-        `[data-index="${selectedIndex}"]`
-      );
+      const selectedElement = resultsRef.current.querySelector(`[data-index="${selectedIndex}"]`);
       if (selectedElement) {
         selectedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }

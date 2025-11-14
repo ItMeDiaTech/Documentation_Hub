@@ -13,8 +13,7 @@ export type DocumentPart = `word/${
   | 'settings.xml'
   | 'fontTable.xml'
   | 'header1.xml'
-  | 'footer1.xml'
-}`;
+  | 'footer1.xml'}`;
 
 // Relationship types in OpenXML
 export type RelationshipType =
@@ -221,9 +220,7 @@ export type DeepReadonly<T> = {
 };
 
 // Either pattern for error handling
-export type Either<L, R> =
-  | { ok: false; error: L }
-  | { ok: true; value: R };
+export type Either<L, R> = { ok: false; error: L } | { ok: true; value: R };
 
 // Result type for operations that can fail
 export type Result<T, E = Error> = Either<E, T>;
@@ -331,6 +328,4 @@ export interface ValidationSuggestion {
 }
 
 // Export all types
-export type {
-  JSZip as DocumentArchive
-};
+export type { JSZip as DocumentArchive };

@@ -31,8 +31,8 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
   // IMPORTANT: Match only when ".." is surrounded by path separators to avoid false positives
   // For example, "DiaTech" should NOT trigger (contains "..") but "C:/Users/../Admin" should
   const traversalPatterns = [
-    '/../',      // Unix-style parent directory traversal
-    '\\..\\',    // Windows-style parent directory traversal
+    '/../', // Unix-style parent directory traversal
+    '\\..\\', // Windows-style parent directory traversal
     '%2e%2e%2f', // URL-encoded traversal
     '%2e%2e%5c',
     '%252e%252e',
@@ -75,14 +75,14 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
 
   // Validate file extension if specified
   if (allowedExtensions && allowedExtensions.length > 0) {
-    const hasValidExtension = allowedExtensions.some(ext =>
+    const hasValidExtension = allowedExtensions.some((ext) =>
       filePath.toLowerCase().endsWith(ext.toLowerCase())
     );
 
     if (!hasValidExtension) {
       log.error('Security: File extension not allowed', {
         path: filePath,
-        allowedExtensions
+        allowedExtensions,
       });
       return false;
     }
@@ -102,7 +102,10 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
 
   for (const ext of suspiciousDoubleExtensions) {
     if (lowerPath.endsWith(ext)) {
-      log.error('Security: Suspicious double extension detected', { path: filePath, extension: ext });
+      log.error('Security: Suspicious double extension detected', {
+        path: filePath,
+        extension: ext,
+      });
       return false;
     }
   }
@@ -115,9 +118,28 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
 
   // Check for special Windows device names
   const windowsDeviceNames = [
-    'CON', 'PRN', 'AUX', 'NUL',
-    'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
-    'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+    'CON',
+    'PRN',
+    'AUX',
+    'NUL',
+    'COM1',
+    'COM2',
+    'COM3',
+    'COM4',
+    'COM5',
+    'COM6',
+    'COM7',
+    'COM8',
+    'COM9',
+    'LPT1',
+    'LPT2',
+    'LPT3',
+    'LPT4',
+    'LPT5',
+    'LPT6',
+    'LPT7',
+    'LPT8',
+    'LPT9',
   ];
 
   const fileName = filePath.split(/[\\/]/).pop()?.split('.')[0]?.toUpperCase();
@@ -127,14 +149,7 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
   }
 
   // Check for URL protocols that shouldn't be in file paths
-  const dangerousProtocols = [
-    'file://',
-    'http://',
-    'https://',
-    'ftp://',
-    'javascript:',
-    'data:',
-  ];
+  const dangerousProtocols = ['file://', 'http://', 'https://', 'ftp://', 'javascript:', 'data:'];
 
   for (const protocol of dangerousProtocols) {
     if (lowerPath.includes(protocol)) {
@@ -179,7 +194,7 @@ export function isPathWithinAllowed(filePath: string, allowedPaths: string[]): b
   const normalizedFilePath = filePath.replace(/\\/g, '/').toLowerCase();
 
   // Check if file path starts with any allowed path
-  return allowedPaths.some(allowed => {
+  return allowedPaths.some((allowed) => {
     const normalizedAllowed = allowed.replace(/\\/g, '/').toLowerCase();
     return normalizedFilePath.startsWith(normalizedAllowed);
   });
@@ -207,7 +222,7 @@ export function validateBatchPaths(
     } else {
       invalid.push({
         path,
-        reason: 'Failed security validation'
+        reason: 'Failed security validation',
       });
     }
   }

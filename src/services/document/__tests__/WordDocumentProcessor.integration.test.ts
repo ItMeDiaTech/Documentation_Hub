@@ -7,7 +7,11 @@
  * Coverage target: 90%+ of WordDocumentProcessor.ts
  */
 
-import { WordDocumentProcessor, WordProcessingOptions, WordProcessingResult } from '../WordDocumentProcessor';
+import {
+  WordDocumentProcessor,
+  WordProcessingOptions,
+  WordProcessingResult,
+} from '../WordDocumentProcessor';
 import { Document } from 'docxmlater';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -411,9 +415,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
         },
       };
 
-      (hyperlinkService.processHyperlinksWithApi as jest.Mock).mockResolvedValue(
-        mockApiResponse
-      );
+      (hyperlinkService.processHyperlinksWithApi as jest.Mock).mockResolvedValue(mockApiResponse);
 
       const result = await processor.processDocument(filePath, {
         apiEndpoint: 'https://api.example.com',

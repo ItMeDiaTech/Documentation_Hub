@@ -338,7 +338,7 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
   });
 
   describe('Error Handling', () => {
-  it('should handle load errors gracefully', async () => {
+    it('should handle load errors gracefully', async () => {
       (indexedDB.loadGlobalStats as jest.Mock).mockRejectedValue(
         new Error('Database connection failed')
       );
@@ -357,9 +357,7 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
     });
 
     it('should handle save errors without crashing', async () => {
-      (indexedDB.saveGlobalStats as jest.Mock).mockRejectedValue(
-        new Error('Quota exceeded')
-      );
+      (indexedDB.saveGlobalStats as jest.Mock).mockRejectedValue(new Error('Quota exceeded'));
 
       const { result } = renderHook(() => useGlobalStats(), {
         wrapper: GlobalStatsProvider,

@@ -90,7 +90,7 @@ export interface SessionStyle {
   lineSpacing: number;
   noSpaceBetweenSame?: boolean; // Don't add space between paragraphs of the same style (List Paragraph)
   indentation?: {
-    left?: number;      // Left indent in inches (e.g., 0.25" for bullet position)
+    left?: number; // Left indent in inches (e.g., 0.25" for bullet position)
     firstLine?: number; // First line indent in inches (e.g., 0.5" for text position)
   };
 }
@@ -98,7 +98,7 @@ export interface SessionStyle {
 export interface IndentationLevel {
   level: number;
   symbolIndent: number; // Symbol/bullet position from left margin in inches
-  textIndent: number;   // Text position from left margin in inches
+  textIndent: number; // Text position from left margin in inches
   bulletChar?: string; // bullet character for this level
   numberedFormat?: string; // format for numbered lists (1., a., i., etc.)
 }
@@ -150,7 +150,7 @@ export interface TableOfContentsSettings {
 
 export interface TableShadingSettings {
   header2Shading: string; // Hex color for Header 2 / 1x1 table cells (default: #BFBFBF)
-  otherShading: string;   // Hex color for other table cells (default: #E9E9E9)
+  otherShading: string; // Hex color for other table cells (default: #E9E9E9)
 }
 
 export interface ReplacementRule {
@@ -188,13 +188,28 @@ export interface SessionContextType {
   // Stats
   updateSessionStats: (sessionId: string, stats: Partial<SessionStats>) => void;
   updateSessionName: (sessionId: string, name: string) => void;
-  updateSessionOptions: (sessionId: string, processingOptions: Session['processingOptions']) => void;
+  updateSessionOptions: (
+    sessionId: string,
+    processingOptions: Session['processingOptions']
+  ) => void;
   updateSessionReplacements: (sessionId: string, replacements: ReplacementRule[]) => void;
   updateSessionStyles: (sessionId: string, styles: SessionStyle[]) => void;
-  updateSessionListBulletSettings: (sessionId: string, listBulletSettings: ListBulletSettings) => void;
-  updateSessionTableUniformitySettings: (sessionId: string, tableUniformitySettings: TableUniformitySettings) => void;
-  updateSessionTableShadingSettings: (sessionId: string, tableShadingSettings: TableShadingSettings) => void;
-  updateSessionTableOfContentsSettings: (sessionId: string, tableOfContentsSettings: TableOfContentsSettings) => void;
+  updateSessionListBulletSettings: (
+    sessionId: string,
+    listBulletSettings: ListBulletSettings
+  ) => void;
+  updateSessionTableUniformitySettings: (
+    sessionId: string,
+    tableUniformitySettings: TableUniformitySettings
+  ) => void;
+  updateSessionTableShadingSettings: (
+    sessionId: string,
+    tableShadingSettings: TableShadingSettings
+  ) => void;
+  updateSessionTableOfContentsSettings: (
+    sessionId: string,
+    tableOfContentsSettings: TableOfContentsSettings
+  ) => void;
 
   // Persistence
   saveSession: (session: Session) => void;

@@ -11,13 +11,10 @@ import {
   List,
   Table,
   BookOpen,
-  Lock
+  Lock,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import {
-  ListBulletSettings,
-  IndentationLevel
-} from '@/types/session';
+import { ListBulletSettings, IndentationLevel } from '@/types/session';
 
 interface StyleDefinition {
   id: string;
@@ -37,7 +34,7 @@ interface StyleDefinition {
   color: string;
   noSpaceBetweenSame?: boolean;
   indentation?: {
-    left?: number;      // Left indent in inches (e.g., 0.25" for bullet position)
+    left?: number; // Left indent in inches (e.g., 0.25" for bullet position)
     firstLine?: number; // First line indent in inches (e.g., 0.5" for text position)
   };
 }
@@ -55,7 +52,7 @@ const defaultStyles: StyleDefinition[] = [
     spaceBefore: 0,
     spaceAfter: 12,
     lineSpacing: 1.0, // Single spacing for headings
-    color: '#000000'
+    color: '#000000',
   },
   {
     id: 'header2',
@@ -69,7 +66,7 @@ const defaultStyles: StyleDefinition[] = [
     spaceBefore: 6,
     spaceAfter: 6,
     lineSpacing: 1.0, // Single spacing for headings
-    color: '#000000'
+    color: '#000000',
   },
   {
     id: 'header3',
@@ -83,7 +80,7 @@ const defaultStyles: StyleDefinition[] = [
     spaceBefore: 3,
     spaceAfter: 3,
     lineSpacing: 1.0, // Single spacing for headings
-    color: '#000000'
+    color: '#000000',
   },
   {
     id: 'normal',
@@ -101,7 +98,7 @@ const defaultStyles: StyleDefinition[] = [
     spaceAfter: 3,
     lineSpacing: 1.0, // Changed from 1.15 to 1.0
     color: '#000000',
-    noSpaceBetweenSame: false // Allow spacing between Normal paragraphs (Requirement 5)
+    noSpaceBetweenSame: false, // Allow spacing between Normal paragraphs (Requirement 5)
   },
   {
     id: 'listParagraph',
@@ -121,10 +118,10 @@ const defaultStyles: StyleDefinition[] = [
     color: '#000000',
     noSpaceBetweenSame: true, // No spacing between list items (Requirement 6)
     indentation: {
-      left: 0.25,     // Bullet position at 0.25 inches
-      firstLine: 0.5  // Text position at 0.5 inches (0.25 additional from left)
-    }
-  }
+      left: 0.25, // Bullet position at 0.25 inches
+      firstLine: 0.5, // Text position at 0.5 inches (0.25 additional from left)
+    },
+  },
 ];
 
 const fontSizes = Array.from({ length: 65 }, (_, i) => i + 8); // 8pt to 72pt
@@ -134,7 +131,7 @@ const lineSpacingOptions = [
   { value: 1.0, label: 'Single' },
   { value: 1.15, label: '1.15 (Default)' },
   { value: 1.5, label: '1.5 Lines' },
-  { value: 2.0, label: 'Double' }
+  { value: 2.0, label: 'Double' },
 ];
 
 // Default indentation levels based on documentation best practices
@@ -147,12 +144,12 @@ const defaultIndentationLevels: IndentationLevel[] = [
   { level: 1, symbolIndent: 0.5, textIndent: 1.0, bulletChar: '○', numberedFormat: 'a.' },
   { level: 2, symbolIndent: 0.75, textIndent: 1.5, bulletChar: '\uF0B7', numberedFormat: 'i.' },
   { level: 3, symbolIndent: 1.0, textIndent: 2.0, bulletChar: '○', numberedFormat: '1)' },
-  { level: 4, symbolIndent: 1.25, textIndent: 2.5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
+  { level: 4, symbolIndent: 1.25, textIndent: 2.5, bulletChar: '\uF0B7', numberedFormat: 'a)' },
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {
   enabled: true,
-  indentationLevels: defaultIndentationLevels
+  indentationLevels: defaultIndentationLevels,
 };
 
 // Note: defaultTableOfContentsSettings removed - TOC managed via Processing Options
@@ -175,7 +172,7 @@ export const StylesEditor = memo(function StylesEditor({
   onListBulletSettingsChange,
   tableHeader2Shading,
   tableOtherShading,
-  onTableShadingChange
+  onTableShadingChange,
 }: StylesEditorProps) {
   // Convert session styles to StyleDefinition format or use defaults
   const convertToStyleDefinitions = (sessionStyles?: any[]): StyleDefinition[] => {
@@ -184,8 +181,8 @@ export const StylesEditor = memo(function StylesEditor({
     }
 
     // Map session styles to style definitions
-    return sessionStyles.map(sessionStyle => {
-      const defaultStyle = defaultStyles.find(d => d.id === sessionStyle.id) || defaultStyles[0];
+    return sessionStyles.map((sessionStyle) => {
+      const defaultStyle = defaultStyles.find((d) => d.id === sessionStyle.id) || defaultStyles[0];
       return {
         id: sessionStyle.id || defaultStyle.id,
         name: sessionStyle.name || defaultStyle.name,
@@ -208,15 +205,22 @@ export const StylesEditor = memo(function StylesEditor({
     });
   };
 
-  const [styles, setStyles] = useState<StyleDefinition[]>(() => convertToStyleDefinitions(initialStyles));
-  const [listBulletSettings, setListBulletSettings] = useState<ListBulletSettings>(defaultListBulletSettings);
-  const [localTableHeader2Shading, setLocalTableHeader2Shading] = useState<string>(tableHeader2Shading || '#BFBFBF');
-  const [localTableOtherShading, setLocalTableOtherShading] = useState<string>(tableOtherShading || '#E9E9E9');
+  const [styles, setStyles] = useState<StyleDefinition[]>(() =>
+    convertToStyleDefinitions(initialStyles)
+  );
+  const [listBulletSettings, setListBulletSettings] =
+    useState<ListBulletSettings>(defaultListBulletSettings);
+  const [localTableHeader2Shading, setLocalTableHeader2Shading] = useState<string>(
+    tableHeader2Shading || '#BFBFBF'
+  );
+  const [localTableOtherShading, setLocalTableOtherShading] = useState<string>(
+    tableOtherShading || '#E9E9E9'
+  );
   // Note: Table of Contents settings removed - managed via Processing Options checkbox
   // Note: showSuccess state removed - no longer needed with auto-save
 
   const updateStyle = (styleId: string, updates: Partial<StyleDefinition>) => {
-    const updatedStyles = styles.map(style =>
+    const updatedStyles = styles.map((style) =>
       style.id === styleId ? { ...style, ...updates } : style
     );
     setStyles(updatedStyles);
@@ -242,8 +246,10 @@ export const StylesEditor = memo(function StylesEditor({
                 onChange={(e) => updateStyle(style.id, { fontFamily: e.target.value })}
                 className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
               >
-                {fontFamilies.map(font => (
-                  <option key={font} value={font}>{font}</option>
+                {fontFamilies.map((font) => (
+                  <option key={font} value={font}>
+                    {font}
+                  </option>
                 ))}
               </select>
             </div>
@@ -255,8 +261,10 @@ export const StylesEditor = memo(function StylesEditor({
                 onChange={(e) => updateStyle(style.id, { fontSize: Number(e.target.value) })}
                 className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
               >
-                {fontSizes.map(size => (
-                  <option key={size} value={size}>{size}pt</option>
+                {fontSizes.map((size) => (
+                  <option key={size} value={size}>
+                    {size}pt
+                  </option>
                 ))}
               </select>
             </div>
@@ -336,10 +344,16 @@ export const StylesEditor = memo(function StylesEditor({
                         style.preserveBold
                           ? 'opacity-50 cursor-not-allowed bg-muted'
                           : style.bold
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted hover:bg-muted/80'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted hover:bg-muted/80'
                       )}
-                      title={style.preserveBold ? 'Bold formatting is preserved' : style.bold ? 'Bold enabled' : 'Bold disabled'}
+                      title={
+                        style.preserveBold
+                          ? 'Bold formatting is preserved'
+                          : style.bold
+                            ? 'Bold enabled'
+                            : 'Bold disabled'
+                      }
                     >
                       <Bold className="w-4 h-4" />
                     </button>
@@ -351,10 +365,16 @@ export const StylesEditor = memo(function StylesEditor({
                         style.preserveItalic
                           ? 'opacity-50 cursor-not-allowed bg-muted'
                           : style.italic
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted hover:bg-muted/80'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted hover:bg-muted/80'
                       )}
-                      title={style.preserveItalic ? 'Italic formatting is preserved' : style.italic ? 'Italic enabled' : 'Italic disabled'}
+                      title={
+                        style.preserveItalic
+                          ? 'Italic formatting is preserved'
+                          : style.italic
+                            ? 'Italic enabled'
+                            : 'Italic disabled'
+                      }
                     >
                       <Italic className="w-4 h-4" />
                     </button>
@@ -366,10 +386,16 @@ export const StylesEditor = memo(function StylesEditor({
                         style.preserveUnderline
                           ? 'opacity-50 cursor-not-allowed bg-muted'
                           : style.underline
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted hover:bg-muted/80'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted hover:bg-muted/80'
                       )}
-                      title={style.preserveUnderline ? 'Underline formatting is preserved' : style.underline ? 'Underline enabled' : 'Underline disabled'}
+                      title={
+                        style.preserveUnderline
+                          ? 'Underline formatting is preserved'
+                          : style.underline
+                            ? 'Underline enabled'
+                            : 'Underline disabled'
+                      }
                     >
                       <Underline className="w-4 h-4" />
                     </button>
@@ -384,33 +410,49 @@ export const StylesEditor = memo(function StylesEditor({
                           ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
                           : 'bg-muted hover:bg-muted/80 text-muted-foreground'
                       )}
-                      title={style.preserveBold ? 'Preserve existing bold formatting' : 'Apply bold setting'}
+                      title={
+                        style.preserveBold
+                          ? 'Preserve existing bold formatting'
+                          : 'Apply bold setting'
+                      }
                     >
                       <Lock className="w-3 h-3" />
                       <span>Bold</span>
                     </button>
                     <button
-                      onClick={() => updateStyle(style.id, { preserveItalic: !style.preserveItalic })}
+                      onClick={() =>
+                        updateStyle(style.id, { preserveItalic: !style.preserveItalic })
+                      }
                       className={cn(
                         'flex items-center gap-1 px-2 py-1 rounded transition-all',
                         style.preserveItalic
                           ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
                           : 'bg-muted hover:bg-muted/80 text-muted-foreground'
                       )}
-                      title={style.preserveItalic ? 'Preserve existing italic formatting' : 'Apply italic setting'}
+                      title={
+                        style.preserveItalic
+                          ? 'Preserve existing italic formatting'
+                          : 'Apply italic setting'
+                      }
                     >
                       <Lock className="w-3 h-3" />
                       <span>Italic</span>
                     </button>
                     <button
-                      onClick={() => updateStyle(style.id, { preserveUnderline: !style.preserveUnderline })}
+                      onClick={() =>
+                        updateStyle(style.id, { preserveUnderline: !style.preserveUnderline })
+                      }
                       className={cn(
                         'flex items-center gap-1 px-2 py-1 rounded transition-all',
                         style.preserveUnderline
                           ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
                           : 'bg-muted hover:bg-muted/80 text-muted-foreground'
                       )}
-                      title={style.preserveUnderline ? 'Preserve existing underline formatting' : 'Apply underline setting'}
+                      title={
+                        style.preserveUnderline
+                          ? 'Preserve existing underline formatting'
+                          : 'Apply underline setting'
+                      }
                     >
                       <Lock className="w-3 h-3" />
                       <span>Underline</span>
@@ -478,8 +520,10 @@ export const StylesEditor = memo(function StylesEditor({
                   onChange={(e) => updateStyle(style.id, { spaceBefore: Number(e.target.value) })}
                   className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                 >
-                  {spacingOptions.map(space => (
-                    <option key={space} value={space}>{space}pt</option>
+                  {spacingOptions.map((space) => (
+                    <option key={space} value={space}>
+                      {space}pt
+                    </option>
                   ))}
                 </select>
               </div>
@@ -491,8 +535,10 @@ export const StylesEditor = memo(function StylesEditor({
                   onChange={(e) => updateStyle(style.id, { spaceAfter: Number(e.target.value) })}
                   className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                 >
-                  {spacingOptions.map(space => (
-                    <option key={space} value={space}>{space}pt</option>
+                  {spacingOptions.map((space) => (
+                    <option key={space} value={space}>
+                      {space}pt
+                    </option>
                   ))}
                 </select>
               </div>
@@ -505,8 +551,10 @@ export const StylesEditor = memo(function StylesEditor({
                 onChange={(e) => updateStyle(style.id, { lineSpacing: Number(e.target.value) })}
                 className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
               >
-                {lineSpacingOptions.map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+                {lineSpacingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -520,15 +568,19 @@ export const StylesEditor = memo(function StylesEditor({
               <input
                 type="checkbox"
                 checked={style.noSpaceBetweenSame}
-                onChange={() => updateStyle(style.id, { noSpaceBetweenSame: !style.noSpaceBetweenSame })}
+                onChange={() =>
+                  updateStyle(style.id, { noSpaceBetweenSame: !style.noSpaceBetweenSame })
+                }
                 className="sr-only"
               />
-              <div className={cn(
-                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                style.noSpaceBetweenSame
-                  ? 'bg-primary border-primary checkbox-checked'
-                  : 'border-border'
-              )}>
+              <div
+                className={cn(
+                  'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                  style.noSpaceBetweenSame
+                    ? 'bg-primary border-primary checkbox-checked'
+                    : 'border-border'
+                )}
+              >
                 {style.noSpaceBetweenSame && (
                   <Check className="w-3 h-3 text-white checkbox-checkmark" />
                 )}
@@ -544,16 +596,20 @@ export const StylesEditor = memo(function StylesEditor({
             <h4 className="text-sm font-medium mb-3">Indentation Settings</h4>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm text-muted-foreground mb-1 block">Bullet Position (inches)</label>
+                <label className="text-sm text-muted-foreground mb-1 block">
+                  Bullet Position (inches)
+                </label>
                 <input
                   type="number"
                   value={style.indentation?.left ?? 0.25}
-                  onChange={(e) => updateStyle(style.id, {
-                    indentation: {
-                      ...style.indentation,
-                      left: Number(e.target.value)
-                    }
-                  })}
+                  onChange={(e) =>
+                    updateStyle(style.id, {
+                      indentation: {
+                        ...style.indentation,
+                        left: Number(e.target.value),
+                      },
+                    })
+                  }
                   className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   min="0"
                   max="2"
@@ -561,16 +617,20 @@ export const StylesEditor = memo(function StylesEditor({
                 />
               </div>
               <div>
-                <label className="text-sm text-muted-foreground mb-1 block">Text Position (inches)</label>
+                <label className="text-sm text-muted-foreground mb-1 block">
+                  Text Position (inches)
+                </label>
                 <input
                   type="number"
                   value={style.indentation?.firstLine ?? 0.5}
-                  onChange={(e) => updateStyle(style.id, {
-                    indentation: {
-                      ...style.indentation,
-                      firstLine: Number(e.target.value)
-                    }
-                  })}
+                  onChange={(e) =>
+                    updateStyle(style.id, {
+                      indentation: {
+                        ...style.indentation,
+                        firstLine: Number(e.target.value),
+                      },
+                    })
+                  }
                   className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   min="0"
                   max="2"
@@ -589,14 +649,19 @@ export const StylesEditor = memo(function StylesEditor({
               fontFamily: style.fontFamily,
               fontWeight: style.bold === undefined ? 'normal' : style.bold ? 'bold' : 'normal',
               fontStyle: style.italic === undefined ? 'normal' : style.italic ? 'italic' : 'normal',
-              textDecoration: style.underline === undefined ? 'none' : style.underline ? 'underline' : 'none',
+              textDecoration:
+                style.underline === undefined ? 'none' : style.underline ? 'underline' : 'none',
               textAlign: style.alignment,
-              color: style.color
+              color: style.color,
             }}
           >
             Sample text for {style.name} style
-            {(style.bold === undefined || style.italic === undefined || style.underline === undefined) && (
-              <span className="text-xs text-muted-foreground ml-2">(preview only - actual formatting preserved)</span>
+            {(style.bold === undefined ||
+              style.italic === undefined ||
+              style.underline === undefined) && (
+              <span className="text-xs text-muted-foreground ml-2">
+                (preview only - actual formatting preserved)
+              </span>
             )}
           </div>
         </div>
@@ -629,12 +694,14 @@ export const StylesEditor = memo(function StylesEditor({
                 }}
                 className="sr-only"
               />
-              <div className={cn(
-                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                listBulletSettings.enabled
-                  ? 'bg-primary border-primary checkbox-checked'
-                  : 'border-border'
-              )}>
+              <div
+                className={cn(
+                  'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                  listBulletSettings.enabled
+                    ? 'bg-primary border-primary checkbox-checked'
+                    : 'border-border'
+                )}
+              >
                 {listBulletSettings.enabled && (
                   <Check className="w-3 h-3 text-white checkbox-checkmark" />
                 )}
@@ -646,12 +713,16 @@ export const StylesEditor = memo(function StylesEditor({
         {listBulletSettings.enabled && (
           <>
             <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground">Indentation Increments (Auto-applies to all 5 levels)</h4>
+              <h4 className="text-sm font-medium text-muted-foreground">
+                Indentation Increments (Auto-applies to all 5 levels)
+              </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">
                     Symbol Position Increment (inches)
-                    <span className="text-xxs block text-muted-foreground/60">Bullet/number position per level</span>
+                    <span className="text-xxs block text-muted-foreground/60">
+                      Bullet/number position per level
+                    </span>
                   </label>
                   <input
                     type="number"
@@ -659,11 +730,61 @@ export const StylesEditor = memo(function StylesEditor({
                     onChange={(e) => {
                       const increment = Number(e.target.value);
                       const newLevels: IndentationLevel[] = [
-                        { level: 0, symbolIndent: increment * 1, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 1, bulletChar: '\uF0B7', numberedFormat: '1.' },
-                        { level: 1, symbolIndent: increment * 2, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 2, bulletChar: '○', numberedFormat: 'a.' },
-                        { level: 2, symbolIndent: increment * 3, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 3, bulletChar: '\uF0B7', numberedFormat: 'i.' },
-                        { level: 3, symbolIndent: increment * 4, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 4, bulletChar: '○', numberedFormat: '1)' },
-                        { level: 4, symbolIndent: increment * 5, textIndent: (listBulletSettings.indentationLevels[0]?.textIndent / listBulletSettings.indentationLevels[0]?.symbolIndent) * increment * 5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
+                        {
+                          level: 0,
+                          symbolIndent: increment * 1,
+                          textIndent:
+                            (listBulletSettings.indentationLevels[0]?.textIndent /
+                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
+                            increment *
+                            1,
+                          bulletChar: '\uF0B7',
+                          numberedFormat: '1.',
+                        },
+                        {
+                          level: 1,
+                          symbolIndent: increment * 2,
+                          textIndent:
+                            (listBulletSettings.indentationLevels[0]?.textIndent /
+                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
+                            increment *
+                            2,
+                          bulletChar: '○',
+                          numberedFormat: 'a.',
+                        },
+                        {
+                          level: 2,
+                          symbolIndent: increment * 3,
+                          textIndent:
+                            (listBulletSettings.indentationLevels[0]?.textIndent /
+                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
+                            increment *
+                            3,
+                          bulletChar: '\uF0B7',
+                          numberedFormat: 'i.',
+                        },
+                        {
+                          level: 3,
+                          symbolIndent: increment * 4,
+                          textIndent:
+                            (listBulletSettings.indentationLevels[0]?.textIndent /
+                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
+                            increment *
+                            4,
+                          bulletChar: '○',
+                          numberedFormat: '1)',
+                        },
+                        {
+                          level: 4,
+                          symbolIndent: increment * 5,
+                          textIndent:
+                            (listBulletSettings.indentationLevels[0]?.textIndent /
+                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
+                            increment *
+                            5,
+                          bulletChar: '\uF0B7',
+                          numberedFormat: 'a)',
+                        },
                       ];
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);
@@ -678,7 +799,9 @@ export const StylesEditor = memo(function StylesEditor({
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">
                     Text Position Increment (inches)
-                    <span className="text-xxs block text-muted-foreground/60">Text start position per level</span>
+                    <span className="text-xxs block text-muted-foreground/60">
+                      Text start position per level
+                    </span>
                   </label>
                   <input
                     type="number"
@@ -686,11 +809,46 @@ export const StylesEditor = memo(function StylesEditor({
                     onChange={(e) => {
                       const increment = Number(e.target.value);
                       const newLevels: IndentationLevel[] = [
-                        { level: 0, symbolIndent: listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25, textIndent: increment * 1, bulletChar: '\uF0B7', numberedFormat: '1.' },
-                        { level: 1, symbolIndent: listBulletSettings.indentationLevels[1]?.symbolIndent || 0.5, textIndent: increment * 2, bulletChar: '○', numberedFormat: 'a.' },
-                        { level: 2, symbolIndent: listBulletSettings.indentationLevels[2]?.symbolIndent || 0.75, textIndent: increment * 3, bulletChar: '\uF0B7', numberedFormat: 'i.' },
-                        { level: 3, symbolIndent: listBulletSettings.indentationLevels[3]?.symbolIndent || 1.0, textIndent: increment * 4, bulletChar: '○', numberedFormat: '1)' },
-                        { level: 4, symbolIndent: listBulletSettings.indentationLevels[4]?.symbolIndent || 1.25, textIndent: increment * 5, bulletChar: '\uF0B7', numberedFormat: 'a)' }
+                        {
+                          level: 0,
+                          symbolIndent:
+                            listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25,
+                          textIndent: increment * 1,
+                          bulletChar: '\uF0B7',
+                          numberedFormat: '1.',
+                        },
+                        {
+                          level: 1,
+                          symbolIndent:
+                            listBulletSettings.indentationLevels[1]?.symbolIndent || 0.5,
+                          textIndent: increment * 2,
+                          bulletChar: '○',
+                          numberedFormat: 'a.',
+                        },
+                        {
+                          level: 2,
+                          symbolIndent:
+                            listBulletSettings.indentationLevels[2]?.symbolIndent || 0.75,
+                          textIndent: increment * 3,
+                          bulletChar: '\uF0B7',
+                          numberedFormat: 'i.',
+                        },
+                        {
+                          level: 3,
+                          symbolIndent:
+                            listBulletSettings.indentationLevels[3]?.symbolIndent || 1.0,
+                          textIndent: increment * 4,
+                          bulletChar: '○',
+                          numberedFormat: '1)',
+                        },
+                        {
+                          level: 4,
+                          symbolIndent:
+                            listBulletSettings.indentationLevels[4]?.symbolIndent || 1.25,
+                          textIndent: increment * 5,
+                          bulletChar: '\uF0B7',
+                          numberedFormat: 'a)',
+                        },
                       ];
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);
@@ -711,7 +869,9 @@ export const StylesEditor = memo(function StylesEditor({
                   {listBulletSettings.indentationLevels.map((level: IndentationLevel) => (
                     <div key={level.level} className="text-center">
                       <div className="font-medium">L{level.level}</div>
-                      <div className="text-muted-foreground">{level.symbolIndent.toFixed(2)}" / {level.textIndent.toFixed(2)}"</div>
+                      <div className="text-muted-foreground">
+                        {level.symbolIndent.toFixed(2)}" / {level.textIndent.toFixed(2)}"
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -722,7 +882,8 @@ export const StylesEditor = memo(function StylesEditor({
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-muted-foreground">Bullet Points Format</h4>
               <div className="text-xs text-muted-foreground mb-2">
-                Select bullet symbols for the first 3 levels. Levels 4-5 will alternate between Level 2 and Level 3 symbols.
+                Select bullet symbols for the first 3 levels. Levels 4-5 will alternate between
+                Level 2 and Level 3 symbols.
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {/* Level 1 */}
@@ -814,8 +975,12 @@ export const StylesEditor = memo(function StylesEditor({
                 <div className="grid grid-cols-5 gap-2 text-sm">
                   {listBulletSettings.indentationLevels.map((level: IndentationLevel) => (
                     <div key={level.level} className="text-center">
-                      <div className="font-medium text-xs text-muted-foreground">L{level.level}</div>
-                      <div className="text-lg">{level.bulletChar === '\uF0B7' ? '•' : level.bulletChar}</div>
+                      <div className="font-medium text-xs text-muted-foreground">
+                        L{level.level}
+                      </div>
+                      <div className="text-lg">
+                        {level.bulletChar === '\uF0B7' ? '•' : level.bulletChar}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -849,7 +1014,9 @@ export const StylesEditor = memo(function StylesEditor({
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="text-sm text-muted-foreground mb-2 block">Header 2 Table Shading</label>
+            <label className="text-sm text-muted-foreground mb-2 block">
+              Header 2 Table Shading
+            </label>
             <div className="flex gap-2">
               <input
                 type="color"
@@ -913,7 +1080,7 @@ export const StylesEditor = memo(function StylesEditor({
       </div>
 
       {/* Individual Style Editors */}
-      {styles.map(style => renderStyleEditor(style))}
+      {styles.map((style) => renderStyleEditor(style))}
     </div>
   );
 });

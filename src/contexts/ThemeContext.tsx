@@ -265,7 +265,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('customSidebarColor', customSidebarColor);
       localStorage.setItem('customBorderColor', customBorderColor);
     }
-  }, [useCustomColors, customPrimaryColor, customBackgroundColor, customHeaderColor, customSidebarColor, customBorderColor]);
+  }, [
+    useCustomColors,
+    customPrimaryColor,
+    customBackgroundColor,
+    customHeaderColor,
+    customSidebarColor,
+    customBorderColor,
+  ]);
 
   useEffect(() => {
     const root = window.document.documentElement;

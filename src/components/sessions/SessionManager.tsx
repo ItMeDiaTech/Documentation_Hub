@@ -85,10 +85,7 @@ export function SessionManager({
                   : 'Select a session to continue working'}
               </p>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover:bg-muted transition-colors"
-            >
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -157,12 +154,14 @@ export function SessionManager({
                                 </span>
                               </div>
                             </div>
-                            <span className={cn(
-                              'text-xs px-2 py-1 rounded-full',
-                              session.status === 'active'
-                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-                            )}>
+                            <span
+                              className={cn(
+                                'text-xs px-2 py-1 rounded-full',
+                                session.status === 'active'
+                                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+                              )}
+                            >
                               {session.status}
                             </span>
                           </div>
