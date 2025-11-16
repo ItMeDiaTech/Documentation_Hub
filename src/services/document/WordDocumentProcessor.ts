@@ -635,17 +635,26 @@ export class WordDocumentProcessor {
 
         // NEW v2.1.0: Apply styles and clean direct formatting with simpler API
         this.log.debug('=== APPLYING STYLES WITH CLEAN FORMATTING ===');
-        
+
         // Skip applyH1/H2/H3 if already processed by applyCustomFormattingToExistingStyles
         // This prevents framework defaults from overriding user-configured custom styles
         const h1Count = styleResults.heading1
-          ? (this.log.debug('Skipping applyH1 - already processed by applyCustomFormattingToExistingStyles'), 0)
+          ? (this.log.debug(
+              'Skipping applyH1 - already processed by applyCustomFormattingToExistingStyles'
+            ),
+            0)
           : doc.applyH1();
         const h2Count = styleResults.heading2
-          ? (this.log.debug('Skipping applyH2 - already processed by applyCustomFormattingToExistingStyles'), 0)
+          ? (this.log.debug(
+              'Skipping applyH2 - already processed by applyCustomFormattingToExistingStyles'
+            ),
+            0)
           : doc.applyH2();
         const h3Count = styleResults.heading3
-          ? (this.log.debug('Skipping applyH3 - already processed by applyCustomFormattingToExistingStyles'), 0)
+          ? (this.log.debug(
+              'Skipping applyH3 - already processed by applyCustomFormattingToExistingStyles'
+            ),
+            0)
           : doc.applyH3();
 
         // Skip applyNumList/applyBulletList if already processed by applyCustomFormattingToExistingStyles
@@ -2934,8 +2943,11 @@ export class WordDocumentProcessor {
 
     // FIX: Update ALL existing abstractNum definitions to use user's bullet symbols & Calibri font
     // CRITICAL: Must set font to Calibri for proper Unicode bullet rendering (● vs ■)
-    // Calibri has proven to be the most reliable font for bullet character rendering
-    this.log.debug('Updating existing abstractNum bullet lists (symbol AND font)...');
+    // CRITICAL: Must update ALL 9 levels (0-8) that Word supports, not just configured levels
+    // This fixes "Bullet 3" showing square when it references level 3+ in abstractNum
+    this.log.debug(
+      'Updating existing abstractNum bullet lists (ALL 9 levels with symbol AND font)...'
+    );
     let existingListsUpdated = 0;
 
     try {
@@ -2943,14 +2955,19 @@ export class WordDocumentProcessor {
       for (const abstractNum of abstractNums) {
         let isModified = false;
 
-        // Update each level in this abstractNum if it's a bullet list
-        for (let i = 0; i < bullets.length; i++) {
-          const level = abstractNum.getLevel(i);
+        // CRITICAL FIX: Update ALL 9 levels (0-8) that Word supports
+        // Word documents can have bullet lists with 9 levels total
+        // If we only update configured levels (e.g., 0-2), levels 3-8 keep their old symbols (like ■)
+        for (let levelIndex = 0; levelIndex < 9; levelIndex++) {
+          const level = abstractNum.getLevel(levelIndex);
           if (level && level.getFormat() === 'bullet') {
             const props = level.getProperties();
             const oldSymbol = props.text;
             const oldFont = props.font;
-            const newSymbol = bullets[i];
+
+            // Use configured symbol for this level if available, otherwise use level 0's symbol
+            // This ensures deep bullet levels don't show squares even if not explicitly configured
+            const newSymbol = bullets[levelIndex] || bullets[0] || '\u2022';
             const targetFont = 'Calibri'; // Calibri for reliable bullet rendering
 
             // Check if symbol OR font needs updating
@@ -2968,7 +2985,7 @@ export class WordDocumentProcessor {
               isModified = true;
 
               this.log.debug(
-                `  Updated abstractNum level ${i}:` +
+                `  Updated abstractNum level ${levelIndex}:` +
                   (symbolChanged
                     ? ` symbol "${oldSymbol}" → "${newSymbol}" (U+${newSymbol.charCodeAt(0).toString(16).toUpperCase()})`
                     : '') +
@@ -2985,7 +3002,7 @@ export class WordDocumentProcessor {
 
       if (existingListsUpdated > 0) {
         this.log.info(
-          `Updated ${existingListsUpdated} existing abstractNum bullet lists (symbols + Calibri font)`
+          `Updated ${existingListsUpdated} existing abstractNum bullet lists (ALL 9 levels, symbols + Calibri font)`
         );
       }
     } catch (error) {
