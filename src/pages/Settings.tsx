@@ -863,7 +863,7 @@ export function Settings() {
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
-                          {/* eslint-disable-next-line */}
+                          {}
                           <div
                             className="w-6 h-6 rounded"
                             style={{
@@ -884,7 +884,7 @@ export function Settings() {
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
-                          {/* eslint-disable-next-line */}
+                          {}
                           <div
                             className="w-6 h-6 rounded"
                             style={{
@@ -913,7 +913,7 @@ export function Settings() {
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
-                          {/* eslint-disable-next-line */}
+                          {}
                           <div
                             className="w-6 h-6 rounded"
                             style={{
@@ -942,7 +942,7 @@ export function Settings() {
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
-                          {/* eslint-disable-next-line */}
+                          {}
                           <div
                             className="w-6 h-6 rounded"
                             style={{
@@ -971,7 +971,7 @@ export function Settings() {
                           }}
                           className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
                         >
-                          {/* eslint-disable-next-line */}
+                          {}
                           <div
                             className="w-6 h-6 rounded"
                             style={{
@@ -1001,7 +1001,7 @@ export function Settings() {
               {/* Live Preview */}
               <div className="p-6 rounded-lg border border-border bg-muted/30">
                 <div className="space-y-3">
-                  {/* eslint-disable-next-line */}
+                  {}
                   <h3
                     className="text-lg font-semibold"
                     style={{
@@ -1015,7 +1015,7 @@ export function Settings() {
                   >
                     Preview: Main Heading
                   </h3>
-                  {/* eslint-disable-next-line */}
+                  {}
                   <p
                     style={{
                       fontSize: `${fontSize}px`,
@@ -1030,7 +1030,7 @@ export function Settings() {
                     the lazy dog. Adjust the settings below to see how your text will appear
                     throughout the application.
                   </p>
-                  {/* eslint-disable-next-line */}
+                  {}
                   <p
                     className="text-muted-foreground"
                     style={{

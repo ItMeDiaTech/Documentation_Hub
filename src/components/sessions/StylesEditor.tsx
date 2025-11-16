@@ -1,20 +1,18 @@
-import { useState, memo } from 'react';
-import {
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  AlignJustify,
-  Bold,
-  Italic,
-  Underline,
-  Check,
-  List,
-  Table,
-  BookOpen,
-  Lock,
-} from 'lucide-react';
+import { IndentationLevel, ListBulletSettings } from '@/types/session';
 import { cn } from '@/utils/cn';
-import { ListBulletSettings, IndentationLevel } from '@/types/session';
+import {
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  Check,
+  Italic,
+  List,
+  Lock,
+  Underline,
+} from 'lucide-react';
+import { memo, useState } from 'react';
 
 interface StyleDefinition {
   id: string;
@@ -886,9 +884,9 @@ export const StylesEditor = memo(function StylesEditor({
                 Level 2 and Level 3 symbols.
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {/* Level 1 */}
+                {/* Level 0 */}
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Level 1</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">Level 0</label>
                   <select
                     value={listBulletSettings.indentationLevels[0]?.bulletChar || '\uF0B7'}
                     onChange={(e) => {
@@ -912,15 +910,15 @@ export const StylesEditor = memo(function StylesEditor({
                     <option value="-">− Dash</option>
                   </select>
                 </div>
-                {/* Level 2 */}
+                {/* Level 1 */}
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Level 2</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">Level 1</label>
                   <select
                     value={listBulletSettings.indentationLevels[1]?.bulletChar || '○'}
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[1] = { ...newLevels[1], bulletChar: e.target.value };
-                      // Update Level 4 to match Level 2 (alternating pattern)
+                      // Update Level 3 to match Level 1 (alternating pattern)
                       newLevels[3] = { ...newLevels[3], bulletChar: e.target.value };
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);
@@ -940,15 +938,15 @@ export const StylesEditor = memo(function StylesEditor({
                     <option value="-">− Dash</option>
                   </select>
                 </div>
-                {/* Level 3 */}
+                {/* Level 2 */}
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Level 3</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">Level 2</label>
                   <select
                     value={listBulletSettings.indentationLevels[2]?.bulletChar || '\uF0B7'}
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[2] = { ...newLevels[2], bulletChar: e.target.value };
-                      // Update Level 5 to match Level 3 (alternating pattern)
+                      // Update Level 4 to match Level 2 (alternating pattern)
                       newLevels[4] = { ...newLevels[4], bulletChar: e.target.value };
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);

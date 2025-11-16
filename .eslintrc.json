@@ -12,6 +12,7 @@
     "plugin:react-hooks/recommended",
     "prettier"
   ],
+  "ignorePatterns": ["dist/", "build/", "node_modules/", "*.log", "**/*.legacy.ts"],
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
     "ecmaVersion": "latest",

@@ -8,41 +8,31 @@
 import {
   Document,
   Hyperlink,
-  Paragraph,
-  Run,
-  Table,
-  TableRow,
-  TableCell,
   Image,
-  Style,
-  StylesManager,
   NumberingLevel,
-  NumberingManager,
-  AbstractNumbering,
+  Paragraph,
   pointsToTwips,
-  twipsToPoints,
-  inchesToTwips,
+  Run,
+  Style,
+  Table,
 } from 'docxmlater';
 // Note: Run, Hyperlink, Image imported for type checking in isParagraphTrulyEmpty()
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import pLimit from 'p-limit';
 import {
   DetailedHyperlinkInfo,
   HyperlinkProcessingOptions,
   HyperlinkProcessingResult,
   HyperlinkType,
 } from '@/types/hyperlink';
-import { DocXMLaterProcessor } from './DocXMLaterProcessor';
-import {
-  DocumentProcessingComparison,
-  documentProcessingComparison,
-} from './DocumentProcessingComparison';
 import { MemoryMonitor } from '@/utils/MemoryMonitor';
 import { logger } from '@/utils/logger';
-import { extractLookupIds } from '@/utils/urlPatterns';
 import { sanitizeHyperlinkText } from '@/utils/textSanitizer';
+import { extractLookupIds } from '@/utils/urlPatterns';
+import { promises as fs } from 'fs';
+import pLimit from 'p-limit';
+import * as path from 'path';
 import { hyperlinkService } from '../HyperlinkService';
+import { DocXMLaterProcessor } from './DocXMLaterProcessor';
+import { documentProcessingComparison } from './DocumentProcessingComparison';
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -747,7 +737,11 @@ export class WordDocumentProcessor {
         const header2Style = options.styles.find((s: any) => s.id === 'header2');
         if (header2Style) {
           this.log.debug('=== VALIDATING HEADER 2 TABLE FORMATTING ===');
-          const cellsFixed = await this.validateHeader2TableFormatting(doc, header2Style);
+          const cellsFixed = await this.validateHeader2TableFormatting(
+            doc,
+            header2Style,
+            options.tableShadingSettings
+          );
           this.log.info(`Validated and fixed ${cellsFixed} Header 2 table cells`);
         } else {
           this.log.warn(
@@ -2370,6 +2364,10 @@ export class WordDocumentProcessor {
       color: string;
       spaceBefore: number;
       spaceAfter: number;
+    },
+    tableShadingSettings?: {
+      header2Shading: string;
+      otherShading: string;
     }
   ): Promise<number> {
     let cellsFixed = 0;
@@ -2473,11 +2471,14 @@ export class WordDocumentProcessor {
               }
 
               // Validate and fix cell shading for 1x1 tables
-              // Heading2 cells in 1x1 tables should ALWAYS be shaded
+              // Heading2 cells in 1x1 tables should use user's configured color
               if (is1x1Table) {
-                cell.setShading({ fill: 'BFBFBF' }); // Default Header 2 shading
+                // Use user's header2Shading color from tableShadingSettings (fallback to BFBFBF if not set)
+                const shadingColor =
+                  tableShadingSettings?.header2Shading?.replace('#', '') || 'BFBFBF';
+                cell.setShading({ fill: shadingColor });
                 cellNeedsUpdate = true;
-                this.log.debug(`Applied Header 2 cell shading (#BFBFBF) to 1x1 table`);
+                this.log.debug(`Applied Header 2 cell shading (#${shadingColor}) to 1x1 table`);
               }
 
               if (cellNeedsUpdate) {
@@ -3405,6 +3406,9 @@ export class WordDocumentProcessor {
 
     // Apply TopHyperlink style - this handles all formatting including guaranteed zero spacing
     para.setStyle('TopHyperlink');
+
+    // Mark as preserved to protect from paragraph removal operations
+    para.setPreserved(true);
 
     // No need for manual formatting - style handles:
     // - Right alignment
