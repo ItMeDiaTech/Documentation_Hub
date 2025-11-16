@@ -353,4 +353,99 @@ export class DocXMLaterProcessor {
   createNewDocument(): Document {
     return Document.create();
   }
+
+  // ========== Hyperlink Operations ==========
+
+  /**
+   * Extract all hyperlinks from a document
+   *
+   * **CRITICAL METHOD - DO NOT REMOVE**
+   * This method is required by WordDocumentProcessor for hyperlink processing operations.
+   * It extracts all hyperlinks from the document along with their context (paragraph, URL, text).
+   *
+   * The returned text is automatically sanitized using sanitizeHyperlinkText() to prevent
+   * XML parsing issues and ensure consistent formatting.
+   *
+   * @async
+   * @param {Document} doc - Document to extract hyperlinks from
+   * @returns {Promise<Array>} Array of hyperlink objects with structure:
+   *   - hyperlink: The Hyperlink instance from docxmlater
+   *   - paragraph: The Paragraph containing this hyperlink
+   *   - paragraphIndex: Index of the paragraph in the document
+   *   - url: The hyperlink URL (or undefined if internal/anchor)
+   *   - text: Sanitized display text of the hyperlink
+   *
+   * @group Hyperlink Operations
+   *
+   * @example
+   * ```typescript
+   * const processor = new DocXMLaterProcessor();
+   * const doc = await Document.load('document.docx');
+   *
+   * const hyperlinks = await processor.extractHyperlinks(doc);
+   * console.log(`Found ${hyperlinks.length} hyperlinks`);
+   *
+   * for (const link of hyperlinks) {
+   *   console.log(`Text: "${link.text}", URL: ${link.url}`);
+   *   console.log(`Located in paragraph ${link.paragraphIndex}`);
+   * }
+   * ```
+   *
+   * @see {@link WordDocumentProcessor} - Uses this method for document processing
+   */
+  async extractHyperlinks(doc: Document): Promise<
+    Array<{
+      hyperlink: any; // Hyperlink type from docxmlater
+      paragraph: any; // Paragraph type from docxmlater
+      paragraphIndex: number;
+      url?: string;
+      text: string;
+    }>
+  > {
+    // Dynamic import to avoid formatter issues with unused imports
+    const { sanitizeHyperlinkText } = await import('@/utils/textSanitizer');
+
+    const hyperlinks: Array<{
+      hyperlink: any;
+      paragraph: any;
+      paragraphIndex: number;
+      url?: string;
+      text: string;
+    }> = [];
+
+    // Get all paragraphs from the document
+    const paragraphs = doc.getParagraphs();
+
+    // Iterate through each paragraph to find hyperlinks
+    for (let i = 0; i < paragraphs.length; i++) {
+      const para = paragraphs[i];
+
+      // Get the content of the paragraph (can include Runs, Hyperlinks, Images, etc.)
+      const content = para.getContent();
+
+      // Check each content item for hyperlinks
+      for (const item of content) {
+        // Check if the item is a Hyperlink instance
+        // We use duck-typing here since we can't import the Hyperlink type without formatter removing it
+        if (item && typeof (item as any).getUrl === 'function') {
+          // This is a hyperlink - extract its data
+          const url = (item as any).getUrl?.();
+          const rawText = (item as any).getText?.() || '';
+
+          // Sanitize the text to prevent XML issues
+          const sanitizedText = sanitizeHyperlinkText(rawText);
+
+          hyperlinks.push({
+            hyperlink: item,
+            paragraph: para,
+            paragraphIndex: i,
+            url: url,
+            text: sanitizedText,
+          });
+        }
+      }
+    }
+
+    return hyperlinks;
+  }
 }

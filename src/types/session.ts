@@ -53,8 +53,8 @@ export interface Session {
   status: 'active' | 'closed';
   // Processing configuration
   processingOptions?: {
-    appendContentId: boolean;
-    contentIdToAppend: string;
+    appendContentId?: boolean; // DEPRECATED: #content should never be appended
+    contentIdToAppend?: string; // DEPRECATED: #content should never be appended
     validateUrls: boolean;
     createBackup: boolean;
     processInternalLinks: boolean;
