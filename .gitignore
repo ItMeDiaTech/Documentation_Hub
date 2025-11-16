@@ -140,6 +140,8 @@ PLUGIN_MARKETPLACE_PLAN.md
 GITHUB_ISSUE_*.md
 ISSUE_*.md
 OOXML_*.md
+*SUMMARY*.md
+*FIX*.md
 
 # Development documentation (internal use only)
 docs/architecture/COMPLETE_PROCESSING_FLOW.md
