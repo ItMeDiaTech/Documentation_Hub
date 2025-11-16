@@ -3320,6 +3320,11 @@ export class WordDocumentProcessor {
               // If isWhite is true, skip applying shading (preserve white cells)
 
               cell.setMargins(cellMargins);
+
+              // Set all paragraphs in the cell to centered alignment
+              for (const para of cell.getParagraphs()) {
+                para.setAlignment('center');
+              }
             }
           }
           this.log.debug(`Applied other table shading (#${otherColor}) to multi-cell table`);
