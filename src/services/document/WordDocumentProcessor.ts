@@ -829,7 +829,7 @@ export class WordDocumentProcessor {
       // NEW 1.1.0 Option: Smart Table Detection & Formatting
       if (options.smartTables) {
         this.log.debug('=== SMART TABLE DETECTION & FORMATTING (NEW) ===');
-        const smartFormatted = await this.applySmartTableFormatting(doc);
+        const smartFormatted = await this.applySmartTableFormatting(doc, options);
         this.log.info(`Applied smart formatting to ${smartFormatted} tables`);
       }
 
@@ -3224,51 +3224,111 @@ export class WordDocumentProcessor {
   /**
    * Apply smart table formatting using docxmlater APIs
    *
-   * Intelligent table detection and formatting:
-   * - Detects header rows based on content analysis
-   * - Formats headers with bold text and gray background
+   * Intelligent table formatting:
+   * - Detects 1x1 tables and applies Header 2 shading color
+   * - Applies other table shading color to multi-cell tables (skips white cells)
+   * - Sets consistent padding (0" top/bottom, 0.08" left/right)
+   * - Sets autofit to window for all tables
    */
-  private async applySmartTableFormatting(doc: Document): Promise<number> {
+  private async applySmartTableFormatting(
+    doc: Document,
+    options: WordProcessingOptions
+  ): Promise<number> {
     const tables = doc.getTables();
     let formattedCount = 0;
 
+    // Get shading colors from UI settings (strip # prefix for OOXML format)
+    const header2Color =
+      options.tableShadingSettings?.header2Shading?.replace('#', '').toUpperCase() || 'BFBFBF';
+    const otherColor =
+      options.tableShadingSettings?.otherShading?.replace('#', '').toUpperCase() || 'DFDFDF';
+
+    // Log fallback usage if colors weren't provided
+    if (!options.tableShadingSettings?.header2Shading) {
+      this.log.debug(
+        'Header 2 shading color not provided in tableShadingSettings, using fallback: #BFBFBF'
+      );
+    }
+    if (!options.tableShadingSettings?.otherShading) {
+      this.log.debug(
+        'Other table shading color not provided in tableShadingSettings, using fallback: #DFDFDF'
+      );
+    }
+
+    // Cell margins: 0" top/bottom, 0.08" left/right (0.08 inches = 115 twips)
+    const cellMargins = {
+      top: 0,
+      bottom: 0,
+      left: 115, // 0.08 inches
+      right: 115, // 0.08 inches
+    };
+
     for (const table of tables) {
       try {
-        const rows = table.getRows();
-        if (rows.length === 0) continue;
+        const rowCount = table.getRowCount();
+        const columnCount = table.getColumnCount();
 
-        // Analyze first row to determine if it's a header
-        const firstRow = rows[0];
-        const firstRowCells = firstRow.getCells();
-        let isLikelyHeader = true;
+        if (rowCount === 0) continue;
 
-        // Header detection heuristics
-        for (const cell of firstRowCells) {
-          const text = cell.getText().trim();
-          // Headers are typically short, title-case, or all caps
-          if (text.length > 50 || /^\d+$/.test(text)) {
-            isLikelyHeader = false;
-            break;
-          }
-        }
+        // Detect 1x1 tables
+        const is1x1Table = rowCount === 1 && columnCount === 1;
 
-        // Apply header formatting if detected
-        if (isLikelyHeader) {
-          for (const cell of firstRowCells) {
-            // Set header background color
-            cell.setShading({ fill: 'E0E0E0' });
+        // Set autofit to window for all tables
+        table.setLayout('auto');
 
-            // Make all text in header cells bold
-            for (const para of cell.getParagraphs()) {
+        if (is1x1Table) {
+          // Handle 1x1 tables - apply Header 2 shading color
+          const singleCell = table.getRow(0)?.getCell(0);
+          if (singleCell) {
+            singleCell.setShading({ fill: header2Color });
+            singleCell.setMargins(cellMargins);
+
+            // Set all text in the cell to bold
+            for (const para of singleCell.getParagraphs()) {
               for (const run of para.getRuns()) {
                 run.setBold(true);
               }
             }
+
+            this.log.debug(`Applied Header 2 shading (#${header2Color}) to 1x1 table`);
           }
+        } else {
+          // Handle multi-cell tables - apply other table shading color (skip white cells)
+          const rows = table.getRows();
+          for (const row of rows) {
+            for (const cell of row.getCells()) {
+              // Check current cell shading
+              const currentShading = cell.getFormatting().shading?.fill?.toUpperCase();
+              const currentColor = currentShading;
+
+              // Only apply shading if cell is NOT white (#FFFFFF) and NOT undefined/null
+              // Apply if: no color is set OR color is set and not white
+              const isWhite = currentColor === 'FFFFFF';
+              const hasNoColor = currentColor === undefined || currentColor === null;
+
+              if (!hasNoColor || !isWhite) {
+                // Apply shading: either color is set, or color is set and not white
+                cell.setShading({ fill: otherColor });
+
+                // Set all text in the cell to bold
+                for (const para of cell.getParagraphs()) {
+                  for (const run of para.getRuns()) {
+                    run.setBold(true);
+                  }
+                }
+              }
+              // If isWhite is true, skip applying shading (preserve white cells)
+
+              cell.setMargins(cellMargins);
+            }
+          }
+          this.log.debug(`Applied other table shading (#${otherColor}) to multi-cell table`);
         }
 
         formattedCount++;
-        this.log.debug(`Smart formatting applied to table with ${rows.length} rows`);
+        this.log.debug(
+          `Smart formatting applied to table: ${is1x1Table ? '1x1' : `${rowCount}x${columnCount}`}`
+        );
       } catch (error) {
         this.log.warn(`Error applying smart table formatting: ${error}`);
       }
