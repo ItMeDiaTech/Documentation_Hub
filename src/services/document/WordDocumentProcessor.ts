@@ -751,65 +751,35 @@ export class WordDocumentProcessor {
       // ═══════════════════════════════════════════════════════════
       if (options.preserveBlankLinesAfterAllTables) {
         this.log.debug('=== ENSURING BLANK LINES AFTER ALL TABLES ===');
+        this.log.debug('  Using streamlined native method approach with enhanced options');
 
         const tables = doc.getTables();
         let blankLinesAdded = 0;
         let existingLinesMarked = 0;
 
-        // Get body elements to determine table positions
+        // Streamlined approach using native paragraph operations
         const bodyElements = doc.getBodyElements();
-        const tableToBodyIndex = new Map<Table, number>();
 
-        // Map tables to their body element indices
-        bodyElements.forEach((element, index) => {
+        for (let i = 0; i < bodyElements.length; i++) {
+          const element = bodyElements[i];
+
           if (element.constructor.name === 'Table') {
-            const table = element as Table;
-            tableToBodyIndex.set(table, index);
-          }
-        });
+            const nextElement = bodyElements[i + 1];
 
-        // Process each table to ensure blank line after it
-        for (const table of tables) {
-          const bodyIndex = tableToBodyIndex.get(table);
-          if (bodyIndex === undefined) {
-            this.log.warn('Could not find table position in body elements - skipping');
-            continue;
-          }
-
-          // Check if there's already a paragraph after this table
-          const nextElementIndex = bodyIndex + 1;
-          const nextElement = bodyElements[nextElementIndex];
-
-          if (nextElement instanceof Paragraph) {
-            // Check if it's already a blank paragraph
-            const isBlank = this.isParagraphTrulyEmpty(nextElement);
-
-            if (isBlank) {
-              // Mark as preserved to protect from removal
+            if (nextElement instanceof Paragraph && this.isParagraphTrulyEmpty(nextElement)) {
+              // Existing blank line - mark as preserved with spacing
               nextElement.setPreserved(true);
+              nextElement.setSpaceAfter(120); // 6pt spacing
               existingLinesMarked++;
-              this.log.debug(
-                `Marked existing blank line after table at body index ${bodyIndex} as preserved`
-              );
-            } else {
-              // Insert blank paragraph before the non-blank paragraph
+            } else if (!nextElement || !(nextElement instanceof Paragraph)) {
+              // No paragraph after table - create one
               const blankPara = doc.createParagraph('');
               blankPara.setStyle('Normal');
               blankPara.setPreserved(true);
-              doc.insertParagraphAt(nextElementIndex, blankPara);
+              blankPara.setSpaceAfter(120); // 6pt spacing per spec
+              doc.insertParagraphAt(i + 1, blankPara);
               blankLinesAdded++;
-              this.log.debug(`Inserted blank line after table at body index ${bodyIndex}`);
             }
-          } else {
-            // No paragraph after table (or it's another table) - insert one
-            const blankPara = doc.createParagraph('');
-            blankPara.setStyle('Normal');
-            blankPara.setPreserved(true);
-            doc.insertParagraphAt(nextElementIndex, blankPara);
-            blankLinesAdded++;
-            this.log.debug(
-              `Inserted blank line after table at body index ${bodyIndex} (no following paragraph)`
-            );
           }
         }
 
@@ -2949,21 +2919,20 @@ export class WordDocumentProcessor {
       );
     });
 
-    // OVERRIDE: Enforce Closed/Open/Closed/Open/Closed pattern
-    // Even levels (0,2,4): Closed (•, U+2022), Odd levels (1,3): Open (○, U+25CB)
-    const bullets = settings.indentationLevels.map((levelConfig, index) => {
-      return index % 2 === 0 ? '\u2022' : '\u25CB';
-    });
+    // Use user-configured bullet symbols from UI (respect user settings)
+    const bullets = settings.indentationLevels.map(
+      (levelConfig) => levelConfig.bulletChar || '\u2022'
+    );
     this.log.debug(
-      `  Enforced bullet pattern: ${bullets.map((b, i) => `Level ${i}="${b}" (U+${b.charCodeAt(0).toString(16).toUpperCase()})`).join(', ')}`
+      `  User-configured bullets: ${bullets.map((b, i) => `Level ${i}="${b}" (U+${b.charCodeAt(0).toString(16).toUpperCase()})`).join(', ')}`
     );
 
     // Create custom levels with font specified and UI indentation
     // UI config already has incremented values per level, use them directly
     const levels = settings.indentationLevels.map((levelConfig, index) => {
-      const enforcedBullet = bullets[index];
+      const bullet = bullets[index];
       this.log.debug(
-        `  Level ${index}: bulletChar="${enforcedBullet}" (U+${enforcedBullet.charCodeAt(0).toString(16).toUpperCase()}), symbolIndent=${levelConfig.symbolIndent}", textIndent=${levelConfig.textIndent}"`
+        `  Level ${index}: bulletChar="${bullet}" (U+${bullet.charCodeAt(0).toString(16).toUpperCase()}), symbolIndent=${levelConfig.symbolIndent}", textIndent=${levelConfig.textIndent}"`
       );
       // Use direct values from UI config (already incremented per level)
       const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
@@ -2973,7 +2942,7 @@ export class WordDocumentProcessor {
       return new NumberingLevel({
         level: index,
         format: 'bullet',
-        text: enforcedBullet, // Use enforced Closed/Open pattern
+        text: bullet, // Use user-configured bullet symbol
         // Let framework use default 'Calibri' font for correct bullet rendering
         leftIndent: symbolTwips, // Bullet position (where bullet appears)
         hangingIndent: hangingTwips, // Text offset from bullet
