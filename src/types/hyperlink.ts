@@ -94,7 +94,19 @@ export interface HyperlinkProcessingOptions {
     replaceOutdatedTitles?: boolean; // Standalone title replacement (fallback when API unavailable)
     fixInternalHyperlinks?: boolean;
     updateTopHyperlinks?: boolean;
+    /**
+     * Populate/refresh the Table of Contents after save using docxmlater's
+     * replaceTableOfContents() helper. When true, the TOC field code is
+     * preserved but the entries themselves (hyperlinks) are generated so
+     * recipients do not need to "Right-click to update field".
+     */
     updateTocHyperlinks?: boolean;
+    /**
+     * Alias for updateTocHyperlinks for clearer intent in higher-level
+     * processing options (e.g., Template_UI). Either flag being true
+     * should trigger TOC population logic.
+     */
+    populateToc?: boolean;
     standardizeHyperlinkColor?: boolean;
     validateHeader2Tables?: boolean; // NEW in 1.6.0: Validate Header 2 table formatting
     validateDocumentStyles?: boolean; // NEW in 1.6.0: Validate all document styles using applyStylesFromObjects()

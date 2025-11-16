@@ -52,12 +52,6 @@ export const defaultOptions: ProcessingOption[] = [
     enabled: true,
   },
   { id: 'fix-content-ids', label: 'theSource Content IDs', group: 'hyperlinks', enabled: true },
-  {
-    id: 'standardize-hyperlink-color',
-    label: 'Hyperlink Appearance',
-    group: 'hyperlinks',
-    enabled: true,
-  },
 
   // Content Structure Fixes Group
   // Note: assign-styles and center-images are now applied automatically during processing
