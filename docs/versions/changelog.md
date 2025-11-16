@@ -5,7 +5,7 @@ All notable changes to the docXMLater framework are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current Version:** 1.16.0
+**Current Version:** 1.19.0
 **Test Coverage:** 2,073 tests passing (100%)
 **Status:** Production Ready
 
@@ -13,11 +13,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date       | Highlights                                   | Tests  |
 | ------- | ---------- | -------------------------------------------- | ------ |
-| 1.16.0  | 2025-11-14 | Current release - All phases complete        | 2,073  |
+| 1.19.0  | 2025-11-16 | Fixed 1x1 table blank line preservation      | 2,073  |
+| 1.16.0  | 2025-11-14 | All phases complete                          | 2,073  |
 | 1.15.0  | 2025-11-14 | Hyperlink defragmentation API                | 1,188+ |
 | 1.14.0  | 2025-11-13 | List formatting helpers, special characters  | 1,188  |
 | 1.13.0  | 2025-11-12 | Fixed hyperlink duplication from Google Docs | 1,167  |
 | 1.0.0   | 2025-10-XX | Initial production release                   | 1,098  |
+
+---
+
+## [1.19.0] - 2025-11-16
+
+### Fixed
+
+- **1x1 Table Blank Line Preservation**: Fixed issue where blank lines after 1x1 tables were not reliably preserved
+  - Root cause: `markAsPreserved` flag was conditional on `removeParagraphLines` setting
+  - Now always marks blank lines as preserved when `preserveBlankLinesAfterHeader2Tables` is enabled
+  - Prevents downstream cleanup operations from removing intentional spacing
+  - Location: `WordDocumentProcessor.ts` lines 705-724
+
+### Changed
+
+- **Blank Line Preservation Logic**: Simplified preservation behavior for better user experience
+  - Previous: Blank lines only preserved when BOTH `preserveBlankLinesAfterHeader2Tables=true` AND `removeParagraphLines=true`
+  - Current: Blank lines ALWAYS preserved when `preserveBlankLinesAfterHeader2Tables=true` (regardless of other settings)
+  - Rationale: User intent when enabling "preserve blank lines" is to ALWAYS preserve them
+
+### Documentation
+
+- **TOC Wiring Guide**: Added comprehensive documentation for Table of Contents feature integration
+  - Created `docs/TOC_WIRING_GUIDE.md` with UI integration instructions
+  - Explains existing TOC generation capability in framework (`doc.replaceTableOfContents()`)
+  - Provides 3 UI integration options with example code
+  - Includes troubleshooting guide and testing strategy
+  - Issue: TOC shows only placeholder text because `options.operations.updateTocHyperlinks` not wired from UI
+
+### Technical Details
+
+**Before (Buggy):**
+
+```typescript
+const shouldPreserve = options.removeParagraphLines === true;
+doc.ensureBlankLinesAfter1x1Tables({
+  markAsPreserved: shouldPreserve, // Conditional
+});
+```
+
+**After (Fixed):**
+
+```typescript
+doc.ensureBlankLinesAfter1x1Tables({
+  markAsPreserved: true, // Always preserve when option enabled
+});
+```
+
+### Migration Notes
+
+No breaking changes. This fix only affects behavior when:
+
+- `preserveBlankLinesAfterHeader2Tables` is enabled, AND
+- `removeParagraphLines` is disabled
+
+Previous behavior: Blank lines inserted but not protected → could be removed by other operations
+New behavior: Blank lines inserted AND protected → always preserved
 
 ---
 
