@@ -635,9 +635,18 @@ export class WordDocumentProcessor {
 
         // NEW v2.1.0: Apply styles and clean direct formatting with simpler API
         this.log.debug('=== APPLYING STYLES WITH CLEAN FORMATTING ===');
-        const h1Count = doc.applyH1();
-        const h2Count = doc.applyH2();
-        const h3Count = doc.applyH3();
+        
+        // Skip applyH1/H2/H3 if already processed by applyCustomFormattingToExistingStyles
+        // This prevents framework defaults from overriding user-configured custom styles
+        const h1Count = styleResults.heading1
+          ? (this.log.debug('Skipping applyH1 - already processed by applyCustomFormattingToExistingStyles'), 0)
+          : doc.applyH1();
+        const h2Count = styleResults.heading2
+          ? (this.log.debug('Skipping applyH2 - already processed by applyCustomFormattingToExistingStyles'), 0)
+          : doc.applyH2();
+        const h3Count = styleResults.heading3
+          ? (this.log.debug('Skipping applyH3 - already processed by applyCustomFormattingToExistingStyles'), 0)
+          : doc.applyH3();
 
         // Skip applyNumList/applyBulletList if already processed by applyCustomFormattingToExistingStyles
         // But still ensure bullet symbols and numbered list numbers are 12pt bold
@@ -677,6 +686,15 @@ export class WordDocumentProcessor {
         const cleanedCount = doc.cleanFormatting();
 
         const skippedNotes: string[] = [];
+        if (styleResults.heading1) {
+          skippedNotes.push('H1 (skipped: already processed)');
+        }
+        if (styleResults.heading2) {
+          skippedNotes.push('H2 (skipped: already processed)');
+        }
+        if (styleResults.heading3) {
+          skippedNotes.push('H3 (skipped: already processed)');
+        }
         if (styleResults.listParagraph) {
           skippedNotes.push('NumList/Bullet (skipped: already processed)');
         }
@@ -2899,7 +2917,7 @@ export class WordDocumentProcessor {
         level: index,
         format: 'bullet',
         text: bullet, // Use user-configured bullet symbol
-        // Let framework use default 'Calibri' font for correct bullet rendering
+        font: 'Calibri', // CRITICAL: Calibri renders U+2022 as ● (not ■ like Arial)
         leftIndent: symbolTwips, // Bullet position (where bullet appears)
         hangingIndent: hangingTwips, // Text offset from bullet
       });
