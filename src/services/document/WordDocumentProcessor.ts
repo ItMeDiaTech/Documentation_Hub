@@ -702,14 +702,41 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
+      // HYPERLINK STYLE DEFINITION UPDATE
+      // Ensure Hyperlink style uses Verdana before applyHyperlink()
+      // This prevents inheritance from document defaults (Calibri)
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug('=== UPDATING HYPERLINK STYLE DEFINITION ===');
+      try {
+        const hyperlinkStyle = Style.create({
+          styleId: 'Hyperlink',
+          name: 'Hyperlink',
+          type: 'character',
+          runFormatting: {
+            font: 'Verdana',
+            size: 12,
+            color: '0000FF',
+            underline: 'single',
+            bold: false,
+            italic: false,
+          },
+        });
+        
+        doc.addStyle(hyperlinkStyle); // Updates existing or creates new
+        this.log.info('✓ Updated Hyperlink style to use Verdana 12pt');
+      } catch (error) {
+        this.log.warn('Failed to update Hyperlink style:', error);
+        // Continue processing - manual formatting will still apply
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // ENSURE BLANK LINES AFTER 1x1 TABLES
       // NEW v1.19.0: Using docXMLater's ensureBlankLinesAfter1x1Tables()
       //
       // EXECUTION ORDER: This runs BEFORE paragraph removal so the
       // preserved flag can protect blank lines from being deleted.
       //
-      // KNOWN ISSUE: Blank lines may not have Normal style applied
-      // (docxmlater library doesn't expose 'style' option yet)
+      // FIXED in v2.4.0: Blank lines now use Normal style via 'style' parameter
       // ═══════════════════════════════════════════════════════════
       this.log.debug('=== DEBUG: BLANK LINES AFTER 1x1 TABLES CHECK ===');
       this.log.debug(
@@ -727,15 +754,14 @@ export class WordDocumentProcessor {
         // enabling "preserve blank lines after Header 2 tables" is to ALWAYS preserve
         // these lines, not conditionally based on other settings.
         const result = doc.ensureBlankLinesAfter1x1Tables({
-          spacingAfter: 120, // 6pt spacing
+          spacingAfter: 120,     // 6pt spacing
           markAsPreserved: true, // Always preserve when option enabled
-          // NOTE: Blank paragraphs may not have Normal style applied
-          // (docxmlater library doesn't expose 'style' option in interface)
+          style: 'Normal',       // NEW in v2.4.0: Set paragraph style
         });
 
         this.log.info(
           `✓ Processed ${result.tablesProcessed} 1x1 tables: ` +
-            `Added ${result.blankLinesAdded} blank lines, ` +
+            `Added ${result.blankLinesAdded} blank lines (Normal style), ` +
             `Marked ${result.existingLinesMarked} existing blank lines as preserved`
         );
         this.log.debug(`  DEBUG: Result details - ${JSON.stringify(result)}`);
@@ -2962,9 +2988,10 @@ export class WordDocumentProcessor {
 
     this.log.debug(`Created bullet list numId=${numId} with ${levels.length} levels`);
 
-    // FIX: Update ALL existing abstractNum definitions to use user's bullet symbols
-    // This ensures paragraphs referencing old abstractNums also get correct symbols
-    this.log.debug('Updating existing abstractNum bullet lists...');
+    // FIX: Update ALL existing abstractNum definitions to use user's bullet symbols & Calibri font
+    // CRITICAL: Must set font to Calibri for proper Unicode bullet rendering (● vs ■)
+    // Calibri has proven to be the most reliable font for bullet character rendering
+    this.log.debug('Updating existing abstractNum bullet lists (symbol AND font)...');
     let existingListsUpdated = 0;
 
     try {
@@ -2976,15 +3003,30 @@ export class WordDocumentProcessor {
         for (let i = 0; i < bullets.length; i++) {
           const level = abstractNum.getLevel(i);
           if (level && level.getFormat() === 'bullet') {
-            // Update the bullet symbol to user's configured symbol
-            const oldSymbol = level.getProperties().text;
+            const props = level.getProperties();
+            const oldSymbol = props.text;
+            const oldFont = props.font;
             const newSymbol = bullets[i];
+            const targetFont = 'Calibri'; // Calibri for reliable bullet rendering
 
-            if (oldSymbol !== newSymbol) {
-              level.setText(newSymbol);
+            // Check if symbol OR font needs updating
+            const symbolChanged = oldSymbol !== newSymbol;
+            const fontChanged = oldFont !== targetFont;
+
+            if (symbolChanged || fontChanged) {
+              // CRITICAL FIX: Set BOTH symbol and font
+              if (symbolChanged) {
+                level.setText(newSymbol);
+              }
+              if (fontChanged) {
+                level.setFont(targetFont);
+              }
               isModified = true;
+
               this.log.debug(
-                `  Updated abstractNum level ${i}: "${oldSymbol}" → "${newSymbol}" (U+${newSymbol.charCodeAt(0).toString(16).toUpperCase()})`
+                `  Updated abstractNum level ${i}:` +
+                (symbolChanged ? ` symbol "${oldSymbol}" → "${newSymbol}" (U+${newSymbol.charCodeAt(0).toString(16).toUpperCase()})` : '') +
+                (fontChanged ? ` font "${oldFont || 'default'}" → "${targetFont}"` : '')
               );
             }
           }
@@ -2997,7 +3039,7 @@ export class WordDocumentProcessor {
 
       if (existingListsUpdated > 0) {
         this.log.info(
-          `Updated ${existingListsUpdated} existing abstractNum bullet lists with user symbols`
+          `Updated ${existingListsUpdated} existing abstractNum bullet lists (symbols + Calibri font)`
         );
       }
     } catch (error) {

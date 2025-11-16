@@ -916,8 +916,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               session.processingOptions?.enabledOperations?.includes('fix-internal-hyperlinks'),
             updateTopHyperlinks:
               session.processingOptions?.enabledOperations?.includes('update-top-hyperlinks'),
-            updateTocHyperlinks:
-              session.processingOptions?.enabledOperations?.includes('update-toc-hyperlinks'),
+            updateTocHyperlinks: true, // Always enabled - no UI control
             standardizeHyperlinkColor: true, // Always enabled - removed from UI
             validateHeader2Tables:
               session.processingOptions?.enabledOperations?.includes('validate-header2-tables'),
