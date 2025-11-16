@@ -1000,11 +1000,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             session.processingOptions?.enabledOperations?.includes('add-document-warning'),
 
           // Lists & Tables Options (mapped from ProcessingOptions UI)
-          listBulletSettings: session.processingOptions?.enabledOperations?.includes(
-            'list-indentation'
-          )
-            ? session.listBulletSettings
-            : undefined,
+          // CRITICAL FIX: Always pass listBulletSettings if configured, regardless of checkbox
+          // The bulletUniformity feature REQUIRES these settings to apply user-configured bullet symbols
+          // The 'list-indentation' checkbox only controls whether to apply indentation uniformity
+          listBulletSettings: session.listBulletSettings || undefined,
           bulletUniformity:
             session.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
           tableUniformity: session.processingOptions?.enabledOperations?.includes('smart-tables'),
