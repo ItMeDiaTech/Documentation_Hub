@@ -610,11 +610,11 @@ export class WordDocumentProcessor {
         this.log.info(`Removed italics from ${italicsRemoved} runs`);
       }
 
-      if (options.standardizeHyperlinkFormatting) {
-        this.log.debug('=== STANDARDIZING HYPERLINK FORMATTING ===');
-        const hyperlinksStandardized = await this.standardizeHyperlinkFormatting(doc);
-        this.log.info(`Standardized formatting for ${hyperlinksStandardized} hyperlinks`);
-      }
+      // ALWAYS standardize hyperlink formatting to ensure consistency
+      // All hyperlinks should be: Verdana 12pt, Blue, Underlined
+      this.log.debug('=== STANDARDIZING HYPERLINK FORMATTING (AUTOMATIC) ===');
+      const hyperlinksStandardized = await this.standardizeHyperlinkFormatting(doc);
+      this.log.info(`Standardized formatting for ${hyperlinksStandardized} hyperlinks`);
 
       if (options.standardizeListPrefixFormatting) {
         this.log.debug('=== STANDARDIZING LIST PREFIX FORMATTING ===');
