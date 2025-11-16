@@ -645,21 +645,46 @@ export class WordDocumentProcessor {
         const h1Count = doc.applyH1();
         const h2Count = doc.applyH2();
         const h3Count = doc.applyH3();
-        const numListCount = doc.applyNumList();
-        const bulletListCount = doc.applyBulletList();
+
+        // Skip applyNumList/applyBulletList if already processed by applyCustomFormattingToExistingStyles
+        const numListCount = styleResults.listParagraph
+          ? (this.log.debug(
+              'Skipping applyNumList/applyBulletList - already processed by applyCustomFormattingToExistingStyles'
+            ),
+            0)
+          : doc.applyNumList();
+        const bulletListCount = styleResults.listParagraph ? 0 : doc.applyBulletList();
+
         const tocCount = doc.applyTOC();
         const todCount = doc.applyTOD();
         const cautionCount = doc.applyCaution();
         const cellHeaderCount = doc.applyCellHeader();
         const hyperlinkCount = doc.applyHyperlink();
-        const normalCount = doc.applyNormal();
+
+        // Skip applyNormal if already processed by applyCustomFormattingToExistingStyles
+        const normalCount = styleResults.normal
+          ? (this.log.debug(
+              'Skipping applyNormal - already processed by applyCustomFormattingToExistingStyles'
+            ),
+            0)
+          : doc.applyNormal();
+
         const cleanedCount = doc.cleanFormatting();
+
+        const skippedNotes: string[] = [];
+        if (styleResults.listParagraph) {
+          skippedNotes.push('NumList/Bullet (skipped: already processed)');
+        }
+        if (styleResults.normal) {
+          skippedNotes.push('Normal (skipped: already processed)');
+        }
+        const skippedNote = skippedNotes.length > 0 ? ` [${skippedNotes.join(', ')}]` : '';
 
         this.log.info(
           `Applied clean styles: H1=${h1Count}, H2=${h2Count}, H3=${h3Count}, ` +
             `NumList=${numListCount}, Bullet=${bulletListCount}, TOC=${tocCount}, ` +
             `TOD=${todCount}, Caution=${cautionCount}, CellHeader=${cellHeaderCount}, ` +
-            `Hyperlink=${hyperlinkCount}, Normal=${normalCount}, Cleaned=${cleanedCount}`
+            `Hyperlink=${hyperlinkCount}, Normal=${normalCount}, Cleaned=${cleanedCount}${skippedNote}`
         );
       }
 
@@ -2186,44 +2211,6 @@ export class WordDocumentProcessor {
 
     return results;
   }
-
-  /**
-   * DEPRECATED v1.16.0: Capture indices of Header 2 tables (replaced with 1x1 table detection)
-   * Kept for potential future use but no longer called
-   * The new approach is simpler and doesn't depend on style timing
-   */
-  /*
-  private captureHeader2TableIndices(doc: Document): Set<number> {
-    const header2Indices = new Set<number>();
-    const bodyElements = doc.getBodyElements();
-
-    bodyElements.forEach((element, index) => {
-      if (element.constructor.name === 'Table') {
-        const table = element as Table;
-        const rows = table.getRows();
-        if (rows.length > 0) {
-          const firstRow = rows[0];
-          const cells = firstRow.getCells();
-          if (cells.length > 0) {
-            const firstCell = cells[0];
-            const cellParas = firstCell.getParagraphs();
-            if (cellParas.length > 0) {
-              const firstPara = cellParas[0];
-              const style = firstPara.getStyle();
-              // Check if this table has Header 2 style
-              if (style === 'Heading2' || style === 'Heading 2') {
-                header2Indices.add(index);
-                this.log.debug(`  ✓ Captured Header 2 table at body index ${index} (style: ${style})`);
-              }
-            }
-          }
-        }
-      }
-    });
-
-    return header2Indices;
-  }
-  */
 
   /**
    * Validate all document styles using DocXMLater 1.6.0 applyStylesFromObjects()
