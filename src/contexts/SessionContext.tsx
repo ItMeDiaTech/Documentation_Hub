@@ -1,38 +1,38 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-  useCallback,
-  useRef,
-} from 'react';
-import {
-  Session,
-  Document,
-  SessionStats,
-  SessionContextType,
-  ReplacementRule,
-  SessionStyle,
-  ListBulletSettings,
-  TableUniformitySettings,
-  TableShadingSettings,
-  TableOfContentsSettings,
-} from '@/types/session';
 import type { HyperlinkProcessingOptions } from '@/types/hyperlink';
 import {
-  loadSessions,
-  saveSession as saveSessionToDB,
+  Document,
+  ListBulletSettings,
+  ReplacementRule,
+  Session,
+  SessionContextType,
+  SessionStats,
+  SessionStyle,
+  TableOfContentsSettings,
+  TableShadingSettings,
+  TableUniformitySettings,
+} from '@/types/session';
+import {
   deleteSession as deleteSessionFromDB,
-  migrateFromLocalStorage,
   ensureDBSizeLimit,
-  truncateSessionChanges,
   handleQuotaExceededError,
+  loadSessions,
+  migrateFromLocalStorage,
+  saveSession as saveSessionToDB,
+  truncateSessionChanges,
 } from '@/utils/indexedDB';
-import { useGlobalStats } from './GlobalStatsContext';
 import { logger } from '@/utils/logger';
-import { safeJsonParse, safeJsonStringify } from '@/utils/safeJsonParse';
 import { isPathSafe } from '@/utils/pathSecurity';
+import { safeJsonParse, safeJsonStringify } from '@/utils/safeJsonParse';
+import {
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { useGlobalStats } from './GlobalStatsContext';
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
@@ -269,7 +269,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         log.error('Failed to persist sessions:', err);
       }
     }
-  }, []); // No dependencies - uses refs instead
+  }, [log]); // No dependencies - uses refs instead
 
   // Persist sessions and active sessions whenever they change (debounced)
   useEffect(() => {
@@ -294,7 +294,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         persistTimerRef.current = null; // Clear the ref
       }
     };
-  }, [sessions, activeSessions]); // FIX: Removed debouncedPersistSessions - it's stable so doesn't need to be a dependency
+  }, [sessions, activeSessions, debouncedPersistSessions]); // FIX: Removed debouncedPersistSessions - it's stable so doesn't need to be a dependency
 
   // CRITICAL FIX: Flush pending saves before window closes
   // Without this, sessions created/modified within the debounce window are lost
@@ -770,7 +770,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           normal: {
             spaceBefore: 3,
             spaceAfter: 3,
-            lineSpacing: 1.15,
+            lineSpacing: 1.0,
           },
         };
 
@@ -778,10 +778,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const hasSessionStyles = session.styles && session.styles.length > 0;
 
         if (!hasSessionStyles) {
-          log.debug('⚠️  No styles configured in session - using default spacing values');
+          log.debug('   No styles configured in session - using default spacing values');
           log.debug('   Default Header 1: 0pt before, 12pt after, 1.0 line spacing');
           log.debug('   Default Header 2: 6pt before, 6pt after, 1.0 line spacing');
-          log.debug('   Default Normal: 3pt before, 3pt after, 1.15 line spacing');
+          log.debug('   Default Normal: 3pt before, 3pt after, 1.0 line spacing');
         }
 
         const header1Style = session.styles?.find((s: SessionStyle) => s.id === 'header1');
@@ -851,7 +851,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           customStyleSpacing.normal = {
             spaceBefore: normalStyle.spaceBefore ?? 0,
             spaceAfter: normalStyle.spaceAfter ?? 0,
-            lineSpacing: normalStyle.lineSpacing ?? 1.15,
+            lineSpacing: normalStyle.lineSpacing ?? 1.0,
           };
           log.debug('✓ Added normal spacing from session:', customStyleSpacing.normal);
         } else if (!hasSessionStyles) {
@@ -888,6 +888,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           listBulletSettings?: ListBulletSettings;
           bulletUniformity?: boolean;
           tableUniformity?: boolean;
+          smartTables?: boolean;
           tableShadingSettings?: {
             header2Shading: string;
             otherShading: string;
@@ -1005,8 +1006,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             : undefined,
           bulletUniformity:
             session.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
-          tableUniformity:
-            session.processingOptions?.enabledOperations?.includes('table-uniformity'),
+          tableUniformity: session.processingOptions?.enabledOperations?.includes('smart-tables'),
+          smartTables: session.processingOptions?.enabledOperations?.includes('smart-tables'),
           tableShadingSettings: session.tableShadingSettings
             ? {
                 header2Shading: session.tableShadingSettings.header2Shading,

@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { cn } from '@/utils/cn';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { cn } from '@/utils/cn';
+import { useMemo } from 'react';
 
 export interface ProcessingOption {
   id: string;
@@ -11,100 +11,93 @@ export interface ProcessingOption {
 }
 
 export const defaultOptions: ProcessingOption[] = [
-  // Text Formatting Group
-  { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'text', enabled: true },
+  // Text Formatting Fixes Group
+  { id: 'remove-italics', label: 'Remove All Italics', group: 'text', enabled: true },
   {
-    id: 'remove-paragraph-lines',
-    label: 'Remove Extra Paragraph Lines',
+    id: 'normalize-spacing',
+    label: 'Standardize Spacing',
     group: 'text',
     enabled: true,
   },
-  { id: 'remove-italics', label: 'Remove Italics', group: 'text', enabled: true },
   {
-    id: 'normalize-spacing',
-    label: 'Smart Spacing Normalization (New)',
+    id: 'replace-outdated-titles',
+    label: 'Outdated Titles',
+    group: 'text',
+    enabled: true,
+  },
+  {
+    id: 'validate-document-styles',
+    label: 'Apply User Defined Styles',
     group: 'text',
     enabled: true,
   },
 
-  // Hyperlinks Group
+  // Hyperlink Fixes Group
   {
     id: 'update-top-hyperlinks',
-    label: 'Update Top of Document Hyperlinks',
+    label: 'Top of the Document',
     group: 'hyperlinks',
     enabled: true,
   },
   {
     id: 'update-toc-hyperlinks',
-    label: 'Generate/Update Table of Contents',
-    group: 'hyperlinks',
-    enabled: true,
-  },
-  {
-    id: 'replace-outdated-titles',
-    label: 'Replace Outdated Titles',
+    label: 'Table of Contents',
     group: 'hyperlinks',
     enabled: true,
   },
   {
     id: 'fix-internal-hyperlinks',
-    label: 'Fix Internal Hyperlinks (Enhanced)',
+    label: 'theSource Hyperlinks',
     group: 'hyperlinks',
     enabled: true,
   },
-  { id: 'fix-content-ids', label: 'Fix / Append Content IDs', group: 'hyperlinks', enabled: true },
+  { id: 'fix-content-ids', label: 'theSource Content IDs', group: 'hyperlinks', enabled: true },
   {
     id: 'standardize-hyperlink-color',
-    label: 'Standardize Hyperlink Color (#0000FF)',
-    group: 'hyperlinks',
-    enabled: true,
-  },
-  {
-    id: 'validate-hyperlinks',
-    label: 'Validate & Auto-Fix All Links (New)',
+    label: 'Hyperlink Appearance',
     group: 'hyperlinks',
     enabled: true,
   },
 
-  // Content Structure Group
+  // Content Structure Fixes Group
   // Note: assign-styles and center-images are now applied automatically during processing
+  { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'structure', enabled: true },
+  {
+    id: 'remove-paragraph-lines',
+    label: 'Remove Extra Paragraphs',
+    group: 'structure',
+    enabled: true,
+  },
   {
     id: 'remove-headers-footers',
-    label: 'Remove Headers / Footers',
+    label: 'Remove All Headers / Footers',
     group: 'structure',
     enabled: true,
   },
   { id: 'add-document-warning', label: 'Add Document Warning', group: 'structure', enabled: true },
   {
     id: 'validate-header2-tables',
-    label: 'Validate Header 2 Table Formatting',
-    group: 'structure',
-    enabled: true,
-  },
-  {
-    id: 'validate-document-styles',
-    label: 'Validate Document Styles',
+    label: 'Header 2 Section Tables',
     group: 'structure',
     enabled: true,
   },
 
-  // Lists & Tables Group
-  { id: 'list-indentation', label: 'List Indentation Uniformity', group: 'lists', enabled: true },
-  { id: 'bullet-uniformity', label: 'Bullet Style Uniformity', group: 'lists', enabled: true },
-  { id: 'table-uniformity', label: 'Table Uniformity (Enhanced)', group: 'lists', enabled: true },
+  // List & Table Fixes Group
+  { id: 'list-indentation', label: 'List Indentation', group: 'lists', enabled: true },
+  { id: 'bullet-uniformity', label: 'List Styles', group: 'lists', enabled: true },
   {
     id: 'smart-tables',
-    label: 'Smart Table Detection & Formatting (New)',
+    label: 'Table Formatting',
     group: 'lists',
     enabled: true,
   },
 ];
 
 const groupLabels = {
-  text: 'Text Formatting',
-  hyperlinks: 'Hyperlinks',
-  structure: 'Content Structure',
-  lists: 'Lists & Tables',
+  text: 'Text Formatting Fixes',
+  hyperlinks: 'Hyperlink Fixes',
+  structure: 'Content Structure Fixes',
+  lists: 'List & Table Fixes',
 };
 
 interface ProcessingOptionsProps {
