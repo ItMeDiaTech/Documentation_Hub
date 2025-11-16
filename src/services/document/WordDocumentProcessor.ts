@@ -2891,6 +2891,9 @@ export class WordDocumentProcessor {
   /**
    * Apply bullet uniformity - Standardize bullet characters across all bullet lists
    * Uses UI configuration for bullet characters and indentation
+   *
+   * HYBRID APPROACH: Creates new custom list AND updates existing abstractNum definitions
+   * This ensures ALL bullets use user-configured symbols, not just newly assigned ones
    */
   private async applyBulletUniformity(
     doc: Document,
@@ -2958,6 +2961,49 @@ export class WordDocumentProcessor {
     }
 
     this.log.debug(`Created bullet list numId=${numId} with ${levels.length} levels`);
+
+    // FIX: Update ALL existing abstractNum definitions to use user's bullet symbols
+    // This ensures paragraphs referencing old abstractNums also get correct symbols
+    this.log.debug('Updating existing abstractNum bullet lists...');
+    let existingListsUpdated = 0;
+
+    try {
+      const abstractNums = manager.getAllAbstractNumberings();
+      for (const abstractNum of abstractNums) {
+        let isModified = false;
+
+        // Update each level in this abstractNum if it's a bullet list
+        for (let i = 0; i < bullets.length; i++) {
+          const level = abstractNum.getLevel(i);
+          if (level && level.getFormat() === 'bullet') {
+            // Update the bullet symbol to user's configured symbol
+            const oldSymbol = level.getProperties().text;
+            const newSymbol = bullets[i];
+
+            if (oldSymbol !== newSymbol) {
+              level.setText(newSymbol);
+              isModified = true;
+              this.log.debug(
+                `  Updated abstractNum level ${i}: "${oldSymbol}" → "${newSymbol}" (U+${newSymbol.charCodeAt(0).toString(16).toUpperCase()})`
+              );
+            }
+          }
+        }
+
+        if (isModified) {
+          existingListsUpdated++;
+        }
+      }
+
+      if (existingListsUpdated > 0) {
+        this.log.info(
+          `Updated ${existingListsUpdated} existing abstractNum bullet lists with user symbols`
+        );
+      }
+    } catch (error) {
+      this.log.warn('Failed to update existing abstractNum definitions:', error);
+      // Continue with paragraph reassignment even if this fails
+    }
 
     // Apply to bullet list paragraphs only
     let standardizedCount = 0;
