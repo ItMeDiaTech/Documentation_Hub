@@ -28,8 +28,8 @@
     },
     "github.com/modelcontextprotocol/servers/tree/main/src/git": {
       "description": "Git MCP server - Provides tools for Git repository interaction and automation including status, diff, commit, branch operations, and more",
-      "command": "python",
-      "args": ["-m", "mcp_server_git"],
+      "command": "uvx",
+      "args": ["mcp-server-git", "--repository", "."],
       "disabled": false,
       "alwaysAllow": [
         "git_status",
@@ -70,13 +70,13 @@
       "args": ["-m", "src.mcp_server.server", "--host", "127.0.0.1", "--port", "8765"],
       "cwd": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\dt-cli",
       "env": {
-        "PYTHONPATH": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\dt-cli\\src",
+        "PYTHONPATH": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\dt-cli",
         "RAG_DB_PATH": "C:\\Users\\DiaTech\\Pictures\\DiaTech\\Programs\\DocHub\\development\\Template_UI\\.mcp-cache\\dt-cli-rag",
         "EMBEDDING_MODEL": "all-MiniLM-L6-v2",
         "CHUNK_SIZE": "1000",
         "CHUNK_OVERLAP": "200"
       },
-      "disabled": false,
+      "disabled": true,
       "alwaysAllow": ["rag_query", "rag_index", "rag_status", "maf_orchestrate", "maf_status"]
     }
   }

@@ -212,7 +212,7 @@ export const StylesEditor = memo(function StylesEditor({
     tableHeader2Shading || '#BFBFBF'
   );
   const [localTableOtherShading, setLocalTableOtherShading] = useState<string>(
-    tableOtherShading || '#E9E9E9'
+    tableOtherShading || '#DFDFDF'
   );
   // Note: Table of Contents settings removed - managed via Processing Options checkbox
   // Note: showSuccess state removed - no longer needed with auto-save
@@ -1046,7 +1046,7 @@ export const StylesEditor = memo(function StylesEditor({
                 value={localTableOtherShading}
                 onChange={(e) => handleOtherShadingChange(e.target.value)}
                 className="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                placeholder="#E9E9E9"
+                placeholder="#DFDFDF"
               />
             </div>
           </div>

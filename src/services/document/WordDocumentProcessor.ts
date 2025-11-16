@@ -94,7 +94,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   tableShadingSettings?: {
     // NEW: Simplified table shading colors
     header2Shading: string; // Hex color for Header 2 / 1x1 table cells (default: #BFBFBF)
-    otherShading: string; // Hex color for other table cells and If.../Then... patterns (default: #E9E9E9)
+    otherShading: string; // Hex color for other table cells and If.../Then... patterns (default: #DFDFDF)
   };
   smartTables?: boolean; // smart-tables: Smart table detection and formatting (NEW)
   tableOfContentsSettings?: {
@@ -2502,20 +2502,68 @@ export class WordDocumentProcessor {
     // this may need to be implemented differently.
     if (tablesNeedingBlankParagraph.length > 0) {
       try {
-        // Add blank paragraphs after specific tables
-        // Note: Could use doc.insertParagraphAt(index, para) for precise positioning if needed
+        // Add line breaks after specific tables
         for (const { table, tableIndex } of tablesNeedingBlankParagraph) {
-          const blankPara = new Paragraph();
-          blankPara.setSpaceBefore(0);
-          blankPara.setSpaceAfter(0);
-          doc.addParagraph(blankPara);
-          this.log.debug(`Added blank paragraph after 1x1 Header 2 table (index ${tableIndex})`);
+          // Find the table's position in the document body
+          const bodyElements = (doc as any).bodyElements || [];
+          const tablePosition = bodyElements.findIndex((el: any) => el === table);
+
+          if (tablePosition !== -1) {
+            const nextElementIndex = tablePosition + 1;
+            const nextElement = bodyElements[nextElementIndex];
+
+            // Check if there's already a paragraph right after the table
+            if (nextElement instanceof Paragraph) {
+              // Get the runs from the existing paragraph
+              const runs = nextElement.getRuns();
+
+              // Create a new run with a line break
+              const breakRun = new Run(''); // Pass empty string as text parameter
+              breakRun.addBreak('textWrapping');
+
+              // Insert the break run after the last run
+              if (runs.length > 0) {
+                // Insert after the last run
+                nextElement.insertRunAt(runs.length, breakRun);
+              } else {
+                // If no runs exist, just add it
+                nextElement.addRun(breakRun);
+              }
+
+              this.log.debug(
+                `Added line break run to existing paragraph after 1x1 Header 2 table (index ${tableIndex})`
+              );
+            } else {
+              // No paragraph exists after the table, create a new one with a break run
+              const para = new Paragraph();
+              const breakRun = new Run(''); // Pass empty string as text parameter
+              breakRun.addBreak('textWrapping');
+              para.addRun(breakRun);
+
+              // Insert the paragraph right after the table
+              doc.insertParagraphAt(nextElementIndex, para);
+
+              this.log.debug(
+                `Created new paragraph with line break after 1x1 Header 2 table (index ${tableIndex})`
+              );
+            }
+          } else {
+            // Fallback: if we can't find the table position, add to end
+            const para = new Paragraph();
+            const breakRun = new Run(''); // Pass empty string as text parameter
+            breakRun.addBreak('textWrapping');
+            para.addRun(breakRun);
+            doc.addParagraph(para);
+            this.log.debug(
+              `Added line break after 1x1 Header 2 table (index ${tableIndex}) - appended to end`
+            );
+          }
         }
         this.log.info(
-          `Added ${tablesNeedingBlankParagraph.length} blank paragraphs after 1x1 Header 2 tables`
+          `Added ${tablesNeedingBlankParagraph.length} line breaks after 1x1 Header 2 tables`
         );
       } catch (error) {
-        this.log.warn(`Failed to insert blank paragraphs after Header 2 tables: ${error}`);
+        this.log.warn(`Failed to insert line breaks after Header 2 tables: ${error}`);
       }
     }
 
@@ -2913,18 +2961,17 @@ export class WordDocumentProcessor {
     headerRowsFormatted: number;
     cellsRecolored: number;
   }> {
-    // Get shading color for all tables from session settings (strip # prefix for OOXML format)
-    const color = options.tableShadingSettings?.otherShading?.replace('#', '') || 'E9E9E9';
+    // Get shading colors for tables from session settings (strip # prefix for OOXML format)
+    const header2Color = options.tableShadingSettings?.header2Shading?.replace('#', '') || 'BFBFBF';
+    const otherColor = options.tableShadingSettings?.otherShading?.replace('#', '') || 'DFDFDF';
 
-    this.log.debug(`Applying standard table formatting with color: #${color}`);
+    this.log.debug(
+      `Applying standard table formatting with colors: #${header2Color} (1x1), #${otherColor} (multi-cell)`
+    );
 
     // Apply standard table formatting using docxmlater 1.8.0 helper
-    // This single helper replaces all previous manual operations:
-    //   - Size-based shading (1x1 vs multi-cell)
-    //   - Border application (NEW in 1.8.0)
-    //   - Autofit layout
-    //   - If.../Then... pattern detection and shading
-    const result = doc.applyStandardTableFormatting(color);
+    // Pass both colors: first for 1x1 tables, second for multi-cell tables
+    const result = doc.applyStandardTableFormatting(header2Color, otherColor);
 
     this.log.debug(`Applied standard formatting to ${result.tablesProcessed} tables`);
     this.log.debug(`Formatted ${result.headerRowsFormatted} header rows`);

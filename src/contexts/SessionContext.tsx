@@ -475,6 +475,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       status: 'active',
       styles: defaultStyles, // Initialize with default styles
+      tableShadingSettings: {
+        header2Shading: '#BFBFBF', // Default for Header 2 / 1x1 table cells
+        otherShading: '#DFDFDF', // Default for other table cells
+      },
     };
 
     setSessions((prev) => [...prev, newSession]);
