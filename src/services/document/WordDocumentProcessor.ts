@@ -647,13 +647,24 @@ export class WordDocumentProcessor {
         const h3Count = doc.applyH3();
 
         // Skip applyNumList/applyBulletList if already processed by applyCustomFormattingToExistingStyles
-        const numListCount = styleResults.listParagraph
-          ? (this.log.debug(
-              'Skipping applyNumList/applyBulletList - already processed by applyCustomFormattingToExistingStyles'
-            ),
-            0)
-          : doc.applyNumList();
-        const bulletListCount = styleResults.listParagraph ? 0 : doc.applyBulletList();
+        // But still ensure bullet symbols and numbered list numbers are 12pt bold
+        let numListCount = 0;
+        let bulletListCount = 0;
+        if (styleResults.listParagraph) {
+          this.log.debug(
+            'Skipping applyNumList/applyBulletList - already processed by applyCustomFormattingToExistingStyles'
+          );
+          // Still ensure symbols/numbers are formatted with 12pt bold
+          const symbolsFormatted = await this.injectCompleteRunPropertiesToNumbering(doc);
+          if (symbolsFormatted) {
+            this.log.debug(
+              'Applied 12pt bold formatting to bullet symbols and numbered list numbers'
+            );
+          }
+        } else {
+          numListCount = doc.applyNumList();
+          bulletListCount = doc.applyBulletList();
+        }
 
         const tocCount = doc.applyTOC();
         const todCount = doc.applyTOD();
