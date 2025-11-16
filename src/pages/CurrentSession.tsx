@@ -1,48 +1,47 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Upload,
-  X,
-  CheckCircle,
-  AlertCircle,
-  Clock,
-  Loader2,
-  Save,
-  FileCheck,
-  FileText,
-  Link,
-  MessageSquare,
-  Timer,
-  Edit2,
-  Check,
-  Play,
-  FolderOpen,
-} from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from '@/components/common/Card';
-import { cn } from '@/utils/cn';
-import { useSession } from '@/contexts/SessionContext';
-import { Session } from '@/types/session';
-import { Document } from '@/types/session';
-import { TabContainer } from '@/components/sessions/TabContainer';
+import { Toaster } from '@/components/common/Toast';
 import {
-  ProcessingOptions,
   ProcessingOption,
+  ProcessingOptions,
   defaultOptions,
 } from '@/components/sessions/ProcessingOptions';
-import { StylesEditor } from '@/components/sessions/StylesEditor';
 import { ReplacementsTab } from '@/components/sessions/ReplacementsTab';
+import { StylesEditor } from '@/components/sessions/StylesEditor';
+import { TabContainer } from '@/components/sessions/TabContainer';
 import { TrackedChanges } from '@/components/sessions/TrackedChanges';
+import { useSession } from '@/contexts/SessionContext';
 import { useToast } from '@/hooks/useToast';
-import { Toaster } from '@/components/common/Toast';
+import { Document } from '@/types/session';
+import { cn } from '@/utils/cn';
 import logger from '@/utils/logger';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  AlertCircle,
+  Check,
+  CheckCircle,
+  Clock,
+  Edit2,
+  FileCheck,
+  FileText,
+  FolderOpen,
+  Link,
+  Loader2,
+  MessageSquare,
+  Play,
+  Save,
+  Timer,
+  Upload,
+  X,
+} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 
 export function CurrentSession() {
   const { id } = useParams<{ id: string }>();
@@ -390,8 +389,6 @@ export function CurrentSession() {
 
     // Update session processing options using the context method
     updateSessionOptions(session.id, {
-      appendContentId: enabledOperations.includes('fix-content-ids'),
-      contentIdToAppend: '#content',
       validateUrls: true,
       createBackup: true,
       processInternalLinks: enabledOperations.includes('fix-internal-hyperlinks'),
