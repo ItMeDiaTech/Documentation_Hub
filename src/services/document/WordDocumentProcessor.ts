@@ -46,6 +46,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   removeWhitespace?: boolean; // remove-whitespace: Collapse multiple spaces to single space
   removeParagraphLines?: boolean; // remove-paragraph-lines: Remove consecutive empty paragraphs
   preserveBlankLinesAfterHeader2Tables?: boolean; // preserve-header2-blank-lines: Preserve blank lines after Header 2 tables (v1.16.0)
+  preserveBlankLinesAfterAllTables?: boolean; // preserve-all-table-blank-lines: Add blank lines after ALL tables regardless of size (user request)
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
   standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
   standardizeListPrefixFormatting?: boolean; // standardize-list-prefix-formatting: Apply consistent Verdana 12pt black formatting to all list symbols/numbers
@@ -699,27 +700,127 @@ export class WordDocumentProcessor {
         );
       }
 
-      // ENSURE BLANK LINES AFTER 1x1 TABLES (with conditional preserve flag)
-      // NEW v1.19.0: Using docXMLater's ensureBlankLinesAfter1x1Tables() method
-      // This runs BEFORE paragraph removal so the preserved flag can protect the blank lines
+      // ═══════════════════════════════════════════════════════════
+      // ENSURE BLANK LINES AFTER 1x1 TABLES
+      // NEW v1.19.0: Using docXMLater's ensureBlankLinesAfter1x1Tables()
+      //
+      // EXECUTION ORDER: This runs BEFORE paragraph removal so the
+      // preserved flag can protect blank lines from being deleted.
+      //
+      // KNOWN ISSUE: Blank lines may not have Normal style applied
+      // (docxmlater library doesn't expose 'style' option yet)
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug('=== DEBUG: BLANK LINES AFTER 1x1 TABLES CHECK ===');
+      this.log.debug(
+        `  preserveBlankLinesAfterHeader2Tables option: ${options.preserveBlankLinesAfterHeader2Tables}`
+      );
+      this.log.debug(`  removeParagraphLines option: ${options.removeParagraphLines}`);
+
       if (options.preserveBlankLinesAfterHeader2Tables) {
         this.log.debug('=== ENSURING BLANK LINES AFTER 1x1 TABLES ===');
+        this.log.debug('  Calling doc.ensureBlankLinesAfter1x1Tables() with markAsPreserved=true');
 
-        // Set preserve flag based on whether paragraph removal is enabled
-        // If removal is ON → preserve = true (protect blank lines)
-        // If removal is OFF → preserve = false (no protection needed)
-        const shouldPreserve = options.removeParagraphLines === true;
-
+        // FIX: Always mark blank lines as preserved when this option is enabled
+        // This prevents later cleanup operations from deleting them, regardless of
+        // whether removeParagraphLines is enabled or not. The user's intent when
+        // enabling "preserve blank lines after Header 2 tables" is to ALWAYS preserve
+        // these lines, not conditionally based on other settings.
         const result = doc.ensureBlankLinesAfter1x1Tables({
           spacingAfter: 120, // 6pt spacing
-          markAsPreserved: shouldPreserve, // Conditional preserve flag
+          markAsPreserved: true, // Always preserve when option enabled
+          // NOTE: Blank paragraphs may not have Normal style applied
+          // (docxmlater library doesn't expose 'style' option in interface)
         });
 
         this.log.info(
-          `Processed ${result.tablesProcessed} 1x1 tables: ` +
+          `✓ Processed ${result.tablesProcessed} 1x1 tables: ` +
             `Added ${result.blankLinesAdded} blank lines, ` +
-            `Marked ${result.existingLinesMarked} existing blank lines as preserved ` +
-            `(preserve=${shouldPreserve} based on removeParagraphLines=${options.removeParagraphLines})`
+            `Marked ${result.existingLinesMarked} existing blank lines as preserved`
+        );
+        this.log.debug(`  DEBUG: Result details - ${JSON.stringify(result)}`);
+      } else {
+        this.log.warn(
+          '⚠️ preserveBlankLinesAfterHeader2Tables is FALSE - 1x1 table blank lines will NOT be added!'
+        );
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // ENHANCEMENT 1: ENSURE BLANK LINES AFTER ALL TABLES
+      // NEW: Add blank lines after ALL tables (not just 1x1)
+      // User requested feature for consistent spacing after all table types
+      // ═══════════════════════════════════════════════════════════
+      if (options.preserveBlankLinesAfterAllTables) {
+        this.log.debug('=== ENSURING BLANK LINES AFTER ALL TABLES ===');
+
+        const tables = doc.getTables();
+        let blankLinesAdded = 0;
+        let existingLinesMarked = 0;
+
+        // Get body elements to determine table positions
+        const bodyElements = doc.getBodyElements();
+        const tableToBodyIndex = new Map<Table, number>();
+
+        // Map tables to their body element indices
+        bodyElements.forEach((element, index) => {
+          if (element.constructor.name === 'Table') {
+            const table = element as Table;
+            tableToBodyIndex.set(table, index);
+          }
+        });
+
+        // Process each table to ensure blank line after it
+        for (const table of tables) {
+          const bodyIndex = tableToBodyIndex.get(table);
+          if (bodyIndex === undefined) {
+            this.log.warn('Could not find table position in body elements - skipping');
+            continue;
+          }
+
+          // Check if there's already a paragraph after this table
+          const nextElementIndex = bodyIndex + 1;
+          const nextElement = bodyElements[nextElementIndex];
+
+          if (nextElement instanceof Paragraph) {
+            // Check if it's already a blank paragraph
+            const isBlank = this.isParagraphTrulyEmpty(nextElement);
+
+            if (isBlank) {
+              // Mark as preserved to protect from removal
+              nextElement.setPreserved(true);
+              existingLinesMarked++;
+              this.log.debug(
+                `Marked existing blank line after table at body index ${bodyIndex} as preserved`
+              );
+            } else {
+              // Insert blank paragraph before the non-blank paragraph
+              const blankPara = doc.createParagraph('');
+              blankPara.setStyle('Normal');
+              blankPara.setPreserved(true);
+              doc.insertParagraphAt(nextElementIndex, blankPara);
+              blankLinesAdded++;
+              this.log.debug(`Inserted blank line after table at body index ${bodyIndex}`);
+            }
+          } else {
+            // No paragraph after table (or it's another table) - insert one
+            const blankPara = doc.createParagraph('');
+            blankPara.setStyle('Normal');
+            blankPara.setPreserved(true);
+            doc.insertParagraphAt(nextElementIndex, blankPara);
+            blankLinesAdded++;
+            this.log.debug(
+              `Inserted blank line after table at body index ${bodyIndex} (no following paragraph)`
+            );
+          }
+        }
+
+        this.log.info(
+          `✓ Processed ${tables.length} tables: ` +
+            `Added ${blankLinesAdded} blank lines, ` +
+            `Marked ${existingLinesMarked} existing blank lines as preserved`
+        );
+      } else {
+        this.log.debug(
+          'preserveBlankLinesAfterAllTables is FALSE - skipping all-table blank line insertion'
         );
       }
 
@@ -729,10 +830,12 @@ export class WordDocumentProcessor {
       // This eliminates the remove-then-re-add cycle and is more efficient.
       if (options.removeParagraphLines) {
         this.log.debug('=== REMOVING EXTRA PARAGRAPH LINES ===');
+        this.log.debug(`  DEBUG: Before removal - total paragraphs: ${doc.getParagraphs().length}`);
         const paragraphsRemoved = await this.removeExtraParagraphLines(
           doc,
           options.preserveBlankLinesAfterHeader2Tables ?? true
         );
+        this.log.debug(`  DEBUG: After removal - total paragraphs: ${doc.getParagraphs().length}`);
         this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
 
         // DEPRECATED v1.19.0: Old custom implementation replaced with docXMLater's ensureBlankLinesAfter1x1Tables()
@@ -811,6 +914,20 @@ export class WordDocumentProcessor {
           options.listBulletSettings
         );
         this.log.info(`Applied indentation to ${listsFormatted} list paragraphs`);
+      }
+
+      this.log.debug('=== DEBUG: BULLET UNIFORMITY CHECK ===');
+      this.log.debug(`  bulletUniformity option: ${options.bulletUniformity}`);
+      this.log.debug(`  listBulletSettings defined: ${!!options.listBulletSettings}`);
+      if (options.listBulletSettings) {
+        this.log.debug(
+          `  Indentation levels: ${options.listBulletSettings.indentationLevels.length}`
+        );
+        options.listBulletSettings.indentationLevels.forEach((level, idx) => {
+          this.log.debug(
+            `    Level ${idx}: bulletChar="${level.bulletChar || '(default)'}", symbolIndent=${level.symbolIndent}, textIndent=${level.textIndent}`
+          );
+        });
       }
 
       if (options.bulletUniformity && options.listBulletSettings) {
@@ -930,19 +1047,36 @@ export class WordDocumentProcessor {
       // The replaceTableOfContents() method modifies the file on disk,
       // so it must be the final operation on the document.
       // ═══════════════════════════════════════════════════════════
+      // ═══════════════════════════════════════════════════════════
+      // TABLE OF CONTENTS (TOC) POPULATION
+      //
+      // IMPORTANT: This operation only runs if explicitly enabled via
+      // options.operations.updateTocHyperlinks = true
+      //
+      // UI Integration: The ProcessingOptions component must pass this
+      // flag when the user enables TOC update. This is intentional -
+      // TOC population modifies document structure and should be opt-in.
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug('=== DEBUG: TOC OPTION CHECK ===');
+      this.log.debug(`  operations object defined: ${!!options.operations}`);
+      this.log.debug(`  updateTocHyperlinks value: ${options.operations?.updateTocHyperlinks}`);
+
       if (options.operations?.updateTocHyperlinks) {
         this.log.debug('=== GENERATING/UPDATING TABLE OF CONTENTS ===');
+        this.log.debug(`  Calling doc.replaceTableOfContents() on file: ${filePath}`);
 
         // Use DocXMLater helper to replace TOC with generated entries
         const tocCount = await doc.replaceTableOfContents(filePath);
 
-        this.log.info(`Replaced ${tocCount} Table of Contents element(s) with generated entries`);
+        this.log.info(`✓ Replaced ${tocCount} Table of Contents element(s) with generated entries`);
 
         if (tocCount === 0) {
           this.log.warn(
-            'No TOC elements found in document. To create a TOC, insert a Table of Contents field in Word first.'
+            '⚠️ No TOC elements found in document. To create a TOC, insert a Table of Contents field in Word first.'
           );
         }
+      } else {
+        this.log.debug('  TOC update SKIPPED - option is false or undefined');
       }
 
       // Memory checkpoint: After save
@@ -1665,8 +1799,19 @@ export class WordDocumentProcessor {
 
       // Only delete if BOTH consecutive paragraphs are truly empty
       if (currentEmpty && nextEmpty) {
-        this.log.debug(`Marking paragraph ${i + 1} for deletion (consecutive empty)`);
-        paragraphsToRemove.push(next); // Store the Paragraph object
+        // DEBUG: Check if either paragraph is marked as preserved
+        const currentPreserved =
+          (current as any).preserved || (current as any).isPreserved?.() || false;
+        const nextPreserved = (next as any).preserved || (next as any).isPreserved?.() || false;
+
+        if (currentPreserved || nextPreserved) {
+          this.log.debug(`  ⚠️ Paragraph ${i} or ${i + 1} is PRESERVED - skipping deletion`);
+        } else {
+          this.log.debug(
+            `  Marking paragraph ${i + 1} for deletion (consecutive empty, not preserved)`
+          );
+          paragraphsToRemove.push(next); // Store the Paragraph object
+        }
       }
     }
 
@@ -2790,12 +2935,36 @@ export class WordDocumentProcessor {
   ): Promise<number> {
     const manager = doc.getNumberingManager();
 
-    // Extract bullet characters from UI settings (U+F0B7 is Symbol font standard bullet)
-    const bullets = settings.indentationLevels.map((level) => level.bulletChar || '\uF0B7');
+    this.log.debug('=== DEBUG: BULLET UNIFORMITY EXECUTION ===');
+    this.log.debug(`  Creating ${settings.indentationLevels.length} bullet list levels`);
+
+    // DIAGNOSTIC: Log what UI is passing for bullet characters
+    this.log.debug('Bullet configuration from UI:');
+    settings.indentationLevels.forEach((level, idx) => {
+      const charCode = level.bulletChar
+        ? level.bulletChar.charCodeAt(0).toString(16).toUpperCase()
+        : 'N/A';
+      this.log.debug(
+        `  Level ${idx}: bulletChar="${level.bulletChar || '(default)'}" (U+${charCode})`
+      );
+    });
+
+    // OVERRIDE: Enforce Closed/Open/Closed/Open/Closed pattern
+    // Even levels (0,2,4): Closed (•, U+2022), Odd levels (1,3): Open (○, U+25CB)
+    const bullets = settings.indentationLevels.map((levelConfig, index) => {
+      return index % 2 === 0 ? '\u2022' : '\u25CB';
+    });
+    this.log.debug(
+      `  Enforced bullet pattern: ${bullets.map((b, i) => `Level ${i}="${b}" (U+${b.charCodeAt(0).toString(16).toUpperCase()})`).join(', ')}`
+    );
 
     // Create custom levels with font specified and UI indentation
     // UI config already has incremented values per level, use them directly
     const levels = settings.indentationLevels.map((levelConfig, index) => {
+      const enforcedBullet = bullets[index];
+      this.log.debug(
+        `  Level ${index}: bulletChar="${enforcedBullet}" (U+${enforcedBullet.charCodeAt(0).toString(16).toUpperCase()}), symbolIndent=${levelConfig.symbolIndent}", textIndent=${levelConfig.textIndent}"`
+      );
       // Use direct values from UI config (already incremented per level)
       const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
       const textTwips = Math.round(levelConfig.textIndent * 1440);
@@ -2804,7 +2973,7 @@ export class WordDocumentProcessor {
       return new NumberingLevel({
         level: index,
         format: 'bullet',
-        text: levelConfig.bulletChar || '\uF0B7', // U+F0B7 is Symbol font standard bullet
+        text: enforcedBullet, // Use enforced Closed/Open pattern
         // Let framework use default 'Calibri' font for correct bullet rendering
         leftIndent: symbolTwips, // Bullet position (where bullet appears)
         hangingIndent: hangingTwips, // Text offset from bullet
@@ -3686,19 +3855,30 @@ export class WordDocumentProcessor {
     tables.forEach((table, tableIndex) => {
       let hasHeader2 = false;
 
-      table.getRows().forEach((row) => {
-        row.getCells().forEach((cell) => {
-          cell.getParagraphs().forEach((para) => {
-            const style = para.getStyle() || para.getFormatting().style;
-            if (
-              style &&
-              (style === 'Heading2' || style === 'Heading 2' || style.includes('Heading2'))
-            ) {
-              hasHeader2 = true;
-            }
+      // ENHANCEMENT 3: Check if this table is a 1x1 table (user request)
+      const rows = table.getRows();
+      const is1x1Table = rows.length === 1 && rows[0]?.getCells().length === 1;
+
+      if (is1x1Table) {
+        // Treat 1x1 tables the same as Header 2 tables
+        hasHeader2 = true;
+        this.log.debug(`Table ${tableIndex} is a 1x1 table - will add Top of Document link`);
+      } else {
+        // Original Header 2 detection for non-1x1 tables
+        table.getRows().forEach((row) => {
+          row.getCells().forEach((cell) => {
+            cell.getParagraphs().forEach((para) => {
+              const style = para.getStyle() || para.getFormatting().style;
+              if (
+                style &&
+                (style === 'Heading2' || style === 'Heading 2' || style.includes('Heading2'))
+              ) {
+                hasHeader2 = true;
+              }
+            });
           });
         });
-      });
+      }
 
       if (hasHeader2) {
         tablesWithHeader2.push({ tableIndex, table, hasHeader2 });
@@ -3771,13 +3951,19 @@ export class WordDocumentProcessor {
         }
 
         if (shouldInsert) {
-          // Create and insert the hyperlink paragraph BEFORE the table
+          // ENHANCEMENT 2: Insert blank line ABOVE the "Top of Document" link (user request)
+          const blankPara = doc.createParagraph('');
+          blankPara.setStyle('Normal');
+          blankPara.setPreserved(true); // Protect from removal
+          doc.insertParagraphAt(tablePosition, blankPara);
+
+          // Create and insert the hyperlink paragraph AFTER the blank line
           const hyperlinkPara = this.createTopHyperlinkParagraph(doc);
-          doc.insertParagraphAt(tablePosition, hyperlinkPara);
+          doc.insertParagraphAt(tablePosition + 1, hyperlinkPara); // +1 because blank is now at tablePosition
           linksAdded++;
 
           this.log.debug(
-            `Inserted Top of Document link before table ${tableIndex} at position ${tablePosition}`
+            `Inserted blank line and Top of Document link before table ${tableIndex} at positions ${tablePosition} and ${tablePosition + 1}`
           );
         }
       } catch (error) {
