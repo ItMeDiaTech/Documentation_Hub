@@ -655,11 +655,12 @@ export class WordDocumentProcessor {
           this.log.debug(
             'Skipping applyNumList/applyBulletList - already processed by applyCustomFormattingToExistingStyles'
           );
-          // Still ensure symbols/numbers are formatted with 12pt bold
-          const symbolsFormatted = await this.injectCompleteRunPropertiesToNumbering(doc);
-          if (symbolsFormatted) {
+          // Still ensure symbols/numbers are formatted with 12pt bold using framework methods
+          const bulletResult = doc.standardizeBulletSymbols({ fontSize: 12, bold: true });
+          const numberedResult = doc.standardizeNumberedListPrefixes({ fontSize: 12, bold: true });
+          if (bulletResult.listsUpdated > 0 || numberedResult.listsUpdated > 0) {
             this.log.debug(
-              'Applied 12pt bold formatting to bullet symbols and numbered list numbers'
+              `Applied 12pt bold formatting using framework: ${bulletResult.listsUpdated} bullet lists, ${numberedResult.listsUpdated} numbered lists`
             );
           }
         } else {
@@ -2974,16 +2975,17 @@ export class WordDocumentProcessor {
       }
     }
 
-    // Inject complete run properties (font, size, bold, color) into numbering.xml
-    // This adds 12pt bold Arial black formatting to all bullet symbols
-    const injectionSuccess = await this.injectCompleteRunPropertiesToNumbering(doc, numId);
-    if (injectionSuccess) {
-      this.log.debug('Applied 12pt bold black formatting to bullet list symbols');
-    } else {
-      this.log.warn(
-        'Failed to inject complete formatting to bullet list - symbols may not be styled correctly'
-      );
-    }
+    // Use framework method to standardize bullet list formatting
+    // Applies Verdana 12pt bold black to ALL bullet lists in the document
+    const result = doc.standardizeBulletSymbols({
+      font: 'Verdana',
+      fontSize: 12,
+      color: '000000',
+      bold: true,
+    });
+    this.log.debug(
+      `Framework standardized ${result.listsUpdated} bullet lists, ${result.levelsModified} levels modified`
+    );
 
     return standardizedCount;
   }
@@ -3066,16 +3068,17 @@ export class WordDocumentProcessor {
       }
     }
 
-    // Inject complete run properties (font, size, bold, color) into numbering.xml
-    // This adds 12pt bold Arial black formatting to all numbered list symbols
-    const injectionSuccess = await this.injectCompleteRunPropertiesToNumbering(doc, numId);
-    if (injectionSuccess) {
-      this.log.debug('Applied 12pt bold black formatting to numbered list symbols');
-    } else {
-      this.log.warn(
-        'Failed to inject complete formatting to numbered list - symbols may not be styled correctly'
-      );
-    }
+    // Use framework method to standardize numbered list formatting
+    // Applies Verdana 12pt bold black to ALL numbered lists in the document
+    const result = doc.standardizeNumberedListPrefixes({
+      font: 'Verdana',
+      fontSize: 12,
+      color: '000000',
+      bold: true,
+    });
+    this.log.debug(
+      `Framework standardized ${result.listsUpdated} numbered lists, ${result.levelsModified} levels modified`
+    );
 
     return standardizedCount;
   }
@@ -3114,98 +3117,6 @@ export class WordDocumentProcessor {
     this.log.debug(`Recolored ${result.cellsRecolored} cells`);
 
     return result;
-  }
-
-  /**
-   * Helper: Inject complete run properties (font, size, bold, color) into numbering.xml
-   * This uses low-level XML access to add w:rPr elements that docxmlater doesn't expose via API
-   *
-   * Adds the following to each numbering level:
-   * - Font family: Calibri (correct bullet character rendering)
-   * - Font size: 12pt (24 half-points)
-   * - Bold: true
-   * - Color: black (000000)
-   *
-   * @param doc - Document to modify
-   * @param numId - Numbering ID to enhance (optional, if not provided applies to all)
-   * @returns true if successful, false otherwise
-   */
-  private async injectCompleteRunPropertiesToNumbering(
-    doc: Document,
-    numId?: number
-  ): Promise<boolean> {
-    try {
-      // Access numbering.xml
-      const numberingPart = await doc.getPart('word/numbering.xml');
-      if (!numberingPart || typeof numberingPart.content !== 'string') {
-        this.log.warn('Unable to access numbering.xml');
-        return false;
-      }
-
-      let xmlContent = numberingPart.content;
-
-      // Find all <w:lvl> elements in the XML
-      // Each level should have run properties for consistent formatting
-      const lvlRegex = /<w:lvl w:ilvl="(\d+)"[^>]*>([\s\S]*?)<\/w:lvl>/g;
-      let match;
-      let modified = false;
-
-      while ((match = lvlRegex.exec(numberingPart.content)) !== null) {
-        const levelIndex = match[1];
-        const levelContent = match[2];
-        const fullMatch = match[0];
-
-        // Check if w:rPr already exists in this level
-        if (levelContent.includes('<w:rPr>')) {
-          // Update existing w:rPr with complete formatting
-          // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
-          const updatedContent = levelContent.replace(
-            /<w:rPr>[\s\S]*?<\/w:rPr>/,
-            `<w:rPr>
-              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
-              <w:b/>
-              <w:bCs/>
-              <w:color w:val="000000"/>
-              <w:sz w:val="24"/>
-              <w:szCs w:val="24"/>
-            </w:rPr>`
-          );
-          xmlContent = xmlContent.replace(
-            fullMatch,
-            fullMatch.replace(levelContent, updatedContent)
-          );
-          modified = true;
-        } else {
-          // Insert new w:rPr before closing </w:lvl> tag
-          // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
-          const newRPr = `
-            <w:rPr>
-              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
-              <w:b/>
-              <w:bCs/>
-              <w:color w:val="000000"/>
-              <w:sz w:val="24"/>
-              <w:szCs w:val="24"/>
-            </w:rPr>`;
-
-          const updatedLevel = fullMatch.replace('</w:lvl>', `${newRPr}</w:lvl>`);
-          xmlContent = xmlContent.replace(fullMatch, updatedLevel);
-          modified = true;
-        }
-      }
-
-      if (modified) {
-        // Save modified XML back to document
-        await doc.setPart('word/numbering.xml', xmlContent);
-        this.log.debug('Successfully injected complete run properties into numbering.xml');
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      this.log.warn('Error injecting run properties to numbering:', error);
-      return false;
-    }
   }
 
   /**
@@ -3336,17 +3247,28 @@ export class WordDocumentProcessor {
 
   /**
    * Standardize numbering colors to black to fix green bullet issue
-   * This processes the numbering.xml to ensure all bullets/numbers are black
+   * Uses framework methods for both bullet and numbered lists
    *
-   * NOW FULLY IMPLEMENTED using low-level XML access
+   * REFACTORED: Now uses doc.standardizeBulletSymbols() and doc.standardizeNumberedListPrefixes()
    */
   private async standardizeNumberingColors(doc: Document): Promise<boolean> {
     try {
-      // Use the helper function to inject complete run properties including black color
-      const success = await this.injectCompleteRunPropertiesToNumbering(doc);
+      // Standardize all bullet lists
+      const bulletResult = doc.standardizeBulletSymbols({
+        color: '000000',
+        bold: true,
+      });
 
-      if (success) {
-        this.log.debug('Standardized all numbering colors to black with 12pt bold formatting');
+      // Standardize all numbered lists
+      const numberedResult = doc.standardizeNumberedListPrefixes({
+        color: '000000',
+        bold: true,
+      });
+
+      if (bulletResult.listsUpdated > 0 || numberedResult.listsUpdated > 0) {
+        this.log.debug(
+          `Standardized numbering colors to black using framework methods: ${bulletResult.listsUpdated} bullet lists, ${numberedResult.listsUpdated} numbered lists`
+        );
         return true;
       }
 
