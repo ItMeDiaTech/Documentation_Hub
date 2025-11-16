@@ -719,7 +719,7 @@ export function CurrentSession() {
             updateSessionListBulletSettings(session.id, settings);
           }}
           tableHeader2Shading={session.tableShadingSettings?.header2Shading || '#BFBFBF'}
-          tableOtherShading={session.tableShadingSettings?.otherShading || '#E9E9E9'}
+          tableOtherShading={session.tableShadingSettings?.otherShading || '#DFDFDF'}
           onTableShadingChange={handleTableShadingChange}
         />
       ),
