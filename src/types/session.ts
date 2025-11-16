@@ -150,7 +150,7 @@ export interface TableOfContentsSettings {
 
 export interface TableShadingSettings {
   header2Shading: string; // Hex color for Header 2 / 1x1 table cells (default: #BFBFBF)
-  otherShading: string; // Hex color for other table cells (default: #E9E9E9)
+  otherShading: string; // Hex color for other table cells (default: #DFDFDF)
 }
 
 export interface ReplacementRule {
