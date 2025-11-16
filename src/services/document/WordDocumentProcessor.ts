@@ -567,14 +567,6 @@ export class WordDocumentProcessor {
       // End PowerAutomate API Integration
       // ═══════════════════════════════════════════════════════════
 
-      // Process hyperlinks based on options (local operations)
-      if (options.operations?.fixContentIds || options.appendContentId) {
-        this.log.debug('=== APPENDING CONTENT IDS ===');
-        const modifiedCount = await this.processContentIdAppending(hyperlinks, options, result);
-        result.appendedContentIds = modifiedCount;
-        this.log.info(`Appended content IDs to ${modifiedCount} hyperlinks`);
-      }
-
       // Custom replacements
       if (options.customReplacements && options.customReplacements.length > 0) {
         this.log.debug('=== APPLYING CUSTOM REPLACEMENTS ===');
@@ -721,7 +713,7 @@ export class WordDocumentProcessor {
             italic: false,
           },
         });
-        
+
         doc.addStyle(hyperlinkStyle); // Updates existing or creates new
         this.log.info('✓ Updated Hyperlink style to use Verdana 12pt');
       } catch (error) {
@@ -754,9 +746,9 @@ export class WordDocumentProcessor {
         // enabling "preserve blank lines after Header 2 tables" is to ALWAYS preserve
         // these lines, not conditionally based on other settings.
         const result = doc.ensureBlankLinesAfter1x1Tables({
-          spacingAfter: 120,     // 6pt spacing
+          spacingAfter: 120, // 6pt spacing
           markAsPreserved: true, // Always preserve when option enabled
-          style: 'Normal',       // NEW in v2.4.0: Set paragraph style
+          style: 'Normal', // NEW in v2.4.0: Set paragraph style
         });
 
         this.log.info(
@@ -1142,72 +1134,6 @@ export class WordDocumentProcessor {
         }
       }
     }
-  }
-
-  /**
-   * Process hyperlinks to append Content IDs
-   */
-  private async processContentIdAppending(
-    hyperlinks: Array<{
-      hyperlink: Hyperlink;
-      paragraph: any;
-      paragraphIndex: number;
-      url?: string;
-      text: string;
-    }>,
-    options: WordProcessingOptions,
-    result: WordProcessingResult
-  ): Promise<number> {
-    let modifiedCount = 0;
-
-    // Patterns for theSource URLs
-    const theSourcePattern = /thesource\.cvshealth\.com/i;
-    const hasContentIdPattern = /#content$/i;
-    const docIdPattern = /docid=([A-Za-z0-9-]+)/i;
-    const contentIdPattern = /Content_ID=([TCMS]{1,2}[CRS]{1,2}C?-[A-Za-z0-9]+-\d{6})/i;
-
-    for (const { hyperlink, url } of hyperlinks) {
-      if (!url) continue;
-
-      // Check if it's a theSource URL
-      if (theSourcePattern.test(url)) {
-        // Skip if already has #content
-        if (hasContentIdPattern.test(url)) {
-          result.skippedHyperlinks++;
-          continue;
-        }
-
-        // Check if it has docid or Content_ID
-        if (docIdPattern.test(url) || contentIdPattern.test(url)) {
-          // Append #content
-          const newUrl = url + (options.contentId || '#content');
-
-          // Update hyperlink URL using docxmlater's setUrl method
-          // This automatically handles relationship updates
-          hyperlink.setUrl(newUrl);
-
-          const linkInfo = {
-            id: `hyperlink-${modifiedCount}`,
-            url: url,
-            displayText: sanitizeHyperlinkText(hyperlink.getText()),
-            type: 'external' as HyperlinkType,
-            location: 'Main Document',
-            status: 'processed' as const,
-            before: url,
-            after: newUrl,
-            modifications: ['Content ID appended'],
-          };
-
-          result.processedLinks.push(linkInfo);
-          result.modifiedHyperlinks++;
-          modifiedCount++;
-        } else {
-          result.skippedHyperlinks++;
-        }
-      }
-    }
-
-    return modifiedCount;
   }
 
   /**
@@ -3025,8 +2951,10 @@ export class WordDocumentProcessor {
 
               this.log.debug(
                 `  Updated abstractNum level ${i}:` +
-                (symbolChanged ? ` symbol "${oldSymbol}" → "${newSymbol}" (U+${newSymbol.charCodeAt(0).toString(16).toUpperCase()})` : '') +
-                (fontChanged ? ` font "${oldFont || 'default'}" → "${targetFont}"` : '')
+                  (symbolChanged
+                    ? ` symbol "${oldSymbol}" → "${newSymbol}" (U+${newSymbol.charCodeAt(0).toString(16).toUpperCase()})`
+                    : '') +
+                  (fontChanged ? ` font "${oldFont || 'default'}" → "${targetFont}"` : '')
               );
             }
           }
