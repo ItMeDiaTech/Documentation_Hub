@@ -2936,37 +2936,25 @@ export class WordDocumentProcessor {
         for (let levelIndex = 0; levelIndex < 9; levelIndex++) {
           const level = abstractNum.getLevel(levelIndex);
           if (level && level.getFormat() === 'bullet') {
-            const props = level.getProperties();
-            const oldSymbol = props.text;
-            const oldFont = props.font;
-
             // Use configured symbol for this level if available, otherwise use level 0's symbol
             // This ensures deep bullet levels don't show squares even if not explicitly configured
             const newSymbol = bullets[levelIndex] || bullets[0] || '\u2022';
-            const targetFont = 'Calibri'; // Calibri for reliable bullet rendering
 
-            // Check if symbol OR font needs updating
-            const symbolChanged = oldSymbol !== newSymbol;
-            const fontChanged = oldFont !== targetFont;
+            // ✅ COMPLETE PROPERTY SETTING (Example 4 pattern)
+            // Set ALL 5 bullet formatting properties for complete control
+            level.setText(newSymbol); // Bullet symbol (e.g., ●, ▪, ➤)
+            level.setFont('Calibri'); // Font: Calibri renders U+2022 as ●, not ■
+            level.setFontSize(24); // Size: 12pt = 24 half-points
+            level.setBold(true); // Bold: Improves visibility
+            level.setColor('000000'); // Color: Black (#000000)
 
-            if (symbolChanged || fontChanged) {
-              // CRITICAL FIX: Set BOTH symbol and font
-              if (symbolChanged) {
-                level.setText(newSymbol);
-              }
-              if (fontChanged) {
-                level.setFont(targetFont);
-              }
-              isModified = true;
+            isModified = true;
 
-              this.log.debug(
-                `  Updated abstractNum level ${levelIndex}:` +
-                  (symbolChanged
-                    ? ` symbol "${oldSymbol}" → "${newSymbol}" (U+${newSymbol.charCodeAt(0).toString(16).toUpperCase()})`
-                    : '') +
-                  (fontChanged ? ` font "${oldFont || 'default'}" → "${targetFont}"` : '')
-              );
-            }
+            this.log.debug(
+              `  Updated abstractNum level ${levelIndex}: ` +
+                `symbol="${newSymbol}" (U+${newSymbol.charCodeAt(0).toString(16).toUpperCase()}), ` +
+                `font=Calibri, size=12pt, bold=true, color=#000000`
+            );
           }
         }
 
@@ -3001,17 +2989,18 @@ export class WordDocumentProcessor {
       }
     }
 
-    // Use framework method to standardize bullet list formatting
-    // Applies Verdana 12pt bold black to ALL bullet lists in the document
-    const result = doc.standardizeBulletSymbols({
-      font: 'Verdana',
-      fontSize: 12,
-      color: '000000',
-      bold: true,
-    });
-    this.log.debug(
-      `Framework standardized ${result.listsUpdated} bullet lists, ${result.levelsModified} levels modified`
-    );
+    // ✅ REMOVED: Framework's standardizeBulletSymbols() call
+    // REASON: We now use Example 4's complete property setting pattern (lines 2945-2949)
+    // which directly sets ALL 5 properties (setText, setFont, setFontSize, setBold, setColor)
+    // for every bullet level in every abstractNum definition.
+    //
+    // The framework call was:
+    // 1. Redundant - we already set all properties manually
+    // 2. Conflicting - changed font from Calibri → Verdana (breaks ● rendering)
+    // 3. Unnecessary - Example 4 pattern provides complete control
+    //
+    // Note: Framework methods at lines 671-672 and 3271-3280 remain for conditional
+    // formatting when custom styles are already applied or for color-only updates.
 
     return standardizedCount;
   }
