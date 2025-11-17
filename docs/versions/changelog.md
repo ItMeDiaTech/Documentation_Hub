@@ -22,6 +22,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2025-11-17
+
+### Added
+
+- **Complete Bullet Property Control**: Implemented Example 4's complete property setting pattern
+  - All 5 bullet formatting properties explicitly set (setText, setFont, setFontSize, setBold, setColor)
+  - Full control over bullet formatting without framework defaults
+  - Enhanced Unicode bullet rendering with proper Calibri font handling
+
+### Changed
+
+- **Upgraded docxmlater**: Major framework update from v2.5.0 to v3.0.0
+  - Enhanced list formatting capabilities
+  - Improved document processing performance
+  - Updated API compatibility
+- **Refactored WordDocumentProcessor**: Code optimization with net -11 lines
+  - Cleaner bullet uniformity implementation
+  - Eliminated redundant framework method calls
+  - Better property setting pattern
+
+### Improved
+
+- **Dependency Updates**:
+  - electron: 39.1.2 → 39.2.1
+  - electron-builder: 26.1.0 → 26.2.0
+  - @types/react: 19.2.4 → 19.2.5
+  - electron-updater: 6.7.0 → 6.7.1
+  - react-router-dom: 7.9.5 → 7.9.6
+
+### Fixed
+
+- **Unicode Bullet Rendering**: Proper Calibri font ensures U+2022 renders as ● (not ■)
+- **Framework Conflicts**: Eliminated property override issues through explicit setting
+
+### Documentation
+
+- **List Implementation Guide**: Comprehensive documentation in List_Implementation.md
+  - Example 4 pattern implementation details
+  - Complete property setting rationale
+  - Framework method usage guidelines
+
+### Technical Details
+
+**Bullet Formatting Pattern:**
+
+```typescript
+// Complete property setting for bulletproof formatting
+level.setText(newSymbol); // Bullet symbol
+level.setFont('Calibri'); // Font for proper rendering
+level.setFontSize(24); // 12pt = 24 half-points
+level.setBold(true); // Enhanced visibility
+level.setColor('000000'); // Black color
+```
+
+### Breaking Changes
+
+- **docxmlater v3.0.0**: May include API changes from v2.5.0 - review docxmlater changelog for migration details
+
+### Migration Notes
+
+No breaking changes in Documentation Hub application code. The docxmlater upgrade is transparent to existing functionality.
+
+---
+
 ## [1.19.0] - 2025-11-16
 
 ### Fixed
