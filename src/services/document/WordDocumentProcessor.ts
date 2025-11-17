@@ -1040,6 +1040,16 @@ export class WordDocumentProcessor {
       MemoryMonitor.logMemoryUsage('Before Document Save', 'Ready to save document');
 
       // ═══════════════════════════════════════════════════════════
+      // TABLE OF CONTENTS AUTO-POPULATION (docxmlater 2.5.0)
+      // Enable auto-population BEFORE save - TOC will be generated during save()
+      // ═══════════════════════════════════════════════════════════
+      if (options.operations?.updateTocHyperlinks) {
+        this.log.debug('=== ENABLING TOC AUTO-POPULATION (v2.5.0) ===');
+        doc.setAutoPopulateTOCs(true);
+        this.log.info('✓ TOC auto-population enabled - will populate during save()');
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // SAVE DOCUMENT - Direct save using docxmlater
       //
       // IMPORTANT: We rely on docxmlater's internal DOCX formatting
@@ -1047,6 +1057,9 @@ export class WordDocumentProcessor {
       // 1. [Content_Types].xml as first ZIP entry with STORE compression
       // 2. Correct file ordering in ZIP archive
       // 3. All OOXML relationships and structure
+      //
+      // NEW in v2.5.0: If setAutoPopulateTOCs(true) was called,
+      // save() automatically populates TOC fields with heading hyperlinks
       //
       // Previous approach of toBuffer() → validate → resave caused
       // corruption due to double ZIP creation breaking file ordering.
@@ -1056,108 +1069,17 @@ export class WordDocumentProcessor {
       this.log.info('Document saved successfully');
 
       // ═══════════════════════════════════════════════════════════
-      // REPLACE TABLE OF CONTENTS (after final save)
-      //
-      // IMPORTANT: This must happen AFTER doc.save() to prevent
-      // the in-memory document from overwriting the populated TOC.
-      // The replaceTableOfContents() method modifies the file on disk,
-      // so it must be the final operation on the document.
+      // TABLE OF CONTENTS VERIFICATION (docxmlater 2.5.0)
+      // Auto-population happens during save() - just log success
       // ═══════════════════════════════════════════════════════════
-      // ═══════════════════════════════════════════════════════════
-      // TABLE OF CONTENTS (TOC) POPULATION
-      //
-      // ALWAYS ENABLED: This operation always runs because updateTocHyperlinks
-      // is hardcoded to true in SessionContext (line 919)
-      //
-      // This ensures TOC fields are populated automatically instead of showing
-      // "Right-click to update field" placeholder text
-      // ═══════════════════════════════════════════════════════════
-      this.log.debug('=== DEBUG: TOC OPTION CHECK ===');
-      this.log.debug(`  operations object defined: ${!!options.operations}`);
-      this.log.debug(`  updateTocHyperlinks value: ${options.operations?.updateTocHyperlinks}`);
-
       if (options.operations?.updateTocHyperlinks) {
-        this.log.debug('=== GENERATING/UPDATING TABLE OF CONTENTS ===');
-        this.log.debug(`  Calling doc.replaceTableOfContents() on file: ${filePath}`);
-
-        try {
-          // ENHANCED: Add comprehensive TOC diagnostics before attempting replacement
-          // Check if document has any TOC fields using XML inspection
-          const documentPart = await doc.getPart('word/document.xml');
-          const hasTocField =
-            documentPart?.content?.includes('TOC \\o') ||
-            documentPart?.content?.includes('TOC \\h') ||
-            documentPart?.content?.includes('<w:fldChar w:fldCharType="begin"/>');
-
-          this.log.debug(`  Document has TOC field codes: ${hasTocField}`);
-
-          if (hasTocField) {
-            this.log.debug('  TOC field detected in document.xml - proceeding with replacement');
-          } else {
-            this.log.warn('  ⚠️ No TOC field codes found in document.xml');
-            this.log.warn('  Document may not contain a Table of Contents field');
-            this.log.warn('  Insert a TOC in Word via References > Table of Contents');
-          }
-
-          // Use DocXMLater helper to replace TOC with generated entries
-          const tocCount = await doc.replaceTableOfContents(filePath);
-
-          this.log.info(
-            `✓ Replaced ${tocCount} Table of Contents element(s) with generated entries`
-          );
-
-          if (tocCount === 0) {
-            this.log.error('═══════════════════════════════════════════════════════════');
-            this.log.error('⚠️ TOC REPLACEMENT FAILED - No TOC elements found or replaced');
-            this.log.error('═══════════════════════════════════════════════════════════');
-            this.log.error('');
-            this.log.error('Possible causes:');
-            this.log.error('  1. Document does not contain a Table of Contents field');
-            this.log.error('  2. TOC field structure is not compatible with docxmlater');
-            this.log.error('  3. TOC field was deleted or corrupted during processing');
-            this.log.error('');
-            this.log.error('To fix:');
-            this.log.error('  1. Open the document in Microsoft Word');
-            this.log.error('  2. Go to References > Table of Contents');
-            this.log.error('  3. Insert a new Table of Contents with default settings');
-            this.log.error('  4. Process the document again');
-            this.log.error('');
-            this.log.error('Note: Existing TOC showing "Right-click to update field"');
-            this.log.error('means the field exists but needs to be updated manually in Word.');
-            this.log.error('═══════════════════════════════════════════════════════════');
-          } else {
-            this.log.info('═══════════════════════════════════════════════════════════');
-            this.log.info('✅ TABLE OF CONTENTS SUCCESSFULLY POPULATED');
-            this.log.info('═══════════════════════════════════════════════════════════');
-            this.log.info(`  ${tocCount} TOC field(s) updated with heading hyperlinks`);
-            this.log.info('  TOC will display correctly when opened in Word');
-            this.log.info('═══════════════════════════════════════════════════════════');
-          }
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          this.log.error('═══════════════════════════════════════════════════════════');
-          this.log.error('❌ TOC REPLACEMENT ERROR');
-          this.log.error('═══════════════════════════════════════════════════════════');
-          this.log.error(`  Error: ${errorMsg}`);
-          this.log.error('');
-          this.log.error('This error indicates a problem with the docxmlater library or');
-          this.log.error('an incompatible TOC field structure in the document.');
-          this.log.error('');
-          this.log.error('The document has been saved, but the TOC may not be updated.');
-          this.log.error('You may need to manually update the TOC in Word by:');
-          this.log.error('  1. Right-clicking the TOC in Word');
-          this.log.error('  2. Clicking "Update Field"');
-          this.log.error('  3. Selecting "Update entire table"');
-          this.log.error('═══════════════════════════════════════════════════════════');
-
-          // Don't throw - continue processing, just log the error
-          // The document is still saved successfully, TOC just needs manual update
-        }
-      } else {
-        this.log.debug('  TOC update SKIPPED - option is false or undefined');
-        this.log.warn(
-          '  WARNING: updateTocHyperlinks should always be true (hardcoded in SessionContext)'
-        );
+        this.log.info('═══════════════════════════════════════════════════════════');
+        this.log.info('✅ TABLE OF CONTENTS AUTO-POPULATED (v2.5.0)');
+        this.log.info('═══════════════════════════════════════════════════════════');
+        this.log.info('  TOC fields populated during save() operation');
+        this.log.info('  TOC will display correctly when opened in Word');
+        this.log.info('  Users can still right-click "Update Field" if needed');
+        this.log.info('═══════════════════════════════════════════════════════════');
       }
 
       // Memory checkpoint: After save
