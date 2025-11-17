@@ -51,61 +51,72 @@ Generated XML structure (actual project output):
 
 **Note:** This project uses Verdana font (not Calibri) for proper Unicode bullet rendering in Word. The framework's `standardizeBulletSymbols()` method applies this formatting.
 
-## 📝 Modifying Pre-Existing Bullet Points
+## 📝 Modifying Pre-Existing Bullet Points (Example 4 Pattern - IMPLEMENTED)
 
-To change bullet symbols in an existing document:
+**Current Implementation:** [`WordDocumentProcessor.ts:2936-2958`](src/services/document/WordDocumentProcessor.ts:2936-2958)
 
-```typescript
-// 1. Load document
-const doc = await Document.load('existing.docx');
-
-// 2. Access numbering
-const numberingManager = doc.getNumberingManager();
-const abstractNum = numberingManager.getAbstractNumbering(0);
-const level0 = abstractNum.getLevel(0);
-
-// 3. Modify bullet properties
-level0.setText('★'); // Change symbol
-level0.setFont('Segoe UI Symbol'); // Change font
-level0.setColor('0000FF'); // Change color (blue)
-level0.setBold(true); // Make bold
-
-// 4. Save
-await doc.save('modified.docx');
-```
-
-## 🎨 Standardization Feature (NOW IMPLEMENTED)
-
-The project now uses docxmlater's [`standardizeBulletSymbols()`](node_modules/docxmlater/dist/core/Document.d.ts:268) and [`standardizeNumberedListPrefixes()`](node_modules/docxmlater/dist/core/Document.d.ts:278) methods:
-
-**Implementation:** [`WordDocumentProcessor.ts:2978-2988`](src/services/document/WordDocumentProcessor.ts:2978-2988)
+The project now follows **Example 4's complete property setting pattern**:
 
 ```typescript
-const result = doc.standardizeBulletSymbols({
-  font: 'Verdana',
-  fontSize: 12,
-  color: '000000',
-  bold: true,
-});
+// ✅ COMPLETE PROPERTY SETTING (Example 4 pattern)
+// Set ALL 5 bullet formatting properties for complete control
+level.setText(newSymbol); // Bullet symbol (e.g., ●, ▪, ➤)
+level.setFont('Calibri'); // Font: Calibri renders U+2022 as ●, not ■
+level.setFontSize(24); // Size: 12pt = 24 half-points
+level.setBold(true); // Bold: Improves visibility
+level.setColor('000000'); // Color: Black (#000000)
 ```
 
-**What it does:**
+**Implementation Details:**
 
-- Sets all bullet lists to **Verdana 12pt bold #000000**
-- **Preserves user's chosen bullet characters** (symbols remain unchanged)
-- Only standardizes font, size, color, and weight
-- Also available for numbered lists via `standardizeNumberedListPrefixes()`
+1. **Updates ALL existing abstractNum definitions** - not just new lists
+2. **Processes ALL 9 bullet levels (0-8)** - Word's full level range
+3. **Sets user-configured symbols** from UI settings
+4. **Complete formatting control** - all 5 properties explicitly set
+5. **No framework override conflicts** - removed redundant `standardizeBulletSymbols()` call
+
+**Why Complete Property Setting?**
+
+- ✅ Full control over formatting (no framework defaults)
+- ✅ Prevents property conflicts/overrides
+- ✅ Matches Example 4's proven pattern
+- ✅ Clearer code intent and maintainability
+- ✅ Ensures Calibri font for proper ● rendering
+
+## 🎨 Framework Method Usage (Conditional Only)
+
+Framework's [`standardizeBulletSymbols()`](node_modules/docxmlater/dist/core/Document.d.ts:268) is now used **only** in specific contexts:
+
+**Usage 1:** When custom styles already applied ([`WordDocumentProcessor.ts:671`](src/services/document/WordDocumentProcessor.ts:671))
+
+```typescript
+// Only apply when ListParagraph style already processed
+const bulletResult = doc.standardizeBulletSymbols({ fontSize: 12, bold: true });
+```
+
+**Usage 2:** Color-only updates ([`WordDocumentProcessor.ts:3271`](src/services/document/WordDocumentProcessor.ts:3271))
+
+```typescript
+// Standardize colors without changing other properties
+const bulletResult = doc.standardizeBulletSymbols({ color: '000000', bold: true });
+```
+
+**NOT used in [`applyBulletUniformity()`](src/services/document/WordDocumentProcessor.ts:2845-2993)** - Complete property setting provides better control.
 
 ## 📊 Default Formatting
 
-Current project formatting (applied via framework standardization):
+Current project formatting (applied via **Example 4 complete property setting**):
 
-- **Font**: Verdana (for proper Unicode bullet rendering)
+- **Font**: Calibri (critical for proper U+2022 → ● rendering, not ■)
 - **Size**: 12pt (24 half-points)
 - **Color**: Black (#000000)
 - **Bold**: true
-- **Default symbol**: '•' if not specified by user
+- **Default symbol**: '•' (U+2022) if not specified by user
 
-**Implementation Note:** The project uses framework's `standardizeBulletSymbols()` and `standardizeNumberedListPrefixes()` methods instead of custom XML injection. This ensures OOXML compliance and simplifies the codebase.
+**Implementation Approach:** The project uses **Example 4's complete property setting pattern** ([`WordDocumentProcessor.ts:2943-2949`](src/services/document/WordDocumentProcessor.ts:2943-2949)) which sets ALL 5 properties (setText, setFont, setFontSize, setBold, setColor) for complete control over bullet formatting. This approach:
 
-**Conclusion**: docxmlater correctly handles bullet symbols through a robust system that accepts any Unicode character, manages formatting properties independently, and generates proper WordprocessingML XML for Microsoft Word compatibility.
+- Eliminates framework conflicts
+- Provides predictable, consistent results
+- Ensures proper Unicode bullet rendering (● not ■)
+
+**Conclusion**: docxmlater correctly handles bullet symbols through a robust system that accepts any Unicode character. Using Example 4's complete property setting pattern provides the most reliable control over bullet formatting, ensuring all properties are explicitly set without relying on framework defaults or inheritance.
