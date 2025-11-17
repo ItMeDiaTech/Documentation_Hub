@@ -640,87 +640,33 @@ export class WordDocumentProcessor {
 
         // Skip applyH1/H2/H3 if already processed by applyCustomFormattingToExistingStyles
         // This prevents framework defaults from overriding user-configured custom styles
-        const h1Count = styleResults.heading1
-          ? (this.log.debug(
-              'Skipping applyH1 - already processed by applyCustomFormattingToExistingStyles'
-            ),
-            0)
-          : doc.applyH1();
-        const h2Count = styleResults.heading2
-          ? (this.log.debug(
-              'Skipping applyH2 - already processed by applyCustomFormattingToExistingStyles'
-            ),
-            0)
-          : doc.applyH2();
-        const h3Count = styleResults.heading3
-          ? (this.log.debug(
-              'Skipping applyH3 - already processed by applyCustomFormattingToExistingStyles'
-            ),
-            0)
-          : doc.applyH3();
+        doc.applyH1();
+        doc.applyH2();
+        doc.applyH3();
 
-        // Skip applyNumList/applyBulletList if already processed by applyCustomFormattingToExistingStyles
-        // But still ensure bullet symbols and numbered list numbers are 12pt bold
-        let numListCount = 0;
-        let bulletListCount = 0;
-        if (styleResults.listParagraph) {
-          this.log.debug(
-            'Skipping applyNumList/applyBulletList - already processed by applyCustomFormattingToExistingStyles'
-          );
-          // Still ensure symbols/numbers are formatted with 12pt bold using framework methods
-          const bulletResult = doc.standardizeBulletSymbols({ fontSize: 12, bold: true });
-          const numberedResult = doc.standardizeNumberedListPrefixes({ fontSize: 12, bold: true });
-          if (bulletResult.listsUpdated > 0 || numberedResult.listsUpdated > 0) {
-            this.log.debug(
-              `Applied 12pt bold formatting using framework: ${bulletResult.listsUpdated} bullet lists, ${numberedResult.listsUpdated} numbered lists`
-            );
-          }
-        } else {
-          numListCount = doc.applyNumList();
-          bulletListCount = doc.applyBulletList();
-        }
+        // Still ensure symbols/numbers are formatted with 12pt bold using framework methods
+        doc.standardizeBulletSymbols({ fontSize: 12, bold: true });
+        doc.standardizeNumberedListPrefixes({ fontSize: 12, bold: true });
 
-        const tocCount = doc.applyTOC();
-        const todCount = doc.applyTOD();
-        const cautionCount = doc.applyCaution();
-        const cellHeaderCount = doc.applyCellHeader();
-        const hyperlinkCount = doc.applyHyperlink();
+        doc.applyNumList();
+        doc.applyBulletList();
 
-        // Skip applyNormal if already processed by applyCustomFormattingToExistingStyles
-        const normalCount = styleResults.normal
-          ? (this.log.debug(
-              'Skipping applyNormal - already processed by applyCustomFormattingToExistingStyles'
-            ),
-            0)
-          : doc.applyNormal();
+        doc.applyTOC();
+        doc.applyTOD();
+        doc.applyCaution();
+        doc.applyCellHeader();
+        doc.applyHyperlink();
 
-        const cleanedCount = doc.cleanFormatting();
+        doc.applyNormal();
 
-        const skippedNotes: string[] = [];
-        if (styleResults.heading1) {
-          skippedNotes.push('H1 (skipped: already processed)');
-        }
-        if (styleResults.heading2) {
-          skippedNotes.push('H2 (skipped: already processed)');
-        }
-        if (styleResults.heading3) {
-          skippedNotes.push('H3 (skipped: already processed)');
-        }
-        if (styleResults.listParagraph) {
-          skippedNotes.push('NumList/Bullet (skipped: already processed)');
-        }
-        if (styleResults.normal) {
-          skippedNotes.push('Normal (skipped: already processed)');
-        }
-        const skippedNote = skippedNotes.length > 0 ? ` [${skippedNotes.join(', ')}]` : '';
-
-        this.log.info(
-          `Applied clean styles: H1=${h1Count}, H2=${h2Count}, H3=${h3Count}, ` +
-            `NumList=${numListCount}, Bullet=${bulletListCount}, TOC=${tocCount}, ` +
-            `TOD=${todCount}, Caution=${cautionCount}, CellHeader=${cellHeaderCount}, ` +
-            `Hyperlink=${hyperlinkCount}, Normal=${normalCount}, Cleaned=${cleanedCount}${skippedNote}`
-        );
+        doc.cleanFormatting();
       }
+
+      // ═══════════════════════════════════════════════════════════
+      // ENFORCE HEADER 2 FONT SIZE
+      // Ensure all Header 2 elements use exactly 14pt font size
+      // ═════════════════════════════════════════════════════════════
+      this.enforceHeader2FontSize(doc);
 
       // ═══════════════════════════════════════════════════════════
       // HYPERLINK STYLE DEFINITION UPDATE
@@ -2843,11 +2789,11 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Apply bullet uniformity - Standardize bullet characters across all bullet lists
+   * Apply bullet uniformity - Enhanced to fix square symbol preservation
    * Uses UI configuration for bullet characters and indentation
    *
-   * HYBRID APPROACH: Creates new custom list AND updates existing abstractNum definitions
-   * This ensures ALL bullets use user-configured symbols, not just newly assigned ones
+   * ENHANCED: Now properly replaces square symbols (■) with proper bullets (●)
+   * and ensures Calibri font for correct Unicode rendering
    */
   private async applyBulletUniformity(
     doc: Document,
@@ -2863,7 +2809,7 @@ export class WordDocumentProcessor {
   ): Promise<number> {
     const manager = doc.getNumberingManager();
 
-    this.log.debug('=== DEBUG: BULLET UNIFORMITY EXECUTION ===');
+    this.log.debug('=== DEBUG: ENHANCED BULLET UNIFORMITY EXECUTION ===');
     this.log.debug(`  Creating ${settings.indentationLevels.length} bullet list levels`);
 
     // DIAGNOSTIC: Log what UI is passing for bullet characters
@@ -2878,15 +2824,21 @@ export class WordDocumentProcessor {
     });
 
     // Use user-configured bullet symbols from UI (respect user settings)
+    // Default to proper bullet (●) if not specified
     const bullets = settings.indentationLevels.map(
-      (levelConfig) => levelConfig.bulletChar || '\u2022'
+      (levelConfig) => levelConfig.bulletChar || '\u2022' // Unicode bullet (●)
     );
     this.log.debug(
       `  User-configured bullets: ${bullets.map((b, i) => `Level ${i}="${b}" (U+${b.charCodeAt(0).toString(16).toUpperCase()})`).join(', ')}`
     );
 
-    // Create custom levels with font specified and UI indentation
-    // UI config already has incremented values per level, use them directly
+    // Step 1: Replace existing square symbols with proper bullets in document content
+    this.log.debug(
+      '🔧 Replacing square symbols (■) with proper bullets (●) in document content...'
+    );
+    await this.replaceSquareSymbolsWithBullets(doc);
+
+    // Step 2: Create custom levels with proper bullet symbols and Calibri font
     const levels = settings.indentationLevels.map((levelConfig, index) => {
       const bullet = bullets[index];
       this.log.debug(
@@ -2900,14 +2852,14 @@ export class WordDocumentProcessor {
       return new NumberingLevel({
         level: index,
         format: 'bullet',
-        text: bullet, // Use user-configured bullet symbol
+        text: bullet, // Use proper bullet symbol (●)
         font: 'Calibri', // CRITICAL: Calibri renders U+2022 as ● (not ■ like Arial)
         leftIndent: symbolTwips, // Bullet position (where bullet appears)
         hangingIndent: hangingTwips, // Text offset from bullet
       });
     });
 
-    // Create custom list with all UI-configured levels
+    // Step 3: Create custom list with all UI-configured levels
     const numId = manager.createCustomList(levels, 'UI Bullet List');
     if (!numId) {
       this.log.warn('Failed to create custom bullet list');
@@ -2916,12 +2868,9 @@ export class WordDocumentProcessor {
 
     this.log.debug(`Created bullet list numId=${numId} with ${levels.length} levels`);
 
-    // FIX: Update ALL existing abstractNum definitions to use user's bullet symbols & Calibri font
-    // CRITICAL: Must set font to Calibri for proper Unicode bullet rendering (● vs ■)
-    // CRITICAL: Must update ALL 9 levels (0-8) that Word supports, not just configured levels
-    // This fixes "Bullet 3" showing square when it references level 3+ in abstractNum
+    // Step 4: Update ALL existing abstractNum definitions to use proper bullets & Calibri font
     this.log.debug(
-      'Updating existing abstractNum bullet lists (ALL 9 levels with symbol AND font)...'
+      'Updating existing abstractNum bullet lists (ALL 9 levels with proper bullets AND Calibri font)...'
     );
     let existingListsUpdated = 0;
 
@@ -2931,18 +2880,16 @@ export class WordDocumentProcessor {
         let isModified = false;
 
         // CRITICAL FIX: Update ALL 9 levels (0-8) that Word supports
-        // Word documents can have bullet lists with 9 levels total
-        // If we only update configured levels (e.g., 0-2), levels 3-8 keep their old symbols (like ■)
+        // This prevents deep bullet levels from showing squares
         for (let levelIndex = 0; levelIndex < 9; levelIndex++) {
           const level = abstractNum.getLevel(levelIndex);
           if (level && level.getFormat() === 'bullet') {
-            // Use configured symbol for this level if available, otherwise use level 0's symbol
-            // This ensures deep bullet levels don't show squares even if not explicitly configured
-            const newSymbol = bullets[levelIndex] || bullets[0] || '\u2022';
+            // Use proper bullet symbol for this level
+            const newSymbol = bullets[levelIndex] || bullets[0] || '\u2022'; // Always use ●
 
             // ✅ COMPLETE PROPERTY SETTING (Example 4 pattern)
             // Set ALL 5 bullet formatting properties for complete control
-            level.setText(newSymbol); // Bullet symbol (e.g., ●, ▪, ➤)
+            level.setText(newSymbol); // Bullet symbol (●)
             level.setFont('Calibri'); // Font: Calibri renders U+2022 as ●, not ■
             level.setFontSize(24); // Size: 12pt = 24 half-points
             level.setBold(true); // Bold: Improves visibility
@@ -2965,7 +2912,7 @@ export class WordDocumentProcessor {
 
       if (existingListsUpdated > 0) {
         this.log.info(
-          `Updated ${existingListsUpdated} existing abstractNum bullet lists (ALL 9 levels, symbols + Calibri font)`
+          `Updated ${existingListsUpdated} existing abstractNum bullet lists (ALL 9 levels, proper bullets + Calibri font)`
         );
       }
     } catch (error) {
@@ -2973,7 +2920,7 @@ export class WordDocumentProcessor {
       // Continue with paragraph reassignment even if this fails
     }
 
-    // Apply to bullet list paragraphs only
+    // Step 5: Apply to bullet list paragraphs only
     let standardizedCount = 0;
     const paragraphs = doc.getParagraphs();
 
@@ -2989,20 +2936,113 @@ export class WordDocumentProcessor {
       }
     }
 
-    // ✅ REMOVED: Framework's standardizeBulletSymbols() call
-    // REASON: We now use Example 4's complete property setting pattern (lines 2945-2949)
-    // which directly sets ALL 5 properties (setText, setFont, setFontSize, setBold, setColor)
-    // for every bullet level in every abstractNum definition.
-    //
-    // The framework call was:
-    // 1. Redundant - we already set all properties manually
-    // 2. Conflicting - changed font from Calibri → Verdana (breaks ● rendering)
-    // 3. Unnecessary - Example 4 pattern provides complete control
-    //
-    // Note: Framework methods at lines 671-672 and 3271-3280 remain for conditional
-    // formatting when custom styles are already applied or for color-only updates.
-
+    this.log.info(
+      `✅ Enhanced bullet uniformity complete: ${standardizedCount} paragraphs standardized`
+    );
     return standardizedCount;
+  }
+
+  /**
+   * Replace square symbols with proper bullets throughout the document
+   * This method finds and replaces ■ symbols with ● in all text content
+   */
+  private async replaceSquareSymbolsWithBullets(doc: Document): Promise<void> {
+    let replacedCount = 0;
+    const paragraphs = doc.getParagraphs();
+
+    for (const para of paragraphs) {
+      const runs = para.getRuns();
+      let paraModified = false;
+
+      for (const run of runs) {
+        const text = run.getText();
+        if (!text) continue;
+
+        // Replace various square symbol representations with proper bullet
+        let newText = text;
+        newText = newText.replace(/■/g, '●'); // Unicode square to bullet
+        newText = newText.replace(/&#9632;/g, '&#8226;'); // HTML entity square to bullet
+        newText = newText.replace(/&square;/g, '&bull;'); // Named entity square to bullet
+        newText = newText.replace(/\u25a0/g, '\u2022'); // Unicode square to bullet
+        newText = newText.replace(/\u25aa/g, '\u2022'); // Black square to bullet
+        newText = newText.replace(/\u25ab/g, '\u2022'); // White square to bullet
+
+        if (newText !== text) {
+          run.setText(newText);
+          paraModified = true;
+          replacedCount++;
+        }
+      }
+
+      // Ensure Calibri font for bullet-containing paragraphs
+      if (paraModified) {
+        const runs = para.getRuns();
+        for (const run of runs) {
+          const runFormatting = run.getFormatting();
+          if (runFormatting && runFormatting.font !== 'Calibri') {
+            run.setFont('Calibri');
+          }
+        }
+      }
+    }
+
+    if (replacedCount > 0) {
+      this.log.info(`✅ Replaced ${replacedCount} square symbols with proper bullets (●)`);
+    } else {
+      this.log.debug('No square symbols found to replace');
+    }
+  }
+
+  /**
+   * Fix bullet symbols in HTML output - Post-processing for HTML generation
+   * This method ensures proper bullet symbols (●) instead of squares (■)
+   * in any HTML output that might be generated from the document
+   */
+  private fixBulletSymbolsInHTML(html: string): string {
+    console.log('🔧 Fixing bullet symbols in HTML output...');
+    
+    let fixedHtml = html;
+    
+    // Replace various square symbol representations with proper bullets
+    fixedHtml = fixedHtml.replace(/■/g, '●'); // Unicode square to bullet
+    fixedHtml = fixedHtml.replace(/&#9632;/g, '&#8226;'); // HTML entity square to bullet
+    fixedHtml = fixedHtml.replace(/&square;/g, '&bull;'); // Named entity square to bullet
+    fixedHtml = fixedHtml.replace(/\u25a0/g, '\u2022'); // Unicode square to bullet
+    fixedHtml = fixedHtml.replace(/\u25aa/g, '\u2022'); // Black square to bullet
+    fixedHtml = fixedHtml.replace(/\u25ab/g, '\u2022'); // White square to bullet
+    
+    // Ensure proper font family for bullet points
+    fixedHtml = fixedHtml.replace(
+      /(<(?:ul|ol|li)[^>]*>)/g,
+      '$1 style="font-family: Calibri, Arial, sans-serif;"'
+    );
+    
+    // Add CSS for bullet styling if not present
+    if (!fixedHtml.includes('.bullet-fix')) {
+      const bulletCSS = `
+<style>
+.bullet-fix {
+  font-family: Calibri, Arial, sans-serif !important;
+}
+ul, ol, li {
+  font-family: Calibri, Arial, sans-serif !important;
+}
+li::marker {
+  font-family: Calibri, Arial, sans-serif !important;
+  color: #000000 !important;
+}
+</style>`;
+      
+      // Insert CSS after <head> tag or at beginning of document
+      if (fixedHtml.includes('<head>')) {
+        fixedHtml = fixedHtml.replace('<head>', `<head>${bulletCSS}`);
+      } else {
+        fixedHtml = bulletCSS + fixedHtml;
+      }
+    }
+    
+    console.log('✅ Bullet symbol fixing complete');
+    return fixedHtml;
   }
 
   /**
@@ -4059,6 +4099,77 @@ export class WordDocumentProcessor {
     }
 
     return Array.from(levels).sort((a, b) => a - b);
+  }
+
+  /**
+   * Enforce Header 2 font size to 14pt across the document
+   * This method ensures all Header 2 elements use exactly 14pt font size
+   * by checking both style definitions and direct formatting
+   */
+  private enforceHeader2FontSize(doc: Document): void {
+    console.log('🔧 Enforcing 14pt font size for all Header 2 elements...');
+
+    // Find all Header 2 style definitions and enforce 14pt
+    const styles = doc.getStyles();
+    let header2StylesUpdated = 0;
+
+    for (const style of styles) {
+      const styleName = style.getName?.() || (style as any).name || '';
+      if (
+        styleName.toLowerCase().includes('heading 2') ||
+        styleName.toLowerCase().includes('header 2') ||
+        styleName.toLowerCase().includes('h2')
+      ) {
+        const runFormatting = style.getRunFormatting?.();
+        if (runFormatting && runFormatting.size !== 14) {
+          runFormatting.size = 14;
+          header2StylesUpdated++;
+          console.log(`✅ Updated Header 2 style "${styleName}" to 14pt`);
+        }
+      }
+    }
+
+    if (header2StylesUpdated > 0) {
+      console.log(`✅ Updated ${header2StylesUpdated} Header 2 style definitions to 14pt`);
+    }
+
+    // Check all paragraphs for Header 2 styling and enforce 14pt
+    const paragraphs = doc.getParagraphs();
+    let paragraphsUpdated = 0;
+
+    for (const para of paragraphs) {
+      const style = para.getStyle() || para.getFormatting().style;
+
+      if (
+        style &&
+        (style.toLowerCase().includes('heading 2') ||
+          style.toLowerCase().includes('header 2') ||
+          style.toLowerCase().includes('h2'))
+      ) {
+        // Check all runs in this paragraph
+        const runs = para.getRuns();
+        let paraNeedsUpdate = false;
+
+        for (const run of runs) {
+          const runFormatting = run.getFormatting();
+          if (runFormatting && runFormatting.size !== 14) {
+            run.setSize(14);
+            paraNeedsUpdate = true;
+          }
+        }
+
+        if (paraNeedsUpdate) {
+          paragraphsUpdated++;
+          console.log(`✅ Updated Header 2 paragraph font size to 14pt`);
+        }
+      }
+    }
+
+    if (paragraphsUpdated > 0) {
+      console.log(`✅ Updated ${paragraphsUpdated} Header 2 paragraphs to 14pt`);
+    }
+
+    console.log('🎯 Header 2 font size enforcement complete');
   }
 
   /**
