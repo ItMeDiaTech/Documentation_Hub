@@ -6,6 +6,7 @@
  */
 
 import {
+  Bookmark,
   Document,
   Hyperlink,
   Image,
@@ -15,6 +16,7 @@ import {
   Run,
   Style,
   Table,
+  type TableOfContents,
 } from 'docxmlater';
 // Note: Run, Hyperlink, Image imported for type checking in isParagraphTrulyEmpty()
 import {
@@ -1040,13 +1042,13 @@ export class WordDocumentProcessor {
       MemoryMonitor.logMemoryUsage('Before Document Save', 'Ready to save document');
 
       // ═══════════════════════════════════════════════════════════
-      // TABLE OF CONTENTS AUTO-POPULATION (docxmlater 2.5.0)
-      // Enable auto-population BEFORE save - TOC will be generated during save()
+      // TABLE OF CONTENTS MANUAL POPULATION
+      // Manually build TOC from existing headings with bookmarks and hyperlinks
       // ═══════════════════════════════════════════════════════════
       if (options.operations?.updateTocHyperlinks) {
-        this.log.debug('=== ENABLING TOC AUTO-POPULATION (v2.5.0) ===');
-        doc.setAutoPopulateTOCs(true);
-        this.log.info('✓ TOC auto-population enabled - will populate during save()');
+        this.log.debug('=== MANUAL TOC POPULATION ===');
+        const tocEntriesCreated = await this.manuallyPopulateTOC(doc);
+        this.log.info(`✓ Created ${tocEntriesCreated} TOC entries with hyperlinks`);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -1067,20 +1069,6 @@ export class WordDocumentProcessor {
       this.log.debug('=== SAVING DOCUMENT ===');
       await doc.save(filePath);
       this.log.info('Document saved successfully');
-
-      // ═══════════════════════════════════════════════════════════
-      // TABLE OF CONTENTS VERIFICATION (docxmlater 2.5.0)
-      // Auto-population happens during save() - just log success
-      // ═══════════════════════════════════════════════════════════
-      if (options.operations?.updateTocHyperlinks) {
-        this.log.info('═══════════════════════════════════════════════════════════');
-        this.log.info('✅ TABLE OF CONTENTS AUTO-POPULATED (v2.5.0)');
-        this.log.info('═══════════════════════════════════════════════════════════');
-        this.log.info('  TOC fields populated during save() operation');
-        this.log.info('  TOC will display correctly when opened in Word');
-        this.log.info('  Users can still right-click "Update Field" if needed');
-        this.log.info('═══════════════════════════════════════════════════════════');
-      }
 
       // Memory checkpoint: After save
       MemoryMonitor.logMemoryUsage('After Document Save', 'Document saved successfully');
@@ -4030,6 +4018,258 @@ export class WordDocumentProcessor {
 
     this.log.debug('Created second warning line (bold)');
     this.log.info('Document warning added/updated successfully at end of document');
+  }
+
+  /**
+   * Parse TOC field instruction to extract heading levels
+   * @param instruction Field instruction like "TOC \o "1-3" \h \* MERGEFORMAT"
+   * @returns Array of heading levels to include (e.g., [1, 2, 3])
+   */
+  private parseTOCLevels(instruction: string): number[] {
+    const levels = new Set<number>();
+
+    // Parse \o "X-Y" switch (outline levels)
+    const outlineMatch = instruction.match(/\\o\s+"(\d+)-(\d+)"/);
+    if (outlineMatch && outlineMatch[1] && outlineMatch[2]) {
+      const start = parseInt(outlineMatch[1], 10);
+      const end = parseInt(outlineMatch[2], 10);
+      for (let i = start; i <= end; i++) {
+        if (i >= 1 && i <= 9) {
+          levels.add(i);
+        }
+      }
+    }
+
+    // Parse \t "StyleName,Level," switches (custom styles)
+    const styleMatches = instruction.matchAll(/\\t\s+"([^"]+)"/g);
+    for (const match of styleMatches) {
+      const content = match[1];
+      if (!content) continue;
+
+      const parts = content
+        .split(',')
+        .map((p) => p.trim())
+        .filter((p) => p);
+      if (parts.length < 2) continue;
+
+      const styleName = parts[0];
+
+      // Extract level from style name (e.g., "Heading 2" -> 2)
+      const headingMatch = styleName?.match(/Heading\s*(\d+)/i);
+      if (headingMatch && headingMatch[1]) {
+        const level = parseInt(headingMatch[1], 10);
+        if (level >= 1 && level <= 9) {
+          levels.add(level);
+        }
+      }
+    }
+
+    // Default to 1-3 if no levels found
+    if (levels.size === 0) {
+      return [1, 2, 3];
+    }
+
+    return Array.from(levels).sort((a, b) => a - b);
+  }
+
+  /**
+   * Manually populate Table of Contents with bookmarks and internal hyperlinks
+   *
+   * This comprehensive implementation:
+   * 1. Finds all existing headings (Heading1, Heading2, Heading3) in document
+   * 2. Creates bookmarks for each heading
+   * 3. Finds all TOC field elements in document
+   * 4. Parses TOC field instructions to determine which levels to include
+   * 5. Replaces TOC fields with manual hyperlink paragraphs
+   * 6. Formats TOC entries with proper indentation and Verdana 12pt blue styling
+   *
+   * @param doc - Document to process
+   * @returns Number of TOC entries created
+   */
+  private async manuallyPopulateTOC(doc: Document): Promise<number> {
+    let totalEntriesCreated = 0;
+
+    try {
+      // ============================================
+      // STEP 1: GET ALL EXISTING HEADINGS
+      // ============================================
+      interface HeadingInfo {
+        paragraph: Paragraph;
+        level: number;
+        text: string;
+        bookmark: Bookmark;
+      }
+
+      const allHeadings: HeadingInfo[] = [];
+      const allParagraphs = doc.getAllParagraphs(); // Searches body AND tables
+
+      this.log.debug(`Scanning ${allParagraphs.length} paragraphs for headings...`);
+
+      for (const para of allParagraphs) {
+        const style = para.getStyle();
+
+        // Match Heading1, Heading2, Heading3 (or "Heading 1", etc.)
+        const match = style?.match(/^Heading\s*([1-3])$/i);
+        if (match && match[1]) {
+          const level = parseInt(match[1], 10);
+          const text = para.getText().trim();
+
+          if (text) {
+            // Create unique bookmark for this heading
+            const bookmarkName = `_Heading_${level}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const bookmark = new Bookmark({ name: bookmarkName });
+            const registered = doc.getBookmarkManager().register(bookmark);
+
+            // Add bookmark to the heading paragraph
+            para.addBookmark(registered);
+
+            allHeadings.push({
+              paragraph: para,
+              level: level,
+              text: text,
+              bookmark: registered,
+            });
+
+            this.log.debug(`Found Heading${level}: "${text}" (bookmark: ${bookmarkName})`);
+          }
+        }
+      }
+
+      this.log.info(`Found ${allHeadings.length} headings in document`);
+
+      if (allHeadings.length === 0) {
+        this.log.warn('No headings found - TOC cannot be populated');
+        return 0;
+      }
+
+      // ============================================
+      // STEP 2: GET ALL TOC ELEMENTS IN DOCUMENT
+      // ============================================
+      const tocElements = doc.getTableOfContentsElements();
+      this.log.info(`Found ${tocElements.length} TOC element(s) in document`);
+
+      if (tocElements.length === 0) {
+        this.log.warn('No TOC elements found in document');
+        return 0;
+      }
+
+      // ============================================
+      // STEP 3: PROCESS EACH TOC
+      // ============================================
+      for (const tocElement of tocElements) {
+        const toc = (tocElement as any).toc as TableOfContents;
+        if (!toc) {
+          this.log.warn('TOC element missing toc property, skipping');
+          continue;
+        }
+
+        // Parse field instruction to determine which levels to include
+        const fieldInstruction = toc.getFieldInstruction();
+        this.log.debug(`TOC field instruction: ${fieldInstruction}`);
+
+        // Extract which heading levels this TOC should include
+        const levelsToInclude = this.parseTOCLevels(fieldInstruction);
+        this.log.debug(`TOC includes heading levels: ${levelsToInclude.join(', ')}`);
+
+        // Filter headings for this TOC
+        const tocHeadings = allHeadings.filter((h) => levelsToInclude.includes(h.level));
+
+        if (tocHeadings.length === 0) {
+          this.log.warn('No headings match TOC level filter');
+          continue;
+        }
+
+        this.log.info(
+          `Building TOC with ${tocHeadings.length} headings (levels: ${levelsToInclude.join(', ')})`
+        );
+
+        // Calculate minimum level for relative indentation
+        const minLevel = Math.min(...tocHeadings.map((h) => h.level));
+
+        // ============================================
+        // STEP 4: BUILD MANUAL TOC ENTRIES
+        // ============================================
+        const tocParagraphs: Paragraph[] = [];
+
+        for (const heading of tocHeadings) {
+          // Create paragraph for TOC entry
+          const tocEntry = new Paragraph();
+
+          // Set spacing: 0 before and 0 after
+          tocEntry.setSpaceBefore(0);
+          tocEntry.setSpaceAfter(0);
+
+          // Set line spacing to 240 (single spacing)
+          tocEntry.setLineSpacing(240, 'auto');
+
+          // Set left alignment
+          tocEntry.setAlignment('left');
+
+          // Calculate indentation based on heading level (0.25" per level above minimum)
+          // Level 2 when minLevel=2: 0", Level 3 when minLevel=2: 0.25" (360 twips)
+          const indentTwips = (heading.level - minLevel) * 360;
+          if (indentTwips > 0) {
+            tocEntry.setLeftIndent(indentTwips);
+          }
+
+          // Create internal hyperlink
+          const hyperlink = Hyperlink.createInternal(heading.bookmark.getName(), heading.text, {
+            font: 'Verdana',
+            size: 12,
+            color: '0000FF', // Blue
+            underline: 'single',
+          });
+
+          // Add hyperlink to paragraph
+          tocEntry.addHyperlink(hyperlink);
+
+          tocParagraphs.push(tocEntry);
+
+          this.log.debug(
+            `Created TOC entry for ${heading.text} (Level ${heading.level}, indent: ${indentTwips} twips)`
+          );
+        }
+
+        // ============================================
+        // STEP 5: INSERT TOC ENTRIES INTO DOCUMENT
+        // ============================================
+        const bodyElements = doc.getBodyElements();
+        const tocIndex = bodyElements.indexOf(tocElement);
+
+        if (tocIndex !== -1) {
+          // Remove the TOC element
+          doc.removeTocAt(tocIndex);
+          this.log.debug(`Removed original TOC field at index ${tocIndex}`);
+
+          // Insert all TOC entry paragraphs at that position
+          for (let i = 0; i < tocParagraphs.length; i++) {
+            doc.insertParagraphAt(tocIndex + i, tocParagraphs[i]!);
+          }
+
+          totalEntriesCreated += tocParagraphs.length;
+          this.log.info(
+            `Inserted ${tocParagraphs.length} TOC entries at index ${tocIndex} replacing TOC field`
+          );
+        } else {
+          this.log.warn('Could not find TOC element in body, skipping TOC replacement');
+        }
+      }
+
+      this.log.info(
+        `Successfully created ${totalEntriesCreated} TOC entries with internal hyperlinks`
+      );
+      return totalEntriesCreated;
+    } catch (error) {
+      this.log.error(
+        `Error in manual TOC population: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+      // Log stack trace for debugging
+      if (error instanceof Error && error.stack) {
+        this.log.debug(`Stack trace: ${error.stack}`);
+      }
+      // Don't throw - allow document processing to continue
+      return totalEntriesCreated;
+    }
   }
 
   /**
