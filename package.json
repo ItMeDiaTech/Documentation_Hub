@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "A modern document processing and session management desktop application",
   "main": "dist/electron/main.js",
   "scripts": {
@@ -48,7 +48,7 @@
     "concurrently": "^9.2.1",
     "electron": "39.2.1",
     "electron-builder": "26.2.0",
-    "eslint": "9.39.1",
+    "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "7.0.1",
@@ -87,7 +87,7 @@
     "cmdk": "^1.1.1",
     "diff": "^8.0.2",
     "docx": "^9.5.1",
-    "docxmlater": "^4.0.2",
+    "docxmlater": "^4.7.4",
     "electron-log": "^5.4.3",
     "electron-updater": "6.7.1",
     "fast-diff": "^1.3.0",

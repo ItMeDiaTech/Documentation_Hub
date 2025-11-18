@@ -1,19 +1,15 @@
-import { ChevronRight, Zap, Moon, Sun, Clock } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/utils/cn';
-import { useState, useEffect, memo, useCallback, useMemo } from 'react';
+import { ChevronRight, Clock, Moon, Sun, Zap } from 'lucide-react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const pathToTitle: Record<string, string> = {
   '/': 'Dashboard',
   '/projects': 'Projects',
   '/analytics': 'Analytics',
-  '/team': 'Team',
   '/documents': 'Documents',
-  '/plugins': 'Plugins',
   '/notifications': 'Notifications',
-  '/search': 'Search',
-  '/profile': 'Profile',
   '/settings': 'Settings',
   '/sessions': 'Sessions',
 };
@@ -22,12 +18,8 @@ const pathDescriptions: Record<string, string> = {
   '/': 'Manage your document processing sessions',
   '/projects': 'View and manage your projects',
   '/analytics': 'Track performance and insights',
-  '/team': 'Collaborate with your team members',
   '/documents': 'Browse and manage documents',
-  '/plugins': 'Extend functionality with plugins',
   '/notifications': 'View your notifications',
-  '/search': 'Search across your workspace',
-  '/profile': 'Manage your profile',
   '/settings': 'Manage your account and application preferences',
   '/sessions': 'View and manage all sessions',
 };

@@ -1,19 +1,18 @@
-import { createHashRouter, RouterProvider, Outlet } from 'react-router-dom';
-import { ThemeProvider } from '@/contexts/ThemeContext';
-import { SessionProvider } from '@/contexts/SessionContext';
-import { UserSettingsProvider } from '@/contexts/UserSettingsContext';
-import { GlobalStatsProvider } from '@/contexts/GlobalStatsContext';
-import { TitleBar } from '@/components/layout/TitleBar';
-import { Sidebar } from '@/components/layout/Sidebar';
-import { Header } from '@/components/layout/Header';
-import { CommandPalette } from '@/components/navigation/CommandPalette';
 import { BugReportButton } from '@/components/common/BugReportButton';
-import { UpdateNotification } from '@/components/common/UpdateNotification';
 import { DebugConsole } from '@/components/common/DebugConsole';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { SplashScreen } from '@/components/common/SplashScreen';
-import { useState, lazy, Suspense, useEffect } from 'react';
-import { useGlobalStats } from '@/contexts/GlobalStatsContext';
+import { UpdateNotification } from '@/components/common/UpdateNotification';
+import { Header } from '@/components/layout/Header';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { TitleBar } from '@/components/layout/TitleBar';
+import { CommandPalette } from '@/components/navigation/CommandPalette';
+import { GlobalStatsProvider, useGlobalStats } from '@/contexts/GlobalStatsContext';
+import { SessionProvider } from '@/contexts/SessionContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import { UserSettingsProvider } from '@/contexts/UserSettingsContext';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { createHashRouter, Outlet, RouterProvider } from 'react-router-dom';
 
 // Lazy load pages for code splitting and faster initial load
 const Dashboard = lazy(() => import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })));
@@ -24,8 +23,6 @@ const CurrentSession = lazy(() =>
 const Sessions = lazy(() => import('@/pages/Sessions').then((m) => ({ default: m.Sessions })));
 const Documents = lazy(() => import('@/pages/Documents').then((m) => ({ default: m.Documents })));
 const Analytics = lazy(() => import('@/pages/Analytics').then((m) => ({ default: m.Analytics })));
-const Search = lazy(() => import('@/pages/Search').then((m) => ({ default: m.Search })));
-const Plugins = lazy(() => import('@/pages/Plugins').then((m) => ({ default: m.Plugins })));
 
 // Loading fallback component
 function PageLoader() {
@@ -110,11 +107,7 @@ const router = createHashRouter(
         { path: 'sessions', element: <Sessions /> },
         { path: 'session/:id', element: <CurrentSession /> },
         { path: 'analytics', element: <Analytics /> },
-        { path: 'team', element: <EmptyPage title="Team" /> },
         { path: 'documents', element: <Documents /> },
-        { path: 'plugins', element: <Plugins /> },
-        { path: 'search', element: <Search /> },
-        { path: 'profile', element: <EmptyPage title="Profile" /> },
         { path: 'settings', element: <Settings /> },
       ],
     },

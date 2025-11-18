@@ -229,3 +229,6 @@ CLAUDE.md
 /STYLE_PARAMETER_ENHANCEMENT.md
 /jest.config.js
 /index.html
+.blackboxrules
+.gitignore
+.gitignore
