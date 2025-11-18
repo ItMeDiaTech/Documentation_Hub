@@ -70,11 +70,19 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
     bold: boolean;
     italic: boolean;
     underline: boolean;
+    preserveBold?: boolean;
+    preserveItalic?: boolean;
+    preserveUnderline?: boolean;
     alignment: 'left' | 'center' | 'right' | 'justify';
     color: string;
     spaceBefore: number;
     spaceAfter: number;
     lineSpacing: number;
+    noSpaceBetweenSame?: boolean;
+    indentation?: {
+      left?: number;
+      firstLine?: number;
+    };
   }>;
 
   // ═══════════════════════════════════════════════════════════
@@ -658,68 +666,6 @@ export class WordDocumentProcessor {
             ),
             0)
           : doc.applyH3();
-
-        // Skip applyNumList/applyBulletList if already processed by applyCustomFormattingToExistingStyles
-        // But still ensure bullet symbols and numbered list numbers are 12pt bold
-        let numListCount = 0;
-        let bulletListCount = 0;
-        if (styleResults.listParagraph) {
-          this.log.debug(
-            'Skipping applyNumList/applyBulletList - already processed by applyCustomFormattingToExistingStyles'
-          );
-          // Still ensure symbols/numbers are formatted with 12pt bold using framework methods
-          const bulletResult = doc.standardizeBulletSymbols({ fontSize: 12, bold: true });
-          const numberedResult = doc.standardizeNumberedListPrefixes({ fontSize: 12, bold: true });
-          if (bulletResult.listsUpdated > 0 || numberedResult.listsUpdated > 0) {
-            this.log.debug(
-              `Applied 12pt bold formatting using framework: ${bulletResult.listsUpdated} bullet lists, ${numberedResult.listsUpdated} numbered lists`
-            );
-          }
-        } else {
-          numListCount = doc.applyNumList();
-          bulletListCount = doc.applyBulletList();
-        }
-
-        const tocCount = doc.applyTOC();
-        const todCount = doc.applyTOD();
-        const cautionCount = doc.applyCaution();
-        const cellHeaderCount = doc.applyCellHeader();
-        const hyperlinkCount = doc.applyHyperlink();
-
-        // Skip applyNormal if already processed by applyCustomFormattingToExistingStyles
-        const normalCount = styleResults.normal
-          ? (this.log.debug(
-              'Skipping applyNormal - already processed by applyCustomFormattingToExistingStyles'
-            ),
-            0)
-          : doc.applyNormal();
-
-        const cleanedCount = doc.cleanFormatting();
-
-        const skippedNotes: string[] = [];
-        if (styleResults.heading1) {
-          skippedNotes.push('H1 (skipped: already processed)');
-        }
-        if (styleResults.heading2) {
-          skippedNotes.push('H2 (skipped: already processed)');
-        }
-        if (styleResults.heading3) {
-          skippedNotes.push('H3 (skipped: already processed)');
-        }
-        if (styleResults.listParagraph) {
-          skippedNotes.push('NumList/Bullet (skipped: already processed)');
-        }
-        if (styleResults.normal) {
-          skippedNotes.push('Normal (skipped: already processed)');
-        }
-        const skippedNote = skippedNotes.length > 0 ? ` [${skippedNotes.join(', ')}]` : '';
-
-        this.log.info(
-          `Applied clean styles: H1=${h1Count}, H2=${h2Count}, H3=${h3Count}, ` +
-            `NumList=${numListCount}, Bullet=${bulletListCount}, TOC=${tocCount}, ` +
-            `TOD=${todCount}, Caution=${cautionCount}, CellHeader=${cellHeaderCount}, ` +
-            `Hyperlink=${hyperlinkCount}, Normal=${normalCount}, Cleaned=${cleanedCount}${skippedNote}`
-        );
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -855,14 +801,6 @@ export class WordDocumentProcessor {
         );
         this.log.debug(`  DEBUG: After removal - total paragraphs: ${doc.getParagraphs().length}`);
         this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
-
-        // DEPRECATED v1.19.0: Old custom implementation replaced with docXMLater's ensureBlankLinesAfter1x1Tables()
-        // The new method runs BEFORE paragraph removal (see above) with conditional preserve flag
-        // OLD CODE: this.log.debug('=== INSERTING BLANK LINES AFTER 1x1 TABLES ===');
-        // OLD CODE: const blankLinesInserted = await this.insertBlankLinesAfter1x1Tables(doc);
-        // OLD CODE: if (blankLinesInserted > 0) {
-        // OLD CODE:   this.log.info(`Inserted ${blankLinesInserted} blank lines after 1x1 tables`);
-        // OLD CODE: }
       }
 
       // NEW VALIDATION OPERATIONS (DocXMLater 1.6.0)
@@ -2223,6 +2161,8 @@ export class WordDocumentProcessor {
    *
    * NEW v1.16.0: Captures Header 2 table indices during style application
    * for proper blank line preservation in removeExtraParagraphLines()
+   *
+   * FALLBACK: If framework method unavailable, uses manual assignStylesToDocument()
    */
   private async applyCustomStylesFromUI(
     doc: Document,
@@ -2274,23 +2214,40 @@ export class WordDocumentProcessor {
       preserveBlankLinesAfterHeader2Tables: options.preserveBlankLinesAfterHeader2Tables,
     });
 
-    // Use docXMLater's native method with preserve flag support (v1.16.0)
-    // This handles both style definition updates and direct formatting clearing
-    const results = doc.applyCustomFormattingToExistingStyles(options);
+    // Feature detection: Check if framework method exists
+    if (typeof (doc as any).applyCustomFormattingToExistingStyles === 'function') {
+      this.log.debug('Using framework applyCustomFormattingToExistingStyles()');
 
-    // DEPRECATED v1.16.0: Header 2 table index capture (replaced with 1x1 table detection)
-    // The new approach uses insertBlankLinesAfter1x1Tables() which runs after paragraph removal
-    // This avoids timing issues with style application
-    /*
-    if (preserveBlankLinesAfterHeader2Tables) {
-      this.header2TableBodyIndices = this.captureHeader2TableIndices(doc);
-      this.log.debug(
-        `Captured ${this.header2TableBodyIndices.size} Header 2 table indices for preservation`
+      try {
+        // Use docXMLater's native method with preserve flag support (v1.16.0)
+        // This handles both style definition updates and direct formatting clearing
+        const results = (doc as any).applyCustomFormattingToExistingStyles(options);
+        return results;
+      } catch (error) {
+        this.log.warn('Framework method failed, falling back to manual implementation:', error);
+        // Fall through to manual implementation
+      }
+    } else {
+      this.log.warn(
+        'Framework method applyCustomFormattingToExistingStyles not available in docxmlater v4.0.2, using manual fallback'
       );
     }
-    */
 
-    return results;
+    // FALLBACK: Use manual style assignment implementation
+    this.log.debug('Using manual assignStylesToDocument() fallback');
+    await this.assignStylesToDocument(doc, styles);
+
+    // Return results matching framework format (all styles processed)
+    const appliedStyles = {
+      heading1: styles.some((s) => s.id === 'header1'),
+      heading2: styles.some((s) => s.id === 'header2'),
+      heading3: styles.some((s) => s.id === 'header3'),
+      normal: styles.some((s) => s.id === 'normal'),
+      listParagraph: styles.some((s) => s.id === 'listParagraph'),
+    };
+
+    this.log.debug(`Manual fallback completed: ${JSON.stringify(appliedStyles)}`);
+    return appliedStyles;
   }
 
   /**
@@ -3089,7 +3046,7 @@ export class WordDocumentProcessor {
       font: 'Verdana',
       fontSize: 12,
       color: '000000',
-      bold: true,
+      bold: false,
     });
     this.log.debug(
       `Framework standardized ${result.listsUpdated} numbered lists, ${result.levelsModified} levels modified`
@@ -3594,6 +3551,7 @@ export class WordDocumentProcessor {
 
     // Mark as preserved to protect from paragraph removal operations
     para.setPreserved(true);
+    para.setAlignment('right');
 
     // No need for manual formatting - style handles:
     // - Right alignment
