@@ -133,16 +133,17 @@ const lineSpacingOptions = [
 ];
 
 // Default indentation levels based on documentation best practices
-// Alternating between closed (•) and open (○) bullets
-// Symbol indent: 0.25" per level, Text indent: 0.5" per level
-// Using U+F0B7 () for standard bullets (rendered with Calibri in v1.14.0+)
+// Using only 3 bullet types: closed bullet (•), open bullet (○), closed square (■)
+// Symbol indent: 0.5" base with 0.5" increments per level
+// Text indent: symbol indent + 0.25" hanging indent
 // NOTE: Levels are 0-based (0-8) per DOCX standard
+// NOTE: Using Unicode bullets instead of Wingdings private-use characters for reliable rendering
 const defaultIndentationLevels: IndentationLevel[] = [
-  { level: 0, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '\uF0B7', numberedFormat: '1.' },
-  { level: 1, symbolIndent: 0.5, textIndent: 1.0, bulletChar: '○', numberedFormat: 'a.' },
-  { level: 2, symbolIndent: 0.75, textIndent: 1.5, bulletChar: '\uF0B7', numberedFormat: 'i.' },
-  { level: 3, symbolIndent: 1.0, textIndent: 2.0, bulletChar: '○', numberedFormat: '1)' },
-  { level: 4, symbolIndent: 1.25, textIndent: 2.5, bulletChar: '\uF0B7', numberedFormat: 'a)' },
+  { level: 0, symbolIndent: 0.5, textIndent: 0.75, bulletChar: '•', numberedFormat: '1.' },
+  { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
+  { level: 2, symbolIndent: 1.5, textIndent: 1.75, bulletChar: '■', numberedFormat: 'i.' },
+  { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
+  { level: 4, symbolIndent: 2.5, textIndent: 2.75, bulletChar: '○', numberedFormat: 'a)' },
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {
@@ -155,6 +156,7 @@ const defaultListBulletSettings: ListBulletSettings = {
 
 interface StylesEditorProps {
   initialStyles?: any[];
+  initialListBulletSettings?: ListBulletSettings;
   onStylesChange?: (styles: StyleDefinition[]) => void;
   onListBulletSettingsChange?: (settings: ListBulletSettings) => void;
   tableHeader2Shading?: string;
@@ -166,6 +168,7 @@ interface StylesEditorProps {
 // PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
 export const StylesEditor = memo(function StylesEditor({
   initialStyles,
+  initialListBulletSettings,
   onStylesChange,
   onListBulletSettingsChange,
   tableHeader2Shading,
@@ -206,16 +209,15 @@ export const StylesEditor = memo(function StylesEditor({
   const [styles, setStyles] = useState<StyleDefinition[]>(() =>
     convertToStyleDefinitions(initialStyles)
   );
-  const [listBulletSettings, setListBulletSettings] =
-    useState<ListBulletSettings>(defaultListBulletSettings);
+  const [listBulletSettings, setListBulletSettings] = useState<ListBulletSettings>(
+    initialListBulletSettings || defaultListBulletSettings
+  );
   const [localTableHeader2Shading, setLocalTableHeader2Shading] = useState<string>(
     tableHeader2Shading || '#BFBFBF'
   );
   const [localTableOtherShading, setLocalTableOtherShading] = useState<string>(
     tableOtherShading || '#DFDFDF'
   );
-  // Note: Table of Contents settings removed - managed via Processing Options checkbox
-  // Note: showSuccess state removed - no longer needed with auto-save
 
   const updateStyle = (styleId: string, updates: Partial<StyleDefinition>) => {
     const updatedStyles = styles.map((style) =>
@@ -225,9 +227,6 @@ export const StylesEditor = memo(function StylesEditor({
     // Auto-save: immediately call onStylesChange to persist changes
     onStylesChange?.(updatedStyles);
   };
-
-  // Note: updateTableOfContentsSettings removed - TOC settings managed via Processing Options
-  // Note: updateTableUniformitySettings removed - Table settings now in Processing Options
 
   const renderStyleEditor = (style: StyleDefinition) => {
     return (
@@ -880,10 +879,9 @@ export const StylesEditor = memo(function StylesEditor({
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-muted-foreground">Bullet Points Format</h4>
               <div className="text-xs text-muted-foreground mb-2">
-                Select bullet symbols for the first 3 levels. Levels 4-5 will alternate between
-                Level 2 and Level 3 symbols.
+                Configure bullet symbols for each of the 5 indentation levels.
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                 {/* Level 0 */}
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Level 0</label>
@@ -898,16 +896,9 @@ export const StylesEditor = memo(function StylesEditor({
                     }}
                     className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   >
-                    <option value={'\uF0B7'}>• Bullet (Calibri)</option>
-                    <option value="○">○ Open Circle</option>
+                    <option value="•">• Closed Bullet</option>
+                    <option value="○">○ Open Bullet</option>
                     <option value="■">■ Closed Square</option>
-                    <option value="□">□ Open Square</option>
-                    <option value="▪">▪ Small Square</option>
-                    <option value="▫">▫ Small Open Square</option>
-                    <option value="◆">◆ Diamond</option>
-                    <option value="►">► Triangle</option>
-                    <option value="✓">✓ Checkmark</option>
-                    <option value="-">− Dash</option>
                   </select>
                 </div>
                 {/* Level 1 */}
@@ -918,7 +909,43 @@ export const StylesEditor = memo(function StylesEditor({
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[1] = { ...newLevels[1], bulletChar: e.target.value };
-                      // Update Level 3 to match Level 1 (alternating pattern)
+                      const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
+                      setListBulletSettings(newSettings);
+                      onListBulletSettingsChange?.(newSettings);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                  >
+                    <option value="•">• Closed Bullet</option>
+                    <option value="○">○ Open Bullet</option>
+                    <option value="■">■ Closed Square</option>
+                  </select>
+                </div>
+                {/* Level 2 */}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Level 2</label>
+                  <select
+                    value={listBulletSettings.indentationLevels[2]?.bulletChar || '■'}
+                    onChange={(e) => {
+                      const newLevels = [...listBulletSettings.indentationLevels];
+                      newLevels[2] = { ...newLevels[2], bulletChar: e.target.value };
+                      const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
+                      setListBulletSettings(newSettings);
+                      onListBulletSettingsChange?.(newSettings);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+                  >
+                    <option value="•">• Closed Bullet</option>
+                    <option value="○">○ Open Bullet</option>
+                    <option value="■">■ Closed Square</option>
+                  </select>
+                </div>
+                {/* Level 3 */}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Level 3</label>
+                  <select
+                    value={listBulletSettings.indentationLevels[3]?.bulletChar || '•'}
+                    onChange={(e) => {
+                      const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[3] = { ...newLevels[3], bulletChar: e.target.value };
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);
@@ -926,27 +953,18 @@ export const StylesEditor = memo(function StylesEditor({
                     }}
                     className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   >
-                    <option value={'\uF0B7'}>• Bullet (Calibri)</option>
-                    <option value="○">○ Open Circle</option>
+                    <option value="•">• Closed Bullet</option>
+                    <option value="○">○ Open Bullet</option>
                     <option value="■">■ Closed Square</option>
-                    <option value="□">□ Open Square</option>
-                    <option value="▪">▪ Small Square</option>
-                    <option value="▫">▫ Small Open Square</option>
-                    <option value="◆">◆ Diamond</option>
-                    <option value="►">► Triangle</option>
-                    <option value="✓">✓ Checkmark</option>
-                    <option value="-">− Dash</option>
                   </select>
                 </div>
-                {/* Level 2 */}
+                {/* Level 4 */}
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Level 2</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">Level 4</label>
                   <select
-                    value={listBulletSettings.indentationLevels[2]?.bulletChar || '\uF0B7'}
+                    value={listBulletSettings.indentationLevels[4]?.bulletChar || '○'}
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
-                      newLevels[2] = { ...newLevels[2], bulletChar: e.target.value };
-                      // Update Level 4 to match Level 2 (alternating pattern)
                       newLevels[4] = { ...newLevels[4], bulletChar: e.target.value };
                       const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
                       setListBulletSettings(newSettings);
@@ -954,16 +972,9 @@ export const StylesEditor = memo(function StylesEditor({
                     }}
                     className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   >
-                    <option value={'\uF0B7'}>• Bullet (Calibri)</option>
-                    <option value="○">○ Open Circle</option>
+                    <option value="•">• Closed Bullet</option>
+                    <option value="○">○ Open Bullet</option>
                     <option value="■">■ Closed Square</option>
-                    <option value="□">□ Open Square</option>
-                    <option value="▪">▪ Small Square</option>
-                    <option value="▫">▫ Small Open Square</option>
-                    <option value="◆">◆ Diamond</option>
-                    <option value="►">► Triangle</option>
-                    <option value="✓">✓ Checkmark</option>
-                    <option value="-">− Dash</option>
                   </select>
                 </div>
               </div>

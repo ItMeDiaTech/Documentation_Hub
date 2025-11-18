@@ -14,12 +14,6 @@ export const defaultOptions: ProcessingOption[] = [
   // Text Formatting Fixes Group
   { id: 'remove-italics', label: 'Remove All Italics', group: 'text', enabled: true },
   {
-    id: 'normalize-spacing',
-    label: 'Standardize Spacing',
-    group: 'text',
-    enabled: true,
-  },
-  {
     id: 'replace-outdated-titles',
     label: 'Outdated Titles',
     group: 'text',

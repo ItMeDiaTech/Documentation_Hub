@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { flushSync } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, FolderOpen, Plus, Calendar, FileText } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
-import { cn } from '@/utils/cn';
 import { useSession } from '@/contexts/SessionContext';
+import { cn } from '@/utils/cn';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Calendar, FileText, FolderOpen, Plus, X } from 'lucide-react';
+import { useState } from 'react';
+import { flushSync } from 'react-dom';
 
 interface SessionManagerProps {
   mode: 'new' | 'load';

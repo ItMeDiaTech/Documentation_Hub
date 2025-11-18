@@ -138,14 +138,6 @@ export interface TableUniformitySettings {
 
 export interface TableOfContentsSettings {
   enabled: boolean;
-  includeHeadingLevels: number[]; // e.g., [1, 2, 3]
-  showPageNumbers: boolean;
-  rightAlignPageNumbers: boolean;
-  useHyperlinks: boolean;
-  tabLeaderStyle: 'none' | 'dots' | 'dashes' | 'underline';
-  tocTitle: string;
-  showTocTitle: boolean; // Option to turn off TOC title display
-  spacingBetweenHyperlinks: number; // in points
 }
 
 export interface TableShadingSettings {

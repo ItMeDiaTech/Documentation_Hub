@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Intentionally formatted XML for DOCX files - do not format
+# These directories contain unpacked DOCX internal structure that must remain unformatted
+Not_Processed_Example/**
+Processed_Example/**
+Test_Code/**
+
+# Generated files
+*.min.js
+*.min.css

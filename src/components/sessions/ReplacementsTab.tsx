@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
-import { Plus, Trash2, Check } from 'lucide-react';
 import { Button } from '@/components/common/Button';
-import { cn } from '@/utils/cn';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from '@/contexts/SessionContext';
 import { ReplacementRule } from '@/types/session';
+import { cn } from '@/utils/cn';
 import { validateUrlScheme } from '@/utils/urlHelpers';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Check, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface HyperlinkRule {
   id: string;

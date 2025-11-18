@@ -1,13 +1,13 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
 import { Input } from '@/components/common/Input';
-import { Plus, FolderOpen, Clock, FileText, Grid, List, Calendar, Trash2 } from 'lucide-react';
-import { cn } from '@/utils/cn';
-import { useSession } from '@/contexts/SessionContext';
 import { SessionManager } from '@/components/sessions/SessionManager';
+import { useSession } from '@/contexts/SessionContext';
+import { cn } from '@/utils/cn';
+import { motion } from 'framer-motion';
+import { Calendar, Clock, FileText, FolderOpen, Grid, List, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const containerVariants = {
   hidden: { opacity: 0 },

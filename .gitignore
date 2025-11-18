@@ -82,8 +82,7 @@ progress-*.md
 
 # Developer-specific plans and research
 personal/
-scratch/
-workspace/
+
 
 # Reports (optional - these seem to be development notes)
 reports/
@@ -213,3 +212,20 @@ config/
 data/
 /Test_Code - Copy (9) - Copy
 /docs/api/HYPERLINK_URL_PROCESSING.md
+/.cline
+/.cursor
+/.mcp-cache
+/.mcp.json
+.gitignore
+CLAUDE.md
+/CLAUDE_CONFIG_CLEANUP_GUIDE.md
+/FIELD_PRESERVATION_ANALYSIS.md
+/INDENTATION_PRESERVE_ANALYSIS.md
+/INDENTATION_PRESERVE_IMPLEMENTATION.md
+/List_Implementation.md
+/RELEASE_PLAN_v2.1.0.md
+/RefactorStyles.md
+/PROCESSING_OPTIONS_UI_UPDATES.md
+/STYLE_PARAMETER_ENHANCEMENT.md
+/jest.config.js
+/index.html
