@@ -59,7 +59,6 @@ export function CurrentSession() {
     updateSessionOptions,
     updateSessionStyles,
     updateSessionListBulletSettings,
-    updateSessionTableUniformitySettings,
     updateSessionTableShadingSettings,
   } = useSession();
 
@@ -75,6 +74,18 @@ export function CurrentSession() {
   }, [id, currentSession, loadSession]);
 
   const session = sessions.find((s) => s.id === id);
+
+  // REFACTORED: Convert session processing options to ProcessingOption[] format
+  // Using useMemo to ensure we always have latest session data
+  // This prevents stale closure issues that caused toggle auto-revert bug
+  // IMPORTANT: Must be called before any conditional returns (Rules of Hooks)
+  const processingOptions = useMemo((): ProcessingOption[] => {
+    const enabledOps = session?.processingOptions?.enabledOperations || [];
+    return defaultOptions.map((opt) => ({
+      ...opt,
+      enabled: enabledOps.includes(opt.id),
+    }));
+  }, [session?.processingOptions]);
 
   if (!session) {
     return (
@@ -282,7 +293,9 @@ export function CurrentSession() {
         // Show toast notification to user
         toast({
           title: 'Some files could not be added',
-          description: `${invalidFiles.length} file(s) rejected: ${invalidFiles.slice(0, 3).join(', ')}${invalidFiles.length > 3 ? '...' : ''}`,
+          description: `${invalidFiles.length} file(s) rejected: ${invalidFiles
+            .slice(0, 3)
+            .join(', ')}${invalidFiles.length > 3 ? '...' : ''}`,
           variant: 'destructive',
         });
       }
@@ -300,8 +313,6 @@ export function CurrentSession() {
   };
 
   const handleProcessDocument = async (documentId: string) => {
-    const doc = session.documents.find((d) => d.id === documentId);
-
     // Show toast with enabled operations when processing starts
     const enabledOps = session.processingOptions?.enabledOperations || [];
     const operationsCount = enabledOps.length;
@@ -320,7 +331,9 @@ export function CurrentSession() {
 
       toast({
         title: 'Processing Document',
-        description: `Applying ${operationsCount} operation${operationsCount > 1 ? 's' : ''}: ${firstFewOps}${operationsCount > 3 ? ', ...' : ''}`,
+        description: `Applying ${operationsCount} operation${
+          operationsCount > 1 ? 's' : ''
+        }: ${firstFewOps}${operationsCount > 3 ? ', ...' : ''}`,
         variant: 'default',
         duration: 3000,
       });
@@ -423,17 +436,6 @@ export function CurrentSession() {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
-
-  // REFACTORED: Convert session processing options to ProcessingOption[] format
-  // Using useMemo to ensure we always have latest session data
-  // This prevents stale closure issues that caused toggle auto-revert bug
-  const processingOptions = useMemo((): ProcessingOption[] => {
-    const enabledOps = session.processingOptions?.enabledOperations || [];
-    return defaultOptions.map((opt) => ({
-      ...opt,
-      enabled: enabledOps.includes(opt.id),
-    }));
-  }, [session.processingOptions]);
 
   // Create session content for the Session tab
   const sessionContent = (
