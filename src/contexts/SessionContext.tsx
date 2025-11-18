@@ -47,6 +47,63 @@ type SerializedSession = Omit<Session, 'createdAt' | 'lastModified' | 'closedAt'
   documents: SerializedDocument[];
 };
 
+/**
+ * Default list bullet settings factory
+ * Creates standard 5-level indentation configuration matching StylesEditor defaults
+ * Used for new sessions and backfilling existing sessions without list settings
+ *
+ * Symbol indent: 0.5" base with 0.5" increments per level
+ * Text indent: symbol indent + 0.25" hanging indent
+ */
+const createDefaultListBulletSettings = (): ListBulletSettings => ({
+  enabled: true,
+  indentationLevels: [
+    {
+      level: 0,
+      symbolIndent: 0.5,
+      textIndent: 0.75,
+      bulletChar: '•',
+      numberedFormat: '1.',
+    },
+    { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
+    {
+      level: 2,
+      symbolIndent: 1.5,
+      textIndent: 1.75,
+      bulletChar: '■',
+      numberedFormat: 'i.',
+    },
+    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
+    {
+      level: 4,
+      symbolIndent: 2.5,
+      textIndent: 2.75,
+      bulletChar: '○',
+      numberedFormat: 'a)',
+    },
+  ],
+});
+
+/**
+ * Ensures session has valid listBulletSettings with non-empty indentation levels
+ * Backfills with defaults if missing or invalid
+ */
+const ensureListBulletSettings = (session: Session): Session => {
+  const needsBackfill =
+    !session.listBulletSettings ||
+    !session.listBulletSettings.indentationLevels ||
+    session.listBulletSettings.indentationLevels.length === 0;
+
+  if (needsBackfill) {
+    return {
+      ...session,
+      listBulletSettings: createDefaultListBulletSettings(),
+    };
+  }
+
+  return session;
+};
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const log = logger.namespace('SessionContext');
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -181,14 +238,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           log.info(`[Session] Cleaned up ${removedCount} old session(s) (>30 days)`);
         }
 
-        setSessions(cleanedSessions);
+        // BACKFILL FIX: Ensure all loaded sessions have valid listBulletSettings
+        // This repairs historical sessions that were created before list settings were added
+        const backfilledSessions = cleanedSessions.map(ensureListBulletSettings);
+
+        // Log how many sessions were backfilled
+        const backfillCount = backfilledSessions.filter(
+          (s, idx) => s.listBulletSettings !== cleanedSessions[idx].listBulletSettings
+        ).length;
+        if (backfillCount > 0) {
+          log.info(
+            `[Session] Backfilled ${backfillCount} session(s) with default list bullet settings`
+          );
+        }
+
+        setSessions(backfilledSessions);
         if (storedActiveSessions) {
           const activeIds = safeJsonParse<string[]>(
             storedActiveSessions,
             [],
             'SessionContext.activeSessions'
           );
-          const active = cleanedSessions.filter((s) => activeIds.includes(s.id));
+          const active = backfilledSessions.filter((s) => activeIds.includes(s.id));
           setActiveSessions(active);
           if (active.length > 0) {
             setCurrentSession(active[0]);
@@ -461,6 +532,45 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
     ];
 
+    // Default list bullet settings (matching StylesEditor defaults)
+    // NOTE: These must be initialized to prevent "No indentation levels provided" errors
+    // Symbol indent: 0.5" base with 0.5" increments per level
+    // Text indent: symbol indent + 0.25" hanging indent
+    const defaultListBulletSettings: ListBulletSettings = {
+      enabled: true,
+      indentationLevels: [
+        {
+          level: 0,
+          symbolIndent: 0.5,
+          textIndent: 0.75,
+          bulletChar: '•',
+          numberedFormat: '1.',
+        },
+        { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
+        {
+          level: 2,
+          symbolIndent: 1.5,
+          textIndent: 1.75,
+          bulletChar: '■',
+          numberedFormat: 'i.',
+        },
+        {
+          level: 3,
+          symbolIndent: 2.0,
+          textIndent: 2.25,
+          bulletChar: '•',
+          numberedFormat: '1)',
+        },
+        {
+          level: 4,
+          symbolIndent: 2.5,
+          textIndent: 2.75,
+          bulletChar: '○',
+          numberedFormat: 'a)',
+        },
+      ],
+    };
+
     const newSession: Session = {
       id: `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       name,
@@ -475,6 +585,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       status: 'active',
       styles: defaultStyles, // Initialize with default styles
+      listBulletSettings: createDefaultListBulletSettings(), // Initialize with default list settings
       tableShadingSettings: {
         header2Shading: '#BFBFBF', // Default for Header 2 / 1x1 table cells
         otherShading: '#DFDFDF', // Default for other table cells
@@ -1000,10 +1111,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             session.processingOptions?.enabledOperations?.includes('add-document-warning'),
 
           // Lists & Tables Options (mapped from ProcessingOptions UI)
-          // CRITICAL FIX: Always pass listBulletSettings if configured, regardless of checkbox
-          // The bulletUniformity feature REQUIRES these settings to apply user-configured bullet symbols
-          // The 'list-indentation' checkbox only controls whether to apply indentation uniformity
-          listBulletSettings: session.listBulletSettings || undefined,
+          // CRITICAL: Map list-indentation checkbox to listBulletSettings.enabled
+          // This controls Phase 3 (indentation), while bullet-uniformity controls Phases 1+2 (symbols)
+          listBulletSettings:
+            session.processingOptions?.enabledOperations?.includes('list-indentation') !== false &&
+            (session.listBulletSettings?.enabled ||
+              session.processingOptions?.enabledOperations?.includes('list-indentation'))
+              ? {
+                  enabled: true,
+                  indentationLevels: session.listBulletSettings?.indentationLevels || [],
+                }
+              : undefined,
           bulletUniformity:
             session.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
           tableUniformity: session.processingOptions?.enabledOperations?.includes('smart-tables'),
@@ -1015,20 +1133,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               }
             : undefined,
 
-          // Table of Contents Settings (NEW - was missing!)
-          tableOfContentsSettings: session.tableOfContentsSettings
-            ? {
-                enabled: session.tableOfContentsSettings.enabled,
-                includeHeadingLevels: session.tableOfContentsSettings.includeHeadingLevels,
-                showPageNumbers: session.tableOfContentsSettings.showPageNumbers,
-                rightAlignPageNumbers: session.tableOfContentsSettings.rightAlignPageNumbers,
-                useHyperlinks: session.tableOfContentsSettings.useHyperlinks,
-                tabLeaderStyle: session.tableOfContentsSettings.tabLeaderStyle,
-                tocTitle: session.tableOfContentsSettings.tocTitle,
-                showTocTitle: session.tableOfContentsSettings.showTocTitle,
-                spacingBetweenHyperlinks: session.tableOfContentsSettings.spacingBetweenHyperlinks,
-              }
-            : undefined,
+          // Table of Contents Settings - Simplified to enabled flag only
+          tableOfContentsSettings: session.tableOfContentsSettings,
 
           // Legacy (deprecated, kept for backwards compatibility)
           tableUniformitySettings: session.tableUniformitySettings,
@@ -1050,17 +1156,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           );
         }
         log.info(
-          '  - tableOfContentsSettings:',
-          processingOptions.tableOfContentsSettings ? 'PRESENT' : 'UNDEFINED'
+          '  - tableOfContentsSettings.enabled:',
+          processingOptions.tableOfContentsSettings?.enabled ?? false
         );
-        if (processingOptions.tableOfContentsSettings) {
-          log.info('    - enabled:', processingOptions.tableOfContentsSettings.enabled);
-          log.info(
-            '    - includeHeadingLevels:',
-            processingOptions.tableOfContentsSettings.includeHeadingLevels
+        // CRITICAL DEBUG: Log listBulletSettings details
+        log.info('  - listBulletSettings enabled:', processingOptions.listBulletSettings?.enabled);
+        log.info(
+          '  - listBulletSettings indentationLevels length:',
+          processingOptions.listBulletSettings?.indentationLevels?.length || 0
+        );
+        if (processingOptions.listBulletSettings?.indentationLevels) {
+          processingOptions.listBulletSettings.indentationLevels.forEach(
+            (level: any, idx: number) => {
+              log.info(
+                `    - Level ${level.level}: symbol=${level.symbolIndent}", text=${level.textIndent}", char="${level.bulletChar}"`
+              );
+            }
           );
-          log.info('    - tocTitle:', processingOptions.tableOfContentsSettings.tocTitle);
         }
+        // Also log session state right before IPC call
+        log.info('Session state right before IPC:');
+        log.info('  - Session has listBulletSettings?', !!session.listBulletSettings);
+        log.info('  - Session listBulletSettings enabled?', session.listBulletSettings?.enabled);
+        log.info(
+          '  - Session indentationLevels length:',
+          session.listBulletSettings?.indentationLevels?.length || 0
+        );
+        if (session.listBulletSettings?.indentationLevels) {
+          session.listBulletSettings.indentationLevels.forEach((level, idx) => {
+            log.info(
+              `    - Session Level ${level.level}: symbol=${level.symbolIndent}", text=${level.textIndent}", char="${level.bulletChar}"`
+            );
+          });
+        }
+        // Check enabled operations
+        log.info('  - Enabled operations:', session.processingOptions?.enabledOperations || []);
         // DEBUG: Show formatting preservation for Normal/ListParagraph styles
         const normalStyleInOptions = processingOptions.styles?.find((s: any) => s.id === 'normal');
         const listParaStyleInOptions = processingOptions.styles?.find(
