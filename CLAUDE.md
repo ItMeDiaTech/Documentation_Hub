@@ -32,15 +32,17 @@ Implemented a complete formatting standardization system that ensures all hyperl
 - Method: Custom `setFormatting()` instead of `resetToStandardFormatting()`
 
 **Why Verdana 12pt?**
+
 - Matches document body text standards
 - Better readability and professional appearance
 - Consistent with organizational style guidelines
 
 **IMPORTANT BUG FIX (v1.0.47):**
+
 - **Issue**: Hyperlinks were rendering as 24pt instead of 12pt
 - **Root Cause**: Incorrect assumption about docxmlater's `setFormatting()` method
   - We passed `size: 24` thinking it expected half-points (12pt = 24 half-points)
-  - But docxmlater expects `size` in **points** and converts internally (size * 2)
+  - But docxmlater expects `size` in **points** and converts internally (size \* 2)
   - Result: 24 points → 48 half-points → **24pt font** (wrong!)
 - **Fix**: Changed `size: 24` to `size: 12` (docxmlater handles conversion)
 - **Technical Note**: Unlike direct XML manipulation, docxmlater's API uses user-friendly point values
@@ -48,17 +50,20 @@ Implemented a complete formatting standardization system that ensures all hyperl
 #### List Prefix Formatting Standardization (NEW)
 
 **Problem Solved:**
+
 - Bullet points and numbered list symbols had inconsistent fonts, sizes, and colors
 - Existing documents retained legacy formatting (various fonts, sizes)
 - No global standardization across all lists in document
 
 **Implementation:**
+
 - **Always Enabled**: Feature is ALWAYS active (hardcoded like hyperlink standardization)
 - **Method**: `standardizeListPrefixFormatting()` in `WordDocumentProcessor.ts:1873-1977`
 - **Technology**: Low-level XML injection into `word/numbering.xml`
 - **Scope**: Applies to ALL lists in document (both new and existing)
 
 **Formatting Applied:**
+
 - Font: Verdana (matches hyperlinks and body text)
 - Size: 12pt (24 half-points)
 - Color: Black (#000000)
@@ -67,6 +72,7 @@ Implemented a complete formatting standardization system that ensures all hyperl
 #### List Indentation Fix (NEW)
 
 **Problem Solved:**
+
 - Custom indentation values from UI were being overridden by framework normalization
 - All lists would revert to default indentation regardless of user settings
 - `doc.normalizeAllListIndentation()` was wiping out custom NumberingLevel values
@@ -75,6 +81,7 @@ Implemented a complete formatting standardization system that ensures all hyperl
 Framework's normalization method resets indentation after custom values are set, causing them to be lost.
 
 **Solution:**
+
 - Created `injectIndentationToNumbering()` helper function (lines 3068-3174)
 - Uses XML injection pattern (same as formatting fixes)
 - Injects `<w:pPr><w:ind>` elements directly into numbering.xml
@@ -82,6 +89,7 @@ Framework's normalization method resets indentation after custom values are set,
 - Indentation values from StylesEditor UI are now respected
 
 **Technical Details:**
+
 - Calculates twips from inches (1440 twips = 1 inch)
 - Injects: `<w:pPr><w:ind w:left="X" w:hanging="Y"/></w:pPr>`
 - Supports 5 indentation levels (0-4)
@@ -118,12 +126,12 @@ See `docs/fixes/LIST_FORMATTING_FIX_v2.md` for complete technical details, testi
 **Usage:**
 
 All three features are **permanently enabled** and run automatically on all processed documents:
+
 1. Hyperlink standardization (Verdana 12pt #0000FF)
 2. List prefix standardization (Verdana 12pt black)
 3. Custom indentation injection (from UI settings)
 
 No UI toggles - these are core requirements for professional document standards.
-
 
 ### MCP RAG Configuration (November 2025)
 

@@ -7,5 +7,15 @@
   "useTabs": false,
   "bracketSpacing": true,
   "arrowParens": "always",
-  "endOfLine": "auto"
+  "endOfLine": "auto",
+  "overrides": [
+    {
+      "files": "*.xml",
+      "options": {
+        "parser": "html",
+        "printWidth": 120,
+        "tabWidth": 2
+      }
+    }
+  ]
 }
