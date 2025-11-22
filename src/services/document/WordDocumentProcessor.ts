@@ -699,13 +699,10 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
-      // ENSURE BLANK LINES AFTER 1x1 TABLES
-      // NEW v1.19.0: Using docXMLater's ensureBlankLinesAfter1x1Tables()
-      //
-      // EXECUTION ORDER: This runs BEFORE paragraph removal so the
-      // preserved flag can protect blank lines from being deleted.
-      //
-      // FIXED in v2.4.0: Blank lines now use Normal style via 'style' parameter
+      // CLEAR CUSTOM SDTS AND STRUCTURES
+      // Use docxmlater's clearCustom() to remove all SDT wrappers
+      // CRITICAL: clearCustom() must run BEFORE table/list shading processing
+      // so that unwrapped paragraphs/tables are available for formatting
       // ═══════════════════════════════════════════════════════════
       this.log.debug("=== DEBUG: BLANK LINES AFTER 1x1 TABLES CHECK ===");
       this.log.debug(
@@ -868,6 +865,28 @@ export class WordDocumentProcessor {
         this.log.info(`Removed ${headersFootersRemoved} headers/footers from document`);
       }
 
+      // ═══════════════════════════════════════════════════════════
+      // NEW: Two-Phase Blank Line Management (v3.0.0)
+      // Phase 1: Remove all blank lines (except preserved)
+      // Phase 2: Insert blank lines at required locations with preserve flag
+      // ═══════════════════════════════════════════════════════════
+
+      // PHASE 1: Remove all unpreserved blank lines
+      this.log.debug('=== PHASE 1: REMOVING ALL BLANK LINES (EXCEPT PRESERVED) ===');
+      const removedBlanks = await this.removeAllBlankLinesExceptPreserved(doc);
+      this.log.info(`Removed ${removedBlanks} blank lines (preserved lines kept)`);
+
+      // PHASE 2: Insert blank lines at required locations
+      this.log.debug('=== PHASE 2: INSERTING REQUIRED BLANK LINES ===');
+      const insertedStats = await this.insertRequiredBlankLines(doc);
+      this.log.info(
+        `Inserted blank lines: ${insertedStats.afterHeader1} after Header1, ` +
+          `${insertedStats.afterTOC} after TOC, ${insertedStats.afterTables} after tables, ` +
+          `${insertedStats.beforeTopLinks} before Top links, ${insertedStats.beforeFirst1x1Table} before first 1x1 table, ` +
+          `${insertedStats.afterBulletLists} after bullet lists, ${insertedStats.afterNumberedLists} after numbered lists, ` +
+          `${insertedStats.afterImages} after images`
+      );
+
       // LISTS & TABLES GROUP
       if (options.listBulletSettings?.enabled) {
         this.log.debug("=== APPLYING LIST INDENTATION UNIFORMITY ===");
@@ -953,6 +972,18 @@ export class WordDocumentProcessor {
         this.log.debug("=== UPDATING TOP OF DOCUMENT HYPERLINKS ===");
         const topLinksAdded = await this.updateTopOfDocumentHyperlinks(doc);
         this.log.info(`Added ${topLinksAdded} "Top of Document" navigation links`);
+      }
+
+      // Add blank lines above warning/caution blocks (Issue 5)
+      this.log.debug('=== ADDING BLANK LINES BEFORE WARNINGS/CAUTIONS ===');
+      const warningsBefore = await this.addBlankLinesBeforeWarnings(doc);
+      this.log.info(`Added ${warningsBefore} blank lines before warning/caution blocks`);
+
+      // Align hyperlinks with "Top of the Document" text to right
+      this.log.debug('=== ALIGNING TOP OF DOCUMENT HYPERLINKS ===');
+      const alignedCount = await this.alignTopOfDocumentHyperlinks(doc);
+      if (alignedCount > 0) {
+        this.log.info(`Aligned ${alignedCount} "Top of the Document" hyperlinks to right`);
       }
 
       if (options.operations?.replaceOutdatedTitles) {
@@ -1337,7 +1368,7 @@ export class WordDocumentProcessor {
               item.setUrl(newUrl);
               updatedCount++;
 
-              this.log.debug(`✅ Updated hyperlink URL: ${oldUrl} → ${newUrl}`);
+              this.log.debug(`Updated hyperlink URL: ${oldUrl} → ${newUrl}`);
             } catch (error) {
               // Log the failure with context
               this.log.error(
@@ -1371,7 +1402,7 @@ export class WordDocumentProcessor {
         this.log.error(`  - Paragraph ${paragraphIndex}: ${oldUrl} → ${newUrl} (${errorMessage})`);
       });
     } else {
-      this.log.info(`✅ Successfully updated ${updatedCount} hyperlink URLs`);
+      this.log.info(`Successfully updated ${updatedCount} hyperlink URLs`);
     }
 
     return { updated: updatedCount, failed: failedUrls };
@@ -1458,9 +1489,567 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * NEW v2.9.0: Consolidated Blank Line Policy Enforcement
+   *
+   * Enforces unified blank line rules across the entire document:
+   * RULE 1: All blank lines should have the Normal font assigned
+   * RULE 2: Insert blank line above and below the Table of Contents
+   * RULE 3: All tables should be followed by a blank line
+   * RULE 4: Never allow more than 2 blank lines consecutively
+   *
+   * Implementation strategy (TOP-DOWN processing):
+   * 1. Normalize: Set all blank paragraphs to Normal style with preserve flag
+   * 2. TOC: Ensure exactly one blank line before and after each TOC (with preserve flag)
+   * 3. Tables: Ensure non-1x1 tables have exactly one blank line after (with preserve flag)
+   * 4. Collapse: Remove sequences of >2 consecutive blank lines
+   *
+   * @param doc - The document to process
+   * @returns Statistics about enforcement actions taken
+   */
+  private async enforceBlankLinePolicy(doc: Document): Promise<{
+    normalized: number;
+    tablesFixed: number;
+    tocFixed: number;
+    collapses: number;
+  }> {
+    let normalized = 0;
+    let tablesFixed = 0;
+    let tocFixed = 0;
+    let collapses = 0;
+
+    // ═══════════════════════════════════════════════════════════
+    // STEP 1: NORMALIZE ALL BLANK LINES TO NORMAL STYLE
+    // ═══════════════════════════════════════════════════════════
+    this.log.debug('Step 1: Normalizing all blank lines to Normal style with preserve flag');
+    const paragraphs = doc.getParagraphs();
+
+    for (const para of paragraphs) {
+      if (this.isParagraphTrulyEmpty(para)) {
+        const currentStyle = para.getStyle();
+        if (currentStyle !== 'Normal') {
+          para.setStyle('Normal');
+          para.setSpaceBefore(0);
+          para.setSpaceAfter(120);
+          para.setPreserved(true); // Mark as preserved
+          normalized++;
+        }
+      }
+    }
+
+    this.log.debug(`  Normalized ${normalized} blank lines to Normal style (with preserve flag)`);
+
+    // ═══════════════════════════════════════════════════════════
+    // STEP 2: ENSURE TOC HAS BLANK LINES BEFORE AND AFTER (TOP-DOWN)
+    // ═══════════════════════════════════════════════════════════
+    this.log.debug('Step 2: Ensuring TOC has blank lines before and after (top-down)');
+
+    try {
+      const tocs = doc.getTableOfContentsElements();
+      for (const toc of tocs) {
+        let bodyElements = doc.getBodyElements();
+        const tocIndex = bodyElements.indexOf(toc as any);
+
+        if (tocIndex === -1) continue;
+
+        // Blank line BEFORE TOC
+        if (tocIndex > 0) {
+          const elementBefore = bodyElements[tocIndex - 1];
+
+          if (elementBefore instanceof Paragraph && this.isParagraphTrulyEmpty(elementBefore)) {
+            elementBefore.setStyle('Normal');
+            elementBefore.setSpaceBefore(0);
+            elementBefore.setSpaceAfter(120);
+            elementBefore.setPreserved(true); // Mark as preserved
+            tocFixed++;
+          } else if (!elementBefore || !(elementBefore instanceof Paragraph)) {
+            const blankPara = doc.createParagraph('');
+            blankPara.setStyle('Normal');
+            blankPara.setSpaceBefore(0);
+            blankPara.setSpaceAfter(120);
+            blankPara.setPreserved(true); // Mark as preserved
+            doc.insertParagraphAt(tocIndex, blankPara);
+            tocFixed++;
+          }
+        }
+
+        // Blank line AFTER TOC (re-fetch after potential insertion)
+        bodyElements = doc.getBodyElements();
+        const updatedTocIndex = bodyElements.indexOf(toc as any);
+
+        if (updatedTocIndex !== -1 && updatedTocIndex + 1 < bodyElements.length) {
+          const elementAfter = bodyElements[updatedTocIndex + 1];
+
+          if (elementAfter instanceof Paragraph && this.isParagraphTrulyEmpty(elementAfter)) {
+            elementAfter.setStyle('Normal');
+            elementAfter.setSpaceBefore(0);
+            elementAfter.setSpaceAfter(120);
+            elementAfter.setPreserved(true); // Mark as preserved
+            tocFixed++;
+          } else if (!elementAfter || !(elementAfter instanceof Paragraph)) {
+            const blankPara = doc.createParagraph('');
+            blankPara.setStyle('Normal');
+            blankPara.setSpaceBefore(0);
+            blankPara.setSpaceAfter(120);
+            blankPara.setPreserved(true); // Mark as preserved
+            doc.insertParagraphAt(updatedTocIndex + 1, blankPara);
+            tocFixed++;
+          }
+        }
+      }
+    } catch (error) {
+      this.log.warn(`Error enforcing TOC blank lines: ${error}`);
+    }
+
+    this.log.debug(`  Fixed ${tocFixed} TOC blank lines (with preserve flags)`);
+
+    // ═══════════════════════════════════════════════════════════
+    // STEP 3: ENSURE TABLES ARE FOLLOWED BY BLANK LINES (TOP-DOWN)
+    // ═══════════════════════════════════════════════════════════
+    this.log.debug('Step 3: Ensuring tables are followed by blank lines (top-down)');
+    let bodyElements = doc.getBodyElements();
+
+    // Collect table indices in FORWARD order (top-down)
+    const tableIndices: number[] = [];
+    for (let i = 0; i < bodyElements.length; i++) {
+      if (bodyElements[i].constructor.name === 'Table') {
+        tableIndices.push(i);
+      }
+    }
+
+    // Process each table from top to bottom (reverse iteration to handle index shifts)
+    for (let idx = tableIndices.length - 1; idx >= 0; idx--) {
+      bodyElements = doc.getBodyElements();
+      const tableIndex = tableIndices[idx];
+      const element = bodyElements[tableIndex];
+
+      if (!element || element.constructor.name !== 'Table') continue;
+
+      // Check if 1x1 table (skip these per requirements)
+      const table = element as Table;
+      const rows = table.getRows();
+      const columnCount = rows.length > 0 ? rows[0]!.getCells().length : 0;
+      const is1x1Table = rows.length === 1 && columnCount === 1;
+
+      if (is1x1Table) continue; // Skip 1x1 tables
+
+      const nextElement = bodyElements[tableIndex + 1];
+
+      if (nextElement instanceof Paragraph && this.isParagraphTrulyEmpty(nextElement)) {
+        // Blank line exists - ensure it's Normal style with preserve flag
+        nextElement.setStyle('Normal');
+        nextElement.setSpaceBefore(0);
+        nextElement.setSpaceAfter(120);
+        nextElement.setPreserved(true); // Mark as preserved
+        tablesFixed++;
+      } else if (!nextElement || !(nextElement instanceof Paragraph)) {
+        // No blank line - add one
+        const blankPara = doc.createParagraph('');
+        blankPara.setStyle('Normal');
+        blankPara.setSpaceBefore(0);
+        blankPara.setSpaceAfter(120);
+        blankPara.setPreserved(true); // Mark as preserved
+        doc.insertParagraphAt(tableIndex + 1, blankPara);
+        tablesFixed++;
+      }
+    }
+
+    this.log.debug(`  Fixed ${tablesFixed} tables with blank lines (with preserve flags)`);
+
+    // ═══════════════════════════════════════════════════════════
+    // STEP 4: COLLAPSE SEQUENCES OF >2 CONSECUTIVE BLANK LINES
+    // ═══════════════════════════════════════════════════════════
+    this.log.debug('Step 4: Collapsing sequences of >2 consecutive blank lines');
+
+    const allParagraphs = doc.getParagraphs();
+    const parasToRemove: Paragraph[] = [];
+
+    for (let i = 0; i < allParagraphs.length - 2; i++) {
+      const first = allParagraphs[i];
+      const second = allParagraphs[i + 1];
+      const third = allParagraphs[i + 2];
+
+      // Check if we have 3+ consecutive blank lines
+      if (
+        this.isParagraphTrulyEmpty(first) &&
+        this.isParagraphTrulyEmpty(second) &&
+        this.isParagraphTrulyEmpty(third)
+      ) {
+        // Remove the third (and beyond) blank lines
+        parasToRemove.push(third);
+        collapses++;
+      }
+    }
+
+    // Remove excess blank lines
+    for (const para of parasToRemove) {
+      doc.removeParagraph(para);
+    }
+
+    this.log.debug(`  Collapsed ${collapses} instances of >2 consecutive blank lines`);
+
+    return { normalized, tablesFixed, tocFixed, collapses };
+  }
+
+  /**
+   * Insert required blank lines at specific locations with preserve flag
+   *
+   * This method runs AFTER removeAllBlankLinesExceptPreserved to add back
+   * blank lines only where they are needed:
+   * - Below Header 1 paragraphs
+   * - Below Table of Contents
+   * - Below tables (max 1 blank line for 1x1 tables to prevent excessive spacing)
+   * - Above "Top of the Document" hyperlinks
+   * - Below bullet list blocks
+   * - Below numbered list blocks
+   * - Below images
+   * - Above warning/caution blocks
+   *
+   * All blank lines are created with Normal style and preserve=true flag
+   *
+   * @param doc - Document to process
+   * @returns Statistics about blank lines inserted
+   */
+  private async insertRequiredBlankLines(doc: Document): Promise<{
+    afterHeader1: number;
+    afterTOC: number;
+    afterTables: number;
+    beforeTopLinks: number;
+    beforeFirst1x1Table: number;
+    afterBulletLists: number;
+    afterNumberedLists: number;
+    afterImages: number;
+  }> {
+    let afterHeader1 = 0;
+    let afterTOC = 0;
+    let afterTables = 0;
+    let beforeTopLinks = 0;
+    let beforeFirst1x1Table = 0;
+    let afterBulletLists = 0;
+    let afterNumberedLists = 0;
+    let afterImages = 0;
+
+    // Helper to create a preserved blank paragraph
+    const createBlankParagraph = (): Paragraph => {
+      const para = doc.createParagraph('');
+      para.setStyle('Normal');
+      para.setSpaceBefore(0);
+      para.setSpaceAfter(120);
+      para.setPreserved(true);
+      return para;
+    };
+
+    // Get body elements for structural insertion
+    let bodyElements = doc.getBodyElements();
+
+    // Process in reverse order to avoid index shifting
+    for (let i = bodyElements.length - 1; i >= 0; i--) {
+      const element = bodyElements[i];
+
+      // 1. Insert blank line after Header 1 paragraphs
+      if (element instanceof Paragraph) {
+        const style = element.getStyle();
+        if (style === 'Heading1' || style === 'Heading 1') {
+          const nextElement = bodyElements[i + 1];
+          if (
+            !nextElement ||
+            !(nextElement instanceof Paragraph) ||
+            !this.isParagraphTrulyEmpty(nextElement)
+          ) {
+            const blankPara = createBlankParagraph();
+            doc.insertParagraphAt(i + 1, blankPara);
+            afterHeader1++;
+            bodyElements = doc.getBodyElements(); // Refresh after insertion
+          }
+        }
+      }
+
+      // 2. Insert blank line after Table of Contents
+      if ((element as any).constructor.name === 'TableOfContents' || (element as any).toc) {
+        const nextElement = bodyElements[i + 1];
+        if (
+          !nextElement ||
+          !(nextElement instanceof Paragraph) ||
+          !this.isParagraphTrulyEmpty(nextElement)
+        ) {
+          const blankPara = createBlankParagraph();
+          doc.insertParagraphAt(i + 1, blankPara);
+          afterTOC++;
+          bodyElements = doc.getBodyElements(); // Refresh after insertion
+        }
+      }
+
+      // 3. Insert blank line after tables (limited to 1 for 1x1 tables)
+      if (element instanceof Table) {
+        const rows = element.getRows();
+        const is1x1Table = rows.length === 1 && rows[0]?.getCells().length === 1;
+
+        const nextElement = bodyElements[i + 1];
+
+        // For 1x1 tables: only add blank if next isn't already blank
+        // This prevents the 3-line spacing issue
+        if (is1x1Table) {
+          if (
+            !nextElement ||
+            (nextElement instanceof Paragraph && !this.isParagraphTrulyEmpty(nextElement))
+          ) {
+            const blankPara = createBlankParagraph();
+            doc.insertParagraphAt(i + 1, blankPara);
+            afterTables++;
+            bodyElements = doc.getBodyElements();
+          }
+        } else {
+          // For multi-cell tables: standard blank line insertion
+          if (
+            !nextElement ||
+            !(nextElement instanceof Paragraph) ||
+            !this.isParagraphTrulyEmpty(nextElement)
+          ) {
+            const blankPara = createBlankParagraph();
+            doc.insertParagraphAt(i + 1, blankPara);
+            afterTables++;
+            bodyElements = doc.getBodyElements(); // Refresh after insertion
+          }
+        }
+      }
+
+      // 4. Insert blank line after images
+      if (element instanceof Paragraph) {
+        const content = element.getContent();
+        const hasImage = content.some((item: any) => item instanceof Image);
+        if (hasImage) {
+          const nextElement = bodyElements[i + 1];
+          if (
+            !nextElement ||
+            !(nextElement instanceof Paragraph) ||
+            !this.isParagraphTrulyEmpty(nextElement)
+          ) {
+            const blankPara = createBlankParagraph();
+            doc.insertParagraphAt(i + 1, blankPara);
+            afterImages++;
+            bodyElements = doc.getBodyElements(); // Refresh after insertion
+          }
+        }
+      }
+    }
+
+    // 5 & 6. Insert blank lines after list blocks (bullet and numbered)
+    // Need to iterate through paragraphs to detect list block endings
+    const paragraphs = doc.getParagraphs();
+
+    for (let i = paragraphs.length - 1; i >= 0; i--) {
+      const current = paragraphs[i];
+      const next = paragraphs[i + 1];
+
+      const currentNumbering = current.getNumbering();
+      const nextNumbering = next?.getNumbering();
+
+      // Detect end of bullet list block
+      if (currentNumbering && this.isBulletList(doc, currentNumbering.numId)) {
+        // This is a bullet list item
+        // Check if next paragraph is NOT a bullet list (end of block)
+        if (!nextNumbering || !this.isBulletList(doc, nextNumbering.numId)) {
+          // End of bullet list block - check if blank line exists
+          if (!next || !this.isParagraphTrulyEmpty(next)) {
+            // Need to insert blank line - find position in body elements
+            bodyElements = doc.getBodyElements();
+            const paraIndex = bodyElements.indexOf(current);
+            if (paraIndex !== -1) {
+              const blankPara = createBlankParagraph();
+              doc.insertParagraphAt(paraIndex + 1, blankPara);
+              afterBulletLists++;
+            }
+          }
+        }
+      }
+
+      // Detect end of numbered list block
+      if (currentNumbering && this.isNumberedList(doc, currentNumbering.numId)) {
+        // This is a numbered list item
+        // Check if next paragraph is NOT a numbered list (end of block)
+        if (!nextNumbering || !this.isNumberedList(doc, nextNumbering.numId)) {
+          // End of numbered list block - check if blank line exists
+          if (!next || !this.isParagraphTrulyEmpty(next)) {
+            // Need to insert blank line - find position in body elements
+            bodyElements = doc.getBodyElements();
+            const paraIndex = bodyElements.indexOf(current);
+            if (paraIndex !== -1) {
+              const blankPara = createBlankParagraph();
+              doc.insertParagraphAt(paraIndex + 1, blankPara);
+              afterNumberedLists++;
+            }
+          }
+        }
+      }
+    }
+
+    // 7. Insert blank line above "Top of the Document" hyperlinks
+    bodyElements = doc.getBodyElements();
+    for (let i = bodyElements.length - 1; i >= 0; i--) {
+      const element = bodyElements[i];
+
+      if (element instanceof Paragraph) {
+        const content = element.getContent();
+        const hasTopLink = content.some((item: any) => {
+          if (item instanceof Hyperlink) {
+            const text = sanitizeHyperlinkText(item.getText()).toLowerCase();
+            return text === 'top of the document';
+          }
+          return false;
+        });
+
+        if (hasTopLink) {
+          // Found "Top of the Document" hyperlink - insert blank line above if needed
+          const prevElement = bodyElements[i - 1];
+          if (
+            !prevElement ||
+            !(prevElement instanceof Paragraph) ||
+            !this.isParagraphTrulyEmpty(prevElement)
+          ) {
+            const blankPara = createBlankParagraph();
+            doc.insertParagraphAt(i, blankPara);
+            beforeTopLinks++;
+            bodyElements = doc.getBodyElements(); // Refresh after insertion
+          }
+        }
+      }
+    }
+
+    return {
+      afterHeader1,
+      afterTOC,
+      afterTables,
+      beforeTopLinks,
+      beforeFirst1x1Table,
+      afterBulletLists,
+      afterNumberedLists,
+      afterImages,
+    };
+  }
+
+  /**
+   * Mark blank paragraphs that were adjacent to SDTs/structures as preserved
+   *
+   * After clearCustom() unwraps SDTs, blank paragraphs that were intentionally
+   * placed for spacing may become candidates for deletion. This method identifies
+   * those blank paragraphs and marks them as preserved so Phase 1 won't delete them.
+   *
+   * @param doc - Document to process
+   * @returns Number of blank lines marked as preserved
+   */
+  private async markBlankLinesAfterUncoveredStructures(doc: Document): Promise<number> {
+    let preservedCount = 0;
+
+    try {
+      const bodyElements = doc.getBodyElements();
+
+      // Scan for blank paragraphs adjacent to tables and SDTs
+      for (let i = 0; i < bodyElements.length; i++) {
+        const element = bodyElements[i];
+
+        // Check if this is a structural element (table, SDT, etc.)
+        const isStructure =
+          element instanceof Table ||
+          element.constructor.name === 'StructuredDocumentTag' ||
+          element.constructor.name === 'SDT' ||
+          (element as any)._type === 'sdt';
+
+        if (!isStructure) continue;
+
+        // Check the paragraph AFTER this structure
+        if (i + 1 < bodyElements.length) {
+          const nextElement = bodyElements[i + 1];
+          if (nextElement instanceof Paragraph && this.isParagraphTrulyEmpty(nextElement)) {
+            // Mark this blank paragraph as preserved
+            (nextElement as any).preserved = true;
+            preservedCount++;
+            this.log.debug('Marked blank line after structure as preserved');
+          }
+        }
+
+        // Also check the paragraph BEFORE this structure
+        if (i - 1 >= 0) {
+          const prevElement = bodyElements[i - 1];
+          if (prevElement instanceof Paragraph && this.isParagraphTrulyEmpty(prevElement)) {
+            // Mark this blank paragraph as preserved
+            (prevElement as any).preserved = true;
+            preservedCount++;
+            this.log.debug('Marked blank line before structure as preserved');
+          }
+        }
+      }
+
+      this.log.debug(
+        `Marked ${preservedCount} blank paragraphs as preserved (adjacent to structures)`
+      );
+    } catch (error) {
+      this.log.warn(
+        `Error marking blank lines as preserved: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+
+    return preservedCount;
+  }
+
+  /**
+   * Remove all blank lines from the document, respecting preservation tags
+   *
+   * This helper runs BEFORE any blank line insertion logic to ensure a clean slate.
+   * It removes EVERY blank paragraph that isn't marked as preserved.
+   *
+   * AGGRESSIVE REMOVAL STRATEGY:
+   * - Removes ALL blank lines regardless of position
+   * - ONLY respects preserved=true flag
+   * - Does NOT protect adjacent-to-structure blanks (Phase 2 will add them back if needed)
+   *
+   * This ensures a completely clean document before Phase 2 inserts blanks precisely.
+   *
+   * @param doc - Document to process
+   * @returns Number of blank lines removed
+   */
+  private async removeAllBlankLinesExceptPreserved(doc: Document): Promise<number> {
+    this.log.debug('=== REMOVING ALL BLANK LINES (EXCEPT PRESERVED) ===');
+    this.log.debug('Using AGGRESSIVE removal: ALL blanks removed except preserved');
+
+    const paragraphs = doc.getParagraphs();
+    const paragraphsToRemove: Paragraph[] = [];
+
+    // Identify ALL blank paragraphs that aren't preserved
+    for (const para of paragraphs) {
+      // Check if truly empty
+      if (!this.isParagraphTrulyEmpty(para)) {
+        continue;
+      }
+
+      // ONLY check if preserved - ignore all other context
+      const isPreserved = (para as any).preserved || (para as any).isPreserved?.() || false;
+      if (isPreserved) {
+        this.log.debug('Skipping preserved blank paragraph');
+        continue;
+      }
+
+      // Mark ALL other blank lines for removal
+      paragraphsToRemove.push(para);
+    }
+
+    // Remove marked paragraphs
+    let removedCount = 0;
+    for (const para of paragraphsToRemove) {
+      const success = doc.removeParagraph(para);
+      if (success) {
+        removedCount++;
+      }
+    }
+
+    this.log.info(
+      `Removed ${removedCount} blank lines aggressively (kept ${paragraphs.length - removedCount - paragraphsToRemove.length} preserved blanks)`
+    );
+    return removedCount;
+  }
+
+  /**
    * Helper: Determine if a paragraph is truly empty using DocXMLater APIs
    *
-   * ✅ USES DOCXMLATER HELPER FUNCTIONS (Critical fix for Bug #1)
+   * USES DOCXMLATER HELPER FUNCTIONS (Critical fix for Bug #1)
    *
    * A paragraph is considered "truly empty" only if:
    * 1. It has no numbering/list formatting (check via getNumbering())
@@ -1492,7 +2081,7 @@ export class WordDocumentProcessor {
         return false;
       }
 
-      // ✅ Check 2: Does this paragraph have complex content?
+      // Check 2: Does this paragraph have complex content?
       // getContent() returns ALL content items (runs, hyperlinks, images)
       const content = para.getContent();
 
@@ -1524,7 +2113,7 @@ export class WordDocumentProcessor {
         }
       }
 
-      // ✅ Check 3: Are all text runs empty?
+      // Check 3: Are all text runs empty?
       // Only delete if all runs are whitespace-only
       const runDetails: string[] = [];
       const allRunsEmpty = content.every((item) => {
@@ -1605,7 +2194,7 @@ export class WordDocumentProcessor {
 
     const paragraphsToRemove: Paragraph[] = [];
 
-    // ✅ FIX: Get body elements to identify table positions
+    // FIX: Get body elements to identify table positions
     // This prevents deleting paragraphs adjacent to tables which could destabilize structure
     const tableIndices = new Set<number>();
 
@@ -1620,7 +2209,7 @@ export class WordDocumentProcessor {
       `Found ${tableIndices.size} top-level tables in document. Protecting adjacent paragraphs.`
     );
 
-    // ✅ ADDITIONAL FIX: Also check for Structured Document Tags (SDTs) containing tables
+    // ADDITIONAL FIX: Also check for Structured Document Tags (SDTs) containing tables
     // These are special locked content (like If/Then decision tables) wrapped in SDTs
     // The SDT itself is a body element, so we need to protect adjacent paragraphs
     const sdtIndices = new Set<number>();
@@ -1769,7 +2358,7 @@ export class WordDocumentProcessor {
 
     this.log.info(`Removed ${removedCount} consecutive empty paragraphs`);
 
-    // ✅ SAFETY CHECK: Verify we didn't delete too much content
+    // SAFETY CHECK: Verify we didn't delete too much content
     // Threshold: 30% allows documents with legitimate spacing/structure while catching catastrophic failures
     this.log.debug(`\n=== SAFETY CHECK ===`);
     const currentBodyElements = doc.getBodyElements();
@@ -1894,16 +2483,18 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Standardize list prefix formatting for ALL lists in the document
+   * Standardize list prefix formatting for NUMBERED lists only
    *
-   * Similar to standardizeHyperlinkFormatting(), this function ensures all bullet points
-   * and numbered list prefixes (symbols/numbers) have consistent professional formatting:
+   * This function standardizes only numbered list prefixes (1., 2., a., b., i., ii., etc.)
+   * with consistent professional formatting:
    * - Font: Verdana
    * - Size: 12pt (24 half-points)
    * - Color: Black (#000000)
-   * - Bold: preserved (lists often use bold for emphasis)
+   * - Bold: NOT applied (numbered lists should not be bold)
    *
-   * This applies to ALL existing lists in the document, not just newly created ones.
+   * Bullet list symbols are handled separately by applyBulletUniformity() and retain bold.
+   *
+   * This applies to ALL existing numbered lists in the document, not just newly created ones.
    *
    * @param doc - Document to process
    * @returns Number of list levels standardized
@@ -1930,7 +2521,7 @@ export class WordDocumentProcessor {
 
       this.log.debug(`Found ${matches.length} list levels to process`);
 
-      // Standard formatting for list prefixes
+      // Standard formatting for NUMBERED list prefixes (NO bold)
       // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
       const standardRPr = `<w:rPr>
               <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
@@ -1946,7 +2537,21 @@ export class WordDocumentProcessor {
         const levelContent = match[2];
         const fullMatch = match[0];
 
-        // Check if w:rPr already exists anywhere in the level
+        // CRITICAL: Detect if this is a bullet list or numbered list
+        // Check for <w:numFmt w:val="X"> where X indicates the list type
+        // bullet = "bullet", numbered = "decimal", "lowerLetter", "upperLetter", etc.
+        const numFmtMatch = levelContent.match(/<w:numFmt\s+w:val="([^"]+)"/);
+        const isBulletList = numFmtMatch && numFmtMatch[1] === 'bullet';
+
+        // SKIP bullet lists - they should keep bold (handled by applyBulletUniformity)
+        if (isBulletList) {
+          this.log.debug(
+            `Skipping bullet list level ${levelIndex} (bold formatting preserved elsewhere)`
+          );
+          continue;
+        }
+
+        // Process only NUMBERED lists (decimal, lowerLetter, upperLetter, lowerRoman, upperRoman)
         const rPrRegex = /<w:rPr>([\s\S]*?)<\/w:rPr>/g;
         const rPrMatches = Array.from(levelContent.matchAll(rPrRegex));
 
@@ -1962,14 +2567,6 @@ export class WordDocumentProcessor {
           // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
           let rPrXml = `<w:rPr>
               <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>`;
-
-          // Preserve bold if it was there
-          if (hasBold) {
-            rPrXml += `\n              <w:b/>`;
-          }
-          if (hasBoldCs) {
-            rPrXml += `\n              <w:bCs/>`;
-          }
 
           // OOXML Compliance: w:color must appear before w:sz per ECMA-376 Part 1, Section 17.3.2
           rPrXml += `\n              <w:color w:val="000000"/>
@@ -1998,7 +2595,7 @@ export class WordDocumentProcessor {
           standardizedCount++;
 
           this.log.debug(
-            `Added standardized w:rPr to list level ${levelIndex}: Verdana 12pt black (new formatting)`
+            `Added standardized w:rPr to numbered list level ${levelIndex}: Verdana 12pt black (NO bold)`
           );
         }
       }
@@ -2007,7 +2604,7 @@ export class WordDocumentProcessor {
         // Save modified XML back to document
         await doc.setPart("word/numbering.xml", xmlContent);
         this.log.info(
-          `Successfully standardized ${standardizedCount} list prefix levels to Verdana 12pt black`
+          `Successfully standardized ${standardizedCount} numbered list prefix levels to Verdana 12pt black (NO bold)`
         );
       } else {
         this.log.info("No list levels found to standardize");
@@ -2934,7 +3531,7 @@ export class WordDocumentProcessor {
             // This ensures deep bullet levels don't show squares even if not explicitly configured
             const newSymbol = bullets[levelIndex] || bullets[0] || "\u2022";
 
-            // ✅ COMPLETE PROPERTY SETTING (Example 4 pattern)
+            // COMPLETE PROPERTY SETTING (Example 4 pattern)
             // Set ALL 5 bullet formatting properties for complete control
             level.setText(newSymbol); // Bullet symbol (e.g., ●, ▪, ➤)
             level.setFont("Calibri"); // Font: Calibri renders U+2022 as ●, not ■
@@ -2983,7 +3580,7 @@ export class WordDocumentProcessor {
       }
     }
 
-    // ✅ REMOVED: Framework's standardizeBulletSymbols() call
+    // REMOVED: Framework's standardizeBulletSymbols() call
     // REASON: We now use Example 4's complete property setting pattern (lines 2945-2949)
     // which directly sets ALL 5 properties (setText, setFont, setFontSize, setBold, setColor)
     // for every bullet level in every abstractNum definition.
@@ -3268,7 +3865,7 @@ export class WordDocumentProcessor {
         bold: true,
       });
 
-      // Standardize all numbered lists
+      // Standardize all numbered lists (bold: false to keep numbers non-bold)
       const numberedResult = doc.standardizeNumberedListPrefixes({
         color: "000000",
         bold: true,
@@ -3293,7 +3890,9 @@ export class WordDocumentProcessor {
    *
    * Intelligent table formatting:
    * - Detects 1x1 tables and applies Header 2 shading color
-   * - Applies other table shading color to multi-cell tables (skips white cells)
+   * - Applies other table shading color to multi-cell tables
+   * - PRESERVES header rows with special formatting
+   * - Handles nested tables and SDTs properly
    * - Sets consistent padding (0" top/bottom, 0.08" left/right)
    * - Sets autofit to window for all tables
    */
@@ -3360,9 +3959,35 @@ export class WordDocumentProcessor {
             this.log.debug(`Applied Header 2 shading (#${header2Color}) to 1x1 table`);
           }
         } else {
-          // Handle multi-cell tables - apply other table shading color (skip white cells)
+          // Handle multi-cell tables - apply shading with header row preservation
           const rows = table.getRows();
-          for (const row of rows) {
+
+          // CRITICAL: Detect header rows by checking for tblHeader flag or TableHeader style
+          const isHeaderRow = (row: any): boolean => {
+            // Check for explicit tblHeader flag (Row object property)
+            if ((row as any).tblHeader === true) {
+              return true;
+            }
+
+            // Check first cell's paragraph style for TableHeader
+            const cells = row.getCells();
+            if (cells.length > 0) {
+              const firstCellParas = cells[0]?.getParagraphs() || [];
+              for (const para of firstCellParas) {
+                const style = para.getStyle();
+                if (style === 'TableHeader' || style === 'Table Header') {
+                  return true;
+                }
+              }
+            }
+
+            return false;
+          };
+
+          for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+            const row = rows[rowIndex];
+            const headerRow = isHeaderRow(row);
+
             for (const cell of row.getCells()) {
               // Check current cell shading
               const currentShading = cell.getFormatting().shading?.fill?.toUpperCase();
@@ -3377,14 +4002,12 @@ export class WordDocumentProcessor {
                 // Apply shading: either color is set, or color is set and not white
                 cell.setShading({ fill: otherColor });
 
-                // Set all text in the cell to bold
-                for (const para of cell.getParagraphs()) {
-                  for (const run of para.getRuns()) {
-                    run.setBold(true);
-                  }
+              // Set all text in the cell to bold
+              for (const para of cell.getParagraphs()) {
+                for (const run of para.getRuns()) {
+                  run.setBold(true);
                 }
               }
-              // If isWhite is true, skip applying shading (preserve white cells)
 
               cell.setMargins(cellMargins);
 
@@ -3394,7 +4017,9 @@ export class WordDocumentProcessor {
               }
             }
           }
-          this.log.debug(`Applied other table shading (#${otherColor}) to multi-cell table`);
+          this.log.debug(
+            `Applied table shading (#${header2Color} header, #${otherColor} body) to multi-cell table`
+          );
         }
 
         formattedCount++;
@@ -3407,6 +4032,55 @@ export class WordDocumentProcessor {
     }
 
     return formattedCount;
+  }
+
+  /**
+   * Align hyperlinks with "Top of the Document" text to right
+   *
+   * Scans all hyperlinks in the document and checks if the display text
+   * (case-insensitive) matches exactly "Top of the Document".
+   * For matching hyperlinks, sets the containing paragraph alignment to "right".
+   *
+   * Uses docxmlater's extractHyperlinks() for safe hyperlink access.
+   *
+   * @param doc - Document to process
+   * @returns Number of hyperlinks aligned to right
+   */
+  private async alignTopOfDocumentHyperlinks(doc: Document): Promise<number> {
+    let alignedCount = 0;
+
+    try {
+      // Extract all hyperlinks using DocXMLaterProcessor
+      const hyperlinks = await this.docXMLater.extractHyperlinks(doc);
+
+      this.log.debug(
+        `Found ${hyperlinks.length} hyperlinks to check for Top of Document alignment`
+      );
+
+      // Check each hyperlink for "Top of the Document" text
+      for (const { hyperlink, paragraph, text } of hyperlinks) {
+        // Normalize text for comparison (case-insensitive, whitespace trimmed)
+        const normalizedText = sanitizeHyperlinkText(text).toLowerCase();
+
+        // Check for exact match with "Top of the Document"
+        if (normalizedText === 'top of the document') {
+          // Set paragraph alignment to right
+          paragraph.setAlignment('right');
+          alignedCount++;
+
+          this.log.debug(`Aligned hyperlink to right: "${text}"`);
+        }
+      }
+
+      this.log.info(
+        `Successfully aligned ${alignedCount} of ${hyperlinks.length} hyperlinks to right`
+      );
+    } catch (error) {
+      this.log.error(`Error aligning Top of Document hyperlinks: ${error}`);
+      // Continue processing on error instead of throwing
+    }
+
+    return alignedCount;
   }
 
   /**
@@ -3493,7 +4167,7 @@ export class WordDocumentProcessor {
   /**
    * Helper: Extract text from a paragraph (handles runs)
    *
-   * ✅ IMPROVED ERROR HANDLING: Logs errors instead of silently failing
+   * IMPROVED ERROR HANDLING: Logs errors instead of silently failing
    *
    * This is used for non-critical extraction (displaying text).
    * For safety-critical decisions (paragraph deletion), use isParagraphTrulyEmpty() instead.
@@ -3865,11 +4539,11 @@ export class WordDocumentProcessor {
 
           // Create and insert the hyperlink paragraph AFTER the blank line
           const hyperlinkPara = this.createTopHyperlinkParagraph(doc);
-          doc.insertParagraphAt(tablePosition + 1, hyperlinkPara); // +1 because blank is now at tablePosition
+          doc.insertParagraphAt(tablePosition, hyperlinkPara);
           linksAdded++;
 
           this.log.debug(
-            `Inserted blank line and Top of Document link before table ${tableIndex} at positions ${tablePosition} and ${tablePosition + 1}`
+            `Inserted Top of Document link before table ${tableIndex} at position ${tablePosition}`
           );
         }
       } catch (error) {
@@ -4266,6 +4940,7 @@ export class WordDocumentProcessor {
         continue;
       }
 
+      hasTSwitches = true;
       const parts = content
         .split(",")
         .map((p: string) => p.trim())
@@ -4357,6 +5032,167 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Synchronize TOC field instructions with actual style names in document
+   *
+   * This method ensures that the "\\t" style switch in TOC field instructions
+   * references style names that actually exist in the document, preventing Word
+   * from falling back to unwanted heading levels when refreshing the TOC.
+   *
+   * Process:
+   * 1. Get all existing styles from the document
+   * 2. For each TOC field instruction, parse the "\\t" switches
+   * 3. Check if referenced styles exist
+   * 4. If not found, update the switch to use normalized style names
+   * 5. Save updated instruction back to the TOC field
+   *
+   * Example: TOC with "\\t "Heading 2,2,"" will be updated to match the actual
+   * style name in the document (e.g., "Heading2" with or without space)
+   *
+   * @param doc - Document to process
+   * @returns Number of TOC field instructions updated
+   */
+  private async syncTOCFieldInstructions(doc: Document): Promise<number> {
+    let updatedCount = 0;
+
+    try {
+      this.log.debug('=== SYNCHRONIZING TOC FIELD INSTRUCTIONS ===');
+
+      // Get all style names from the document
+      const existingStyles = doc.getStyles();
+      const styleNames = new Set<string>();
+
+      for (const style of existingStyles) {
+        const styleName = (style as any).name || (style as any).getName?.();
+        if (styleName) {
+          styleNames.add(styleName);
+          this.log.debug(`Found document style: ${styleName}`);
+        }
+      }
+
+      this.log.info(`Document has ${styleNames.size} styles defined`);
+
+      // Get all TOC elements
+      const tocElements = doc.getTableOfContentsElements();
+      if (tocElements.length === 0) {
+        this.log.debug('No TOC elements found - no field instructions to sync');
+        return 0;
+      }
+
+      // Process each TOC field instruction
+      for (const tocElement of tocElements) {
+        const toc = (tocElement as any).toc as TableOfContents;
+        if (!toc) {
+          continue;
+        }
+
+        const fieldInstruction = toc.getFieldInstruction();
+        if (!fieldInstruction) {
+          this.log.warn('TOC element has no field instruction');
+          continue;
+        }
+
+        this.log.debug(`Original field instruction: ${fieldInstruction}`);
+
+        // Parse "\\t" switches from the field instruction
+        // Format: \t "StyleName1,Level1,StyleName2,Level2,..."
+        let updatedInstruction = fieldInstruction;
+        let instructionModified = false;
+
+        // Find all \\t switches
+        const tSwitchRegex = /\\t\s+"([^"]+)"/g;
+        let match;
+
+        while ((match = tSwitchRegex.exec(fieldInstruction)) !== null) {
+          const tSwitchContent = match[1];
+          if (!tSwitchContent) continue;
+
+          // Parse the content: "StyleName1,Level1,StyleName2,Level2,..."
+          const parts = tSwitchContent.split(',').map((p) => p.trim());
+          const updatedParts: string[] = [];
+
+          for (let i = 0; i < parts.length; i += 2) {
+            const styleName = parts[i];
+            const levelStr = parts[i + 1];
+
+            if (!styleName) continue;
+
+            // Check if this style exists in the document
+            let correctStyleName = styleName;
+            let styleFound = styleNames.has(styleName);
+
+            if (!styleFound) {
+              // Try normalized variations (add/remove space in "Heading X")
+              const normalized1 = styleName.replace(/Heading\s+(\d+)/, 'Heading$1'); // "Heading 2" -> "Heading2"
+              const normalized2 = styleName.replace(/Heading(\d+)/, 'Heading $1'); // "Heading2" -> "Heading 2"
+
+              if (styleNames.has(normalized1)) {
+                correctStyleName = normalized1;
+                styleFound = true;
+                this.log.debug(
+                  `Style name "${styleName}" normalized to "${correctStyleName}" (found in document)`
+                );
+              } else if (styleNames.has(normalized2)) {
+                correctStyleName = normalized2;
+                styleFound = true;
+                this.log.debug(
+                  `Style name "${styleName}" normalized to "${correctStyleName}" (found in document)`
+                );
+              }
+            }
+
+            if (!styleFound) {
+              this.log.warn(
+                `TOC references style "${styleName}" which doesn't exist in document - this may cause Word to show unintended heading levels`
+              );
+            } else if (correctStyleName !== styleName) {
+              this.log.debug(
+                `Updating TOC style reference: "${styleName}" → "${correctStyleName}"`
+              );
+              instructionModified = true;
+            }
+
+            updatedParts.push(correctStyleName);
+            if (levelStr) {
+              updatedParts.push(levelStr);
+            }
+          }
+
+          // If we made changes, update the instruction
+          if (instructionModified) {
+            const oldSwitch = match[0];
+            const newSwitch = `\\t "${updatedParts.join(',')}"`;
+            updatedInstruction = updatedInstruction.replace(oldSwitch, newSwitch);
+
+            this.log.debug(`Updated \\t switch: ${oldSwitch} → ${newSwitch}`);
+          }
+        }
+
+        // Note: DocXMLater's TableOfContents class doesn't expose setFieldInstruction()
+        // so we cannot directly update the field instruction at runtime.
+        // However, synchronizing style names during manual TOC population (STEP 0 in manuallyPopulateTOC)
+        // will ensure correct heading references when a user manually refreshes the TOC in Word.
+        if (instructionModified && updatedInstruction !== fieldInstruction) {
+          this.log.warn(
+            `TOC field instruction could be improved but setFieldInstruction() not supported by docxmlater. ` +
+              `Original: ${fieldInstruction} → Recommended: ${updatedInstruction}`
+          );
+        }
+      }
+
+      if (updatedCount > 0) {
+        this.log.info(`Synchronized ${updatedCount} TOC field instruction(s) with document styles`);
+      } else {
+        this.log.debug('No TOC field instruction updates needed');
+      }
+
+      return updatedCount;
+    } catch (error) {
+      this.log.error(`Error synchronizing TOC field instructions: ${error}`);
+      return 0;
+    }
+  }
+
+  /**
    * Manually populate Table of Contents with bookmarks and internal hyperlinks
    *
    * This comprehensive implementation:
@@ -4374,6 +5210,16 @@ export class WordDocumentProcessor {
     let totalEntriesCreated = 0;
 
     try {
+      // ============================================
+      // STEP 0: SYNCHRONIZE TOC FIELD INSTRUCTIONS
+      // ============================================
+      // Ensure TOC field instructions reference actual style names
+      // This prevents Word from falling back to Heading 1-3 when refreshing
+      const syncedCount = await this.syncTOCFieldInstructions(doc);
+      if (syncedCount > 0) {
+        this.log.info(`Synchronized ${syncedCount} TOC field instruction(s) before population`);
+      }
+
       // ============================================
       // STEP 1: GET ALL EXISTING HEADINGS
       // ============================================
