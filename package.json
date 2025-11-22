@@ -18,7 +18,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage --maxWorkers=2",
-    "test:toc": "node test-debug-toc.js",
+    "test:toc": "node test-debug-toc.js || node test/scripts/test-debug-toc.js",
+    "clean": "scripts\\cleanup-project.bat",
     "docs:generate": "typedoc",
     "docs:watch": "typedoc --watch",
     "prepare": "husky"
