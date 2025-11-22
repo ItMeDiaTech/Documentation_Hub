@@ -35,8 +35,6 @@ import * as path from "path";
 import { hyperlinkService } from "../HyperlinkService";
 import { DocXMLaterProcessor } from "./DocXMLaterProcessor";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
-import type { levels } from "electron-log";
-import type { number } from "framer-motion";
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -1521,7 +1519,7 @@ export class WordDocumentProcessor {
     // STEP 1: NORMALIZE ALL BLANK LINES TO NORMAL STYLE
     // ═══════════════════════════════════════════════════════════
     this.log.debug('Step 1: Normalizing all blank lines to Normal style with preserve flag');
-    const paragraphs = doc.getParagraphs();
+    const paragraphs = doc.getAllParagraphs();
 
     for (const para of paragraphs) {
       if (this.isParagraphTrulyEmpty(para)) {
@@ -1660,7 +1658,7 @@ export class WordDocumentProcessor {
     // ═══════════════════════════════════════════════════════════
     this.log.debug('Step 4: Collapsing sequences of >2 consecutive blank lines');
 
-    const allParagraphs = doc.getParagraphs();
+    const allParagraphs = doc.getAllParagraphs();
     const parasToRemove: Paragraph[] = [];
 
     for (let i = 0; i < allParagraphs.length - 2; i++) {
@@ -1688,6 +1686,58 @@ export class WordDocumentProcessor {
     this.log.debug(`  Collapsed ${collapses} instances of >2 consecutive blank lines`);
 
     return { normalized, tablesFixed, tocFixed, collapses };
+  }
+
+  /**
+   * Add blank lines before warning/caution blocks
+   *
+   * Searches for paragraphs containing warning/caution keywords and inserts
+   * a blank line before each block if one doesn't already exist.
+   *
+   * @param doc - Document to process
+   * @returns Number of blank lines added
+   */
+  private async addBlankLinesBeforeWarnings(doc: Document): Promise<number> {
+    let blankLinesAdded = 0;
+
+    try {
+      const paragraphs = doc.getAllParagraphs();
+      const warningKeywords = ['warning', 'caution', 'note:', 'important:'];
+
+      for (let i = 0; i < paragraphs.length; i++) {
+        const para = paragraphs[i];
+        const text = para.getText().toLowerCase();
+
+        // Check if paragraph starts with a warning keyword
+        const isWarning = warningKeywords.some(keyword => text.trim().startsWith(keyword));
+
+        if (isWarning && i > 0) {
+          const prevPara = paragraphs[i - 1];
+
+          // Only add blank line if previous paragraph isn't already blank
+          if (!this.isParagraphTrulyEmpty(prevPara)) {
+            const blankPara = doc.createParagraph('');
+            blankPara.setStyle('Normal');
+            blankPara.setPreserved(true);
+            blankPara.setSpaceAfter(120); // 6pt spacing
+
+            // Insert blank line before warning paragraph
+            const bodyElements = doc.getBodyElements();
+            const warningIndex = bodyElements.indexOf(para);
+            if (warningIndex !== -1) {
+              doc.insertParagraphAt(warningIndex, blankPara);
+              blankLinesAdded++;
+              this.log.debug(`Added blank line before warning: "${text.substring(0, 50)}..."`);
+            }
+          }
+        }
+      }
+
+      return blankLinesAdded;
+    } catch (error) {
+      this.log.error(`Error adding blank lines before warnings: ${error}`);
+      return blankLinesAdded;
+    }
   }
 
   /**
@@ -1834,7 +1884,7 @@ export class WordDocumentProcessor {
 
     // 5 & 6. Insert blank lines after list blocks (bullet and numbered)
     // Need to iterate through paragraphs to detect list block endings
-    const paragraphs = doc.getParagraphs();
+    const paragraphs = doc.getAllParagraphs();
 
     for (let i = paragraphs.length - 1; i >= 0; i--) {
       const current = paragraphs[i];
@@ -2010,7 +2060,7 @@ export class WordDocumentProcessor {
     this.log.debug('=== REMOVING ALL BLANK LINES (EXCEPT PRESERVED) ===');
     this.log.debug('Using AGGRESSIVE removal: ALL blanks removed except preserved');
 
-    const paragraphs = doc.getParagraphs();
+    const paragraphs = doc.getAllParagraphs();
     const paragraphsToRemove: Paragraph[] = [];
 
     // Identify ALL blank paragraphs that aren't preserved
@@ -4017,9 +4067,11 @@ export class WordDocumentProcessor {
               }
             }
           }
-          this.log.debug(
-            `Applied table shading (#${header2Color} header, #${otherColor} body) to multi-cell table`
-          );
+        }
+
+        this.log.debug(
+          `Applied table shading (#${header2Color} header, #${otherColor} body) to multi-cell table`
+        );
         }
 
         formattedCount++;
@@ -4757,19 +4809,7 @@ export class WordDocumentProcessor {
 
     this.log.info(
       `Applied ${levelsToInclude.length} TOC styles with relative indentation (min level ${minLevel} = 0" indent)`
-        const instr = toc.getFieldInstruction();
-        this.log.debug(`Existing TOC field instruction: ${instr}`);
-
-        // Note: setFieldInstruction() does not exist in docxmlater
-        // TOC field instructions cannot be modified directly
-        // Manual TOC population in manuallyPopulateTOC() handles this instead
-      }
-    } else {
-      // No TOC fields found - manual population will handle TOC creation
-      this.log.debug("No TOC field found - will use manual TOC population instead");
-    }
-
-    this.log.info("Checked for TOC fields (manual population will create entries)");
+    );
   }
 
   /**
@@ -4828,6 +4868,7 @@ export class WordDocumentProcessor {
     const levels = new Set<number>();
     let hasOutlineSwitch = false;
     let hasTableSwitch = false;
+    let hasTSwitches = false;
 
     // BUG FIX: Read instrText directly from document.xml to handle &quot; entities
     let instruction: string | null = null;
@@ -5013,8 +5054,28 @@ export class WordDocumentProcessor {
     await this.ensureHeadingBookmarks(doc);
     this.log.debug("✓ Step 1: Ensured heading bookmarks");
 
+    // Step 1.5: Parse TOC levels to determine which heading levels to include
+    const levelsToInclude = await this.parseTOCLevels(doc);
+
+    // If no levels found, detect from document headings
+    if (levelsToInclude.length === 0) {
+      const allParagraphs = doc.getAllParagraphs();
+      const uniqueLevels = new Set<number>();
+
+      for (const para of allParagraphs) {
+        const style = para.getStyle();
+        const match = style?.match(/^Heading\s*(\d+)$/i);
+        if (match && match[1]) {
+          uniqueLevels.add(parseInt(match[1], 10));
+        }
+      }
+
+      levelsToInclude.push(...Array.from(uniqueLevels).sort((a, b) => a - b));
+      this.log.debug(`Auto-detected heading levels: ${levelsToInclude.join(", ")}`);
+    }
+
     // Step 2: Apply custom TOC1-TOC9 styles
-    this.applyTOCStyles(doc);
+    this.applyTOCStyles(doc, levelsToInclude);
     this.log.debug("✓ Step 2: Applied TOC styles");
 
     // Step 3: Ensure real TOC field exists with correct switches
@@ -5029,6 +5090,55 @@ export class WordDocumentProcessor {
       `✓ Built proper TOC with ${entriesCreated} entries (real field + styled hyperlinks)`
     );
     return entriesCreated;
+  }
+
+  /**
+   * Ensure real TOC field exists with correct switches
+   *
+   * Verifies TOC field with proper field instruction:
+   * "TOC \h \z \u" - includes hyperlinks, hides tab leaders, includes outline levels
+   *
+   * Note: This method only verifies and logs. TOC population is handled by manuallyPopulateTOC().
+   *
+   * @param doc - Document to process
+   */
+  private ensureRealTOCField(doc: Document): void {
+    try {
+      const tocElements = doc.getTableOfContentsElements();
+
+      if (tocElements.length === 0) {
+        this.log.info("No TOC field found - manual TOC entries will be created by manuallyPopulateTOC()");
+        return;
+      }
+
+      this.log.debug(`Found ${tocElements.length} existing TOC field(s) - verifying switches`);
+
+      // Get first TOC element and verify its switches
+      const tocElement = tocElements[0];
+      const toc = (tocElement as any).toc;
+
+      if (toc && typeof toc.getFieldInstruction === 'function') {
+        const instruction = toc.getFieldInstruction();
+        this.log.debug(`Current TOC instruction: "${instruction}"`);
+
+        // Check if required switches are present
+        const hasHyperlinks = instruction?.includes('\\h');
+        const hasHideTabLeader = instruction?.includes('\\z');
+        const hasOutline = instruction?.includes('\\u');
+
+        if (!hasHyperlinks || !hasHideTabLeader || !hasOutline) {
+          this.log.warn(
+            `TOC field missing recommended switches (\\h=${hasHyperlinks}, \\z=${hasHideTabLeader}, \\u=${hasOutline})`
+          );
+          this.log.info("Note: TOC field switches should include \\h \\z \\u for proper formatting");
+        } else {
+          this.log.debug("✓ TOC field has all recommended switches");
+        }
+      }
+    } catch (error) {
+      this.log.error(`Error verifying TOC field: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Don't throw - allow processing to continue
+    }
   }
 
   /**
