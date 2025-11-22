@@ -61,8 +61,6 @@ release.ps1
 .claude.md
 
 # MCP (Model Context Protocol) cache and runtime data
-# NOTE: .mcp.json is NOT ignored - it should be committed for team RAG setup
-.mcp.json
 .mcp-cache/
 .serena/
 
@@ -83,7 +81,6 @@ progress-*.md
 # Developer-specific plans and research
 personal/
 
-
 # Reports (optional - these seem to be development notes)
 reports/
 
@@ -100,18 +97,47 @@ Hyperlink_Implementation.md
 changes.md
 Update_Needs_Implementation.md
 
-# Test files
+# ============================================================================
+# TEST FILES, DEBUG FOLDERS, AND TEMPORARY FILES
+# ============================================================================
+
+# Test and debug Word documents
 *.docx
-TestDocument.docx
+*.doc
+TestDocument*.docx
+Debug.docx
+Debug_Fixed.docx
+
+# Test/debug unzipped DOCX folders
+Debug/
+Debug - Copy/
+Debug_Fixed/
+Not_Processed_Example/
+Processed_Example/
+processed_test/
+Test_Code/
+Test_Run_Not_Processed/
+Test_Run_Processed/
+
+# Test scripts and instructions
+test-debug-toc.js
+run-toc-test.bat
+run-toc-test.ps1
+TOC_TEST_INSTRUCTIONS.md
+
+# Temporary files
+temp_original.txt
 log.txt
 *.log.txt
-*.exe
-DocumentationHub-win-Setup.exe
-Documentation-Hub-Setup*.exe
 Tests_Responses.md
 /docxmlater-functions-and-structure.md
 /TestDocument_V3 - Copy (5) - Copy_backup_2025-10-16T12-58-18-270Z.docx
 /GH_Issues
+
+# Executable files
+*.exe
+DocumentationHub-win-Setup.exe
+Documentation-Hub-Setup*.exe
 
 # Python cache
 __pycache__/
@@ -207,6 +233,7 @@ fix-imports/
 /FINAL_SOLUTION.md
 /EXECUTION_LOG_TEST_BASE.md
 /inspect-paragraph-xml.ts
+
 # Local data and config
 config/
 data/
@@ -215,8 +242,6 @@ data/
 /.cline
 /.cursor
 /.mcp-cache
-/.mcp.json
-.gitignore
 CLAUDE.md
 /CLAUDE_CONFIG_CLEANUP_GUIDE.md
 /FIELD_PRESERVATION_ANALYSIS.md
