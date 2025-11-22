@@ -130,7 +130,7 @@ export class DocumentProcessingComparison {
    */
   private captureHyperlinks(document: Document): void {
     this.originalHyperlinks.clear();
-    const paragraphs = document.getParagraphs();
+    const paragraphs = document.getAllParagraphs();
 
     paragraphs.forEach((para, paraIndex) => {
       const content = para.getContent();
@@ -166,7 +166,7 @@ export class DocumentProcessingComparison {
    */
   private captureStyles(document: Document): void {
     this.originalStyles.clear();
-    const paragraphs = document.getParagraphs();
+    const paragraphs = document.getAllParagraphs();
 
     paragraphs.forEach((para, index) => {
       const formatting = para.getFormatting?.() || {};
@@ -355,7 +355,7 @@ export class DocumentProcessingComparison {
   private compareFinalHyperlinks(document: Document): void {
     if (!this.comparison) return;
 
-    const paragraphs = document.getParagraphs();
+    const paragraphs = document.getAllParagraphs();
 
     paragraphs.forEach((para, paraIndex) => {
       const content = para.getContent();

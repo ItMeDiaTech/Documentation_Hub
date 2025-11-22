@@ -414,7 +414,7 @@ export class DocXMLaterProcessor {
     }> = [];
 
     // Get all paragraphs from the document
-    const paragraphs = doc.getParagraphs();
+    const paragraphs = doc.getAllParagraphs();
 
     // Iterate through each paragraph to find hyperlinks
     for (let i = 0; i < paragraphs.length; i++) {
