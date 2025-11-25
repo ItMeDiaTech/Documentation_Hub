@@ -1,4 +1,5 @@
 {
+  "_comment": "Force TypeScript reload",
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,

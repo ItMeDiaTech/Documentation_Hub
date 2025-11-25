@@ -1,18 +1,22 @@
-import { useSession } from '@/contexts/SessionContext';
-import { cn } from '@/utils/cn';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  BarChart3,
-  ChevronRight,
-  Circle,
-  FileText,
-  FolderOpen,
   Home,
+  FolderOpen,
   Settings,
+  Search,
+  User,
+  ChevronRight,
+  BarChart3,
+  Users,
+  FileText,
+  Plug,
   X,
+  Circle,
 } from 'lucide-react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { cn } from '@/utils/cn';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useSession } from '@/contexts/SessionContext';
 
 interface NavItem {
   id: string;
@@ -89,14 +93,20 @@ export const Sidebar = memo(function Sidebar() {
     items.push(
       { id: 'sessions', label: 'Sessions', icon: FolderOpen, path: '/sessions' },
       { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
-      { id: 'documents', label: 'Documents', icon: FileText, path: '/documents' }
+      { id: 'team', label: 'Team', icon: Users, path: '/team' },
+      { id: 'documents', label: 'Documents', icon: FileText, path: '/documents' },
+      { id: 'plugins', label: 'Plugins', icon: Plug, path: '/plugins' },
+      { id: 'search', label: 'Search', icon: Search, path: '/search' }
     );
 
     return items;
   }, [activeSessions, closeSession]);
 
   const bottomItems = useMemo<NavItem[]>(
-    () => [{ id: 'settings', label: 'Settings', icon: Settings, path: '/settings' }],
+    () => [
+      { id: 'profile', label: 'Profile', icon: User, path: '/profile' },
+      { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
+    ],
     []
   );
 
