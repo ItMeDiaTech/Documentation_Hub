@@ -274,45 +274,9 @@ export class WordDocumentProcessor {
       doc = await Document.load(filePath, { strictParsing: false });
       this.log.debug("Document loaded successfully");
 
-      // Check for tracked changes - must be approved before processing
-      this.log.debug("=== CHECKING FOR TRACKED CHANGES ===");
-      try {
-        // Check for tracked changes by examining document.xml for revision markers
-        const documentXml = await doc.getPart("word/document.xml");
-        const hasTrackedChanges =
-          documentXml &&
-          typeof documentXml.content === "string" &&
-          (documentXml.content.includes("<w:ins ") ||
-            documentXml.content.includes("<w:del ") ||
-            documentXml.content.includes("<w:moveFrom") ||
-            documentXml.content.includes("<w:moveTo"));
-
-        if (hasTrackedChanges) {
-          this.log.warn("Document contains tracked changes that must be approved first");
-          result.success = false;
-          result.hasTrackedChanges = true;
-          result.errorCount = 1;
-          result.errorMessages.push(
-            "Document contains tracked changes. Please approve all changes in Microsoft Word before processing."
-          );
-          result.duration = performance.now() - startTime;
-
-          // Clean up and return early
-          if (doc) {
-            try {
-              doc.dispose();
-            } catch (disposeError) {
-              this.log.warn("Failed to dispose document:", disposeError);
-            }
-          }
-
-          return result;
-        }
-        this.log.debug("No tracked changes detected - proceeding with processing");
-      } catch (error) {
-        this.log.warn("Failed to check for tracked changes:", error);
-        // Continue processing if check fails
-      }
+      // Tracked changes validation disabled - processing continues regardless of tracked changes
+      this.log.debug("=== TRACKED CHANGES VALIDATION DISABLED ===");
+      this.log.debug("Processing will continue regardless of tracked changes status");
 
       // Start tracking changes if enabled
       if (options.trackChanges) {
@@ -1410,14 +1374,20 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Create backup of document
+   * Create backup of document in DocHub_Backups subfolder
    */
   private async createBackup(filePath: string): Promise<string> {
     const dir = path.dirname(filePath);
     const ext = path.extname(filePath);
     const base = path.basename(filePath, ext);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
-    const backupPath = path.join(dir, `${base}.backup.${timestamp}${ext}`);
+
+    // Create DocHub_Backups folder if it doesn't exist
+    const backupDir = path.join(dir, 'DocHub_Backups');
+    await fs.mkdir(backupDir, { recursive: true });
+
+    // Save backup inside DocHub_Backups folder
+    const backupPath = path.join(backupDir, `${base}.backup.${timestamp}${ext}`);
 
     await fs.copyFile(filePath, backupPath);
     return backupPath;
