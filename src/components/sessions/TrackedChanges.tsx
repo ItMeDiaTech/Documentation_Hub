@@ -1,20 +1,20 @@
-import { useState, useMemo } from 'react';
+import { Button } from '@/components/common/Button';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { useSession } from '@/contexts/SessionContext';
+import { cn } from '@/utils/cn';
+import logger from '@/utils/logger';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  FileText,
-  GitBranch,
+  Check,
   ChevronDown,
   ChevronRight,
-  Settings,
-  Check,
+  FileText,
+  GitBranch,
   RotateCcw,
+  Settings,
 } from 'lucide-react';
-import { cn } from '@/utils/cn';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useSession } from '@/contexts/SessionContext';
+import { useMemo, useState } from 'react';
 import { defaultOptions } from './ProcessingOptions';
-import { ConfirmDialog } from '@/components/common/ConfirmDialog';
-import { Button } from '@/components/common/Button';
-import logger from '@/utils/logger';
 
 interface Change {
   id: string;
@@ -58,29 +58,35 @@ export function TrackedChanges({ sessionId }: TrackedChangesProps) {
         // First, filter out trivial changes and enhance descriptions
         const meaningfulChanges = doc.processingResult.changes
           .filter((change) => {
-            // Skip if before and after are identical
-            if (change.before === change.after) return false;
-
-            // Skip pure whitespace changes
-            if (
-              change.type === 'text' &&
-              change.before?.trim() === '' &&
-              change.after?.trim() === ''
-            ) {
-              return false;
+            // KEEP changes with count value (aggregate operations like "Standardized 11 hyperlinks")
+            if (change.count !== undefined && change.count > 0) {
+              return true;
             }
 
-            // Skip formatting changes that don't affect visible text
-            // (unless it's about invisible hyperlinks which are important)
-            if (
-              change.type === 'deletion' &&
-              !change.description?.toLowerCase().includes('hyperlink') &&
-              (!change.before || change.before.trim() === '')
-            ) {
-              return false;
+            // KEEP changes with before OR after values
+            if (change.before || change.after) {
+              // Skip ONLY if both exist and are identical
+              if (change.before === change.after) return false;
+
+              // Skip pure whitespace-only changes (but keep if count exists)
+              if (
+                change.type === 'text' &&
+                change.before?.trim() === '' &&
+                change.after?.trim() === ''
+              ) {
+                return false;
+              }
+
+              return true;
             }
 
-            return true;
+            // KEEP changes with meaningful descriptions (structural changes)
+            if (change.description && change.description.trim().length > 0) {
+              return true;
+            }
+
+            // Only filter out completely empty changes
+            return false;
           })
           .map((change) => {
             // Enhance descriptions for better clarity

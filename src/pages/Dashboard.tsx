@@ -1,5 +1,4 @@
-import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { Button } from '@/components/common/Button';
 import {
   Card,
   CardContent,
@@ -7,26 +6,27 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/common/Card';
-import { Button } from '@/components/common/Button';
+import { SessionManager } from '@/components/sessions/SessionManager';
+import { useGlobalStats } from '@/contexts/GlobalStatsContext';
+import { useSession } from '@/contexts/SessionContext';
+import { cn } from '@/utils/cn';
+import { motion } from 'framer-motion';
 import {
+  ArrowUpRight,
+  Calendar,
+  Clock,
   FileCheck,
+  FileText,
+  FolderOpen,
   Link,
   MessageSquare,
-  Clock,
-  Plus,
-  FolderOpen,
-  Calendar,
-  FileText,
-  ArrowUpRight,
-  TrendingUp,
-  TrendingDown,
   Minus,
+  Plus,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
-import { cn } from '@/utils/cn';
-import { useSession } from '@/contexts/SessionContext';
-import { useGlobalStats } from '@/contexts/GlobalStatsContext';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SessionManager } from '@/components/sessions/SessionManager';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -174,14 +174,14 @@ export function Dashboard() {
               <Card className="relative overflow-hidden group cursor-pointer border-0 shadow-lg hover:shadow-2xl transition-all">
                 <div
                   className={cn(
-                    'absolute inset-0 bg-gradient-to-br opacity-5 group-hover:opacity-10 transition-opacity',
+                    'absolute inset-0 bg-linear-to-br opacity-5 group-hover:opacity-10 transition-opacity',
                     stat.bgGradient
                   )}
                 />
                 <CardContent className="p-6 relative">
                   <div className="flex items-center justify-between mb-4">
                     <div
-                      className={cn('p-3 rounded-xl bg-gradient-to-br', stat.gradient, 'shadow-lg')}
+                      className={cn('p-3 rounded-xl bg-linear-to-br', stat.gradient, 'shadow-lg')}
                     >
                       <Icon className="w-6 h-6 text-white" />
                     </div>

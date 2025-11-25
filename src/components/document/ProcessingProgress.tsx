@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
+import { cn } from '@/utils/cn';
 import { motion } from 'framer-motion';
 import {
+  Activity,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Database,
   FileText,
   Link,
-  CheckCircle,
-  AlertCircle,
-  Clock,
-  Activity,
-  Database,
   Shield,
 } from 'lucide-react';
-import { cn } from '@/utils/cn';
+import { useEffect, useState } from 'react';
 
 interface ProcessingStep {
   id: string;
@@ -168,14 +168,14 @@ export function ProcessingProgress({
         </div>
         <div className="relative h-3 bg-muted rounded-full overflow-hidden">
           <motion.div
-            className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary via-primary to-primary/80"
+            className="absolute inset-y-0 left-0 bg-linear-to-r from-primary via-primary to-primary/80"
             initial={{ width: '0%' }}
             animate={{ width: `${animatedProgress}%` }}
             transition={{ duration: 0.5, ease: 'easeOut' }}
           >
             {/* Shimmer effect */}
             <motion.div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+              className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent"
               animate={{ x: ['0%', '200%'] }}
               transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
             />
@@ -295,7 +295,7 @@ export function ProcessingProgress({
             ease: 'linear',
           }}
         >
-          <div className="w-full h-full bg-gradient-to-r from-primary to-transparent" />
+          <div className="w-full h-full bg-linear-to-r from-primary to-transparent" />
         </motion.div>
       </div>
     </div>

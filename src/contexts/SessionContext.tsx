@@ -70,7 +70,7 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
       level: 2,
       symbolIndent: 1.5,
       textIndent: 1.75,
-      bulletChar: '■',
+      bulletChar: '•',
       numberedFormat: 'i.',
     },
     { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
@@ -590,6 +590,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         header2Shading: '#BFBFBF', // Default for Header 2 / 1x1 table cells
         otherShading: '#DFDFDF', // Default for other table cells
       },
+      processingOptions: {
+        validateUrls: true,
+        createBackup: true,
+        processInternalLinks: true,
+        processExternalLinks: true,
+        enabledOperations: [
+          'remove-italics',
+          'replace-outdated-titles',
+          'validate-document-styles',
+          'update-top-hyperlinks',
+          'update-toc-hyperlinks',
+          'fix-internal-hyperlinks',
+          'fix-content-ids',
+          'center-border-images',
+          'remove-whitespace',
+          'remove-paragraph-lines',
+          'remove-headers-footers',
+          'add-document-warning',
+          'validate-header2-tables',
+          'list-indentation',
+          'bullet-uniformity',
+          'smart-tables',
+        ],
+      },
     };
 
     setSessions((prev) => [...prev, newSession]);
@@ -856,7 +880,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const userSettings = localStorage.getItem('userSettings');
         const settings = safeJsonParse<any>(
           userSettings,
-          { apiConnections: { powerAutomateUrl: '' } },
+          { apiConnections: { powerAutomateUrl: '' }, profile: {} },
           'SessionContext.processDocument.userSettings'
         );
 
@@ -864,6 +888,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           'Processing document with PowerAutomate URL:',
           settings.apiConnections.powerAutomateUrl
         );
+
+        // Extract profile data from settings for API request
+        const userProfile = settings.profile
+          ? {
+              firstName: settings.profile.firstName || '',
+              lastName: settings.profile.lastName || '',
+              email: settings.profile.email || '',
+            }
+          : undefined;
+
+        log.debug('Processing document with user profile:', userProfile);
 
         // Convert session processing options to hyperlink processing options
         // Extract style spacing from session styles
@@ -985,6 +1020,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         log.info('Session enabled operations:', session.processingOptions?.enabledOperations || []);
 
         const processingOptions: HyperlinkProcessingOptions & {
+          // User Profile for API
+          userProfile?: {
+            firstName: string;
+            lastName: string;
+            email: string;
+          };
+
           // Text Formatting Options
           removeWhitespace?: boolean;
           removeParagraphLines?: boolean;
@@ -1014,6 +1056,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           tableUniformitySettings?: TableUniformitySettings;
         } = {
           apiEndpoint: settings.apiConnections.powerAutomateUrl || '',
+          userProfile, // Pass profile data to backend for API request
 
           // Hyperlink Operations (operations object)
           operations: {
@@ -1211,10 +1254,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
 
         // Process the document using Electron IPC
-        const result = await window.electronAPI.processHyperlinkDocument(
+        const result = (await window.electronAPI.processHyperlinkDocument(
           document.path,
           processingOptions
-        );
+        )) as typeof window.electronAPI.processHyperlinkDocument extends (...args: any[]) => Promise<infer R>
+          ? R & { changes?: import('@/types/session').DocumentChange[] }
+          : never;
 
         // PERFORMANCE: Update document status AND stats in single setState (batched)
         // This reduces re-renders from 2 to 1 per document
@@ -1236,60 +1281,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                             contentIdsAppended:
                               result.appendedContentIds || result.processedHyperlinks,
                             duration: result.duration,
-                            // Map processedLinks to DocumentChange format with enhanced descriptions
-                            changes: (result.processedLinks || []).map(
-                              (
-                                link: {
-                                  id?: string;
-                                  url?: string;
-                                  displayText?: string;
-                                  modifications?: string[];
-                                  before?: string;
-                                  after?: string;
-                                },
-                                idx: number
-                              ) => {
-                                // Determine change type and enhance description
-                                let changeType:
-                                  | 'hyperlink'
-                                  | 'text'
-                                  | 'style'
-                                  | 'structure'
-                                  | 'table'
-                                  | 'deletion' = 'hyperlink';
-                                let enhancedDescription =
-                                  link.modifications?.join(', ') || 'Change applied';
-
-                                // Enhance description based on the modification type
-                                if (link.modifications?.includes('Content ID appended')) {
-                                  enhancedDescription = 'Content ID appended to hyperlink';
-                                  changeType = 'hyperlink';
-                                } else if (link.modifications?.includes('URL updated')) {
-                                  enhancedDescription = 'Hyperlink URL updated';
-                                  changeType = 'hyperlink';
-                                } else if (link.modifications?.includes('Display text updated')) {
-                                  enhancedDescription = 'Hyperlink display text updated';
-                                  changeType = 'text';
-                                }
-
-                                // Special case for invisible hyperlinks
-                                if (!link.displayText || link.displayText.trim() === '') {
-                                  if (link.modifications?.includes('deletion')) {
-                                    enhancedDescription = 'Invisible hyperlink deleted';
-                                    changeType = 'deletion';
-                                  }
-                                }
-
-                                return {
-                                  id: link.id || `change-${idx}`,
-                                  type: changeType,
-                                  description: enhancedDescription,
-                                  before: link.before || link.url || '',
-                                  after: link.after || link.url || '',
-                                  count: 1,
-                                };
-                              }
-                            ),
+                            // Use the enhanced changes array from processor with full context
+                            changes: result.changes || [],
                           },
                         }
                       : d

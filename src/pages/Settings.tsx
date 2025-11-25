@@ -1,40 +1,42 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
 import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
 import { ColorPickerDialog } from '@/components/common/ColorPickerDialog';
-import {
-  User,
-  Palette,
-  Globe,
-  Database,
-  Sun,
-  Moon,
-  Check,
-  Type,
-  Search,
-  Lightbulb,
-  Send,
-  Link2,
-  Save,
-  Download,
-  RefreshCw,
-  AlertCircle,
-  CheckCircle2,
-} from 'lucide-react';
+import { Input } from '@/components/common/Input';
+import { useGlobalStats } from '@/contexts/GlobalStatsContext';
+import { useSession } from '@/contexts/SessionContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUserSettings } from '@/contexts/UserSettingsContext';
-import { useSession } from '@/contexts/SessionContext';
-import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 import { cn } from '@/utils/cn';
 import { getContrastTextColor } from '@/utils/colorConvert';
-import { sanitizeUrl, validatePowerAutomateUrl, hasEncodingIssues } from '@/utils/urlHelpers';
 import logger from '@/utils/logger';
+import { hasEncodingIssues, sanitizeUrl, validatePowerAutomateUrl } from '@/utils/urlHelpers';
+import { motion } from 'framer-motion';
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  Database,
+  Download,
+  Globe,
+  Lightbulb,
+  Link2,
+  Moon,
+  Palette,
+  RefreshCw,
+  Save,
+  Search,
+  Send,
+  Sun,
+  Type,
+  User
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 const settingsSections = [
   {
     group: 'Account',
-    items: [{ id: 'profile', label: 'Profile', icon: User, description: 'Personal information' }],
+    items: [
+      { id: 'profile', label: 'Profile', icon: User, description: 'Personal information' },
+    ],
   },
   {
     group: 'Customization',
@@ -115,9 +117,9 @@ export function Settings() {
         }
         const version = await window.electronAPI.getCurrentVersion();
         setCurrentVersion(version);
-      } catch (error) {
-        logger.error('Failed to get version:', error);
-      }
+    } catch (error) {
+      // Silently handle version retrieval errors
+    }
     };
     getVersion();
   }, []);
@@ -537,21 +539,45 @@ export function Settings() {
               </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input label="First Name" defaultValue="John" />
-                  <Input label="Last Name" defaultValue="Doe" />
+                  <Input
+                    label="First Name"
+                    value={profileForm.firstName}
+                    onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                  />
+                  <Input
+                    label="Last Name"
+                    value={profileForm.lastName}
+                    onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                  />
                 </div>
-                <Input label="Email" type="email" defaultValue="john.doe@example.com" />
+                <Input
+                  label="Email"
+                  type="email"
+                  value={profileForm.email}
+                  onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                />
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" icon={<Download className="w-4 h-4" />}>
+                  <Button
+                    variant="outline"
+                    icon={<Download className="w-4 h-4" />}
+                    onClick={handleExport}
+                  >
                     Export Settings
                   </Button>
                   <Button
                     variant="outline"
                     icon={<Download className="w-4 h-4" style={{ transform: 'rotate(180deg)' }} />}
+                    onClick={handleImport}
                   >
                     Import Settings
                   </Button>
-                  <Button>Save Changes</Button>
+                  <Button
+                    onClick={handleSaveSettings}
+                    showSuccess={saveSuccess}
+                    icon={<Save className="w-4 h-4" />}
+                  >
+                    Save Changes
+                  </Button>
                 </div>
               </div>
             </div>
@@ -606,7 +632,7 @@ export function Settings() {
                             >
                               <div
                                 className={cn(
-                                  'absolute inset-0 bg-gradient-to-br opacity-10 group-hover:opacity-20 transition-opacity',
+                                  'absolute inset-0 bg-linear-to-br opacity-10 group-hover:opacity-20 transition-opacity',
                                   option.gradient
                                 )}
                               />
@@ -752,7 +778,7 @@ export function Settings() {
                           </>
                         ) : (
                           <div
-                            className={cn('absolute inset-0 bg-gradient-to-br', color.gradient)}
+                            className={cn('absolute inset-0 bg-linear-to-br', color.gradient)}
                           />
                         )}
                         {accentColor === color.name && (
@@ -783,7 +809,7 @@ export function Settings() {
                         onClick={() => setBlur(!blur)}
                         aria-label="Toggle glass morphism effects"
                         className={cn(
-                          'relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2',
+                          'relative w-11 h-6 rounded-full transition-colors shrink-0 border-2',
                           blur
                             ? 'bg-primary border-primary toggle-checked'
                             : 'bg-input border-border hover:bg-accent'
@@ -808,7 +834,7 @@ export function Settings() {
                         onClick={() => setAnimations(!animations)}
                         aria-label="Toggle smooth animations"
                         className={cn(
-                          'relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2',
+                          'relative w-11 h-6 rounded-full transition-colors shrink-0 border-2',
                           animations
                             ? 'bg-primary border-primary toggle-checked'
                             : 'bg-input border-border hover:bg-accent'
@@ -837,7 +863,7 @@ export function Settings() {
                       onClick={() => setUseCustomColors(!useCustomColors)}
                       aria-label="Toggle custom theme colors"
                       className={cn(
-                        'relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2',
+                        'relative w-11 h-6 rounded-full transition-colors shrink-0 border-2',
                         useCustomColors
                           ? 'bg-primary border-primary toggle-checked'
                           : 'bg-input border-border hover:bg-accent'
@@ -1560,7 +1586,7 @@ export function Settings() {
                       {urlValidation && !urlValidation.valid && urlValidation.issues.length > 0 && (
                         <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
                           <div className="flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
                             <div className="flex-1 space-y-1">
                               {urlValidation.issues.map((issue, idx) => (
                                 <p key={idx} className="text-xs text-red-700 dark:text-red-300">
@@ -1575,7 +1601,7 @@ export function Settings() {
                       {urlValidation && urlValidation.warnings.length > 0 && (
                         <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                           <div className="flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
                             <div className="flex-1 space-y-1">
                               {urlValidation.warnings.map((warning, idx) => (
                                 <p
@@ -1593,7 +1619,7 @@ export function Settings() {
                       {showUrlWarning && (
                         <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
                           <div className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                            <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
                             <p className="text-xs text-blue-700 dark:text-blue-300">
                               URL automatically sanitized! Encoded characters have been fixed.
                             </p>
@@ -1663,7 +1689,7 @@ export function Settings() {
 
                 <div className="pt-4 border-t border-border">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                       <Link2 className="w-5 h-5 text-primary" />
                     </div>
                     <div className="flex-1">
@@ -1730,10 +1756,10 @@ export function Settings() {
                       if (!ideaTitle || !ideaBenefit) return;
 
                       const idea = {
-                        title: ideaTitle,
-                        benefit: ideaBenefit,
-                        date: new Date().toISOString(),
-                        version: currentVersion,
+                        Type: 'Feedback',
+                        Email: settings.profile.email,
+                        Title: ideaTitle,
+                        Description: ideaBenefit,
                       };
 
                       const apiUrl = settings.apiConnections.submitIdeaUrl;
@@ -1744,26 +1770,31 @@ export function Settings() {
                         const body = encodeURIComponent(`
 Feature Idea
 ------------
+Email: ${settings.profile.email}
 Title: ${ideaTitle}
 
-Why is this needed / Who would this benefit?
+Description:
 ${ideaBenefit}
 
 Submitted: ${new Date().toLocaleString()}
-Version: ${currentVersion}
                         `);
 
                         window.location.href = `mailto:support@example.com?subject=${subject}&body=${body}`;
+
+                        // Clear fields after mailto (assuming success)
+                        setIdeaTitle('');
+                        setIdeaBenefit('');
                         setIdeaSubmitted(true);
                         if (ideaSubmittedTimeoutRef.current) {
                           clearTimeout(ideaSubmittedTimeoutRef.current);
                         }
                         ideaSubmittedTimeoutRef.current = setTimeout(() => {
-                          setIdeaTitle('');
-                          setIdeaBenefit('');
                           setIdeaSubmitted(false);
                           ideaSubmittedTimeoutRef.current = null;
                         }, 2000);
+
+                        // Show success notification
+                        alert('Your idea has been sent to the Documentation Hub Admin');
                         return;
                       }
 
@@ -1778,16 +1809,20 @@ Version: ${currentVersion}
                         });
 
                         if (response.ok) {
+                          // Only clear fields on success
+                          setIdeaTitle('');
+                          setIdeaBenefit('');
                           setIdeaSubmitted(true);
                           if (ideaSubmittedTimeoutRef.current) {
                             clearTimeout(ideaSubmittedTimeoutRef.current);
                           }
                           ideaSubmittedTimeoutRef.current = setTimeout(() => {
-                            setIdeaTitle('');
-                            setIdeaBenefit('');
                             setIdeaSubmitted(false);
                             ideaSubmittedTimeoutRef.current = null;
                           }, 2000);
+
+                          // Show success notification
+                          alert('Your idea has been sent to the Documentation Hub Admin');
                         } else {
                           alert('Failed to submit idea. Please try again.');
                         }

@@ -141,7 +141,7 @@ const lineSpacingOptions = [
 const defaultIndentationLevels: IndentationLevel[] = [
   { level: 0, symbolIndent: 0.5, textIndent: 0.75, bulletChar: '•', numberedFormat: '1.' },
   { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
-  { level: 2, symbolIndent: 1.5, textIndent: 1.75, bulletChar: '■', numberedFormat: 'i.' },
+  { level: 2, symbolIndent: 1.5, textIndent: 1.75, bulletChar: '•', numberedFormat: 'i.' },
   { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
   { level: 4, symbolIndent: 2.5, textIndent: 2.75, bulletChar: '○', numberedFormat: 'a)' },
 ];
@@ -587,57 +587,6 @@ export const StylesEditor = memo(function StylesEditor({
           </label>
         )}
 
-        {/* List Paragraph indentation controls */}
-        {style.id === 'listParagraph' && (
-          <div className="border-t border-border pt-4 mt-4">
-            <h4 className="text-sm font-medium mb-3">Indentation Settings</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-muted-foreground mb-1 block">
-                  Bullet Position (inches)
-                </label>
-                <input
-                  type="number"
-                  value={style.indentation?.left ?? 0.25}
-                  onChange={(e) =>
-                    updateStyle(style.id, {
-                      indentation: {
-                        ...style.indentation,
-                        left: Number(e.target.value),
-                      },
-                    })
-                  }
-                  className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                  min="0"
-                  max="2"
-                  step="0.25"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground mb-1 block">
-                  Text Position (inches)
-                </label>
-                <input
-                  type="number"
-                  value={style.indentation?.firstLine ?? 0.5}
-                  onChange={(e) =>
-                    updateStyle(style.id, {
-                      indentation: {
-                        ...style.indentation,
-                        firstLine: Number(e.target.value),
-                      },
-                    })
-                  }
-                  className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                  min="0"
-                  max="2"
-                  step="0.25"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Preview */}
         <div className="p-3 bg-white rounded-md border border-border">
           <div
@@ -924,7 +873,7 @@ export const StylesEditor = memo(function StylesEditor({
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Level 2</label>
                   <select
-                    value={listBulletSettings.indentationLevels[2]?.bulletChar || '■'}
+                    value={listBulletSettings.indentationLevels[2]?.bulletChar || '•'}
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[2] = { ...newLevels[2], bulletChar: e.target.value };
