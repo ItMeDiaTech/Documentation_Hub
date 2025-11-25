@@ -49,6 +49,12 @@ export const defaultOptions: ProcessingOption[] = [
 
   // Content Structure Fixes Group
   // Note: assign-styles and center-images are now applied automatically during processing
+  {
+    id: 'center-border-images',
+    label: 'Center and Border Images',
+    group: 'structure',
+    enabled: true,
+  },
   { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'structure', enabled: true },
   {
     id: 'remove-paragraph-lines',

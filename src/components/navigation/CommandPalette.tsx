@@ -1,20 +1,22 @@
-import { useTheme } from '@/contexts/ThemeContext';
-import { cn } from '@/utils/cn';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Command } from 'cmdk';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowRight,
-  FileText,
-  FolderOpen,
-  Home,
-  Moon,
   Search,
+  Home,
+  FolderOpen,
   Settings,
+  User,
+  FileText,
+  Plug,
+  Moon,
   Sun,
   X,
+  ArrowRight,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '@/contexts/ThemeContext';
+import { cn } from '@/utils/cn';
 
 interface CommandItem {
   id: string;
@@ -69,6 +71,22 @@ export function CommandPalette({
         icon: FileText,
         action: () => handleNavigate('/documents'),
         keywords: ['docs', 'files', 'text'],
+      },
+      {
+        id: 'plugins',
+        label: 'View Plugins',
+        category: 'Navigation',
+        icon: Plug,
+        action: () => handleNavigate('/plugins'),
+        keywords: ['plugins', 'extensions', 'addons', 'modules'],
+      },
+      {
+        id: 'profile',
+        label: 'View Profile',
+        category: 'Account',
+        icon: User,
+        action: () => handleNavigate('/profile'),
+        keywords: ['user', 'account', 'me'],
       },
       {
         id: 'settings',
