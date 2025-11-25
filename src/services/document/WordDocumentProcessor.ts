@@ -25,6 +25,7 @@ import {
   HyperlinkProcessingResult,
   HyperlinkType,
 } from "@/types/hyperlink";
+import type { DocumentChange } from "@/types/session";
 import { MemoryMonitor } from "@/utils/MemoryMonitor";
 import { logger } from "@/utils/logger";
 import { sanitizeHyperlinkText } from "@/utils/textSanitizer";
@@ -41,6 +42,11 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   validateBeforeProcessing?: boolean;
   streamLargeFiles?: boolean;
   maxFileSizeMB?: number;
+  userProfile?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
 
   // ═══════════════════════════════════════════════════════════
   // Text Formatting Options (ProcessingOptions group: 'text')
@@ -162,6 +168,7 @@ export interface WordProcessingResult extends HyperlinkProcessingResult {
   processingTimeMs?: number;
   comparisonData?: any; // Data for before/after comparison
   hasTrackedChanges?: boolean; // Added: Indicates if document has tracked changes that must be approved first
+  changes?: DocumentChange[]; // Enhanced tracked changes with context
 }
 
 /**
@@ -233,6 +240,7 @@ export class WordDocumentProcessor {
       processedLinks: [],
       validationIssues: [],
       duration: 0,
+      changes: [], // Enhanced tracked changes
     };
 
     let backupCreated = false;
@@ -371,7 +379,8 @@ export class WordDocumentProcessor {
 
             const apiResponse = await hyperlinkService.processHyperlinksWithApi(
               hyperlinkInfos,
-              apiSettings
+              apiSettings,
+              options.userProfile
             );
 
             this.log.info(`API Response success: ${apiResponse.success}`);
@@ -484,7 +493,7 @@ export class WordDocumentProcessor {
                     }
 
                     // Add status indicator for deprecated/expired documents
-                    if (apiResult.status === "Expired" || apiResult.status === "deprecated") {
+                    if (apiResult.status === "expired" || apiResult.status === "deprecated") {
                       newText += " - Expired";
                     }
 
@@ -509,6 +518,20 @@ export class WordDocumentProcessor {
                           "PowerAutomate API Update"
                         );
                       }
+
+                      // Enhanced change tracking for UI
+                      const nearestHeader2 = this.findNearestHeader2(doc, hyperlink.paragraphIndex) || undefined;
+                      result.changes?.push({
+                        type: 'hyperlink',
+                        category: 'hyperlink_update',
+                        description: `Updated hyperlink title`,
+                        before: hyperlinkInfo.displayText,
+                        after: newText,
+                        paragraphIndex: hyperlink.paragraphIndex,
+                        nearestHeader2,
+                        contentId: apiResult.contentId,
+                        hyperlinkStatus: apiResult.status === "expired" || apiResult.status === "deprecated" ? 'expired' : 'updated',
+                      });
                     }
                   }
 
@@ -538,6 +561,19 @@ export class WordDocumentProcessor {
                     // Note: hyperlink.hyperlink accesses the actual docxmlater Hyperlink object
                     hyperlink.hyperlink.setText(notFoundText);
                     result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
+
+                    // Enhanced change tracking for failed hyperlinks
+                    const nearestHeader2 = this.findNearestHeader2(doc, hyperlink.paragraphIndex) || undefined;
+                    result.changes?.push({
+                      type: 'hyperlink',
+                      category: 'hyperlink_failed',
+                      description: `Hyperlink not found in SharePoint`,
+                      before: hyperlinkInfo.displayText,
+                      after: notFoundText,
+                      paragraphIndex: hyperlink.paragraphIndex,
+                      nearestHeader2,
+                      hyperlinkStatus: 'not_found',
+                    });
                   }
                 }
               }
@@ -633,6 +669,16 @@ export class WordDocumentProcessor {
         });
         this.log.info(`Merged ${merged} fragmented hyperlinks`);
         result.mergedHyperlinks = merged;
+
+        // Track hyperlink defragmentation
+        if (merged > 0) {
+          result.changes?.push({
+            type: 'hyperlink',
+            category: 'structure',
+            description: 'Merged fragmented hyperlinks',
+            count: merged,
+          });
+        }
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -645,12 +691,32 @@ export class WordDocumentProcessor {
         this.log.debug("=== REMOVING EXTRA WHITESPACE ===");
         const whitespaceCleaned = await this.removeExtraWhitespace(doc);
         this.log.info(`Cleaned whitespace in ${whitespaceCleaned} runs`);
+
+        // Track whitespace removal
+        if (whitespaceCleaned > 0) {
+          result.changes?.push({
+            type: 'text',
+            category: 'structure',
+            description: 'Removed extra whitespace from text runs',
+            count: whitespaceCleaned,
+          });
+        }
       }
 
       if (options.removeItalics) {
         this.log.debug("=== REMOVING ITALIC FORMATTING ===");
         const italicsRemoved = await this.removeItalicFormatting(doc);
         this.log.info(`Removed italics from ${italicsRemoved} runs`);
+
+        // Track italic removal
+        if (italicsRemoved > 0) {
+          result.changes?.push({
+            type: 'style',
+            category: 'structure',
+            description: 'Removed italic formatting from text',
+            count: italicsRemoved,
+          });
+        }
       }
 
       // ALWAYS standardize hyperlink formatting to ensure consistency
@@ -659,10 +725,30 @@ export class WordDocumentProcessor {
       const hyperlinksStandardized = await this.standardizeHyperlinkFormatting(doc);
       this.log.info(`Standardized formatting for ${hyperlinksStandardized} hyperlinks`);
 
+      // Track automatic hyperlink formatting standardization
+      if (hyperlinksStandardized > 0) {
+        result.changes?.push({
+          type: 'hyperlink',
+          category: 'structure',
+          description: 'Standardized hyperlink formatting (Verdana 12pt blue underlined)',
+          count: hyperlinksStandardized,
+        });
+      }
+
       if (options.standardizeListPrefixFormatting) {
         this.log.debug("=== STANDARDIZING LIST PREFIX FORMATTING ===");
         const listPrefixesStandardized = await this.standardizeListPrefixFormatting(doc);
         this.log.info(`Standardized formatting for ${listPrefixesStandardized} list prefix levels`);
+
+        // Track list prefix formatting standardization
+        if (listPrefixesStandardized > 0) {
+          result.changes?.push({
+            type: 'style',
+            category: 'structure',
+            description: 'Standardized list prefix formatting (Verdana 12pt black)',
+            count: listPrefixesStandardized,
+          });
+        }
       }
 
       // CONTENT STRUCTURE GROUP
@@ -846,6 +932,16 @@ export class WordDocumentProcessor {
           `  DEBUG: After removal - total paragraphs: ${doc.getAllParagraphs().length}`
         );
         this.log.info(`Removed ${paragraphsRemoved} extra paragraph lines`);
+
+        // Track blank line changes in condensed format
+        if (paragraphsRemoved > 0) {
+          result.changes?.push({
+            type: 'structure',
+            category: 'blank_lines',
+            description: 'Removed extra blank lines for better document structure',
+            count: paragraphsRemoved,
+          });
+        }
       }
 
       // NEW VALIDATION OPERATIONS (DocXMLater 1.6.0)
@@ -867,6 +963,16 @@ export class WordDocumentProcessor {
         this.log.debug("=== VALIDATING DOCUMENT STYLES ===");
         const results = await this.validateDocumentStyles(doc, options.styles);
         this.log.info(`Validated ${results.applied} styles: ${results.validated.join(", ")}`);
+
+        // Track style validation
+        if (results.applied > 0) {
+          result.changes?.push({
+            type: 'style',
+            category: 'style_application',
+            description: `Validated and applied styles: ${results.validated.join(', ')}`,
+            count: results.applied,
+          });
+        }
       } else if (options.operations?.validateDocumentStyles) {
         this.log.warn(
           "⚠️ validateDocumentStyles is ENABLED but no styles provided! Please configure styles in the Styles tab."
@@ -883,6 +989,16 @@ export class WordDocumentProcessor {
             options.tableShadingSettings
           );
           this.log.info(`Validated and fixed ${cellsFixed} Header 2 table cells`);
+
+          // Track Header 2 table validation
+          if (cellsFixed > 0) {
+            result.changes?.push({
+              type: 'style',
+              category: 'structure',
+              description: 'Validated and fixed Header 2 table cell formatting',
+              count: cellsFixed,
+            });
+          }
         } else {
           this.log.warn(
             "⚠️ validateHeader2Tables is ENABLED but no header2 style found! Please configure Header 2 style in the Styles tab."
@@ -893,18 +1009,45 @@ export class WordDocumentProcessor {
       if (options.addDocumentWarning) {
         this.log.debug("=== ADDING/UPDATING DOCUMENT WARNING ===");
         await this.addOrUpdateDocumentWarning(doc);
+
+        // Track document warning addition
+        result.changes?.push({
+          type: 'structure',
+          category: 'structure',
+          description: 'Added standardized document warning at end',
+        });
       }
 
       if (options.centerAndBorderImages) {
         this.log.debug("=== CENTERING AND BORDERING IMAGES ===");
         const imagesCentered = doc.borderAndCenterLargeImages(50, 2);
         this.log.info(`Centered and bordered ${imagesCentered} images`);
+
+        // Track image processing
+        if (imagesCentered > 0) {
+          result.changes?.push({
+            type: 'structure',
+            category: 'structure',
+            description: 'Centered and bordered images',
+            count: imagesCentered,
+          });
+        }
       }
 
       if (options.removeHeadersFooters) {
         this.log.debug("=== REMOVING HEADERS/FOOTERS ===");
         const headersFootersRemoved = doc.removeAllHeadersFooters();
         this.log.info(`Removed ${headersFootersRemoved} headers/footers from document`);
+
+        // Track header/footer removal
+        if (headersFootersRemoved > 0) {
+          result.changes?.push({
+            type: 'structure',
+            category: 'structure',
+            description: 'Removed headers and footers',
+            count: headersFootersRemoved,
+          });
+        }
       }
 
       // LISTS & TABLES GROUP
@@ -945,6 +1088,17 @@ export class WordDocumentProcessor {
         );
         this.log.info(`Standardized ${numbersStandardized} numbered lists`);
 
+        // Track list formatting changes
+        const totalListsFixed = bulletsStandardized + numbersStandardized;
+        if (totalListsFixed > 0) {
+          result.changes?.push({
+            type: 'structure',
+            category: 'list_fix',
+            description: 'Standardized list formatting and indentation',
+            count: totalListsFixed,
+          });
+        }
+
         // NOTE: Blank lines after lists are now handled automatically by
         // doc.removeExtraBlankParagraphs({ addStructureBlankLines: true })
         // which internally calls addStructureBlankLines() with afterLists: true default
@@ -980,8 +1134,18 @@ export class WordDocumentProcessor {
         this.log.debug("=== APPLYING TABLE UNIFORMITY (DOCXMLATER 1.7.0) ===");
         const tablesFormatted = await this.applyTableUniformity(doc, options);
         this.log.info(
-          `Applied standard formatting to ${tablesFormatted} tables (shading, borders, autofit, patterns)`
+          `Applied standard formatting to ${tablesFormatted.tablesProcessed} tables (shading, borders, autofit, patterns)`
         );
+
+        // Track table formatting
+        if (tablesFormatted.tablesProcessed > 0 || tablesFormatted.cellsRecolored > 0) {
+          result.changes?.push({
+            type: 'table',
+            category: 'structure',
+            description: 'Applied table shading and formatting',
+            count: tablesFormatted.tablesProcessed,
+          });
+        }
       }
 
       // NEW 1.1.0 Option: Smart Table Detection & Formatting
@@ -989,6 +1153,16 @@ export class WordDocumentProcessor {
         this.log.debug("=== SMART TABLE DETECTION & FORMATTING (NEW) ===");
         const smartFormatted = await this.applySmartTableFormatting(doc, options);
         this.log.info(`Applied smart formatting to ${smartFormatted} tables`);
+
+        // Track smart table formatting
+        if (smartFormatted > 0) {
+          result.changes?.push({
+            type: 'table',
+            category: 'structure',
+            description: 'Applied smart table detection and formatting',
+            count: smartFormatted,
+          });
+        }
       }
 
       // HYPERLINK GROUP (additional operations)
@@ -996,6 +1170,16 @@ export class WordDocumentProcessor {
         this.log.debug("=== UPDATING TOP OF DOCUMENT HYPERLINKS ===");
         const topLinksAdded = await this.updateTopOfDocumentHyperlinks(doc);
         this.log.info(`Added ${topLinksAdded} "Top of Document" navigation links`);
+
+        // Track Top of Document hyperlink creation
+        if (topLinksAdded > 0) {
+          result.changes?.push({
+            type: 'hyperlink',
+            category: 'structure',
+            description: 'Created "Top of Document" navigation links',
+            count: topLinksAdded,
+          });
+        }
       }
 
       if (options.operations?.replaceOutdatedTitles) {
@@ -1011,12 +1195,32 @@ export class WordDocumentProcessor {
         this.log.debug("=== STANDARDIZING HYPERLINK COLORS ===");
         const hyperlinksStandardized = await this.standardizeHyperlinkColors(doc);
         this.log.info(`Standardized color for ${hyperlinksStandardized} hyperlinks`);
+
+        // Track hyperlink color standardization
+        if (hyperlinksStandardized > 0) {
+          result.changes?.push({
+            type: 'hyperlink',
+            category: 'structure',
+            description: 'Standardized hyperlink colors to blue',
+            count: hyperlinksStandardized,
+          });
+        }
       }
 
       if (options.operations?.fixInternalHyperlinks) {
         this.log.debug("=== FIXING INTERNAL HYPERLINKS ===");
         const internalLinksFixed = await this.fixInternalHyperlinks(doc);
         this.log.info(`Fixed ${internalLinksFixed} internal hyperlinks`);
+
+        // Track internal hyperlink fixes
+        if (internalLinksFixed > 0) {
+          result.changes?.push({
+            type: 'hyperlink',
+            category: 'structure',
+            description: 'Fixed internal hyperlink bookmarks',
+            count: internalLinksFixed,
+          });
+        }
       }
 
       // Note: TOC replacement is performed after final document save (see below)
@@ -1036,6 +1240,16 @@ export class WordDocumentProcessor {
         this.log.debug("=== BUILDING PROPER TOC (STYLES + FIELD + POPULATION) ===");
         const tocEntriesCreated = await this.buildProperTOC(doc);
         this.log.info(`✓ Built proper TOC with ${tocEntriesCreated} styled hyperlink entries`);
+
+        // Track Table of Contents creation
+        if (tocEntriesCreated > 0) {
+          result.changes?.push({
+            type: 'structure',
+            category: 'structure',
+            description: 'Rebuilt Table of Contents with styled hyperlinks',
+            count: tocEntriesCreated,
+          });
+        }
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -3644,7 +3858,7 @@ export class WordDocumentProcessor {
 
   /**
    * Fix any existing "Top of Document" hyperlinks throughout the document
-   * Searches body paragraphs and checks for incorrect text, formatting, or bookmarks
+   * Searches ALL paragraphs (body, tables, headers, footers) and checks for incorrect text, formatting, or bookmarks
    * Updates display text, formatting, and bookmark reference to match standard
    *
    * @param doc - Document to search and fix
@@ -3656,19 +3870,11 @@ export class WordDocumentProcessor {
     // Ensure TopHyperlink style exists before fixing existing hyperlinks
     this.ensureTopHyperlinkStyle(doc);
 
-    // Check all body elements for paragraphs with "Top of" hyperlinks
-    const bodyElements = doc.getBodyElements();
-    const paragraphsToCheck: Paragraph[] = [];
-
-    // Collect all paragraphs from body elements
-    bodyElements.forEach((element) => {
-      if (element instanceof Paragraph) {
-        paragraphsToCheck.push(element);
-      }
-    });
+    // Check ALL paragraphs in document (body, tables, headers, footers)
+    const paragraphsToCheck = doc.getAllParagraphs();
 
     this.log.debug(
-      `Checking ${paragraphsToCheck.length} body paragraphs for Top of Document hyperlinks to fix...`
+      `Checking ${paragraphsToCheck.length} paragraphs (ALL locations) for Top of Document hyperlinks to fix...`
     );
 
     for (const para of paragraphsToCheck) {
@@ -3727,8 +3933,10 @@ export class WordDocumentProcessor {
             const currentStyle = para.getStyle();
             if (currentStyle !== "TopHyperlink") {
               para.setStyle("TopHyperlink");
+              // Explicitly set right alignment AFTER style to ensure it's applied after spacing
+              para.setAlignment("right");
               this.log.debug(
-                "Applied TopHyperlink style to existing hyperlink paragraph (guaranteed zero spacing)"
+                "Applied TopHyperlink style and explicit right alignment (spacing before alignment)"
               );
             }
           }
@@ -4624,6 +4832,39 @@ export class WordDocumentProcessor {
       }
       // Don't throw - allow document processing to continue
       return totalEntriesCreated;
+    }
+  }
+
+  /**
+   * Find the nearest Header 2 above a given paragraph index
+   * Used for providing context in tracked changes
+   *
+   * @param doc - The document to search
+   * @param paragraphIndex - Index of the paragraph to find context for
+   * @returns Header 2 text or null if not found
+   */
+  private findNearestHeader2(doc: Document, paragraphIndex: number): string | null {
+    try {
+      const paragraphs = doc.getAllParagraphs();
+
+      // Search backwards from the given index
+      for (let i = paragraphIndex - 1; i >= 0; i--) {
+        const para = paragraphs[i];
+        const style = para?.getStyle();
+
+        // Check if this is a Header 2 (handles various format variations)
+        if (style && (style === 'Heading2' || style === 'Heading 2' || style.includes('Heading2'))) {
+          const text = para.getText().trim();
+          if (text) {
+            return text;
+          }
+        }
+      }
+
+      return null; // No Header 2 found above this paragraph
+    } catch (error) {
+      this.log.warn(`Failed to find nearest Header 2 for paragraph ${paragraphIndex}:`, error);
+      return null;
     }
   }
 

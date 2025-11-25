@@ -1,27 +1,22 @@
 import {
-  HyperlinkData,
   DetailedHyperlinkInfo,
-  HyperlinkProcessingOptions,
-  HyperlinkProcessingResult,
-  HyperlinkFixingOptions,
-  HyperlinkFixingResult,
-  HyperlinkApiRequest,
   HyperlinkApiResponse,
   HyperlinkApiResult,
   HyperlinkApiSettings,
-  HyperlinkValidationIssue,
-  HyperlinkModificationResult,
+  HyperlinkFixingOptions,
+  HyperlinkFixingResult,
+  HyperlinkProcessingOptions,
   HyperlinkStatistics,
-  URL_PATTERNS,
   HyperlinkType,
-  HyperlinkSummary,
+  HyperlinkValidationIssue,
   PowerAutomateResponse,
+  URL_PATTERNS
 } from '@/types/hyperlink';
 import { Document } from '@/types/session';
 import { UserSettings } from '@/types/settings';
-import { extractContentId, extractDocumentId, isTheSourceUrl } from '@/utils/urlPatterns';
 import { logger } from '@/utils/logger';
 import { sanitizeUrl, validatePowerAutomateUrl } from '@/utils/urlHelpers';
+import { extractContentId, extractDocumentId } from '@/utils/urlPatterns';
 
 /**
  * Extended API response with results cache for O(1) lookups
@@ -121,7 +116,8 @@ export class HyperlinkService {
    */
   public async processHyperlinksWithApi(
     hyperlinks: DetailedHyperlinkInfo[],
-    settings?: HyperlinkApiSettings
+    settings?: HyperlinkApiSettings,
+    userProfile?: { firstName: string; lastName: string; email: string }
   ): Promise<HyperlinkApiResponse & { processedHyperlinks?: DetailedHyperlinkInfo[] }> {
     const apiConfig = settings || this.apiSettings;
 
@@ -164,9 +160,20 @@ export class HyperlinkService {
         };
       }
 
-      // Create request payload matching the specification
+      // Calculate hyperlink statistics
+      const totalHyperlinks = hyperlinks.length;
+      const hyperlinksChecked = hyperlinks.filter((h) =>
+        URL_PATTERNS.THE_SOURCE.pattern.test(h.url)
+      ).length;
+
+      // Create request payload matching the specification with profile data and statistics
       const request = {
         Lookup_ID: lookupIds,
+        Hyperlinks_Checked: hyperlinksChecked,
+        Total_Hyperlinks: totalHyperlinks,
+        First_Name: userProfile?.firstName || '',
+        Last_Name: userProfile?.lastName || '',
+        Email: userProfile?.email || '',
       };
 
       // Make API call
@@ -483,8 +490,8 @@ export class HyperlinkService {
           }
         }
 
-        // Add status indicators for deprecated documents
-        if (apiResult.status === 'deprecated') {
+        // Add status indicators for deprecated or expired documents
+        if (apiResult.status === 'deprecated' || apiResult.status === 'expired') {
           newDisplayText += ' - Expired';
         }
 
@@ -543,7 +550,14 @@ export class HyperlinkService {
 
   private async callPowerAutomateApi(
     settings: HyperlinkApiSettings,
-    request: { Lookup_ID: string[] }
+    request: {
+      Lookup_ID: string[];
+      Hyperlinks_Checked: number;
+      Total_Hyperlinks: number;
+      First_Name: string;
+      Last_Name: string;
+      Email: string;
+    }
   ): Promise<HyperlinkApiResponse> {
     const controller = new AbortController();
     const timeoutMs = settings.timeout || 30000;
@@ -607,39 +621,34 @@ export class HyperlinkService {
           const data = await response.json();
           this.log.info('API Response:', data);
 
-          // Parse response - support multiple formats:
-          // Format 1 (wrapped): { StatusCode, Headers, Body: { Results, Version, Changes } }
-          // Format 2 (direct): { Results, Version, Changes }
-          // The actual API uses Format 2, so we check for Results array presence
+          // Parse response - simplified format: { Results: [...] }
           const apiResponse: HyperlinkApiResponse = {
-            // Success if HTTP 200 AND we have Results array (in either format)
-            success:
-              response.ok && (Array.isArray(data.Results) || Array.isArray(data.Body?.Results)),
+            // Success if HTTP 200 AND we have Results array
+            success: response.ok && Array.isArray(data.Results),
             timestamp: new Date(),
-            statusCode: parseInt(data.StatusCode) || response.status,
+            statusCode: response.status,
           };
 
-          // Handle both wrapped (data.Body) and direct (data) response formats
-          const responseBody = data.Body || data;
-
-          if (responseBody.Results) {
+          if (data.Results) {
             // Cache results for efficient lookup
             const resultsMap = new Map<string, HyperlinkApiResult>();
 
             apiResponse.body = {
               results:
-                responseBody.Results?.map((result: PowerAutomateResponse['Body']['Results'][0]) => {
+                data.Results?.map((result: PowerAutomateResponse['Body']['Results'][0]) => {
                   // Trim whitespace from all fields as specified
                   const rawStatus = result.Status?.trim() || 'Active';
                   // Normalize status to match HyperlinkApiResult type
                   const normalizedStatus: HyperlinkApiResult['status'] =
                     rawStatus.toLowerCase() === 'deprecated'
                       ? 'deprecated'
-                      : rawStatus.toLowerCase() === 'moved'
-                        ? 'moved'
-                        : rawStatus.toLowerCase() === 'not_found'
-                          ? 'not_found'
-                          : 'active';
+                      : rawStatus.toLowerCase() === 'expired'
+                        ? 'expired'
+                        : rawStatus.toLowerCase() === 'moved'
+                          ? 'moved'
+                          : rawStatus.toLowerCase() === 'not_found'
+                            ? 'not_found'
+                            : 'active';
 
                   const processed: HyperlinkApiResult = {
                     url: '', // Will be constructed from Document_ID

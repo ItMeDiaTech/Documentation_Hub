@@ -1,21 +1,22 @@
-import { motion } from 'framer-motion';
-import {
-  CheckCircle,
-  AlertCircle,
-  FileText,
-  Link,
-  Clock,
-  TrendingUp,
-  Download,
-  RotateCcw,
-  Share2,
-  Archive,
-  Hash,
-  ArrowRight,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
 import { Button } from '@/components/common/Button';
 import type { Document, DocumentChange } from '@/types/session';
+import { cn } from '@/utils/cn';
+import { motion } from 'framer-motion';
+import {
+  AlertCircle,
+  Archive,
+  ArrowRight,
+  CheckCircle,
+  Clock,
+  Download,
+  FileText,
+  Hash,
+  Link,
+  RotateCcw,
+  Share2,
+  TrendingUp,
+} from 'lucide-react';
+import { TrackedChangesDetail } from './TrackedChangesDetail';
 
 interface ProcessingResultsProps {
   document: Document;
@@ -192,52 +193,9 @@ export function ProcessingResults({
         </motion.div>
       </div>
 
-      {/* Changes List */}
+      {/* Enhanced Tracked Changes */}
       {processingResult.changes && processingResult.changes.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="font-medium text-sm text-muted-foreground">
-            Applied Changes ({processingResult.changes.length})
-          </h4>
-
-          <div className="space-y-2 max-h-[300px] overflow-y-auto">
-            {processingResult.changes.map((change, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="flex items-start gap-3 p-3 bg-muted/20 rounded-lg"
-              >
-                {getChangeIcon(change.type)}
-
-                <div className="flex-1">
-                  <p className="font-medium text-sm">{change.description}</p>
-                  {change.before && change.after && (
-                    <div className="mt-1 space-y-1">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">Before:</span>
-                        <code className="bg-muted px-1 py-0.5 rounded truncate max-w-xs">
-                          {change.before}
-                        </code>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">After:</span>
-                        <code className="bg-primary/10 text-primary px-1 py-0.5 rounded truncate max-w-xs">
-                          {change.after}
-                        </code>
-                      </div>
-                    </div>
-                  )}
-                  {change.count !== undefined && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {change.count} occurrence{change.count !== 1 ? 's' : ''}
-                    </p>
-                  )}
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
+        <TrackedChangesDetail changes={processingResult.changes} />
       )}
 
       {/* Backup Information */}

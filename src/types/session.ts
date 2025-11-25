@@ -33,6 +33,19 @@ export interface DocumentChange {
   paragraphIndex?: number; // Paragraph index in document
   runIndex?: number; // Run index within paragraph
   context?: string; // Surrounding context for better identification
+
+  // NEW: Enhanced location context
+  nearestHeader2?: string; // Closest Header 2 above this change
+  sectionContext?: string; // Additional section info
+
+  // NEW: Grouping and categorization
+  category?: 'blank_lines' | 'hyperlink_update' | 'hyperlink_failed' | 'list_fix' |
+             'style_application' | 'structure' | 'other';
+  affectedItems?: string[]; // For grouped changes (e.g., list of URLs updated)
+
+  // NEW: Hyperlink-specific metadata
+  contentId?: string; // Content ID if applicable
+  hyperlinkStatus?: 'updated' | 'expired' | 'not_found' | 'valid';
 }
 
 export interface SessionStats {

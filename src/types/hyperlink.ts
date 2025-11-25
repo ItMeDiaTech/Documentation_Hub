@@ -257,7 +257,7 @@ export interface HyperlinkApiResult {
   documentId: string;
   contentId: string;
   title?: string;
-  status: 'active' | 'deprecated' | 'moved' | 'not_found';
+  status: 'active' | 'deprecated' | 'expired' | 'moved' | 'not_found';
   suggestedUrl?: string;
   metadata?: Record<string, unknown>;
 }
