@@ -7,17 +7,20 @@
 
 import {
   Bookmark,
+  ChangelogGenerator,
   Document,
   Hyperlink,
   Image,
   NumberingLevel,
   Paragraph,
   pointsToTwips,
+  RevisionAwareProcessor,
   Run,
   Style,
   Table,
   type TableOfContents,
 } from "docxmlater";
+import type { RevisionHandlingMode } from "@/types/session";
 // Note: Run, Hyperlink, Image imported for type checking in isParagraphTrulyEmpty()
 import {
   DetailedHyperlinkInfo,
@@ -25,7 +28,7 @@ import {
   HyperlinkProcessingResult,
   HyperlinkType,
 } from "@/types/hyperlink";
-import type { DocumentChange } from "@/types/session";
+import type { ChangeEntry, ChangelogSummary, DocumentChange, WordRevisionState } from "@/types/session";
 import { MemoryMonitor } from "@/utils/MemoryMonitor";
 import { logger } from "@/utils/logger";
 import { sanitizeHyperlinkText } from "@/utils/textSanitizer";
@@ -134,6 +137,16 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   validateHyperlinks?: boolean; // validate-hyperlinks: Validate and auto-fix all hyperlinks
 
   // ═══════════════════════════════════════════════════════════
+  // Word Tracked Changes Handling (NEW)
+  // ═══════════════════════════════════════════════════════════
+  /** How to handle Word tracked changes during processing (default: 'accept_all') */
+  revisionHandlingMode?: RevisionHandlingMode;
+  /** Author name for preserve_and_wrap mode */
+  revisionAuthor?: string;
+  /** Auto-accept all revisions after processing for clean output (default: true) */
+  autoAcceptRevisions?: boolean;
+
+  // ═══════════════════════════════════════════════════════════
   // Legacy/Existing Options
   // ═══════════════════════════════════════════════════════════
   contentId?: string;
@@ -169,6 +182,8 @@ export interface WordProcessingResult extends HyperlinkProcessingResult {
   comparisonData?: any; // Data for before/after comparison
   hasTrackedChanges?: boolean; // Added: Indicates if document has tracked changes that must be approved first
   changes?: DocumentChange[]; // Enhanced tracked changes with context
+  /** Word tracked changes state (from docxmlater) */
+  wordRevisions?: WordRevisionState;
 }
 
 /**
@@ -268,19 +283,44 @@ export class WordDocumentProcessor {
       backupCreated = true;
       this.log.info(`Backup created: ${backupPath}`);
 
-      // Load document using DocXMLater with default options
-      // Using framework defaults ensures no corruption during load/save cycle
+      // Load document using DocXMLater
+      // Determine revisionHandling based on autoAcceptRevisions option:
+      // - TRUE (default): Accept existing tracked changes for clean output
+      // - FALSE (unchecked): Preserve existing tracked changes in document
       this.log.debug("=== LOADING DOCUMENT WITH DOCXMLATER ===");
-      doc = await Document.load(filePath, { strictParsing: false });
+      const revisionHandling = options.autoAcceptRevisions === false ? 'preserve' : 'accept';
+      this.log.debug(`Revision handling mode: ${revisionHandling} (autoAcceptRevisions=${options.autoAcceptRevisions})`);
+      doc = await Document.load(filePath, {
+        strictParsing: false,
+        revisionHandling: revisionHandling as 'preserve' | 'accept' | 'strip'
+      });
       this.log.debug("Document loaded successfully");
 
-      // Tracked changes validation disabled - processing continues regardless of tracked changes
-      this.log.debug("=== TRACKED CHANGES VALIDATION DISABLED ===");
-      this.log.debug("Processing will continue regardless of tracked changes status");
+      // ═══════════════════════════════════════════════════════════
+      // Word Tracked Changes - Enable Tracking Mode
+      // All DocHub modifications will become Word tracked changes
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== ENABLING WORD TRACK CHANGES ===");
 
-      // Start tracking changes if enabled
+      // Enable track changes BEFORE any modifications
+      // This makes all DocHub changes become Word tracked changes
+      // Build author name from user profile, defaulting to "Doc Hub" if blank
+      const firstName = options.userProfile?.firstName?.trim() || '';
+      const lastName = options.userProfile?.lastName?.trim() || '';
+      const authorName = firstName && lastName
+        ? `${firstName} ${lastName}`
+        : firstName || lastName || 'Doc Hub';
+
+      doc.enableTrackChanges({
+        author: authorName,
+        trackFormatting: true,
+        showInsertionsAndDeletions: true,
+      });
+      this.log.info(`Track changes enabled with author: ${authorName}`);
+
+      // Start tracking DocHub's changes if enabled (legacy comparison tracking)
       if (options.trackChanges) {
-        this.log.debug("=== STARTING CHANGE TRACKING ===");
+        this.log.debug("=== STARTING DOCHUB CHANGE TRACKING ===");
         await documentProcessingComparison.startTracking(filePath, doc);
       }
 
@@ -1217,6 +1257,109 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
+      // EXTRACT REVISIONS FOR UI DISPLAY
+      // Use ChangelogGenerator to get all tracked changes (original + DocHub)
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== EXTRACTING TRACKED CHANGES FOR UI ===");
+      try {
+        // Cast to ChangeEntry[] from session.ts to support extended types (hyperlink)
+        const changelogEntries = ChangelogGenerator.fromDocument(doc) as ChangeEntry[];
+
+        // ═══════════════════════════════════════════════════════════
+        // INTEGRATE DOCHUB PROCESSING CHANGES (Hyperlinks)
+        // Convert hyperlinkChanges from DocumentProcessingComparison to ChangeEntry format
+        // These are changes made by DocHub processing (author: 'DocHub')
+        // ═══════════════════════════════════════════════════════════
+        if (options.trackChanges) {
+          const comparison = documentProcessingComparison.getCurrentComparison();
+          if (comparison?.hyperlinkChanges && comparison.hyperlinkChanges.length > 0) {
+            this.log.debug(`Adding ${comparison.hyperlinkChanges.length} DocHub hyperlink changes to changelog`);
+
+            for (const hc of comparison.hyperlinkChanges) {
+              const urlChanged = hc.originalUrl !== hc.modifiedUrl;
+              const textChanged = hc.originalText !== hc.modifiedText;
+
+              // Only add entry if something actually changed
+              if (urlChanged || textChanged) {
+                changelogEntries.push({
+                  id: `dochub-hyperlink-${hc.paragraphIndex}-${hc.hyperlinkIndex}-${Date.now()}`,
+                  revisionType: "hyperlinkChange",
+                  category: "hyperlink",
+                  description: this.describeHyperlinkProcessingChange(hc),
+                  author: "DocHub",
+                  date: new Date(),
+                  location: {
+                    paragraphIndex: hc.paragraphIndex,
+                    nearestHeading: undefined, // Could be enhanced to find nearest heading
+                  },
+                  content: {
+                    hyperlinkChange: {
+                      urlBefore: hc.originalUrl,
+                      urlAfter: hc.modifiedUrl,
+                      textBefore: hc.originalText,
+                      textAfter: hc.modifiedText,
+                    },
+                  },
+                });
+              }
+            }
+          }
+        }
+
+        // Calculate summary - need to cast back for docxmlater's getSummary, then cast result
+        // The summary may not include hyperlink category count from docxmlater, so we add it
+        const rawSummary = ChangelogGenerator.getSummary(changelogEntries as any);
+        const hyperlinkCount = changelogEntries.filter(e => e.category === "hyperlink").length;
+        const summary: ChangelogSummary = {
+          ...rawSummary,
+          byCategory: {
+            ...rawSummary.byCategory,
+            hyperlink: hyperlinkCount,
+          },
+        };
+
+        this.log.info(`Extracted ${changelogEntries.length} tracked changes for UI display`);
+
+        // Store in result for UI
+        result.wordRevisions = {
+          hasRevisions: changelogEntries.length > 0,
+          entries: changelogEntries,
+          summary: summary,
+          handlingMode: options.revisionHandlingMode || "preserve_and_wrap",
+        };
+      } catch (changelogError) {
+        this.log.warn("Failed to extract changelog entries:", changelogError);
+        // Non-fatal - continue with save
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // OPTIONALLY AUTO-ACCEPT REVISIONS
+      // If autoAcceptRevisions is true (default), accept all tracked changes
+      // This produces a clean document while UI still shows what changed
+      // ═══════════════════════════════════════════════════════════
+      const autoAccept = options.autoAcceptRevisions ?? true; // Default to true for clean output
+      if (autoAccept) {
+        this.log.debug("=== AUTO-ACCEPTING ALL REVISIONS ===");
+        try {
+          await RevisionAwareProcessor.prepare(doc, { mode: "accept_all" });
+          doc.disableTrackChanges();
+          this.log.info("All revisions accepted - document will be clean");
+          if (result.wordRevisions) {
+            result.wordRevisions.handlingResult = {
+              accepted: result.wordRevisions.entries.map((e) => e.id),
+              preserved: [],
+              conflicts: 0,
+            };
+          }
+        } catch (acceptError) {
+          this.log.warn("Failed to auto-accept revisions:", acceptError);
+          // Non-fatal - document will have tracked changes visible
+        }
+      } else {
+        this.log.info("Auto-accept disabled - tracked changes will be visible in Word");
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // SAVE DOCUMENT - Direct save using docxmlater
       //
       // IMPORTANT: We rely on docxmlater's internal DOCX formatting
@@ -2121,7 +2264,14 @@ export class WordDocumentProcessor {
 
       if (styleToApply) {
         // Apply paragraph formatting
-        para.setAlignment(styleToApply.alignment);
+        // Skip alignment for list paragraphs - numbering controls their layout
+        const numbering = para.getNumbering();
+        if (!numbering) {
+          para.setAlignment(styleToApply.alignment);
+        } else {
+          // Debug: Log when we skip alignment for a list paragraph
+          this.log.debug(`[LIST] Skipping alignment for list paragraph: numId=${numbering.numId}, level=${numbering.level}, text="${para.getText().substring(0, 40)}"`);
+        }
         para.setSpaceBefore(pointsToTwips(styleToApply.spaceBefore));
         para.setSpaceAfter(pointsToTwips(styleToApply.spaceAfter));
         if (styleToApply.lineSpacing) {
@@ -2679,8 +2829,16 @@ export class WordDocumentProcessor {
 
           // Check if image is larger than 50x50 pixels
           if (width > MIN_SIZE_EMUS && height > MIN_SIZE_EMUS) {
-            // Center the paragraph containing the image
-            para.setAlignment("center");
+            // Skip centering for list paragraphs - numbering controls their layout
+            const numbering = para.getNumbering();
+            if (!numbering) {
+              // Center the paragraph containing the image
+              para.setAlignment("center");
+            } else {
+              this.log.debug(
+                `[LIST] Skipping centering for list paragraph with image: numId=${numbering.numId}, level=${numbering.level}`
+              );
+            }
 
             // Apply 2pt solid black border to the image
             await this.applyImageBorder(doc, item);
@@ -3608,8 +3766,11 @@ export class WordDocumentProcessor {
               cell.setMargins(cellMargins);
 
               // Set all paragraphs in the cell to centered alignment
+              // Skip list paragraphs - numbering controls their layout
               for (const para of cell.getParagraphs()) {
-                para.setAlignment("center");
+                if (!para.getNumbering()) {
+                  para.setAlignment("center");
+                }
               }
 
               cellIndex++;
@@ -4191,7 +4352,13 @@ export class WordDocumentProcessor {
       }
     }
 
-    // Step 3: Create first line (normal weight)
+    // Step 3: Create blank line for separation before warning
+    const blankPara = doc.createParagraph("");
+    blankPara.setSpaceBefore(pointsToTwips(0));
+    blankPara.setSpaceAfter(pointsToTwips(0));
+    this.log.debug("Created blank paragraph for separation before warning");
+
+    // Step 4: Create first line (normal weight)
     const para1 = doc.createParagraph(warningLine1);
     para1.setAlignment("center");
     para1.setSpaceBefore(pointsToTwips(3));
@@ -4207,7 +4374,7 @@ export class WordDocumentProcessor {
 
     this.log.debug("Created first warning line (normal weight)");
 
-    // Step 4: Create second line (bold)
+    // Step 5: Create second line (bold)
     const para2 = doc.createParagraph(warningLine2);
     para2.setAlignment("center");
     para2.setSpaceBefore(pointsToTwips(3));
@@ -4777,10 +4944,28 @@ export class WordDocumentProcessor {
         insertPosition = manualTocStartIndex;
         this.log.info(`Removed ${manualTocParagraphs.length} existing manual TOC entries`);
       }
-      // No existing TOC - insert at beginning
+      // No existing TOC - insert after first Heading 1
       else {
-        insertPosition = 0;
-        this.log.info("No existing TOC found - creating new TOC at document start");
+        // Find the first Heading 1 paragraph and insert TOC after it
+        const paragraphs = doc.getAllParagraphs();
+        let firstHeading1Index = -1;
+        for (let i = 0; i < paragraphs.length; i++) {
+          const style = paragraphs[i]?.getStyle();
+          if (style === "Heading1" || style === "Heading 1") {
+            firstHeading1Index = i;
+            break;
+          }
+        }
+
+        if (firstHeading1Index >= 0) {
+          // Insert after the first Heading 1
+          insertPosition = firstHeading1Index + 1;
+          this.log.info(`No existing TOC found - creating new TOC after first Heading 1 at position ${insertPosition}`);
+        } else {
+          // No Heading 1 found - insert at document start as fallback
+          insertPosition = 0;
+          this.log.info("No existing TOC or Heading 1 found - creating new TOC at document start");
+        }
       }
 
       // Insert all TOC entry paragraphs at the determined position
@@ -4836,6 +5021,35 @@ export class WordDocumentProcessor {
       this.log.warn(`Failed to find nearest Header 2 for paragraph ${paragraphIndex}:`, error);
       return null;
     }
+  }
+
+  /**
+   * Generate a human-readable description for a hyperlink processing change
+   *
+   * @param change - The hyperlink change from DocumentProcessingComparison
+   * @returns Human-readable description of the change
+   */
+  private describeHyperlinkProcessingChange(change: {
+    originalUrl: string;
+    modifiedUrl: string;
+    originalText: string;
+    modifiedText: string;
+    changeReason: string;
+  }): string {
+    const urlChanged = change.originalUrl !== change.modifiedUrl;
+    const textChanged = change.originalText !== change.modifiedText;
+
+    const changes: string[] = [];
+    if (urlChanged) changes.push("URL");
+    if (textChanged) changes.push("display text");
+
+    if (changes.length === 0) {
+      return change.changeReason || "Hyperlink updated";
+    }
+
+    const changeDesc = changes.join(" and ");
+    const reason = change.changeReason ? ` (${change.changeReason})` : "";
+    return `Changed hyperlink ${changeDesc}${reason}`;
   }
 
   /**
