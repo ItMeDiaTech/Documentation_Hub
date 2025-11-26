@@ -15,10 +15,10 @@ import {
 import { ReplacementsTab } from '@/components/sessions/ReplacementsTab';
 import { StylesEditor } from '@/components/sessions/StylesEditor';
 import { TabContainer } from '@/components/sessions/TabContainer';
-import { TrackedChanges } from '@/components/sessions/TrackedChanges';
+import { ChangeViewer } from '@/components/sessions/ChangeViewer';
 import { useSession } from '@/contexts/SessionContext';
 import { useToast } from '@/hooks/useToast';
-import { Document } from '@/types/session';
+import type { Document } from '@/types/session';
 import { cn } from '@/utils/cn';
 import logger from '@/utils/logger';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -418,6 +418,19 @@ export function CurrentSession() {
     });
   };
 
+  const handleAutoAcceptRevisionsChange = (autoAccept: boolean) => {
+    // Update session auto-accept revisions setting
+    // Note: We need to provide all required fields since TypeScript expects them
+    updateSessionOptions(session.id, {
+      validateUrls: session.processingOptions?.validateUrls ?? true,
+      createBackup: session.processingOptions?.createBackup ?? true,
+      processInternalLinks: session.processingOptions?.processInternalLinks ?? true,
+      processExternalLinks: session.processingOptions?.processExternalLinks ?? true,
+      enabledOperations: session.processingOptions?.enabledOperations ?? [],
+      autoAcceptRevisions: autoAccept,
+    });
+  };
+
   const getStatusIcon = (status: Document['status']) => {
     switch (status) {
       case 'pending':
@@ -703,6 +716,8 @@ export function CurrentSession() {
           sessionId={session.id}
           options={processingOptions}
           onOptionsChange={handleProcessingOptionsChange}
+          autoAcceptRevisions={session.processingOptions?.autoAcceptRevisions ?? true}
+          onAutoAcceptRevisionsChange={handleAutoAcceptRevisionsChange}
         />
       ),
     },
@@ -733,8 +748,8 @@ export function CurrentSession() {
     },
     {
       id: 'tracked-changes',
-      label: 'Tracked Changes',
-      content: <TrackedChanges sessionId={session.id} />,
+      label: 'Document Changes',
+      content: <ChangeViewer sessionId={session.id} />,
     },
   ];
 

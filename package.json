@@ -21,6 +21,7 @@
     "test:toc": "node test-debug-toc.js",
     "docs:generate": "typedoc",
     "docs:watch": "typedoc --watch",
+    "generate:icons": "node build/create-icon.js",
     "prepare": "husky"
   },
   "keywords": [
@@ -89,7 +90,7 @@
     "cmdk": "^1.1.1",
     "diff": "^8.0.2",
     "docx": "^9.5.1",
-    "docxmlater": "^6.2.1",
+    "docxmlater": "^6.3.0",
     "electron-log": "^5.4.3",
     "electron-updater": "6.7.2",
     "fast-diff": "^1.3.0",

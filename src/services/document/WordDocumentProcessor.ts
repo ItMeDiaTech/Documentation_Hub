@@ -11,9 +11,11 @@ import {
   Document,
   Hyperlink,
   Image,
+  ImageRun,
   NumberingLevel,
   Paragraph,
   pointsToTwips,
+  Revision,
   RevisionAwareProcessor,
   Run,
   Style,
@@ -1155,7 +1157,23 @@ export class WordDocumentProcessor {
       // NEW 1.1.0 Option: Smart Table Detection & Formatting
       if (options.smartTables) {
         this.log.debug("=== SMART TABLE DETECTION & FORMATTING (NEW) ===");
+
+        // IMPORTANT: Disable track changes during smart table formatting
+        // Track changes generates pPrChange elements that corrupt list numbering
+        const wasTrackChangesEnabledForTables = doc.isTrackChangesEnabled();
+        if (wasTrackChangesEnabledForTables) {
+          this.log.debug("Temporarily disabling track changes for smart table formatting");
+          doc.disableTrackChanges();
+        }
+
         const smartFormatted = await this.applySmartTableFormatting(doc, options);
+
+        // Re-enable track changes if it was enabled before
+        if (wasTrackChangesEnabledForTables) {
+          this.log.debug("Re-enabling track changes after smart table formatting");
+          doc.enableTrackChanges();
+        }
+
         this.log.info(`Applied smart formatting to ${smartFormatted} tables`);
 
         // Track smart table formatting
@@ -1262,6 +1280,14 @@ export class WordDocumentProcessor {
       // ═══════════════════════════════════════════════════════════
       this.log.debug("=== EXTRACTING TRACKED CHANGES FOR UI ===");
       try {
+        // IMPORTANT: Flush pending changes BEFORE extracting changelog
+        // Pending changes (font, color, etc.) are only added to RevisionManager when flushed
+        // Without this, ChangelogGenerator.fromDocument() returns empty because changes are still pending
+        if (typeof (doc as any).flushPendingChanges === 'function') {
+          const flushed = (doc as any).flushPendingChanges();
+          this.log.debug(`Flushed ${flushed?.length || 0} pending changes to RevisionManager`);
+        }
+
         // Cast to ChangeEntry[] from session.ts to support extended types (hyperlink)
         const changelogEntries = ChangelogGenerator.fromDocument(doc) as ChangeEntry[];
 
@@ -2264,22 +2290,16 @@ export class WordDocumentProcessor {
 
       if (styleToApply) {
         // Apply paragraph formatting
-        // Skip alignment for list paragraphs - numbering controls their layout
-        const numbering = para.getNumbering();
-        if (!numbering) {
-          para.setAlignment(styleToApply.alignment);
-        } else {
-          // Debug: Log when we skip alignment for a list paragraph
-          this.log.debug(`[LIST] Skipping alignment for list paragraph: numId=${numbering.numId}, level=${numbering.level}, text="${para.getText().substring(0, 40)}"`);
-        }
+        para.setAlignment(styleToApply.alignment);
         para.setSpaceBefore(pointsToTwips(styleToApply.spaceBefore));
         para.setSpaceAfter(pointsToTwips(styleToApply.spaceAfter));
         if (styleToApply.lineSpacing) {
           para.setLineSpacing(pointsToTwips(styleToApply.lineSpacing * 12)); // Convert line spacing multiplier
         }
 
-        // Apply text formatting to all runs in paragraph
-        const runs = para.getRuns();
+        // Apply text formatting to all runs in paragraph, including those inside revisions
+        // This ensures runs inside w:ins, w:moveTo, etc. also get formatting applied
+        const runs = this.getAllRunsFromParagraph(para);
         for (const run of runs) {
           run.setFont(styleToApply.fontFamily);
           run.setSize(styleToApply.fontSize);
@@ -2464,6 +2484,16 @@ export class WordDocumentProcessor {
       preserveBlankLinesAfterHeader2Tables: options.preserveBlankLinesAfterHeader2Tables,
     });
 
+    // IMPORTANT: Disable track changes during style application
+    // Track changes generates pPrChange elements that don't properly serialize numbering properties,
+    // which causes list corruption when Word processes the document
+    const wasTrackChangesEnabled = doc.isTrackChangesEnabled();
+    if (wasTrackChangesEnabled) {
+      this.log.debug("Temporarily disabling track changes for style application");
+      doc.disableTrackChanges();
+    }
+
+    try {
     // Feature detection: Check if framework method exists
     if (typeof (doc as any).applyCustomFormattingToExistingStyles === "function") {
       this.log.debug("Using framework applyCustomFormattingToExistingStyles()");
@@ -2498,6 +2528,13 @@ export class WordDocumentProcessor {
 
     this.log.debug(`Manual fallback completed: ${JSON.stringify(appliedStyles)}`);
     return appliedStyles;
+    } finally {
+      // Re-enable track changes if it was enabled before style application
+      if (wasTrackChangesEnabled) {
+        this.log.debug("Re-enabling track changes after style application");
+        doc.enableTrackChanges();
+      }
+    }
   }
 
   /**
@@ -3763,15 +3800,23 @@ export class WordDocumentProcessor {
                 );
               }
 
-              cell.setMargins(cellMargins);
-
-              // Set all paragraphs in the cell to centered alignment
-              // Skip list paragraphs - numbering controls their layout
+              // Center paragraphs containing images OR in shaded cells (skip list paragraphs)
+              // Images should always be centered and have 2pt black borders
+              const isShaded = !hasNoColor && !isWhite;
               for (const para of cell.getParagraphs()) {
                 if (!para.getNumbering()) {
-                  para.setAlignment("center");
+                  // Check if paragraph contains an image (directly or inside revisions)
+                  const hasImage = this.paragraphContainsImage(para);
+                  if (hasImage) {
+                    para.setAlignment("center");
+                    this.applyBorderToImages(para, 2); // 2-point black border
+                  } else if (isShaded) {
+                    para.setAlignment("center");
+                  }
                 }
               }
+
+              cell.setMargins(cellMargins);
 
               cellIndex++;
             }
@@ -5050,6 +5095,100 @@ export class WordDocumentProcessor {
     const changeDesc = changes.join(" and ");
     const reason = change.changeReason ? ` (${change.changeReason})` : "";
     return `Changed hyperlink ${changeDesc}${reason}`;
+  }
+
+  /**
+   * Gets all runs from a paragraph, including those inside revision elements.
+   *
+   * This is needed because para.getRuns() only returns direct Run children,
+   * but runs inside w:ins, w:moveTo, w:del, etc. are not returned.
+   * This method traverses into all content to find all runs.
+   *
+   * @param para - The paragraph to extract runs from
+   * @returns Array of all Run objects in the paragraph
+   */
+  private getAllRunsFromParagraph(para: Paragraph): Run[] {
+    const allRuns: Run[] = [];
+    const content = para.getContent();
+
+    for (const item of content) {
+      if (item instanceof Run) {
+        allRuns.push(item);
+      } else if (item instanceof Revision) {
+        // Get runs from inside revision elements (w:ins, w:moveTo, w:del, etc.)
+        const revRuns = item.getRuns();
+        allRuns.push(...revRuns);
+      } else if (item instanceof Hyperlink) {
+        // Get run from hyperlink
+        const hyperlinkRun = item.getRun();
+        if (hyperlinkRun) {
+          allRuns.push(hyperlinkRun);
+        }
+      }
+      // Fields, Shapes, TextBoxes don't contain directly accessible runs for this purpose
+    }
+
+    return allRuns;
+  }
+
+  /**
+   * Checks if a paragraph contains an image, either directly or inside revision elements.
+   *
+   * Images can appear as:
+   * - Direct Image content in the paragraph
+   * - ImageRun objects inside Revision elements (w:ins, w:moveTo, etc.)
+   *
+   * @param para - The paragraph to check
+   * @returns True if the paragraph contains an image
+   */
+  private paragraphContainsImage(para: Paragraph): boolean {
+    for (const item of para.getContent()) {
+      if (item instanceof Image) {
+        return true;
+      }
+      // Images in runs are stored as ImageRun objects (w:r > w:drawing)
+      if (item instanceof ImageRun) {
+        return true;
+      }
+      if (item instanceof Revision) {
+        // Images inside revisions are stored as ImageRun objects
+        for (const run of item.getRuns()) {
+          if (run instanceof ImageRun) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Applies a border to all images in a paragraph.
+   *
+   * Handles images in:
+   * - Direct Image content
+   * - ImageRun objects (w:r > w:drawing)
+   * - Images inside Revision elements (w:ins, w:moveTo, etc.)
+   *
+   * @param para - The paragraph containing images
+   * @param borderPt - Border thickness in points (default: 2)
+   */
+  private applyBorderToImages(para: Paragraph, borderPt: number = 2): void {
+    for (const item of para.getContent()) {
+      if (item instanceof Image) {
+        item.setBorder(borderPt);
+      }
+      if (item instanceof ImageRun) {
+        item.getImageElement().setBorder(borderPt);
+      }
+      if (item instanceof Revision) {
+        for (const run of item.getRuns()) {
+          if (run instanceof ImageRun) {
+            run.getImageElement().setBorder(borderPt);
+          }
+        }
+      }
+    }
   }
 
   /**
