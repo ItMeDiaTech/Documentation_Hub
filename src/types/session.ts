@@ -1,3 +1,100 @@
+// Revision handling mode type
+export type RevisionHandlingMode = 'accept_all' | 'preserve' | 'preserve_and_wrap';
+
+// Change category type
+export type ChangeCategory = 'content' | 'formatting' | 'structural' | 'table' | 'hyperlink';
+
+/**
+ * Change entry from Word tracked changes (compatible with docxmlater ChangeEntry)
+ */
+export interface ChangeEntry {
+  id: string;
+  revisionType: string;
+  category: ChangeCategory;
+  description: string;
+  author: string;
+  date: Date;
+  location?: {
+    sectionIndex?: number;
+    paragraphIndex: number;
+    runIndex?: number;
+    nearestHeading?: string;
+    characterOffset?: number;
+  };
+  content?: {
+    before?: string;
+    after?: string;
+    affectedText?: string;
+    hyperlinkChange?: {
+      urlBefore?: string;
+      urlAfter?: string;
+      textBefore?: string;
+      textAfter?: string;
+    };
+  };
+  propertyChange?: {
+    property: string;
+    oldValue?: string;
+    newValue?: string;
+  };
+}
+
+/**
+ * Summary statistics for changelog entries
+ */
+export interface ChangelogSummary {
+  total: number;
+  byCategory: Record<ChangeCategory, number>;
+  byType: Record<string, number>;
+  byAuthor: Record<string, number>;
+  dateRange: { earliest: Date; latest: Date } | null;
+}
+
+/**
+ * Unified change entry for UI display - combines Word revisions and processing changes
+ */
+export interface UnifiedChange {
+  id: string;
+  source: 'word' | 'processing';
+  category: ChangeCategory; // 'content' | 'formatting' | 'structural' | 'table' | 'hyperlink'
+  description: string;
+  author?: string;
+  date?: Date;
+  location?: {
+    paragraphIndex?: number;
+    nearestHeading?: string;
+  };
+  before?: string;
+  after?: string;
+  count?: number; // For consolidated changes
+  hyperlinkChange?: {
+    urlBefore?: string;
+    urlAfter?: string;
+    textBefore?: string;
+    textAfter?: string;
+  };
+}
+
+/**
+ * Word revision state for a document - tracked changes from the original Word document
+ */
+export interface WordRevisionState {
+  /** Whether document has Word tracked changes */
+  hasRevisions: boolean;
+  /** Changelog entries from Word revisions */
+  entries: ChangeEntry[];
+  /** Summary statistics */
+  summary: ChangelogSummary | null;
+  /** How revisions were handled during processing */
+  handlingMode: RevisionHandlingMode;
+  /** Result of revision handling */
+  handlingResult?: {
+    accepted: string[];
+    preserved: string[];
+    conflicts: number;
+  };
+}
+
 export interface Document {
   id: string;
   name: string;
@@ -8,6 +105,8 @@ export interface Document {
   processedAt?: Date;
   errors?: string[];
   fileData?: ArrayBuffer; // Store file data for processing
+  /** Word tracked changes state */
+  wordRevisions?: WordRevisionState;
   // Processing results
   processingResult?: {
     hyperlinksProcessed?: number;
@@ -73,6 +172,12 @@ export interface Session {
     processInternalLinks: boolean;
     processExternalLinks: boolean;
     enabledOperations: string[];
+    /** How to handle Word tracked changes during processing */
+    revisionHandlingMode?: RevisionHandlingMode;
+    /** Author name for preserve_and_wrap mode */
+    revisionAuthor?: string;
+    /** Auto-accept all revisions after processing for clean output (default: true) */
+    autoAcceptRevisions?: boolean;
   };
   // Style configuration
   styles?: SessionStyle[];
