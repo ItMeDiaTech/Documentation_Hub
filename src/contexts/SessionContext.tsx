@@ -3,6 +3,7 @@ import {
   Document,
   ListBulletSettings,
   ReplacementRule,
+  RevisionHandlingMode,
   Session,
   SessionContextType,
   SessionStats,
@@ -595,6 +596,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         createBackup: true,
         processInternalLinks: true,
         processExternalLinks: true,
+        autoAcceptRevisions: true, // Default: auto-accept all tracked changes for clean output
         enabledOperations: [
           'remove-italics',
           'replace-outdated-titles',
@@ -1054,6 +1056,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
           // Legacy
           tableUniformitySettings?: TableUniformitySettings;
+
+          // Word Tracked Changes Handling
+          revisionHandlingMode?: RevisionHandlingMode;
+          revisionAuthor?: string;
+          autoAcceptRevisions?: boolean;
         } = {
           apiEndpoint: settings.apiConnections.powerAutomateUrl || '',
           userProfile, // Pass profile data to backend for API request
@@ -1179,6 +1186,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           // Table of Contents Settings - Simplified to enabled flag only
           tableOfContentsSettings: session.tableOfContentsSettings,
 
+          // Word Tracked Changes Handling
+          revisionHandlingMode: session.processingOptions?.revisionHandlingMode || 'accept_all',
+          revisionAuthor: session.processingOptions?.revisionAuthor || 'DocHub',
+          autoAcceptRevisions: session.processingOptions?.autoAcceptRevisions ?? true, // Default: true
+
           // Legacy (deprecated, kept for backwards compatibility)
           tableUniformitySettings: session.tableUniformitySettings,
         };
@@ -1258,7 +1270,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           document.path,
           processingOptions
         )) as typeof window.electronAPI.processHyperlinkDocument extends (...args: any[]) => Promise<infer R>
-          ? R & { changes?: import('@/types/session').DocumentChange[] }
+          ? R & {
+              changes?: import('@/types/session').DocumentChange[];
+              wordRevisions?: import('@/types/session').WordRevisionState;
+            }
           : never;
 
         // PERFORMANCE: Update document status AND stats in single setState (batched)
@@ -1275,6 +1290,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           status: result.success ? ('completed' as const) : ('error' as const),
                           processedAt: new Date(),
                           errors: result.errorMessages,
+                          // Store Word revisions state (from docxmlater)
+                          wordRevisions: result.wordRevisions,
                           processingResult: {
                             hyperlinksProcessed: result.processedHyperlinks,
                             hyperlinksModified: result.modifiedHyperlinks,

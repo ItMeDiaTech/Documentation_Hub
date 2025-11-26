@@ -2,6 +2,7 @@ import { cn } from '@/utils/cn';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { useMemo } from 'react';
+import { RevisionHandlingOptions } from './RevisionHandlingOptions';
 
 export interface ProcessingOption {
   id: string;
@@ -98,10 +99,18 @@ interface ProcessingOptionsProps {
   sessionId?: string;
   options: ProcessingOption[]; // Fully controlled - no "initial" prefix
   onOptionsChange: (options: ProcessingOption[]) => void; // Required, not optional
+  // Revision handling options
+  autoAcceptRevisions?: boolean;
+  onAutoAcceptRevisionsChange?: (autoAccept: boolean) => void;
   // Note: Table shading colors moved to StylesEditor for better organization
 }
 
-export function ProcessingOptions({ options, onOptionsChange }: ProcessingOptionsProps) {
+export function ProcessingOptions({
+  options,
+  onOptionsChange,
+  autoAcceptRevisions = true,
+  onAutoAcceptRevisionsChange,
+}: ProcessingOptionsProps) {
   // REFACTORED: Fully controlled component - no local state
   // All state lives in parent (SessionContext)
   // This eliminates race conditions and state synchronization issues
@@ -253,6 +262,16 @@ export function ProcessingOptions({ options, onOptionsChange }: ProcessingOption
       </div>
 
       {/* Note: Table shading colors moved to StylesEditor for better organization */}
+
+      {/* Word Tracked Changes Handling */}
+      {onAutoAcceptRevisionsChange && (
+        <div className="pt-4 border-t border-border">
+          <RevisionHandlingOptions
+            autoAccept={autoAcceptRevisions}
+            onAutoAcceptChange={onAutoAcceptRevisionsChange}
+          />
+        </div>
+      )}
     </div>
   );
 }
