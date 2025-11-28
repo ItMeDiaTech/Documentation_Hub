@@ -23,6 +23,24 @@ import type {
   BackupSetConfigResponse,
   BackupConfig,
 } from './types/backup';
+import type {
+  SharePointConfig,
+  DictionarySyncStatus,
+  DictionarySyncResponse,
+  DictionaryInitResponse,
+  DictionaryCredentialsResponse,
+  SyncProgressUpdate,
+} from './types/dictionary';
+
+/**
+ * Hyperlink lookup result type (from local dictionary)
+ */
+export type HyperlinkLookupResult = {
+  Document_ID: string;
+  Content_ID: string;
+  Title: string;
+  Status: string;
+};
 
 /**
  * ElectronAPI Type Definition
@@ -96,6 +114,21 @@ export type ElectronAPI = {
     verify: (backupPath: string) => Promise<BackupVerifyResponse>;
     getStorageInfo: () => Promise<BackupStorageInfoResponse>;
     setConfig: (config: Partial<BackupConfig>) => Promise<BackupSetConfigResponse>;
+  };
+
+  // Dictionary operations (Local SharePoint Dictionary)
+  dictionary: {
+    initialize: () => Promise<DictionaryInitResponse>;
+    configureSync: (config: SharePointConfig) => Promise<{ success: boolean; error?: string }>;
+    setCredentials: (clientSecret: string) => Promise<DictionaryCredentialsResponse>;
+    sync: () => Promise<DictionarySyncResponse>;
+    startScheduler: (intervalHours: number) => Promise<{ success: boolean; error?: string }>;
+    stopScheduler: () => Promise<{ success: boolean; error?: string }>;
+    lookup: (lookupId: string) => Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }>;
+    batchLookup: (lookupIds: string[]) => Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }>;
+    getStatus: () => Promise<{ success: boolean; status?: DictionarySyncStatus; error?: string }>;
+    onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => () => void;
+    onSyncComplete: (callback: (result: DictionarySyncResponse) => void) => () => void;
   };
 
   // Auto-updater

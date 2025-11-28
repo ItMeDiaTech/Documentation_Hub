@@ -11,6 +11,8 @@ interface UserSettingsContextType {
   updateNotifications: (updates: Partial<UserSettings['notifications']>) => void;
   updateApiConnections: (updates: Partial<UserSettings['apiConnections']>) => void;
   updateUpdateSettings: (updates: Partial<UserSettings['updateSettings']>) => void;
+  updateLocalDictionary: (updates: Partial<UserSettings['localDictionary']>) => void;
+  updateBackupSettings: (updates: Partial<UserSettings['backupSettings']>) => void;
   saveSettings: () => Promise<boolean>;
   loadSettings: () => void;
   resetSettings: () => void;
@@ -162,6 +164,52 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const updateLocalDictionary = useCallback((updates: Partial<UserSettings['localDictionary']>) => {
+    setSettings((prev) => {
+      const newSettings = {
+        ...prev,
+        localDictionary: { ...prev.localDictionary, ...updates },
+      };
+      // Auto-save local dictionary settings to localStorage
+      const jsonString = safeJsonStringify(
+        newSettings,
+        undefined,
+        'UserSettings.updateLocalDictionary'
+      );
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          // Silent fail - logged elsewhere
+        }
+      }
+      return newSettings;
+    });
+  }, []);
+
+  const updateBackupSettings = useCallback((updates: Partial<UserSettings['backupSettings']>) => {
+    setSettings((prev) => {
+      const newSettings = {
+        ...prev,
+        backupSettings: { ...prev.backupSettings, ...updates },
+      };
+      // Auto-save backup settings to localStorage
+      const jsonString = safeJsonStringify(
+        newSettings,
+        undefined,
+        'UserSettings.updateBackupSettings'
+      );
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          // Silent fail - logged elsewhere
+        }
+      }
+      return newSettings;
+    });
+  }, []);
+
   const resetSettings = useCallback(() => {
     setSettings(defaultUserSettings);
     localStorage.removeItem(STORAGE_KEY);
@@ -182,6 +230,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       updateNotifications,
       updateApiConnections,
       updateUpdateSettings,
+      updateLocalDictionary,
+      updateBackupSettings,
       saveSettings,
       loadSettings,
       resetSettings,
@@ -194,6 +244,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       updateNotifications,
       updateApiConnections,
       updateUpdateSettings,
+      updateLocalDictionary,
+      updateBackupSettings,
       saveSettings,
       loadSettings,
       resetSettings,

@@ -17,6 +17,15 @@ import type {
   BackupSetConfigResponse,
   BackupConfig,
 } from '../src/types/backup';
+import type {
+  SharePointConfig,
+  DictionarySyncStatus,
+  DictionarySyncResponse,
+  DictionaryInitResponse,
+  DictionaryCredentialsResponse,
+  SyncProgressUpdate,
+} from '../src/types/dictionary';
+import type { HyperlinkLookupResult } from './services/LocalDictionaryLookupService';
 
 const electronAPI = {
   minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
@@ -114,6 +123,38 @@ const electronAPI = {
       ipcRenderer.invoke('backup:storage-info'),
     setConfig: (config: Partial<BackupConfig>): Promise<BackupSetConfigResponse> =>
       ipcRenderer.invoke('backup:set-config', config),
+  },
+
+  // Dictionary operations (Local SharePoint Dictionary)
+  dictionary: {
+    initialize: (): Promise<DictionaryInitResponse> =>
+      ipcRenderer.invoke('dictionary:initialize'),
+    configureSync: (config: SharePointConfig): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('dictionary:configure-sync', config),
+    setCredentials: (clientSecret: string): Promise<DictionaryCredentialsResponse> =>
+      ipcRenderer.invoke('dictionary:set-credentials', clientSecret),
+    sync: (): Promise<DictionarySyncResponse> =>
+      ipcRenderer.invoke('dictionary:sync'),
+    startScheduler: (intervalHours: number): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('dictionary:start-scheduler', intervalHours),
+    stopScheduler: (): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('dictionary:stop-scheduler'),
+    lookup: (lookupId: string): Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }> =>
+      ipcRenderer.invoke('dictionary:lookup', lookupId),
+    batchLookup: (lookupIds: string[]): Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }> =>
+      ipcRenderer.invoke('dictionary:batch-lookup', lookupIds),
+    getStatus: (): Promise<{ success: boolean; status?: DictionarySyncStatus; error?: string }> =>
+      ipcRenderer.invoke('dictionary:get-status'),
+    onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => {
+      const subscription = (_event: IpcRendererEvent, progress: SyncProgressUpdate) => callback(progress);
+      ipcRenderer.on('dictionary:sync-progress', subscription);
+      return () => ipcRenderer.removeListener('dictionary:sync-progress', subscription);
+    },
+    onSyncComplete: (callback: (result: DictionarySyncResponse) => void) => {
+      const subscription = (_event: IpcRendererEvent, result: DictionarySyncResponse) => callback(result);
+      ipcRenderer.on('dictionary:sync-complete', subscription);
+      return () => ipcRenderer.removeListener('dictionary:sync-complete', subscription);
+    },
   },
 
   // Auto-updater

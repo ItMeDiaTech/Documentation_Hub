@@ -12,11 +12,13 @@ import { hasEncodingIssues, sanitizeUrl, validatePowerAutomateUrl } from '@/util
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
+  Archive,
   Check,
   CheckCircle2,
   Database,
   Download,
   Globe,
+  HardDrive,
   Lightbulb,
   Link2,
   Moon,
@@ -56,6 +58,18 @@ const settingsSections = [
         icon: Link2,
         description: 'External services',
       },
+      {
+        id: 'local-dictionary',
+        label: 'Local Dictionary',
+        icon: HardDrive,
+        description: 'Offline hyperlink lookups',
+      },
+      {
+        id: 'backup-settings',
+        label: 'Backups',
+        icon: Archive,
+        description: 'Document backup options',
+      },
       { id: 'data', label: 'Storage', icon: Database, description: 'Data management' },
       {
         id: 'submit-idea',
@@ -87,6 +101,8 @@ export function Settings() {
     updateNotifications,
     updateApiConnections,
     updateUpdateSettings,
+    updateLocalDictionary,
+    updateBackupSettings,
     updateSettings,
     saveSettings,
   } = useUserSettings();
@@ -101,6 +117,24 @@ export function Settings() {
   const [timezoneForm, setTimezoneForm] = useState(settings.timezone);
   const [dateFormatForm, setDateFormatForm] = useState(settings.dateFormat);
   const [updateSettingsForm, setUpdateSettingsForm] = useState(settings.updateSettings);
+  const [localDictionaryForm, setLocalDictionaryForm] = useState(settings.localDictionary);
+  const [backupSettingsForm, setBackupSettingsForm] = useState(settings.backupSettings);
+
+  // Dictionary sync states
+  const [dictionaryStatus, setDictionaryStatus] = useState<{
+    enabled: boolean;
+    lastSyncTime: string | null;
+    lastSyncSuccess: boolean;
+    totalEntries: number;
+    syncInProgress: boolean;
+    syncProgress: number;
+    syncError: string | null;
+    nextScheduledSync: string | null;
+  } | null>(null);
+  const [syncingDictionary, setSyncingDictionary] = useState(false);
+  const [clientSecretInput, setClientSecretInput] = useState('');
+  const [showClientSecretDialog, setShowClientSecretDialog] = useState(false);
+  const [credentialsSaved, setCredentialsSaved] = useState(false);
 
   // Timeout refs for cleanup
   const urlWarningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -192,7 +226,59 @@ export function Settings() {
     setTimezoneForm(settings.timezone);
     setDateFormatForm(settings.dateFormat);
     setUpdateSettingsForm(settings.updateSettings);
+    setLocalDictionaryForm(settings.localDictionary);
+    setBackupSettingsForm(settings.backupSettings);
   }, [settings]);
+
+  // Dictionary status polling
+  useEffect(() => {
+    const fetchDictionaryStatus = async () => {
+      if (typeof window.electronAPI === 'undefined') return;
+      try {
+        const result = await window.electronAPI.dictionary.getStatus();
+        if (result.success && result.status) {
+          setDictionaryStatus(result.status);
+        }
+      } catch (error) {
+        // Silent fail - dictionary not initialized yet
+      }
+    };
+
+    // Fetch on mount and when dictionary section is active
+    if (activeSection === 'local-dictionary') {
+      fetchDictionaryStatus();
+      const interval = setInterval(fetchDictionaryStatus, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeSection]);
+
+  // Dictionary sync progress listener
+  useEffect(() => {
+    if (typeof window.electronAPI === 'undefined') return;
+
+    const unsubProgress = window.electronAPI.dictionary.onSyncProgress((progress) => {
+      setDictionaryStatus((prev) =>
+        prev ? { ...prev, syncProgress: progress.progress, syncInProgress: true } : null
+      );
+    });
+
+    const unsubComplete = window.electronAPI.dictionary.onSyncComplete((result) => {
+      setSyncingDictionary(false);
+      if (result.success) {
+        // Refresh status after sync
+        window.electronAPI.dictionary.getStatus().then((res) => {
+          if (res.success && res.status) {
+            setDictionaryStatus(res.status);
+          }
+        });
+      }
+    });
+
+    return () => {
+      unsubProgress();
+      unsubComplete();
+    };
+  }, []);
 
   // Cleanup all timeouts on unmount
   useEffect(() => {
@@ -297,6 +383,96 @@ export function Settings() {
   const handleInstallUpdate = () => {
     // This will quit the app and install the update
     window.electronAPI?.installUpdate();
+  };
+
+  // Dictionary handlers
+  const handleSaveDictionarySettings = async () => {
+    // Save to context
+    updateLocalDictionary(localDictionaryForm);
+
+    // Configure the sync service with new settings
+    if (typeof window.electronAPI !== 'undefined') {
+      await window.electronAPI.dictionary.configureSync({
+        siteUrl: localDictionaryForm.sharePointSiteUrl,
+        documentLibraryPath: localDictionaryForm.documentLibraryPath,
+        tenantId: localDictionaryForm.tenantId,
+        clientId: localDictionaryForm.clientId,
+      });
+
+      // Start/stop scheduler based on enabled state
+      if (localDictionaryForm.enabled) {
+        await window.electronAPI.dictionary.startScheduler(localDictionaryForm.syncIntervalHours);
+      } else {
+        await window.electronAPI.dictionary.stopScheduler();
+      }
+    }
+
+    setSaveSuccess(true);
+    if (saveSuccessTimeoutRef.current) {
+      clearTimeout(saveSuccessTimeoutRef.current);
+    }
+    saveSuccessTimeoutRef.current = setTimeout(() => {
+      setSaveSuccess(false);
+      saveSuccessTimeoutRef.current = null;
+    }, 2000);
+  };
+
+  const handleSaveClientSecret = async () => {
+    if (!clientSecretInput.trim()) return;
+
+    if (typeof window.electronAPI !== 'undefined') {
+      const result = await window.electronAPI.dictionary.setCredentials(clientSecretInput);
+      if (result.success) {
+        setCredentialsSaved(true);
+        setShowClientSecretDialog(false);
+        setClientSecretInput('');
+        setTimeout(() => setCredentialsSaved(false), 2000);
+      }
+    }
+  };
+
+  const handleSyncDictionary = async () => {
+    if (typeof window.electronAPI === 'undefined') return;
+
+    setSyncingDictionary(true);
+    try {
+      // Initialize first if needed
+      await window.electronAPI.dictionary.initialize();
+
+      // Configure with current settings
+      await window.electronAPI.dictionary.configureSync({
+        siteUrl: localDictionaryForm.sharePointSiteUrl,
+        documentLibraryPath: localDictionaryForm.documentLibraryPath,
+        tenantId: localDictionaryForm.tenantId,
+        clientId: localDictionaryForm.clientId,
+      });
+
+      // Trigger sync
+      const result = await window.electronAPI.dictionary.sync();
+      if (!result.success) {
+        setDictionaryStatus((prev) =>
+          prev ? { ...prev, syncError: result.error || 'Sync failed', syncInProgress: false } : null
+        );
+      }
+    } catch (error) {
+      setDictionaryStatus((prev) =>
+        prev ? { ...prev, syncError: 'Sync failed', syncInProgress: false } : null
+      );
+    } finally {
+      setSyncingDictionary(false);
+    }
+  };
+
+  const handleSaveBackupSettings = () => {
+    updateBackupSettings(backupSettingsForm);
+    setSaveSuccess(true);
+    if (saveSuccessTimeoutRef.current) {
+      clearTimeout(saveSuccessTimeoutRef.current);
+    }
+    saveSuccessTimeoutRef.current = setTimeout(() => {
+      setSaveSuccess(false);
+      saveSuccessTimeoutRef.current = null;
+    }, 2000);
   };
 
   const handleExport = async () => {
@@ -1894,6 +2070,458 @@ Submitted: ${new Date().toLocaleString()}
                   </Button>
                   <Button variant="destructive" className="w-full">
                     Delete Account
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'local-dictionary' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Local Dictionary</h2>
+                <p className="text-muted-foreground mt-1">
+                  Configure offline hyperlink lookups using a local SharePoint dictionary
+                </p>
+              </div>
+
+              <div className="space-y-6">
+                {/* Enable/Disable Toggle */}
+                <div className="p-4 bg-muted/20 rounded-lg border border-border">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <label htmlFor="dictionary-enabled" className="text-sm font-medium">
+                        Enable Local Dictionary
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        When enabled, hyperlink lookups will use the local SQLite database instead of the API
+                      </p>
+                    </div>
+                    <button
+                      id="dictionary-enabled"
+                      role="switch"
+                      aria-checked={localDictionaryForm.enabled}
+                      onClick={() =>
+                        setLocalDictionaryForm({
+                          ...localDictionaryForm,
+                          enabled: !localDictionaryForm.enabled,
+                        })
+                      }
+                      className={cn(
+                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        localDictionaryForm.enabled
+                          ? 'bg-primary border-primary toggle-checked'
+                          : 'bg-input border-border'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                          localDictionaryForm.enabled ? 'translate-x-6' : 'translate-x-1'
+                        )}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* SharePoint Configuration */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">SharePoint Configuration</h3>
+
+                  <div>
+                    <label htmlFor="sharepoint-url" className="block text-sm font-medium mb-2">
+                      SharePoint Site URL
+                    </label>
+                    <input
+                      id="sharepoint-url"
+                      type="url"
+                      value={localDictionaryForm.sharePointSiteUrl}
+                      onChange={(e) =>
+                        setLocalDictionaryForm({
+                          ...localDictionaryForm,
+                          sharePointSiteUrl: e.target.value,
+                        })
+                      }
+                      placeholder="https://your-company.sharepoint.com/sites/your-site"
+                      className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      The SharePoint site URL where your dictionary file is located
+                    </p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="document-path" className="block text-sm font-medium mb-2">
+                      Document Library Path
+                    </label>
+                    <input
+                      id="document-path"
+                      type="text"
+                      value={localDictionaryForm.documentLibraryPath}
+                      onChange={(e) =>
+                        setLocalDictionaryForm({
+                          ...localDictionaryForm,
+                          documentLibraryPath: e.target.value,
+                        })
+                      }
+                      placeholder="/Shared Documents/Dictionary.xlsx"
+                      className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Path to Dictionary.xlsx within the SharePoint document library
+                    </p>
+                  </div>
+                </div>
+
+                {/* Azure AD Configuration */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">Azure AD Authentication</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Configure app-only authentication using Azure AD application credentials
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="tenant-id" className="block text-sm font-medium mb-2">
+                        Tenant ID
+                      </label>
+                      <input
+                        id="tenant-id"
+                        type="text"
+                        value={localDictionaryForm.tenantId}
+                        onChange={(e) =>
+                          setLocalDictionaryForm({
+                            ...localDictionaryForm,
+                            tenantId: e.target.value,
+                          })
+                        }
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 font-mono text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="client-id" className="block text-sm font-medium mb-2">
+                        Client ID
+                      </label>
+                      <input
+                        id="client-id"
+                        type="text"
+                        value={localDictionaryForm.clientId}
+                        onChange={(e) =>
+                          setLocalDictionaryForm({
+                            ...localDictionaryForm,
+                            clientId: e.target.value,
+                          })
+                        }
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 font-mono text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Client Secret</label>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowClientSecretDialog(true)}
+                        className="flex-1"
+                      >
+                        {credentialsSaved ? 'Secret Saved' : 'Set Client Secret'}
+                      </Button>
+                      {credentialsSaved && (
+                        <div className="flex items-center text-green-600 text-sm">
+                          <CheckCircle2 className="w-4 h-4 mr-1" />
+                          Configured
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Client secret is stored securely and never saved to settings
+                    </p>
+                  </div>
+
+                  {/* Client Secret Dialog */}
+                  {showClientSecretDialog && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                      <div className="bg-background rounded-lg p-6 w-full max-w-md border border-border shadow-xl">
+                        <h3 className="text-lg font-semibold mb-4">Enter Client Secret</h3>
+                        <input
+                          type="password"
+                          value={clientSecretInput}
+                          onChange={(e) => setClientSecretInput(e.target.value)}
+                          placeholder="Enter your Azure AD client secret"
+                          className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 font-mono text-sm mb-4"
+                          autoFocus
+                        />
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowClientSecretDialog(false);
+                              setClientSecretInput('');
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button onClick={handleSaveClientSecret} disabled={!clientSecretInput.trim()}>
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Sync Settings */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">Sync Settings</h3>
+
+                  <div>
+                    <label htmlFor="sync-interval" className="block text-sm font-medium mb-2">
+                      Sync Interval
+                    </label>
+                    <select
+                      id="sync-interval"
+                      value={localDictionaryForm.syncIntervalHours}
+                      onChange={(e) =>
+                        setLocalDictionaryForm({
+                          ...localDictionaryForm,
+                          syncIntervalHours: Number(e.target.value),
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                    >
+                      <option value={1}>Every 1 hour</option>
+                      <option value={6}>Every 6 hours</option>
+                      <option value={12}>Every 12 hours</option>
+                      <option value={24}>Every 24 hours</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      How often to check for dictionary updates from SharePoint
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sync Status */}
+                <div className="p-4 bg-muted/20 rounded-lg border border-border space-y-3">
+                  <h3 className="font-medium">Sync Status</h3>
+
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Total Entries:</span>
+                      <span className="ml-2 font-medium">
+                        {dictionaryStatus?.totalEntries?.toLocaleString() || '0'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Last Sync:</span>
+                      <span className="ml-2 font-medium">
+                        {dictionaryStatus?.lastSyncTime
+                          ? new Date(dictionaryStatus.lastSyncTime).toLocaleString()
+                          : 'Never'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Status:</span>
+                      <span
+                        className={cn(
+                          'ml-2 font-medium',
+                          dictionaryStatus?.lastSyncSuccess ? 'text-green-600' : 'text-muted-foreground'
+                        )}
+                      >
+                        {dictionaryStatus?.syncInProgress
+                          ? 'Syncing...'
+                          : dictionaryStatus?.lastSyncSuccess
+                            ? 'Synced'
+                            : 'Not synced'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Next Sync:</span>
+                      <span className="ml-2 font-medium">
+                        {dictionaryStatus?.nextScheduledSync
+                          ? new Date(dictionaryStatus.nextScheduledSync).toLocaleString()
+                          : 'Not scheduled'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar during sync */}
+                  {dictionaryStatus?.syncInProgress && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Syncing dictionary...</span>
+                        <span>{Math.round(dictionaryStatus.syncProgress || 0)}%</span>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all duration-300"
+                          style={{ width: `${dictionaryStatus.syncProgress || 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error display */}
+                  {dictionaryStatus?.syncError && (
+                    <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+                        <p className="text-xs text-red-700 dark:text-red-300">
+                          {dictionaryStatus.syncError}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    onClick={handleSyncDictionary}
+                    disabled={syncingDictionary || !localDictionaryForm.sharePointSiteUrl}
+                    icon={<RefreshCw className={cn('w-4 h-4', syncingDictionary && 'animate-spin')} />}
+                    className="w-full"
+                  >
+                    {syncingDictionary ? 'Syncing...' : 'Sync Now'}
+                  </Button>
+                </div>
+
+                {/* Info Card */}
+                <div className="pt-4 border-t border-border">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <HardDrive className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-medium mb-1">About Local Dictionary</h4>
+                      <p className="text-sm text-muted-foreground">
+                        The local dictionary downloads your SharePoint Dictionary.xlsx file and stores it
+                        in a high-performance SQLite database for instant lookups. This provides faster
+                        performance than API calls and works offline. The dictionary syncs automatically
+                        based on your interval settings, only downloading when changes are detected.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleSaveDictionarySettings}
+                    showSuccess={saveSuccess}
+                    icon={<Save className="w-4 h-4" />}
+                  >
+                    Save Settings
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'backup-settings' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Backups</h2>
+                <p className="text-muted-foreground mt-1">
+                  Configure automatic document backup settings
+                </p>
+              </div>
+
+              <div className="space-y-6">
+                {/* Enable/Disable Toggle */}
+                <div className="p-4 bg-muted/20 rounded-lg border border-border">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <label htmlFor="backup-enabled" className="text-sm font-medium">
+                        Enable Automatic Backups
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Create backup copies of documents before processing changes
+                      </p>
+                    </div>
+                    <button
+                      id="backup-enabled"
+                      role="switch"
+                      aria-checked={backupSettingsForm.enabled}
+                      onClick={() =>
+                        setBackupSettingsForm({
+                          ...backupSettingsForm,
+                          enabled: !backupSettingsForm.enabled,
+                        })
+                      }
+                      className={cn(
+                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        backupSettingsForm.enabled
+                          ? 'bg-primary border-primary toggle-checked'
+                          : 'bg-input border-border'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                          backupSettingsForm.enabled ? 'translate-x-6' : 'translate-x-1'
+                        )}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Backup Information */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">Backup Details</h3>
+
+                  <div className="p-4 bg-muted/10 rounded-lg border border-border space-y-3">
+                    <div className="flex items-start gap-3">
+                      <Archive className="w-5 h-5 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="font-medium text-sm">Backup Location</p>
+                        <p className="text-xs text-muted-foreground">
+                          Backups are stored in a <code className="bg-muted px-1 rounded">DocHub_Backups</code> folder
+                          in the same directory as the original document.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <Database className="w-5 h-5 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="font-medium text-sm">Naming Convention</p>
+                        <p className="text-xs text-muted-foreground">
+                          Backup files are named using incremental numbering:
+                        </p>
+                        <code className="text-xs bg-muted px-2 py-1 rounded block mt-1">
+                          filename_Backup_1.docx, filename_Backup_2.docx, ...
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info Card */}
+                <div className="pt-4 border-t border-border">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Archive className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-medium mb-1">About Backups</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Automatic backups protect your documents by creating a copy before any processing
+                        changes are applied. Each backup is numbered incrementally, allowing you to restore
+                        from any previous version if needed. Disable this feature only if you have your own
+                        backup solution in place.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleSaveBackupSettings}
+                    showSuccess={saveSuccess}
+                    icon={<Save className="w-4 h-4" />}
+                  >
+                    Save Settings
                   </Button>
                 </div>
               </div>
