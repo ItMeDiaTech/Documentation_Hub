@@ -191,7 +191,22 @@ const electronAPI = {
   autoDetectCertificates: () => ipcRenderer.invoke('auto-detect-certificates'),
   removeCertificate: (certPath: string) => ipcRenderer.invoke('remove-certificate', certPath),
   testGitHubConnection: () => ipcRenderer.invoke('test-github-connection'),
-  openExternal: (url: string) => shell.openExternal(url),
+  openExternal: (url: string) => {
+    // Security: Validate URL protocol before opening
+    // Only allow safe protocols to prevent file:// or javascript: attacks
+    const ALLOWED_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:'];
+    try {
+      const parsed = new URL(url);
+      if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
+        console.error(`[Preload] Blocked openExternal for unsafe protocol: ${parsed.protocol}`);
+        return Promise.reject(new Error(`Unsafe protocol: ${parsed.protocol}. Only http, https, mailto, and tel are allowed.`));
+      }
+      return shell.openExternal(url);
+    } catch (e) {
+      console.error(`[Preload] Invalid URL for openExternal: ${url}`);
+      return Promise.reject(new Error(`Invalid URL: ${url}`));
+    }
+  },
 
   // Event system helpers
   on: (channel: string, callback: (...args: any[]) => void) => {
