@@ -135,8 +135,7 @@ export function CurrentSession() {
     const currentSessionId = session?.id;
     if (!currentSessionId) {
       toast({
-        title: 'Error',
-        description: 'No active session. Please select or create a session first.',
+        title: 'No active session',
         variant: 'destructive',
       });
       return;
@@ -147,8 +146,8 @@ export function CurrentSession() {
     if (!api?.selectDocuments || !api?.getFileStats) {
       console.warn('CurrentSession: electronAPI methods not available');
       toast({
-        title: 'Error',
-        description: 'File selection not available. Please restart the application.',
+        title: 'File selection unavailable',
+        description: 'Please restart app',
         variant: 'destructive',
       });
       return;
@@ -174,8 +173,8 @@ export function CurrentSession() {
       if (session?.id !== currentSessionId) {
         logger.warn('[File Select] Session changed during file selection');
         toast({
-          title: 'Session Changed',
-          description: 'The session changed while selecting files. Please try again.',
+          title: 'Session changed',
+          description: 'Please try again',
           variant: 'destructive',
         });
         return;
@@ -242,8 +241,7 @@ export function CurrentSession() {
 
         if (isMountedRef.current) {
           toast({
-            title: 'Files Added',
-            description: `Successfully added ${validFiles.length} file(s) to the session.`,
+            title: `${validFiles.length} file${validFiles.length > 1 ? 's' : ''} added`,
             variant: 'success',
           });
         }
@@ -253,8 +251,8 @@ export function CurrentSession() {
       if (invalidFiles.length > 0 && isMountedRef.current) {
         logger.warn(`[File Select] Rejected ${invalidFiles.length} file(s):`, invalidFiles);
         toast({
-          title: 'Some Files Could Not Be Added',
-          description: `${invalidFiles.length} file(s) could not be accessed. Check file permissions.`,
+          title: 'Access denied',
+          description: `${invalidFiles.length} file${invalidFiles.length > 1 ? 's' : ''} skipped`,
           variant: 'destructive',
         });
       }
@@ -262,9 +260,8 @@ export function CurrentSession() {
       // If no files were valid at all
       if (validFiles.length === 0 && filePaths.length > 0 && isMountedRef.current) {
         toast({
-          title: 'No Files Added',
-          description:
-            'None of the selected files could be accessed. Please check file permissions.',
+          title: 'Cannot access files',
+          description: 'Check file permissions',
           variant: 'destructive',
         });
       }
@@ -272,8 +269,8 @@ export function CurrentSession() {
       if (isMountedRef.current) {
         logger.error('[File Select] Unexpected error:', error);
         toast({
-          title: 'Error Selecting Files',
-          description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+          title: 'Selection failed',
+          description: error instanceof Error ? error.message : 'Unexpected error',
           variant: 'destructive',
         });
       }
@@ -331,36 +328,22 @@ export function CurrentSession() {
     addDocuments(session.id, validFiles);
 
     toast({
-      title: 'Files Added',
-      description: `${validFiles.length} file(s) added to session`,
+      title: `${validFiles.length} file${validFiles.length > 1 ? 's' : ''} added`,
       variant: 'success',
     });
   };
 
   const handleProcessDocument = async (documentId: string) => {
-    // Show toast with enabled operations when processing starts
+    // Show brief processing indicator
     const enabledOps = session.processingOptions?.enabledOperations || [];
     const operationsCount = enabledOps.length;
 
     if (operationsCount > 0) {
-      const firstFewOps = enabledOps
-        .slice(0, 3)
-        .map((op) => {
-          // Convert kebab-case to human-readable
-          return op
-            .split('-')
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-        })
-        .join(', ');
-
       toast({
-        title: 'Processing Document',
-        description: `Applying ${operationsCount} operation${
-          operationsCount > 1 ? 's' : ''
-        }: ${firstFewOps}${operationsCount > 3 ? ', ...' : ''}`,
+        title: 'Processing...',
+        description: `${operationsCount} operation${operationsCount > 1 ? 's' : ''}`,
         variant: 'default',
-        duration: 3000,
+        duration: 2000,
       });
     }
 
@@ -378,15 +361,14 @@ export function CurrentSession() {
 
     if (processedDoc?.status === 'completed' && processedDoc.path) {
       toast({
-        title: 'Processing Complete',
-        description: `${processedDoc.name} is ready! Click the green button to open in Word.`,
+        title: 'Done',
+        description: processedDoc.name,
         variant: 'success',
-        duration: 6000,
       });
     } else if (processedDoc?.status === 'error') {
       toast({
-        title: 'Processing Failed',
-        description: processedDoc.errors?.[0] || 'An error occurred while processing the document.',
+        title: 'Processing failed',
+        description: processedDoc.errors?.[0] || 'Document error',
         variant: 'destructive',
       });
     }
@@ -659,15 +641,14 @@ export function CurrentSession() {
                               try {
                                 await window.electronAPI.openDocument(doc.path!);
                                 toast({
-                                  title: 'Opening Document',
-                                  description: 'Launching Microsoft Word...',
+                                  title: 'Opening in Word',
+                                  variant: 'default',
                                 });
                               } catch (err) {
                                 logger.error('Failed to open document:', err);
                                 toast({
-                                  title: 'Error',
-                                  description:
-                                    err instanceof Error ? err.message : 'Could not open document',
+                                  title: 'Cannot open file',
+                                  description: err instanceof Error ? err.message : undefined,
                                   variant: 'destructive',
                                 });
                               }
@@ -733,8 +714,8 @@ export function CurrentSession() {
     if (session) {
       resetSessionToDefaults(session.id);
       toast({
-        title: 'Settings Reset',
-        description: 'Processing options and styles have been reset to defaults.',
+        title: 'Settings reset',
+        variant: 'default',
       });
     }
   };
@@ -743,8 +724,8 @@ export function CurrentSession() {
     if (session) {
       saveAsCustomDefaults(session.id);
       toast({
-        title: 'Defaults Saved',
-        description: 'Current settings will be used as defaults for new sessions.',
+        title: 'Saved as default',
+        variant: 'success',
       });
     }
   };

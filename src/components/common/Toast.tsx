@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as ToastPrimitives from '@radix-ui/react-toast';
-import { X } from 'lucide-react';
+import { X, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Toast as ToastType } from '@/hooks/useToast';
 
@@ -13,7 +13,7 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      'fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]',
+      'fixed bottom-0 right-0 z-[100] flex max-h-screen w-full flex-col gap-1 p-2 sm:max-w-[280px]',
       className
     )}
     {...props}
@@ -31,10 +31,10 @@ const Toast = React.forwardRef<
     <ToastPrimitives.Root
       ref={ref}
       className={cn(
-        'group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-6 pr-8 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full',
-        variant === 'default' && 'border bg-background text-foreground',
-        variant === 'destructive' && 'destructive group border-red-500 bg-red-500 text-white',
-        variant === 'success' && 'border-green-500 bg-green-500 text-white',
+        'group pointer-events-auto relative flex w-full items-center gap-2 overflow-hidden rounded-md border py-2 px-3 shadow-sm transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-bottom-full',
+        variant === 'default' && 'border-border/50 bg-background/95 backdrop-blur-sm text-foreground',
+        variant === 'destructive' && 'border-red-200 bg-red-50/95 backdrop-blur-sm text-red-800 dark:border-red-800/50 dark:bg-red-950/95 dark:text-red-200',
+        variant === 'success' && 'border-green-200 bg-green-50/95 backdrop-blur-sm text-green-800 dark:border-green-800/50 dark:bg-green-950/95 dark:text-green-200',
         className
       )}
       {...props}
@@ -42,6 +42,17 @@ const Toast = React.forwardRef<
   );
 });
 Toast.displayName = ToastPrimitives.Root.displayName;
+
+// Status icon component for variants
+const ToastIcon = ({ variant }: { variant?: 'default' | 'destructive' | 'success' }) => {
+  if (variant === 'success') {
+    return <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />;
+  }
+  if (variant === 'destructive') {
+    return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" />;
+  }
+  return <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
+};
 
 const ToastAction = React.forwardRef<
   React.ElementRef<typeof ToastPrimitives.Action>,
@@ -65,13 +76,13 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      'absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600',
+      'ml-auto shrink-0 rounded p-0.5 opacity-50 transition-opacity hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring',
       className
     )}
     toast-close=""
     {...props}
   >
-    <X className="h-4 w-4" />
+    <X className="h-3 w-3" />
   </ToastPrimitives.Close>
 ));
 ToastClose.displayName = ToastPrimitives.Close.displayName;
@@ -80,7 +91,7 @@ const ToastTitle = React.forwardRef<
   React.ElementRef<typeof ToastPrimitives.Title>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitives.Title>
 >(({ className, ...props }, ref) => (
-  <ToastPrimitives.Title ref={ref} className={cn('text-sm font-semibold', className)} {...props} />
+  <ToastPrimitives.Title ref={ref} className={cn('text-xs font-medium leading-tight', className)} {...props} />
 ));
 ToastTitle.displayName = ToastPrimitives.Title.displayName;
 
@@ -90,7 +101,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Description
     ref={ref}
-    className={cn('text-sm opacity-90', className)}
+    className={cn('text-[11px] opacity-75 leading-tight', className)}
     {...props}
   />
 ));
@@ -110,22 +121,30 @@ export {
   ToastDescription,
   ToastClose,
   ToastAction,
+  ToastIcon,
 };
 
 // Toaster component that renders all toasts
+// Minimal design: small, unobtrusive notifications in bottom-right corner
 interface ToasterProps {
   toasts: ToastType[];
   onDismiss: (id: string) => void;
 }
 
 export function Toaster({ toasts, onDismiss }: ToasterProps) {
+  // Only show the most recent 3 toasts to avoid clutter
+  const visibleToasts = toasts.slice(-3);
+
   return (
-    <ToastProvider>
-      {toasts.map((toast) => (
+    <ToastProvider swipeDirection="right">
+      {visibleToasts.map((toast) => (
         <Toast key={toast.id} variant={toast.variant} duration={toast.duration}>
-          <div className="grid gap-1">
-            <ToastTitle>{toast.title}</ToastTitle>
-            {toast.description && <ToastDescription>{toast.description}</ToastDescription>}
+          <ToastIcon variant={toast.variant} />
+          <div className="flex-1 min-w-0">
+            <ToastTitle className="truncate">{toast.title}</ToastTitle>
+            {toast.description && (
+              <ToastDescription className="line-clamp-2">{toast.description}</ToastDescription>
+            )}
           </div>
           <ToastClose onClick={() => onDismiss(toast.id)} />
         </Toast>
