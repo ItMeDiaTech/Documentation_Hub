@@ -1112,20 +1112,21 @@ export class WordDocumentProcessor {
         const header2Style = options.styles.find((s: any) => s.id === "header2");
         if (header2Style) {
           this.log.debug("=== VALIDATING HEADER 2 TABLE FORMATTING ===");
-          const cellsFixed = await this.validateHeader2TableFormatting(
+          const tableResult = await this.validateHeader2TableFormatting(
             doc,
             header2Style,
             options.tableShadingSettings
           );
-          this.log.info(`Validated and fixed ${cellsFixed} Header 2 table cells`);
+          this.log.info(`Validated and fixed ${tableResult.count} Header 2 table cells`);
 
-          // Track Header 2 table validation
-          if (cellsFixed > 0) {
+          // Track Header 2 table validation with affected cell names
+          if (tableResult.count > 0) {
             result.changes?.push({
               type: 'style',
               category: 'structure',
               description: 'Validated and fixed Header 2 table cell formatting',
-              count: cellsFixed,
+              count: tableResult.count,
+              affectedItems: tableResult.affectedCells,
             });
           }
         } else {
@@ -1369,16 +1370,17 @@ export class WordDocumentProcessor {
       // ═══════════════════════════════════════════════════════════
       if (options.operations?.updateTocHyperlinks) {
         this.log.debug("=== BUILDING PROPER TOC (STYLES + FIELD + POPULATION) ===");
-        const tocEntriesCreated = await this.buildProperTOC(doc);
-        this.log.info(`✓ Built proper TOC with ${tocEntriesCreated} styled hyperlink entries`);
+        const tocResult = await this.buildProperTOC(doc);
+        this.log.info(`✓ Built proper TOC with ${tocResult.count} styled hyperlink entries`);
 
-        // Track Table of Contents creation
-        if (tocEntriesCreated > 0) {
+        // Track Table of Contents creation with heading names
+        if (tocResult.count > 0) {
           result.changes?.push({
             type: 'structure',
             category: 'structure',
             description: 'Rebuilt Table of Contents with styled hyperlinks',
-            count: tocEntriesCreated,
+            count: tocResult.count,
+            affectedItems: tocResult.headings,
           });
         }
       }
@@ -2862,8 +2864,9 @@ export class WordDocumentProcessor {
       header2Shading: string;
       otherShading: string;
     }
-  ): Promise<number> {
+  ): Promise<{ count: number; affectedCells: string[] }> {
     let cellsFixed = 0;
+    const affectedCells: string[] = [];
     const tablesNeedingBlankParagraph: Array<{ table: Table; tableIndex: number }> = [];
 
     // Get all tables in document
@@ -2976,6 +2979,11 @@ export class WordDocumentProcessor {
 
               if (cellNeedsUpdate) {
                 cellsFixed++;
+                // Track the Header 2 text for location context
+                const cellText = para.getText().trim();
+                if (cellText && !affectedCells.includes(cellText)) {
+                  affectedCells.push(cellText);
+                }
               }
             }
           }
@@ -3016,7 +3024,7 @@ export class WordDocumentProcessor {
       this.log.debug("All Header 2 table cells already have correct formatting");
     }
 
-    return cellsFixed;
+    return { count: cellsFixed, affectedCells };
   }
 
   /**
@@ -4926,9 +4934,9 @@ export class WordDocumentProcessor {
    * Result: Real TOC field + immediate manual population with persistent blue color
    *
    * @param doc - Document to process
-   * @returns Number of TOC entries created
+   * @returns Object with count of TOC entries created and list of heading names included
    */
-  public async buildProperTOC(doc: Document): Promise<number> {
+  public async buildProperTOC(doc: Document): Promise<{ count: number; headings: string[] }> {
     this.log.debug("=== BUILDING PROPER TOC ===");
 
     // Step 1: Ensure all headings have bookmarks
@@ -4962,13 +4970,13 @@ export class WordDocumentProcessor {
     this.log.debug("✓ Step 3: Applied TOC styles");
 
     // Step 4: Populate TOC manually with styled entries
-    const entriesCreated = await this.manuallyPopulateTOC(doc);
-    this.log.debug(`✓ Step 4: Created ${entriesCreated} TOC entries`);
+    const tocResult = await this.manuallyPopulateTOC(doc);
+    this.log.debug(`✓ Step 4: Created ${tocResult.count} TOC entries`);
 
     this.log.info(
-      `✓ Built proper TOC with ${entriesCreated} entries (real field + styled hyperlinks)`
+      `✓ Built proper TOC with ${tocResult.count} entries (real field + styled hyperlinks)`
     );
-    return entriesCreated;
+    return tocResult;
   }
 
   /**
@@ -4983,10 +4991,11 @@ export class WordDocumentProcessor {
    * 6. Formats TOC entries with proper indentation and Verdana 12pt blue styling
    *
    * @param doc - Document to process
-   * @returns Number of TOC entries created
+   * @returns Object with count of TOC entries created and list of heading names included
    */
-  private async manuallyPopulateTOC(doc: Document): Promise<number> {
+  private async manuallyPopulateTOC(doc: Document): Promise<{ count: number; headings: string[] }> {
     let totalEntriesCreated = 0;
+    const includedHeadings: string[] = [];
 
     try {
       // ============================================
@@ -5103,7 +5112,7 @@ export class WordDocumentProcessor {
 
       if (tocHeadings.length === 0) {
         this.log.warn("No headings match TOC level filter");
-        return 0;
+        return { count: 0, headings: [] };
       }
 
       this.log.info(
@@ -5135,6 +5144,7 @@ export class WordDocumentProcessor {
         tocEntry.addHyperlink(hyperlink);
 
         tocParagraphs.push(tocEntry);
+        includedHeadings.push(heading.text);
 
         this.log.debug(
           `Created TOC entry for ${heading.text} (Level ${heading.level}, style: ${tocStyleId})`
@@ -5202,7 +5212,7 @@ export class WordDocumentProcessor {
       totalEntriesCreated = tocParagraphs.length;
       this.log.info(`Inserted ${tocParagraphs.length} TOC entries at position ${insertPosition}`);
 
-      return totalEntriesCreated;
+      return { count: totalEntriesCreated, headings: includedHeadings };
     } catch (error) {
       this.log.error(
         `Error in manual TOC population: ${error instanceof Error ? error.message : "Unknown error"}`
@@ -5212,7 +5222,7 @@ export class WordDocumentProcessor {
         this.log.debug(`Stack trace: ${error.stack}`);
       }
       // Don't throw - allow document processing to continue
-      return totalEntriesCreated;
+      return { count: totalEntriesCreated, headings: includedHeadings };
     }
   }
 
