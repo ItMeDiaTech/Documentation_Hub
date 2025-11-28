@@ -252,5 +252,5 @@ CLAUDE.md
 /RefactorStyles.md
 /PROCESSING_OPTIONS_UI_UPDATES.md
 /STYLE_PARAMETER_ENHANCEMENT.md
-/jest.config.js
+# jest.config.js - REMOVED: Needed for test configuration
 /index.html
