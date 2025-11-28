@@ -439,7 +439,7 @@ export async function loadSessions(): Promise<SerializedSession[]> {
  * Load a single session by ID from IndexedDB
  * Uses connection pool for better performance
  */
-export async function loadSessionById(sessionId: string): Promise<any | null> {
+export async function loadSessionById(sessionId: string): Promise<SerializedSession | null> {
   const db = await connectionPool.getConnection();
 
   return new Promise((resolve, reject) => {
