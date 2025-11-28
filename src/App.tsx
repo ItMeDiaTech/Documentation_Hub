@@ -11,6 +11,7 @@ import { BugReportButton } from '@/components/common/BugReportButton';
 import { UpdateNotification } from '@/components/common/UpdateNotification';
 import { DebugConsole } from '@/components/common/DebugConsole';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
+import { ContextErrorFallback } from '@/components/common/ErrorFallback';
 import { SplashScreen } from '@/components/common/SplashScreen';
 import { useState, lazy, Suspense, useEffect } from 'react';
 import { useGlobalStats } from '@/contexts/GlobalStatsContext';
@@ -134,15 +135,23 @@ const router = createHashRouter(
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <UserSettingsProvider>
-          <GlobalStatsProvider>
-            <SessionProvider>
-              <RouterProvider router={router} />
-            </SessionProvider>
-          </GlobalStatsProvider>
-        </UserSettingsProvider>
-      </ThemeProvider>
+      <ErrorBoundary fallback={<ContextErrorFallback context="theme" />}>
+        <ThemeProvider>
+          <ErrorBoundary fallback={<ContextErrorFallback context="settings" />}>
+            <UserSettingsProvider>
+              <ErrorBoundary fallback={<ContextErrorFallback context="stats" />}>
+                <GlobalStatsProvider>
+                  <ErrorBoundary fallback={<ContextErrorFallback context="session" />}>
+                    <SessionProvider>
+                      <RouterProvider router={router} />
+                    </SessionProvider>
+                  </ErrorBoundary>
+                </GlobalStatsProvider>
+              </ErrorBoundary>
+            </UserSettingsProvider>
+          </ErrorBoundary>
+        </ThemeProvider>
+      </ErrorBoundary>
     </ErrorBoundary>
   );
 }

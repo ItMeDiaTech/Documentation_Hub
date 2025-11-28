@@ -25,6 +25,37 @@ interface HyperlinkApiResponseWithCache extends HyperlinkApiResponse {
   resultsCache?: Map<string, HyperlinkApiResult>;
 }
 
+/**
+ * HyperlinkService - Singleton service for managing hyperlink operations
+ *
+ * Provides comprehensive hyperlink processing capabilities including:
+ * - PowerAutomate API integration for Content ID and Document ID lookups
+ * - URL pattern matching and validation
+ * - Hyperlink extraction and statistics
+ * - Retry logic with exponential backoff
+ * - Result caching for O(1) lookups
+ *
+ * @class HyperlinkService
+ * @singleton Use `HyperlinkService.getInstance()` to get the instance
+ *
+ * @example
+ * ```typescript
+ * // Get service instance
+ * const service = HyperlinkService.getInstance();
+ *
+ * // Initialize with user settings
+ * service.initialize(userSettings);
+ *
+ * // Process hyperlinks with API
+ * const response = await service.processHyperlinksWithApi(hyperlinks, apiSettings);
+ *
+ * // Validate hyperlinks
+ * const issues = await service.validateHyperlinks(document);
+ * ```
+ *
+ * @see {@link HyperlinkApiSettings} for API configuration options
+ * @see {@link DetailedHyperlinkInfo} for hyperlink data structure
+ */
 export class HyperlinkService {
   private static instance: HyperlinkService;
   private apiSettings: HyperlinkApiSettings | null = null;
@@ -32,6 +63,17 @@ export class HyperlinkService {
 
   private constructor() {}
 
+  /**
+   * Get the singleton instance of HyperlinkService.
+   *
+   * @returns {HyperlinkService} The singleton instance
+   * @static
+   *
+   * @example
+   * ```typescript
+   * const service = HyperlinkService.getInstance();
+   * ```
+   */
   public static getInstance(): HyperlinkService {
     if (!HyperlinkService.instance) {
       HyperlinkService.instance = new HyperlinkService();
@@ -40,7 +82,23 @@ export class HyperlinkService {
   }
 
   /**
-   * Initialize the service with user settings
+   * Initialize the service with user settings.
+   *
+   * Configures the PowerAutomate API endpoint and validates the URL format.
+   * Should be called during application startup with the user's saved settings.
+   *
+   * @param {UserSettings} settings - User settings containing API configuration
+   * @throws {void} Does not throw - logs errors and continues with potentially invalid config
+   *
+   * @example
+   * ```typescript
+   * const service = HyperlinkService.getInstance();
+   * service.initialize({
+   *   apiConnections: {
+   *     powerAutomateUrl: 'https://prod-XX.westus.logic.azure.com/...'
+   *   }
+   * });
+   * ```
    */
   public initialize(settings: UserSettings): void {
     if (settings.apiConnections.powerAutomateUrl) {
@@ -110,9 +168,37 @@ export class HyperlinkService {
   }
 
   /**
-   * Process hyperlinks with PowerAutomate API
-   * This sends collected IDs to the configured endpoint
-   * Returns both the API response and maintains hyperlink relationships
+   * Process hyperlinks with PowerAutomate API.
+   *
+   * Sends collected Content IDs and Document IDs to the configured PowerAutomate endpoint
+   * for lookup. Returns updated hyperlink information including new URLs and display texts.
+   *
+   * **Processing Flow:**
+   * 1. Extract unique Content_ID and Document_ID from hyperlinks
+   * 2. Send batch request to PowerAutomate API
+   * 3. Build O(1) lookup cache from results
+   * 4. Match results back to original hyperlinks
+   *
+   * @param {DetailedHyperlinkInfo[]} hyperlinks - Array of hyperlinks to process
+   * @param {HyperlinkApiSettings} [settings] - Optional API settings (uses initialized settings if not provided)
+   * @param {Object} [userProfile] - Optional user profile for tracking
+   * @param {string} userProfile.firstName - User's first name
+   * @param {string} userProfile.lastName - User's last name
+   * @param {string} userProfile.email - User's email
+   * @returns {Promise<HyperlinkApiResponse & { processedHyperlinks?: DetailedHyperlinkInfo[] }>} API response with processed hyperlinks
+   *
+   * @example
+   * ```typescript
+   * const response = await service.processHyperlinksWithApi(hyperlinks, {
+   *   apiUrl: 'https://prod-XX.westus.logic.azure.com/...',
+   *   timeout: 30000,
+   *   retryAttempts: 3
+   * });
+   *
+   * if (response.success) {
+   *   console.log(`Processed ${response.results?.length} IDs`);
+   * }
+   * ```
    */
   public async processHyperlinksWithApi(
     hyperlinks: DetailedHyperlinkInfo[],
@@ -194,8 +280,35 @@ export class HyperlinkService {
   }
 
   /**
-   * Fix source hyperlinks by appending Content IDs
-   * Main functionality matching the C# implementation
+   * Fix source hyperlinks by appending Content IDs.
+   *
+   * Main hyperlink processing method that extracts, validates, and modifies
+   * hyperlinks in a document. Matches the functionality of the C# implementation.
+   *
+   * **Processing Phases:**
+   * 1. Extract hyperlinks from document
+   * 2. Call PowerAutomate API (if configured)
+   * 3. Append Content IDs to matching URLs
+   * 4. Update display texts as needed
+   *
+   * @param {Document} document - The document to process
+   * @param {HyperlinkFixingOptions} [options={}] - Processing options
+   * @param {string} [options.powerAutomateUrl] - PowerAutomate API endpoint URL
+   * @param {boolean} [options.appendContentId] - Whether to append content IDs
+   * @param {string} [options.contentIdToAppend] - Content ID to append (default: '#content')
+   * @param {boolean} [options.updateTitles] - Whether to update hyperlink titles
+   * @returns {Promise<HyperlinkFixingResult>} Processing results with statistics
+   *
+   * @example
+   * ```typescript
+   * const result = await service.fixSourceHyperlinks(document, {
+   *   appendContentId: true,
+   *   contentIdToAppend: '#content',
+   *   updateTitles: true
+   * });
+   *
+   * console.log(`Modified ${result.modifiedHyperlinks} hyperlinks`);
+   * ```
    */
   public async fixSourceHyperlinks(
     document: Document,
@@ -284,7 +397,25 @@ export class HyperlinkService {
   }
 
   /**
-   * Validate hyperlinks in a document
+   * Validate hyperlinks in a document.
+   *
+   * Checks all hyperlinks for common issues including:
+   * - Invalid URL format
+   * - Missing Content ID in theSource URLs
+   * - Broken internal links
+   * - Empty display text
+   *
+   * @param {Document} document - The document to validate
+   * @returns {Promise<HyperlinkValidationIssue[]>} Array of validation issues found
+   *
+   * @example
+   * ```typescript
+   * const issues = await service.validateHyperlinks(document);
+   * if (issues.length > 0) {
+   *   console.log(`Found ${issues.length} issues:`);
+   *   issues.forEach(issue => console.log(`  - ${issue.message}`));
+   * }
+   * ```
    */
   public async validateHyperlinks(document: Document): Promise<HyperlinkValidationIssue[]> {
     const issues: HyperlinkValidationIssue[] = [];
@@ -322,7 +453,22 @@ export class HyperlinkService {
   }
 
   /**
-   * Get statistics about hyperlinks in a document
+   * Get statistics about hyperlinks in a document.
+   *
+   * Analyzes all hyperlinks and returns detailed statistics including
+   * counts by type, validity, and domain distribution.
+   *
+   * @param {Document} document - The document to analyze
+   * @returns {Promise<HyperlinkStatistics>} Comprehensive hyperlink statistics
+   *
+   * @example
+   * ```typescript
+   * const stats = await service.getHyperlinkStatistics(document);
+   * console.log(`Total hyperlinks: ${stats.total}`);
+   * console.log(`External: ${stats.byType.external}`);
+   * console.log(`Internal: ${stats.byType.internal}`);
+   * console.log(`Valid: ${stats.validCount}, Invalid: ${stats.invalidCount}`);
+   * ```
    */
   public async getHyperlinkStatistics(document: Document): Promise<HyperlinkStatistics> {
     const hyperlinks = await this.extractHyperlinkData(document);

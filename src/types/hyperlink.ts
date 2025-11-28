@@ -87,6 +87,7 @@ export interface HyperlinkProcessingOptions {
   preserveTooltips?: boolean;
   urlPattern?: string | RegExp;
   displayTextPattern?: string | RegExp;
+  trackChanges?: boolean;  // Enable DocHub change tracking for Document Changes UI
   apiEndpoint?: string;
   operations?: {
     fixContentIds?: boolean;
@@ -123,6 +124,10 @@ export interface HyperlinkProcessingOptions {
     header2?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
     normal?: { spaceBefore: number; spaceAfter: number; lineSpacing?: number };
   };
+  // Snapshot capture for document comparison
+  captureSnapshot?: boolean;
+  sessionId?: string;
+  documentId?: string;
 }
 
 // Hyperlink fixing options (advanced)

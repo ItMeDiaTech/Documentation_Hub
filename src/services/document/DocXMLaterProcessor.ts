@@ -1,5 +1,9 @@
 import { Document } from 'docxmlater';
 import { ProcessorResult } from './types/docx-processing';
+import { logger } from '@/utils/logger';
+
+// Create namespaced logger for document processing operations
+const log = logger.namespace('DocXMLater');
 
 /**
  * Configuration options for the DocXMLaterProcessor
@@ -106,14 +110,17 @@ export class DocXMLaterProcessor {
    * @see {@link ProcessorResult} for result handling
    */
   async loadFromFile(filePath: string): Promise<ProcessorResult<Document>> {
+    log.debug('Loading document from file', { filePath });
     try {
       // Use framework defaults to ensure no corruption
       const doc = await Document.load(filePath, { strictParsing: false });
+      log.info('Document loaded successfully', { filePath });
       return {
         success: true,
         data: doc,
       };
     } catch (error: any) {
+      log.error('Failed to load document', { filePath, error: error.message });
       return {
         success: false,
         error: `Failed to load document: ${error.message}`,
@@ -161,14 +168,17 @@ export class DocXMLaterProcessor {
    * @see {@link Document} for document manipulation methods
    */
   async loadFromBuffer(buffer: Buffer): Promise<ProcessorResult<Document>> {
+    log.debug('Loading document from buffer', { bufferSize: buffer.length });
     try {
       // Use framework defaults to ensure no corruption
       const doc = await Document.loadFromBuffer(buffer);
+      log.info('Document loaded from buffer successfully', { bufferSize: buffer.length });
       return {
         success: true,
         data: doc,
       };
     } catch (error: any) {
+      log.error('Failed to load document from buffer', { bufferSize: buffer.length, error: error.message });
       return {
         success: false,
         error: `Failed to load document from buffer: ${error.message}`,
@@ -177,12 +187,15 @@ export class DocXMLaterProcessor {
   }
 
   async saveToFile(doc: Document, filePath: string): Promise<ProcessorResult<void>> {
+    log.debug('Saving document to file', { filePath });
     try {
       await doc.save(filePath);
+      log.info('Document saved successfully', { filePath });
       return {
         success: true,
       };
     } catch (error: any) {
+      log.error('Failed to save document', { filePath, error: error.message });
       return {
         success: false,
         error: `Failed to save document: ${error.message}`,
@@ -402,6 +415,7 @@ export class DocXMLaterProcessor {
       text: string;
     }>
   > {
+    log.debug('Extracting hyperlinks from document');
     // Dynamic import to avoid formatter issues with unused imports
     const { sanitizeHyperlinkText } = await import('@/utils/textSanitizer');
 
@@ -415,6 +429,7 @@ export class DocXMLaterProcessor {
 
     // Get all paragraphs from the document
     const paragraphs = doc.getAllParagraphs();
+    log.debug('Scanning paragraphs for hyperlinks', { paragraphCount: paragraphs.length });
 
     // Iterate through each paragraph to find hyperlinks
     for (let i = 0; i < paragraphs.length; i++) {
@@ -445,6 +460,15 @@ export class DocXMLaterProcessor {
         }
       }
     }
+
+    // Log summary with type breakdown
+    const internalLinks = hyperlinks.filter((h) => !h.url).length;
+    const externalLinks = hyperlinks.filter((h) => h.url).length;
+    log.info('Hyperlinks extracted', {
+      total: hyperlinks.length,
+      external: externalLinks,
+      internal: internalLinks,
+    });
 
     return hyperlinks;
   }

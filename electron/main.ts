@@ -742,6 +742,12 @@ ipcMain.handle('app-version', () => {
   return app.getVersion();
 });
 
+// Also register as 'get-app-version' for backward compatibility
+// (previously only registered in AutoUpdaterHandler which loaded late)
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
+
 ipcMain.handle('open-dev-tools', () => {
   if (mainWindow) {
     mainWindow.webContents.openDevTools();
@@ -1191,6 +1197,78 @@ ipcMain.handle('process-document', async (...[, path]: [Electron.IpcMainInvokeEv
       processed: true,
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      error: message,
+    };
+  }
+});
+
+// Read file as ArrayBuffer (for snapshot capture in renderer process)
+ipcMain.handle('file:read-buffer', async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
+  if (!filePath) {
+    throw new Error('No file path provided');
+  }
+
+  try {
+    // Validate file exists
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+
+    // Read file as buffer
+    const buffer = await fsPromises.readFile(filePath);
+    // Return as ArrayBuffer (Uint8Array is transferable via IPC)
+    return buffer;
+  } catch (error) {
+    console.error('[IPC] Error reading file as buffer:', error);
+    throw error;
+  }
+});
+
+// Extract text content from a document (for comparison views)
+ipcMain.handle('document:extract-text', async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
+  if (!filePath) {
+    return { success: false, error: 'No file path provided' };
+  }
+
+  try {
+    // Validate file exists
+    if (!fs.existsSync(filePath)) {
+      return { success: false, error: `File not found: ${filePath}` };
+    }
+
+    // Validate file extension
+    if (!filePath.toLowerCase().endsWith('.docx')) {
+      return { success: false, error: 'Only .docx files are supported' };
+    }
+
+    // Load document using docxmlater
+    const { Document } = await import('docxmlater');
+    const doc = await Document.load(filePath);
+
+    // Extract paragraph text
+    const paragraphs = doc.getAllParagraphs();
+    const textContent = paragraphs.map((para: any) => {
+      try {
+        return para.getText() || '';
+      } catch {
+        return '';
+      }
+    });
+
+    // Dispose document to free memory
+    doc.dispose();
+
+    log.info(`[Document] Extracted text from ${filePath}: ${textContent.length} paragraphs`);
+
+    return {
+      success: true,
+      textContent,
+    };
+  } catch (error) {
+    log.error('[Document] Error extracting text:', error);
     const message = error instanceof Error ? error.message : String(error);
     return {
       success: false,
@@ -1652,10 +1730,7 @@ class AutoUpdaterHandler {
       this.customUpdater.quitAndInstall();
     });
 
-    // Get current version
-    ipcMain.handle('get-app-version', () => {
-      return app.getVersion();
-    });
+    // Note: 'get-app-version' is now registered earlier in main.ts for early availability
 
     // Reset fallback mode (for testing)
     ipcMain.handle('reset-update-fallback', () => {

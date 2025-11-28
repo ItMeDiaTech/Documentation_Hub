@@ -12,6 +12,7 @@ import {
   TableShadingSettings,
   TableUniformitySettings,
 } from '@/types/session';
+import { DocumentSnapshotService } from '@/services/document/DocumentSnapshotService';
 import {
   deleteSession as deleteSessionFromDB,
   ensureDBSizeLimit,
@@ -21,7 +22,7 @@ import {
   saveSession as saveSessionToDB,
   truncateSessionChanges,
 } from '@/utils/indexedDB';
-import { logger } from '@/utils/logger';
+import { logger, debugModes, isDebugEnabled, createDebugLogger } from '@/utils/logger';
 import { isPathSafe } from '@/utils/pathSecurity';
 import { safeJsonParse, safeJsonStringify } from '@/utils/safeJsonParse';
 import {
@@ -36,6 +37,25 @@ import {
 import { useGlobalStats } from './GlobalStatsContext';
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
+
+/**
+ * Wraps a promise with a timeout to prevent hanging operations.
+ * @param promise The promise to wrap
+ * @param ms Timeout in milliseconds
+ * @param operation Name of the operation for error messages
+ */
+const withTimeout = <T,>(promise: Promise<T>, ms: number, operation: string): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${operation} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+
+// Constants for IPC operations
+const IPC_TIMEOUT_MS = 300000; // 5 minutes for document processing (large docs can take time)
+const TIME_SAVED_SECONDS_PER_HYPERLINK = 101;
+const SECONDS_PER_MINUTE = 60;
 
 type SerializedDocument = Omit<Document, 'processedAt'> & {
   processedAt?: string;
@@ -74,12 +94,12 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
       bulletChar: '•',
       numberedFormat: 'i.',
     },
-    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
+    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },
     {
       level: 4,
       symbolIndent: 2.5,
       textIndent: 2.75,
-      bulletChar: '○',
+      bulletChar: '•',
       numberedFormat: 'a)',
     },
   ],
@@ -107,6 +127,9 @@ const ensureListBulletSettings = (session: Session): Session => {
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const log = logger.namespace('SessionContext');
+  // Conditional verbose logger - only logs when SESSION_STATE debug mode is enabled
+  const debugLog = createDebugLogger(debugModes.SESSION_STATE, 'SessionState');
+
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
@@ -596,7 +619,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         createBackup: true,
         processInternalLinks: true,
         processExternalLinks: true,
-        autoAcceptRevisions: true, // Default: auto-accept all tracked changes for clean output
+        autoAcceptRevisions: false, // Default: keep tracked changes visible in Word
         enabledOperations: [
           'remove-italics',
           'replace-outdated-titles',
@@ -618,9 +641,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
     };
 
+    // DEBUG: Log state transition
+    debugLog.debug('Creating session - state before update', {
+      sessionCount: sessions.length,
+      activeCount: activeSessions.length,
+      currentSessionId: currentSession?.id,
+    });
+
     setSessions((prev) => [...prev, newSession]);
     setActiveSessions((prev) => [...prev, newSession]);
     setCurrentSession(newSession);
+
+    // DEBUG: Log new state
+    debugLog.debug('Session created - state after update', {
+      newSessionId: newSession.id,
+      sessionCount: sessions.length + 1,
+      activeCount: activeSessions.length + 1,
+    });
 
     // CRITICAL FIX: Immediately persist new session to prevent loss
     // Don't wait for 3-second debounce - save right away
@@ -681,6 +718,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Get session info for logging
     const session = sessions.find((s) => s.id === id);
     const closedAt = new Date();
+
+    // DEBUG: Log state before close
+    debugLog.debug('Closing session - state before', {
+      closingSessionId: id,
+      closingSessionName: session?.name,
+      activeCount: activeSessions.length,
+      isCurrentSession: currentSession?.id === id,
+    });
 
     // Remove from active sessions (sidebar) but keep in sessions list
     setActiveSessions((prev) => prev.filter((s) => s.id !== id));
@@ -856,6 +901,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (sessionId: string, documentId: string): Promise<void> => {
       const session = sessions.find((s) => s.id === sessionId);
       const document = session?.documents.find((d) => d.id === documentId);
+
+      // DEBUG: Log document processing start
+      debugLog.debug('Processing document - starting', {
+        sessionId,
+        documentId,
+        documentName: document?.name,
+        documentPath: document?.path ? '[path exists]' : '[no path]',
+      });
 
       if (!session || !document || !document.path) {
         log.error('Session, document, or document path not found');
@@ -1161,17 +1214,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             session.processingOptions?.enabledOperations?.includes('add-document-warning'),
 
           // Lists & Tables Options (mapped from ProcessingOptions UI)
-          // CRITICAL: Map list-indentation checkbox to listBulletSettings.enabled
+          // Map list-indentation checkbox to listBulletSettings.enabled
           // This controls Phase 3 (indentation), while bullet-uniformity controls Phases 1+2 (symbols)
-          listBulletSettings:
-            session.processingOptions?.enabledOperations?.includes('list-indentation') !== false &&
-            (session.listBulletSettings?.enabled ||
-              session.processingOptions?.enabledOperations?.includes('list-indentation'))
-              ? {
-                  enabled: true,
-                  indentationLevels: session.listBulletSettings?.indentationLevels || [],
-                }
-              : undefined,
+          listBulletSettings: session.processingOptions?.enabledOperations?.includes(
+            'list-indentation'
+          )
+            ? {
+                enabled: true,
+                indentationLevels: session.listBulletSettings?.indentationLevels || [],
+              }
+            : undefined,
           bulletUniformity:
             session.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
           tableUniformity: session.processingOptions?.enabledOperations?.includes('smart-tables'),
@@ -1190,6 +1242,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           revisionHandlingMode: session.processingOptions?.revisionHandlingMode || 'accept_all',
           revisionAuthor: session.processingOptions?.revisionAuthor || 'DocHub',
           autoAcceptRevisions: session.processingOptions?.autoAcceptRevisions ?? true, // Default: true
+
+          // DocHub Change Tracking (for Document Changes UI)
+          trackChanges: true, // Enable hyperlink change tracking for DocumentProcessingComparison
 
           // Legacy (deprecated, kept for backwards compatibility)
           tableUniformitySettings: session.tableUniformitySettings,
@@ -1265,16 +1320,68 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Process the document using Electron IPC
-        const result = (await window.electronAPI.processHyperlinkDocument(
-          document.path,
-          processingOptions
-        )) as typeof window.electronAPI.processHyperlinkDocument extends (...args: any[]) => Promise<infer R>
-          ? R & {
-              changes?: import('@/types/session').DocumentChange[];
-              wordRevisions?: import('@/types/session').WordRevisionState;
-            }
-          : never;
+        // Capture snapshot BEFORE processing for comparison feature
+        // This must happen in the renderer process (IndexedDB not available in main process)
+        try {
+          log.info(`[SessionContext] Capturing pre-processing snapshot for ${document.name}`);
+
+          // Read original file into buffer
+          const fileBuffer = await window.electronAPI.readFileAsBuffer(document.path);
+
+          // Extract original text content before processing
+          const textResult = await window.electronAPI.extractDocumentText(document.path);
+          const originalText = textResult.success && textResult.textContent ? textResult.textContent : [];
+
+          // Store snapshot in IndexedDB (renderer process)
+          await DocumentSnapshotService.captureSnapshot(
+            fileBuffer,
+            sessionId,
+            documentId,
+            originalText,
+            [] // hyperlinks optional
+          );
+          log.info(`[SessionContext] Snapshot captured: ${originalText.length} paragraphs, ${(fileBuffer.byteLength / 1024).toFixed(1)}KB`);
+        } catch (snapshotError) {
+          log.warn('[SessionContext] Failed to capture snapshot (comparison will be unavailable):', snapshotError);
+          // Continue with processing even if snapshot fails
+        }
+
+        // Process the document using Electron IPC with timeout protection
+        const rawResult = await withTimeout(
+          window.electronAPI.processHyperlinkDocument(document.path, processingOptions),
+          IPC_TIMEOUT_MS,
+          'Document processing'
+        );
+
+        // Validate the response structure before using it
+        if (!rawResult || typeof rawResult !== 'object') {
+          throw new Error('Invalid response from document processor: expected an object');
+        }
+
+        // Type guard to ensure required fields exist
+        const hasRequiredFields =
+          'success' in rawResult &&
+          'totalHyperlinks' in rawResult &&
+          typeof rawResult.success === 'boolean' &&
+          typeof rawResult.totalHyperlinks === 'number';
+
+        if (!hasRequiredFields) {
+          throw new Error(
+            'Invalid response from document processor: missing required fields (success, totalHyperlinks)'
+          );
+        }
+
+        const result = rawResult as {
+          success: boolean;
+          totalHyperlinks: number;
+          processedHyperlinks: number;
+          modifiedHyperlinks: number;
+          appendedContentIds?: number;
+          duration: number;
+          errorMessages?: string[];
+          changes?: import('@/types/session').DocumentChange[];
+          wordRevisions?: import('@/types/session').WordRevisionState;
+        };
 
         // PERFORMANCE: Update document status AND stats in single setState (batched)
         // This reduces re-renders from 2 to 1 per document
@@ -1309,7 +1416,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     documentsProcessed: s.stats.documentsProcessed + (result.success ? 1 : 0),
                     hyperlinksChecked: s.stats.hyperlinksChecked + result.totalHyperlinks,
                     feedbackImported: s.stats.feedbackImported,
-                    timeSaved: s.stats.timeSaved + Math.round((result.totalHyperlinks * 101) / 60),
+                    timeSaved:
+                      s.stats.timeSaved +
+                      Math.round(
+                        (result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) /
+                          SECONDS_PER_MINUTE
+                      ),
                   },
                   lastModified: new Date(),
                 }
@@ -1322,7 +1434,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           await updateGlobalStats({
             documentsProcessed: 1,
             hyperlinksChecked: result.totalHyperlinks,
-            timeSaved: Math.round((result.totalHyperlinks * 101) / 60),
+            timeSaved: Math.round(
+              (result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) / SECONDS_PER_MINUTE
+            ),
           });
 
           // Enhanced success logging for user visibility
@@ -1333,7 +1447,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           log.info(`📁 Location: ${document.path}`);
           log.info(`🔗 Hyperlinks Processed: ${result.totalHyperlinks}`);
           log.info(`✏️  Hyperlinks Modified: ${result.modifiedHyperlinks}`);
-          log.info(`⏱️  Time Saved: ${Math.round((result.totalHyperlinks * 101) / 60)} seconds`);
+          log.info(
+            `Time Saved: ${Math.round((result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) / SECONDS_PER_MINUTE)} seconds`
+          );
           log.info('');
           log.info('💡 Next Steps:');
           log.info('   • Click the green "Open Document" button to view in Word');
@@ -1458,309 +1574,126 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateSessionStats = (sessionId: string, stats: Partial<SessionStats>) => {
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              stats: { ...session.stats, ...stats },
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-  };
+  // UNIFIED STATE UPDATE HELPER
+  // Prevents state synchronization issues by updating all three state variables atomically
+  // This replaces the previous pattern of updating sessions, activeSessions, and currentSession separately
+  const updateSessionById = useCallback(
+    (sessionId: string, updater: (session: Session) => Session) => {
+      const updateFn = (sessions: Session[]) =>
+        sessions.map((s) => (s.id === sessionId ? updater(s) : s));
 
-  const updateSessionName = (sessionId: string, name: string) => {
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              name,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
+      setSessions(updateFn);
+      setActiveSessions(updateFn);
+      setCurrentSession((prev) => (prev?.id === sessionId ? updater(prev) : prev));
+    },
+    []
+  );
 
-    // Update active sessions
-    setActiveSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              name,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
+  const updateSessionStats = useCallback(
+    (sessionId: string, stats: Partial<SessionStats>) => {
+      updateSessionById(sessionId, (session) => ({
+        ...session,
+        stats: { ...session.stats, ...stats },
+        lastModified: new Date(),
+      }));
+    },
+    [updateSessionById]
+  );
 
-    // Update current session if it's the one being renamed
-    if (currentSession?.id === sessionId) {
-      setCurrentSession((prev) => (prev ? { ...prev, name, lastModified: new Date() } : null));
-    }
-  };
+  const updateSessionName = useCallback(
+    (sessionId: string, name: string) => {
+      updateSessionById(sessionId, (session) => ({
+        ...session,
+        name,
+        lastModified: new Date(),
+      }));
+    },
+    [updateSessionById]
+  );
 
-  const updateSessionOptions = (
-    sessionId: string,
-    processingOptions: Session['processingOptions']
-  ) => {
-    // DEBUG: Log session options update
-    log.info('[SessionContext] Updating session options for session:', sessionId);
-    log.info('  - Enabled operations:', processingOptions?.enabledOperations || []);
-    log.info('  - Options object:', processingOptions);
+  const updateSessionOptions = useCallback(
+    (sessionId: string, processingOptions: Session['processingOptions']) => {
+      // DEBUG: Log session options update
+      log.info('[SessionContext] Updating session options for session:', sessionId);
+      log.info('  - Enabled operations:', processingOptions?.enabledOperations || []);
+      log.info('  - Options object:', processingOptions);
 
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              processingOptions,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
+      updateSessionById(sessionId, (session) => ({
+        ...session,
+        processingOptions,
+        lastModified: new Date(),
+      }));
+    },
+    [updateSessionById, log]
+  );
 
-    // Update active sessions
-    setActiveSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              processingOptions,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
+  const updateSessionReplacements = useCallback(
+    (sessionId: string, replacements: ReplacementRule[]) => {
+      updateSessionById(sessionId, (session) => ({
+        ...session,
+        replacements,
+        lastModified: new Date(),
+      }));
+    },
+    [updateSessionById]
+  );
 
-    // Update current session if it's being modified
-    if (currentSession?.id === sessionId) {
-      setCurrentSession((prev) =>
-        prev ? { ...prev, processingOptions, lastModified: new Date() } : null
-      );
-    }
-  };
+  const updateSessionStyles = useCallback(
+    (sessionId: string, styles: SessionStyle[]) => {
+      updateSessionById(sessionId, (session) => ({
+        ...session,
+        styles,
+        lastModified: new Date(),
+      }));
+    },
+    [updateSessionById]
+  );
 
-  const updateSessionReplacements = (sessionId: string, replacements: ReplacementRule[]) => {
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              replacements,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
+  const updateSessionListBulletSettings = useCallback(
+    (sessionId: string, listBulletSettings: ListBulletSettings) => {
+      updateSessionById(sessionId, (session) => ({
+        ...session,
+        listBulletSettings,
+        lastModified: new Date(),
+      }));
+    },
+    [updateSessionById]
+  );
 
-    // Update active sessions
-    setActiveSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              replacements,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
+  const updateSessionTableUniformitySettings = useCallback(
+    (sessionId: string, tableUniformitySettings: TableUniformitySettings) => {
+      updateSessionById(sessionId, (session) => ({
+        ...session,
+        tableUniformitySettings,
+        lastModified: new Date(),
+      }));
+    },
+    [updateSessionById]
+  );
 
-    // Update current session if it's being modified
-    if (currentSession?.id === sessionId) {
-      setCurrentSession((prev) =>
-        prev ? { ...prev, replacements, lastModified: new Date() } : null
-      );
-    }
-  };
+  const updateSessionTableShadingSettings = useCallback(
+    (sessionId: string, tableShadingSettings: TableShadingSettings) => {
+      updateSessionById(sessionId, (session) => ({
+        ...session,
+        tableShadingSettings,
+        lastModified: new Date(),
+      }));
+    },
+    [updateSessionById]
+  );
 
-  const updateSessionStyles = (sessionId: string, styles: SessionStyle[]) => {
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              styles,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
+  const updateSessionTableOfContentsSettings = useCallback(
+    (sessionId: string, tableOfContentsSettings: TableOfContentsSettings) => {
+      log.info('[SessionContext] Updating Table of Contents settings for session:', sessionId);
 
-    // Update active sessions
-    setActiveSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              styles,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update current session if it's being modified
-    if (currentSession?.id === sessionId) {
-      setCurrentSession((prev) => (prev ? { ...prev, styles, lastModified: new Date() } : null));
-    }
-  };
-
-  const updateSessionListBulletSettings = (
-    sessionId: string,
-    listBulletSettings: ListBulletSettings
-  ) => {
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              listBulletSettings,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update active sessions
-    setActiveSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              listBulletSettings,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update current session if it's being modified
-    if (currentSession?.id === sessionId) {
-      setCurrentSession((prev) =>
-        prev ? { ...prev, listBulletSettings, lastModified: new Date() } : null
-      );
-    }
-  };
-
-  const updateSessionTableUniformitySettings = (
-    sessionId: string,
-    tableUniformitySettings: TableUniformitySettings
-  ) => {
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              tableUniformitySettings,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update active sessions
-    setActiveSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              tableUniformitySettings,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update current session if it's being modified
-    if (currentSession?.id === sessionId) {
-      setCurrentSession((prev) =>
-        prev ? { ...prev, tableUniformitySettings, lastModified: new Date() } : null
-      );
-    }
-  };
-
-  const updateSessionTableShadingSettings = (
-    sessionId: string,
-    tableShadingSettings: TableShadingSettings
-  ) => {
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              tableShadingSettings,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update active sessions
-    setActiveSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              tableShadingSettings,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update current session if it's being modified
-    if (currentSession?.id === sessionId) {
-      setCurrentSession((prev) =>
-        prev ? { ...prev, tableShadingSettings, lastModified: new Date() } : null
-      );
-    }
-  };
-
-  const updateSessionTableOfContentsSettings = (
-    sessionId: string,
-    tableOfContentsSettings: TableOfContentsSettings
-  ) => {
-    log.info('[SessionContext] Updating Table of Contents settings for session:', sessionId);
-
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              tableOfContentsSettings,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update active sessions
-    setActiveSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              tableOfContentsSettings,
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update current session if it's being modified
-    if (currentSession?.id === sessionId) {
-      setCurrentSession((prev) =>
-        prev ? { ...prev, tableOfContentsSettings, lastModified: new Date() } : null
-      );
-    }
-  };
+      updateSessionById(sessionId, (session) => ({
+        ...session,
+        tableOfContentsSettings,
+        lastModified: new Date(),
+      }));
+    },
+    [updateSessionById, log]
+  );
 
   const saveSession = (session: Session) => {
     const jsonString = safeJsonStringify(session, undefined, 'SessionContext.saveSession');
@@ -1782,6 +1715,168 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     }
     return null;
+  };
+
+  // Custom defaults storage key
+  const CUSTOM_DEFAULTS_KEY = 'dochub_custom_defaults';
+
+  // Reset session to factory defaults
+  const resetSessionToDefaults = (sessionId: string) => {
+    log.info('[SessionContext] Resetting session to defaults:', sessionId);
+
+    const defaultStyles: SessionStyle[] = [
+      {
+        id: 'header1',
+        name: 'Header 1',
+        fontSize: 18,
+        fontFamily: 'Verdana',
+        bold: true,
+        italic: false,
+        underline: false,
+        alignment: 'left',
+        spaceBefore: 0,
+        spaceAfter: 12,
+        lineSpacing: 1.0,
+        color: '#000000',
+      },
+      {
+        id: 'header2',
+        name: 'Header 2',
+        fontSize: 14,
+        fontFamily: 'Verdana',
+        bold: true,
+        italic: false,
+        underline: false,
+        alignment: 'left',
+        spaceBefore: 6,
+        spaceAfter: 6,
+        lineSpacing: 1.0,
+        color: '#000000',
+      },
+      {
+        id: 'header3',
+        name: 'Header 3',
+        fontSize: 12,
+        fontFamily: 'Verdana',
+        bold: true,
+        italic: false,
+        underline: false,
+        alignment: 'left',
+        spaceBefore: 3,
+        spaceAfter: 3,
+        lineSpacing: 1.0,
+        color: '#000000',
+      },
+      {
+        id: 'normal',
+        name: 'Normal',
+        fontSize: 12,
+        fontFamily: 'Verdana',
+        bold: false,
+        italic: false,
+        underline: false,
+        preserveBold: true,
+        preserveItalic: false,
+        preserveUnderline: false,
+        alignment: 'left',
+        spaceBefore: 3,
+        spaceAfter: 3,
+        lineSpacing: 1.0,
+        color: '#000000',
+        noSpaceBetweenSame: false,
+      },
+      {
+        id: 'listParagraph',
+        name: 'List Paragraph',
+        fontSize: 12,
+        fontFamily: 'Verdana',
+        bold: false,
+        italic: false,
+        underline: false,
+        preserveBold: true,
+        preserveItalic: false,
+        preserveUnderline: false,
+        alignment: 'left',
+        spaceBefore: 0,
+        spaceAfter: 6,
+        lineSpacing: 1.0,
+        color: '#000000',
+        noSpaceBetweenSame: true,
+        indentation: { left: 0.25, firstLine: 0.5 },
+      },
+    ];
+
+    const defaultListBulletSettings = createDefaultListBulletSettings();
+
+    const defaultProcessingOptions = {
+      validateUrls: true,
+      createBackup: true,
+      processInternalLinks: true,
+      processExternalLinks: true,
+      autoAcceptRevisions: false, // Default: keep tracked changes visible in Word
+      enabledOperations: [
+        'remove-italics',
+        'replace-outdated-titles',
+        'validate-document-styles',
+        'update-top-hyperlinks',
+        'update-toc-hyperlinks',
+        'fix-internal-hyperlinks',
+        'fix-content-ids',
+        'center-border-images',
+        'remove-whitespace',
+        'remove-paragraph-lines',
+        'remove-headers-footers',
+        'add-document-warning',
+        'validate-header2-tables',
+        'list-indentation',
+        'bullet-uniformity',
+        'smart-tables',
+      ],
+    };
+
+    const defaultTableShadingSettings = {
+      header2Shading: '#BFBFBF',
+      otherShading: '#DFDFDF',
+    };
+
+    updateSessionById(sessionId, (session) => ({
+      ...session,
+      styles: defaultStyles,
+      listBulletSettings: defaultListBulletSettings,
+      processingOptions: defaultProcessingOptions,
+      tableShadingSettings: defaultTableShadingSettings,
+      lastModified: new Date(),
+    }));
+
+    log.info('[SessionContext] Session reset to defaults');
+  };
+
+  // Save current session settings as custom defaults for new sessions
+  const saveAsCustomDefaults = (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) {
+      log.error('[SessionContext] Session not found for saving defaults:', sessionId);
+      return;
+    }
+
+    log.info('[SessionContext] Saving session settings as custom defaults:', sessionId);
+
+    const customDefaults = {
+      styles: session.styles,
+      listBulletSettings: session.listBulletSettings,
+      processingOptions: session.processingOptions,
+      tableShadingSettings: session.tableShadingSettings,
+    };
+
+    const jsonString = safeJsonStringify(
+      customDefaults,
+      undefined,
+      'SessionContext.saveAsCustomDefaults'
+    );
+    if (jsonString) {
+      localStorage.setItem(CUSTOM_DEFAULTS_KEY, jsonString);
+      log.info('[SessionContext] Custom defaults saved successfully');
+    }
   };
 
   const recentSessions = sessions
@@ -1817,6 +1912,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         updateSessionTableOfContentsSettings,
         saveSession,
         loadSessionFromStorage,
+        resetSessionToDefaults,
+        saveAsCustomDefaults,
       }}
     >
       {children}

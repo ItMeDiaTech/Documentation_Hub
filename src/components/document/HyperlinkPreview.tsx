@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
@@ -56,25 +56,34 @@ export function HyperlinkPreview({
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
-  const filteredChanges = changes.filter((change) => {
-    if (filterType !== 'all' && change.type !== filterType) return false;
-    if (showOnlyPending && change.status !== 'pending') return false;
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      return (
-        change.displayText.toLowerCase().includes(search) ||
-        change.originalUrl.toLowerCase().includes(search) ||
-        change.newUrl?.toLowerCase().includes(search)
-      );
-    }
-    return true;
-  });
+  // Memoize filtered changes to prevent recalculation on every render
+  const filteredChanges = useMemo(() => {
+    return changes.filter((change) => {
+      if (filterType !== 'all' && change.type !== filterType) return false;
+      if (showOnlyPending && change.status !== 'pending') return false;
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        return (
+          change.displayText.toLowerCase().includes(search) ||
+          change.originalUrl.toLowerCase().includes(search) ||
+          change.newUrl?.toLowerCase().includes(search)
+        );
+      }
+      return true;
+    });
+  }, [changes, filterType, showOnlyPending, searchTerm]);
 
-  const pendingCount = changes.filter((c) => c.status === 'pending').length;
-  const approvedCount = changes.filter((c) => c.status === 'approved').length;
-  const rejectedCount = changes.filter((c) => c.status === 'rejected').length;
+  // Memoize status counts to prevent recalculation
+  const { pendingCount, approvedCount, rejectedCount } = useMemo(
+    () => ({
+      pendingCount: changes.filter((c) => c.status === 'pending').length,
+      approvedCount: changes.filter((c) => c.status === 'approved').length,
+      rejectedCount: changes.filter((c) => c.status === 'rejected').length,
+    }),
+    [changes]
+  );
 
-  const toggleExpanded = (id: string) => {
+  const toggleExpanded = useCallback((id: string) => {
     setExpandedItems((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
@@ -84,18 +93,39 @@ export function HyperlinkPreview({
       }
       return newSet;
     });
-  };
+  }, []);
 
+  // Returns icon with accessible text label for change type
   const getChangeIcon = (type: HyperlinkChange['type']) => {
     switch (type) {
       case 'append':
-        return <Hash className="w-4 h-4 text-blue-500" />;
+        return (
+          <span className="inline-flex items-center gap-1" title="Append Content ID">
+            <Hash className="w-4 h-4 text-blue-500" aria-hidden="true" />
+            <span className="sr-only">Append</span>
+          </span>
+        );
       case 'update':
-        return <ArrowRight className="w-4 h-4 text-yellow-500" />;
+        return (
+          <span className="inline-flex items-center gap-1" title="Update URL">
+            <ArrowRight className="w-4 h-4 text-yellow-500" aria-hidden="true" />
+            <span className="sr-only">Update</span>
+          </span>
+        );
       case 'remove':
-        return <XCircle className="w-4 h-4 text-red-500" />;
+        return (
+          <span className="inline-flex items-center gap-1" title="Remove Hyperlink">
+            <XCircle className="w-4 h-4 text-red-500" aria-hidden="true" />
+            <span className="sr-only">Remove</span>
+          </span>
+        );
       case 'validate':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
+        return (
+          <span className="inline-flex items-center gap-1" title="Validate URL">
+            <CheckCircle className="w-4 h-4 text-green-500" aria-hidden="true" />
+            <span className="sr-only">Validate</span>
+          </span>
+        );
     }
   };
 
@@ -339,15 +369,17 @@ export function HyperlinkPreview({
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" role="group" aria-label="Change actions">
                       <button
                         onClick={() => toggleExpanded(change.id)}
                         className="p-1 hover:bg-muted rounded-md transition-colors"
+                        aria-label={isExpanded ? 'Hide details' : 'Show details'}
+                        aria-expanded={isExpanded}
                       >
                         {isExpanded ? (
-                          <EyeOff className="w-4 h-4 text-muted-foreground" />
+                          <EyeOff className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                         ) : (
-                          <Eye className="w-4 h-4 text-muted-foreground" />
+                          <Eye className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                         )}
                       </button>
 
@@ -356,11 +388,13 @@ export function HyperlinkPreview({
                           <button
                             onClick={() => onApprove?.(change.id)}
                             className="p-1 hover:bg-green-500/10 rounded-md transition-colors"
+                            aria-label="Approve change"
                           >
-                            <CheckCircle className="w-4 h-4 text-green-500" />
+                            <CheckCircle className="w-4 h-4 text-green-500" aria-hidden="true" />
                           </button>
                           <button
                             onClick={() => onReject?.(change.id)}
+                            aria-label="Reject change"
                             className="p-1 hover:bg-red-500/10 rounded-md transition-colors"
                           >
                             <XCircle className="w-4 h-4 text-red-500" />

@@ -35,12 +35,13 @@ import {
   Loader2,
   MessageSquare,
   Play,
+  RotateCcw,
   Save,
   Timer,
   Upload,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 export function CurrentSession() {
@@ -60,12 +61,31 @@ export function CurrentSession() {
     updateSessionStyles,
     updateSessionListBulletSettings,
     updateSessionTableShadingSettings,
+    resetSessionToDefaults,
+    saveAsCustomDefaults,
   } = useSession();
 
   const [isDragging, setIsDragging] = useState(false);
   const [processingQueue, setProcessingQueue] = useState<string[]>([]);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
+
+  // Refs for preventing race conditions
+  const isSelectingFiles = useRef(false);
+  const isMountedRef = useRef(true);
+
+  // STALE CLOSURE FIX: Track latest sessions for async operations
+  // This ref always holds the current sessions value, even inside async callbacks
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions; // Update on every render
+
+  // Track component mount status for safe async operations
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (id && !currentSession) {
@@ -104,10 +124,28 @@ export function CurrentSession() {
     );
   }
 
-  const handleFileSelect = async () => {
+  const handleFileSelect = useCallback(async () => {
+    // Prevent concurrent file selections
+    if (isSelectingFiles.current) {
+      logger.debug('[File Select] Already selecting files, ignoring request');
+      return;
+    }
+
+    // Store current session ID for stale reference check
+    const currentSessionId = session?.id;
+    if (!currentSessionId) {
+      toast({
+        title: 'Error',
+        description: 'No active session. Please select or create a session first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     // Safely check if electronAPI is available
-    if (!window.electronAPI?.selectFiles) {
-      console.warn('CurrentSession: electronAPI.selectFiles not available');
+    const api = window.electronAPI;
+    if (!api?.selectDocuments || !api?.getFileStats) {
+      console.warn('CurrentSession: electronAPI methods not available');
       toast({
         title: 'Error',
         description: 'File selection not available. Please restart the application.',
@@ -116,11 +154,31 @@ export function CurrentSession() {
       return;
     }
 
+    isSelectingFiles.current = true;
+
     try {
       // Use Electron's native file dialog
-      const filePaths = await window.electronAPI.selectFiles();
+      const filePaths = await api.selectDocuments();
+
+      // Check if component is still mounted and session hasn't changed
+      if (!isMountedRef.current) {
+        logger.debug('[File Select] Component unmounted during file selection');
+        return;
+      }
+
       if (!filePaths || filePaths.length === 0) {
         return; // User cancelled
+      }
+
+      // Verify session is still valid
+      if (session?.id !== currentSessionId) {
+        logger.warn('[File Select] Session changed during file selection');
+        toast({
+          title: 'Session Changed',
+          description: 'The session changed while selecting files. Please try again.',
+          variant: 'destructive',
+        });
+        return;
       }
 
       // Convert file paths to File-like objects with path property and actual size
@@ -128,28 +186,42 @@ export function CurrentSession() {
       const invalidFiles: string[] = [];
 
       for (const filePath of filePaths) {
+        // Early exit if component unmounted
+        if (!isMountedRef.current) {
+          logger.debug('[File Select] Component unmounted during file processing');
+          return;
+        }
+
         const name = filePath.split(/[\\\/]/).pop() || 'document.docx';
 
         try {
           // Get actual file size from filesystem
-          const stats = await window.electronAPI.getFileStats(filePath);
+          const stats = await api.getFileStats(filePath);
 
-          // CRITICAL FIX: Create a custom object that implements the File interface
-          // We can't use Object.assign on File because its properties are read-only getters
-          // Instead, create a plain object with all required File properties plus our custom 'path'
+          // Create a File-like object with the required properties
+          // Note: File methods are stubs since we use the path for actual file operations
           const fileWithPath = {
             path: filePath,
             name: name,
             size: stats.size,
             type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             lastModified: stats.mtimeMs || Date.now(),
-            // File methods (not used in our code, but required by the interface)
-            arrayBuffer: async () => new ArrayBuffer(0),
-            slice: () => new Blob(),
-            stream: () => new ReadableStream(),
-            text: async () => '',
             webkitRelativePath: '',
-          } as File & { path: string };
+            // Stub methods - these are not used since we process via Electron IPC with file paths
+            arrayBuffer: async () => {
+              throw new Error('Use Electron IPC for file operations');
+            },
+            slice: () => new Blob(),
+            stream: () => {
+              throw new Error('Use Electron IPC for file operations');
+            },
+            text: async () => {
+              throw new Error('Use Electron IPC for file operations');
+            },
+            bytes: async () => {
+              throw new Error('Use Electron IPC for file operations');
+            },
+          } as unknown as File & { path: string };
 
           validFiles.push(fileWithPath);
           logger.debug(`[File Select] Valid file: ${name} (${stats.size} bytes) at ${filePath}`);
@@ -159,18 +231,26 @@ export function CurrentSession() {
         }
       }
 
+      // Final mount check before updating state
+      if (!isMountedRef.current) {
+        return;
+      }
+
       // Add valid files to the session
       if (validFiles.length > 0) {
-        await addDocuments(session.id, validFiles);
-        toast({
-          title: 'Files Added',
-          description: `Successfully added ${validFiles.length} file(s) to the session.`,
-          variant: 'success',
-        });
+        await addDocuments(currentSessionId, validFiles);
+
+        if (isMountedRef.current) {
+          toast({
+            title: 'Files Added',
+            description: `Successfully added ${validFiles.length} file(s) to the session.`,
+            variant: 'success',
+          });
+        }
       }
 
       // Show error toast if any files were invalid
-      if (invalidFiles.length > 0) {
+      if (invalidFiles.length > 0 && isMountedRef.current) {
         logger.warn(`[File Select] Rejected ${invalidFiles.length} file(s):`, invalidFiles);
         toast({
           title: 'Some Files Could Not Be Added',
@@ -180,7 +260,7 @@ export function CurrentSession() {
       }
 
       // If no files were valid at all
-      if (validFiles.length === 0 && filePaths.length > 0) {
+      if (validFiles.length === 0 && filePaths.length > 0 && isMountedRef.current) {
         toast({
           title: 'No Files Added',
           description:
@@ -189,14 +269,18 @@ export function CurrentSession() {
         });
       }
     } catch (error) {
-      logger.error('[File Select] Unexpected error:', error);
-      toast({
-        title: 'Error Selecting Files',
-        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
-        variant: 'destructive',
-      });
+      if (isMountedRef.current) {
+        logger.error('[File Select] Unexpected error:', error);
+        toast({
+          title: 'Error Selecting Files',
+          description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      isSelectingFiles.current = false;
     }
-  };
+  }, [session?.id, addDocuments, toast]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -207,109 +291,50 @@ export function CurrentSession() {
     setIsDragging(false);
   };
 
+  // Handle drag-drop files using getPathsForFiles API
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
 
-    const files = Array.from(e.dataTransfer.files).filter((file) => file.name.endsWith('.docx'));
+    if (!session || !e.dataTransfer?.files?.length) return;
 
-    if (files.length > 0) {
-      // Safely check if electronAPI is available
-      if (!window.electronAPI?.getPathsForFiles) {
-        console.warn('CurrentSession: electronAPI.getPathsForFiles not available');
-        return;
-      }
+    const files = Array.from(e.dataTransfer.files);
 
-      // Use webUtils.getPathForFile() via preload (Electron v32+ compatible)
-      // This is the only way to get file paths from drag-dropped files in modern Electron
-      const validFiles: (File & { path: string })[] = [];
-      const invalidFiles: string[] = [];
+    // Get file paths using the preload API
+    const paths = window.electronAPI?.getPathsForFiles?.(files) || [];
 
-      try {
-        // Get absolute paths for all files using webUtils in preload context
-        const filePaths = window.electronAPI.getPathsForFiles(files);
+    // Filter for .docx files with valid paths
+    const validFiles = files
+      .map((file, i) => ({
+        file,
+        path: paths[i] || '',
+      }))
+      .filter(({ file, path }) => file.name.endsWith('.docx') && path)
+      .map(({ file, path }) => ({
+        name: file.name,
+        path: path,
+        size: file.size,
+        type: file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        lastModified: file.lastModified,
+        arrayBuffer: async () => new ArrayBuffer(0),
+        slice: () => new Blob(),
+        stream: () => new ReadableStream(),
+        text: async () => '',
+        webkitRelativePath: '',
+      } as File & { path: string }));
 
-        // Validate and attach paths to File objects
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          const path = filePaths[i];
-
-          // Validate path exists and is absolute
-          if (!path || path.trim() === '') {
-            logger.error(`[Drag-Drop] File "${file.name}" has no accessible path`);
-            invalidFiles.push(file.name);
-            continue;
-          }
-
-          // Check if path is absolute (contains directory separators)
-          const isAbsolutePath = path.includes('\\') || path.includes('/');
-          if (!isAbsolutePath) {
-            logger.error(`[Drag-Drop] File "${file.name}" has invalid path: "${path}"`);
-            invalidFiles.push(file.name);
-            continue;
-          }
-
-          // Validate path by getting file stats
-          try {
-            const stats = await window.electronAPI.getFileStats(path);
-            // Create a new object with file properties + path (don't mutate File object)
-            // File objects are immutable - their properties are read-only getters
-            // TypeScript doesn't allow extending File directly, so we create a compatible object
-            const fileWithPath: File & { path: string } = Object.assign(
-              new File([], file.name, { type: file.type }),
-              {
-                path: path,
-                size: stats.size,
-                name: file.name,
-                type: file.type,
-              }
-            );
-            validFiles.push(fileWithPath);
-          } catch (error) {
-            logger.error(
-              `[Drag-Drop] Failed to access file "${file.name}" at path "${path}":`,
-              error
-            );
-            invalidFiles.push(file.name);
-          }
-        }
-      } catch (error) {
-        logger.error('[Drag-Drop] Failed to get file paths:', error);
-        return;
-      }
-
-      // Add valid files to the session
-      if (validFiles.length > 0) {
-        await addDocuments(session.id, validFiles);
-      }
-
-      // Log summary
-      if (invalidFiles.length > 0) {
-        logger.warn(
-          `[Drag-Drop] Rejected ${invalidFiles.length} file(s) due to invalid paths:`,
-          invalidFiles
-        );
-
-        // Show toast notification to user
-        toast({
-          title: 'Some files could not be added',
-          description: `${invalidFiles.length} file(s) rejected: ${invalidFiles
-            .slice(0, 3)
-            .join(', ')}${invalidFiles.length > 3 ? '...' : ''}`,
-          variant: 'destructive',
-        });
-      }
-      if (validFiles.length > 0) {
-        logger.info(`[Drag-Drop] Successfully added ${validFiles.length} file(s)`);
-
-        // Show success toast
-        toast({
-          title: 'Files added successfully',
-          description: `${validFiles.length} file(s) added to session`,
-          variant: 'success',
-        });
-      }
+    if (validFiles.length === 0) {
+      logger.warn('[Drag-Drop] No valid .docx files dropped');
+      return;
     }
+
+    addDocuments(session.id, validFiles);
+
+    toast({
+      title: 'Files Added',
+      description: `${validFiles.length} file(s) added to session`,
+      variant: 'success',
+    });
   };
 
   const handleProcessDocument = async (documentId: string) => {
@@ -340,14 +365,20 @@ export function CurrentSession() {
     }
 
     setProcessingQueue((prev) => [...prev, documentId]);
-    await processDocument(session.id, documentId);
+    const sessionId = session.id; // Capture sessionId before async operation
+    await processDocument(sessionId, documentId);
     setProcessingQueue((prev) => prev.filter((id) => id !== documentId));
 
-    // Show success toast after processing completes
-    const processedDoc = session.documents.find((d) => d.id === documentId);
+    // STALE CLOSURE FIX: Get fresh session data from sessionsRef after async operation
+    // The `session` and `sessions` variables from the closure would be stale after processDocument completes
+    // because React state updates are batched and the closure captures the old value.
+    // Using sessionsRef.current ensures we always get the latest state.
+    const freshSession = sessionsRef.current.find((s) => s.id === sessionId);
+    const processedDoc = freshSession?.documents.find((d) => d.id === documentId);
+
     if (processedDoc?.status === 'completed' && processedDoc.path) {
       toast({
-        title: '✅ Processing Complete',
+        title: 'Processing Complete',
         description: `${processedDoc.name} is ready! Click the green button to open in Word.`,
         variant: 'success',
         duration: 6000,
@@ -697,9 +728,54 @@ export function CurrentSession() {
     </div>
   );
 
-  // Note: Header actions removed - Styles tab now auto-saves on field change
-  // No manual save button needed as changes persist immediately to SessionContext
-  const headerActions: Record<string, React.ReactNode> = {};
+  // Header actions for tab headers - Reset/Save Default buttons
+  const handleResetToDefaults = () => {
+    if (session) {
+      resetSessionToDefaults(session.id);
+      toast({
+        title: 'Settings Reset',
+        description: 'Processing options and styles have been reset to defaults.',
+      });
+    }
+  };
+
+  const handleSaveAsDefaults = () => {
+    if (session) {
+      saveAsCustomDefaults(session.id);
+      toast({
+        title: 'Defaults Saved',
+        description: 'Current settings will be used as defaults for new sessions.',
+      });
+    }
+  };
+
+  const settingsButtons = (
+    <div className="flex items-center gap-2">
+      <Button
+        size="xs"
+        variant="ghost"
+        onClick={handleResetToDefaults}
+        className="text-xs"
+        icon={<RotateCcw className="w-3 h-3" />}
+      >
+        Reset
+      </Button>
+      <Button
+        size="xs"
+        variant="outline"
+        onClick={handleSaveAsDefaults}
+        className="text-xs"
+        icon={<Save className="w-3 h-3" />}
+      >
+        Save as Default
+      </Button>
+    </div>
+  );
+
+  const headerActions: Record<string, React.ReactNode> = {
+    processing: settingsButtons,
+    styles: settingsButtons,
+  };
 
   // Create tabs configuration
   const tabs = [
@@ -727,6 +803,7 @@ export function CurrentSession() {
       content: (
         <StylesEditor
           initialStyles={session.styles}
+          initialListBulletSettings={session.listBulletSettings}
           onStylesChange={(styles) => {
             // Auto-save: changes are persisted immediately to SessionContext
             updateSessionStyles(session.id, styles);

@@ -164,6 +164,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.remove('light', 'dark');
       root.classList.add(effectiveTheme);
       setResolvedTheme(effectiveTheme);
+      log.info('Theme applied', { theme, effectiveTheme });
     };
 
     applyTheme();
@@ -175,7 +176,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       mediaQuery.addEventListener('change', handleChange);
       return () => mediaQuery.removeEventListener('change', handleChange);
     }
-  }, [theme]);
+  }, [theme, log]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -187,17 +188,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const hslColor = hexToHSL(customAccentColor);
       root.style.setProperty('--custom-accent', hslColor);
       localStorage.setItem('customAccentColor', customAccentColor);
+      log.info('Custom accent color applied', { customAccentColor });
     } else if (accentColor !== 'blue') {
       root.setAttribute('data-accent', accentColor);
       // Clear custom accent when switching to preset
       root.style.removeProperty('--custom-accent');
+      log.info('Preset accent color applied', { accentColor });
     } else {
       root.removeAttribute('data-accent');
       root.style.removeProperty('--custom-accent');
+      log.info('Default accent color applied', { accentColor: 'blue' });
     }
 
     localStorage.setItem('accentColor', accentColor);
-  }, [accentColor, customAccentColor]);
+  }, [accentColor, customAccentColor, log]);
 
   // Apply custom colors when enabled
   useEffect(() => {
@@ -280,7 +284,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Apply density
     root.setAttribute('data-density', density);
     localStorage.setItem('density', density);
-  }, [density]);
+    log.info('Density mode changed', { density });
+  }, [density, log]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -292,7 +297,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.remove('no-animations');
     }
     localStorage.setItem('animations', String(animations));
-  }, [animations]);
+    log.debug('Animations toggled', { enabled: animations });
+  }, [animations, log]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -304,7 +310,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.remove('no-blur');
     }
     localStorage.setItem('blur', String(blur));
-  }, [blur]);
+    log.debug('Blur effects toggled', { enabled: blur });
+  }, [blur, log]);
 
   // PERFORMANCE FIX: Apply typography settings with requestAnimationFrame
   // Batches all 6 CSS updates into a single frame to prevent layout thrashing

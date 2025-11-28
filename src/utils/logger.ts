@@ -493,6 +493,166 @@ export const electronLogger = electronLog;
 // Export for backward compatibility
 export default logger;
 
+// ============================================================================
+// DEBUG MODE UTILITIES
+// Toggleable verbose logging for specific subsystems
+// ============================================================================
+
+/**
+ * Debug mode flags for enabling verbose logging in specific areas.
+ * These can be toggled at runtime via localStorage for troubleshooting.
+ *
+ * @example
+ * ```typescript
+ * import { debugModes, setDebugMode, isDebugEnabled } from '@/utils/logger';
+ *
+ * // Enable document processing debug logs
+ * setDebugMode(debugModes.DOCUMENT_PROCESSING, true);
+ *
+ * // Check if debug is enabled before verbose logging
+ * if (isDebugEnabled(debugModes.SESSION_STATE)) {
+ *   log.debug('Detailed session state:', state);
+ * }
+ * ```
+ */
+export const debugModes = {
+  /** Verbose logging for document processing operations */
+  DOCUMENT_PROCESSING: 'debug:documentProcessing',
+  /** Verbose logging for session state transitions */
+  SESSION_STATE: 'debug:sessionState',
+  /** Verbose logging for IPC calls between main/renderer */
+  IPC_CALLS: 'debug:ipcCalls',
+  /** Verbose logging for IndexedDB operations */
+  DATABASE: 'debug:database',
+  /** Verbose logging for hyperlink operations */
+  HYPERLINKS: 'debug:hyperlinks',
+  /** Verbose logging for backup operations */
+  BACKUPS: 'debug:backups',
+} as const;
+
+export type DebugMode = (typeof debugModes)[keyof typeof debugModes];
+
+/**
+ * Check if a specific debug mode is enabled.
+ *
+ * @param mode - The debug mode to check (use debugModes constants)
+ * @returns true if the debug mode is enabled
+ *
+ * @example
+ * ```typescript
+ * if (isDebugEnabled(debugModes.DOCUMENT_PROCESSING)) {
+ *   log.debug('Processing details:', { step: 1, data: processingData });
+ * }
+ * ```
+ */
+export function isDebugEnabled(mode: DebugMode): boolean {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return false;
+  }
+  return localStorage.getItem(mode) === 'true';
+}
+
+/**
+ * Enable or disable a specific debug mode.
+ *
+ * @param mode - The debug mode to set (use debugModes constants)
+ * @param enabled - Whether to enable (true) or disable (false) the mode
+ *
+ * @example
+ * ```typescript
+ * // Enable debug mode for troubleshooting
+ * setDebugMode(debugModes.SESSION_STATE, true);
+ *
+ * // Disable when done
+ * setDebugMode(debugModes.SESSION_STATE, false);
+ * ```
+ */
+export function setDebugMode(mode: DebugMode, enabled: boolean): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return;
+  }
+  if (enabled) {
+    localStorage.setItem(mode, 'true');
+  } else {
+    localStorage.removeItem(mode);
+  }
+  const log = logger.namespace('Debug');
+  log.info(`Debug mode ${mode} ${enabled ? 'enabled' : 'disabled'}`);
+}
+
+/**
+ * Get all currently enabled debug modes.
+ *
+ * @returns Array of enabled debug mode keys
+ *
+ * @example
+ * ```typescript
+ * const enabled = getEnabledDebugModes();
+ * console.log('Active debug modes:', enabled);
+ * // Output: ['debug:documentProcessing', 'debug:hyperlinks']
+ * ```
+ */
+export function getEnabledDebugModes(): DebugMode[] {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return [];
+  }
+  return Object.values(debugModes).filter(
+    (mode) => localStorage.getItem(mode) === 'true'
+  ) as DebugMode[];
+}
+
+/**
+ * Disable all debug modes.
+ * Useful for resetting debug state after troubleshooting.
+ */
+export function disableAllDebugModes(): void {
+  const log = logger.namespace('Debug');
+  Object.values(debugModes).forEach((mode) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(mode);
+    }
+  });
+  log.info('All debug modes disabled');
+}
+
+/**
+ * Create a conditional logger that only logs when a debug mode is enabled.
+ * Useful for adding verbose debug logging without impacting performance.
+ *
+ * @param mode - The debug mode that controls this logger
+ * @param namespace - The namespace for log messages
+ * @returns A logger that only logs when the mode is enabled
+ *
+ * @example
+ * ```typescript
+ * const debugLog = createDebugLogger(debugModes.DOCUMENT_PROCESSING, 'DocProcessor');
+ *
+ * // These only log when debug:documentProcessing is enabled
+ * debugLog.debug('Step 1: Loading document');
+ * debugLog.info('Processing complete', { stats });
+ * ```
+ */
+export function createDebugLogger(mode: DebugMode, namespace: string) {
+  const log = logger.namespace(namespace);
+
+  return {
+    debug: (...args: unknown[]) => {
+      if (isDebugEnabled(mode)) (log.debug as (...args: unknown[]) => void)(...args);
+    },
+    info: (...args: unknown[]) => {
+      if (isDebugEnabled(mode)) (log.info as (...args: unknown[]) => void)(...args);
+    },
+    warn: (...args: unknown[]) => {
+      // Warnings always log
+      (log.warn as (...args: unknown[]) => void)(...args);
+    },
+    error: (...args: unknown[]) => {
+      // Errors always log
+      (log.error as (...args: unknown[]) => void)(...args);
+    },
+  };
+}
+
 /**
  * Initialize logging on startup (call from main process)
  */

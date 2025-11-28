@@ -9,6 +9,14 @@
  * @architecture Main Process Service
  * @security Context isolation compliant - no renderer access
  * @performance IPC overhead: ~1-5ms per operation
+ *
+ * @example
+ * ```typescript
+ * const backupService = new BackupService();
+ * const backupPath = await backupService.createBackup('/path/to/document.docx');
+ * // Later, restore if needed:
+ * await backupService.restoreBackup(backupPath, '/path/to/document.docx');
+ * ```
  */
 
 import { createHash } from 'crypto';
@@ -16,6 +24,10 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import { app } from 'electron';
+import { logger } from '../../src/utils/logger';
+
+// Create namespaced logger for backup operations
+const log = logger.namespace('BackupService');
 
 /**
  * Service for managing document backups in the main process
@@ -72,11 +84,11 @@ export class BackupService {
       // Clean up old backups
       await this.cleanupOldBackups(documentPath);
 
-      console.log(`[BackupService] Created backup: ${backupPath}`);
+      log.info('Created backup', { backupPath, size: documentData.length, checksum: hash });
       return backupPath;
     } catch (error) {
       const message = `Failed to create backup: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      console.error(`[BackupService] ${message}`);
+      log.error('Create backup failed', { error: message, documentPath });
       throw new Error(message);
     }
   }
@@ -113,10 +125,10 @@ export class BackupService {
       // Restore to target path
       await fs.writeFile(targetPath, backupData);
 
-      console.log(`[BackupService] Restored backup from ${backupPath} to ${targetPath}`);
+      log.info('Restored backup', { backupPath, targetPath });
     } catch (error) {
       const message = `Failed to restore backup: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      console.error(`[BackupService] ${message}`);
+      log.error('Restore backup failed', { error: message, backupPath, targetPath });
       throw new Error(message);
     }
   }
@@ -154,7 +166,7 @@ export class BackupService {
       // Sort by creation date (newest first)
       return backups.sort((a, b) => b.created.getTime() - a.created.getTime());
     } catch (error) {
-      console.error('[BackupService] Failed to list backups:', error);
+      log.error('Failed to list backups', { error, documentPath });
       return [];
     }
   }
@@ -177,10 +189,10 @@ export class BackupService {
         // Metadata file might not exist - ignore
       }
 
-      console.log(`[BackupService] Deleted backup: ${backupPath}`);
+      log.info('Deleted backup', { backupPath });
     } catch (error) {
       const message = `Failed to delete backup: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      console.error(`[BackupService] ${message}`);
+      log.error('Delete backup failed', { error: message, backupPath });
       throw new Error(message);
     }
   }
@@ -215,7 +227,7 @@ export class BackupService {
     }
 
     if (deletedCount > 0) {
-      console.log(`[BackupService] Cleaned up ${deletedCount} old backups for ${documentPath}`);
+      log.info('Cleaned up old backups', { deletedCount, documentPath });
     }
 
     return deletedCount;
@@ -245,10 +257,10 @@ export class BackupService {
         }
       }
 
-      console.log(`[BackupService] Cleaned up ${deletedCount} old backups total`);
+      log.info('Cleaned up all old backups', { deletedCount });
       return deletedCount;
     } catch (error) {
-      console.error('[BackupService] Failed to cleanup old backups:', error);
+      log.error('Failed to cleanup all old backups', { error });
       return 0;
     }
   }
@@ -340,7 +352,7 @@ export class BackupService {
     if (config.maxBackupsPerDocument !== undefined) {
       this.maxBackupsPerDocument = config.maxBackupsPerDocument;
     }
-    console.log('[BackupService] Configuration updated:', config);
+    log.info('Configuration updated', { config });
   }
 
   // Private helper methods
@@ -351,8 +363,9 @@ export class BackupService {
   private async ensureBackupDirectory(): Promise<void> {
     try {
       await fs.mkdir(this.backupDir, { recursive: true });
+      log.debug('Backup directory ensured', { backupDir: this.backupDir });
     } catch (error) {
-      console.error('[BackupService] Failed to create backup directory:', error);
+      log.error('Failed to create backup directory', { error, backupDir: this.backupDir });
     }
   }
 
@@ -383,7 +396,7 @@ export class BackupService {
     try {
       await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
     } catch (error) {
-      console.error('[BackupService] Failed to save backup metadata:', error);
+      log.error('Failed to save backup metadata', { error, metadataPath });
     }
   }
 

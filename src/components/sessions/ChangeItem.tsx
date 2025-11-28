@@ -17,6 +17,8 @@ export function ChangeItem({ change }: ChangeItemProps) {
   const hasContent = change.before || change.after;
   const hasDiff = change.before && change.after && change.before !== change.after;
   const isHyperlinkChange = change.category === 'hyperlink' && change.hyperlinkChange;
+  const hasPropertyChange = change.propertyChange && change.propertyChange.property;
+  const hasGroupedProperties = change.groupedProperties && change.groupedProperties.length > 0;
 
   return (
     <div className="group p-3 bg-muted/30 rounded-md hover:bg-muted/50 transition-colors">
@@ -30,7 +32,20 @@ export function ChangeItem({ change }: ChangeItemProps) {
           <div className="flex-1 min-w-0">
             <p className="text-sm text-foreground break-words">
               {change.description || 'Change applied'}
+              {/* Show Content ID in title for hyperlink changes */}
+              {isHyperlinkChange && change.hyperlinkChange?.contentId && (
+                <code className="ml-2 bg-primary/10 text-primary px-1.5 py-0.5 rounded text-xs font-medium">
+                  {extractContentIdSuffix(change.hyperlinkChange.contentId)}
+                </code>
+              )}
             </p>
+
+            {/* Affected Text - Show what text was changed */}
+            {change.affectedText && !change.hyperlinkChange && (
+              <p className="text-xs text-muted-foreground mt-1" title={change.affectedText}>
+                Text: "{truncateText(change.affectedText, 50)}"
+              </p>
+            )}
 
             {/* Author (for Word revisions) */}
             {change.author && (
@@ -88,6 +103,60 @@ export function ChangeItem({ change }: ChangeItemProps) {
           ) : null}
         </div>
       ) : null}
+
+      {/* Property Change View (for single formatting change) */}
+      {hasPropertyChange && !hasGroupedProperties && (
+        <div className="mt-2 pl-7 text-xs">
+          <span className="text-muted-foreground">Property: </span>
+          <span className="font-medium">{change.propertyChange!.property}</span>
+          {change.affectedText && (
+            <span className="text-muted-foreground ml-1" title={change.affectedText}>
+              on "{truncateText(change.affectedText, 30)}"
+            </span>
+          )}
+          {(change.propertyChange!.oldValue || change.propertyChange!.newValue) && (
+            <span className="ml-2">
+              {change.propertyChange!.oldValue && (
+                <span className="text-red-600 dark:text-red-400 line-through mr-1">
+                  {formatPropertyValue(change.propertyChange!.oldValue)}
+                </span>
+              )}
+              <span className="text-muted-foreground mx-1">-&gt;</span>
+              {change.propertyChange!.newValue && (
+                <span className="text-green-600 dark:text-green-400">
+                  {formatPropertyValue(change.propertyChange!.newValue)}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Grouped Property Changes View (multiple formatting changes on same text) */}
+      {hasGroupedProperties && (
+        <div className="mt-2 pl-7">
+          <div className="text-xs text-muted-foreground mb-1">Properties changed:</div>
+          <div className="space-y-1">
+            {change.groupedProperties!.map((prop, idx) => (
+              <div key={idx} className="text-xs flex items-center gap-2">
+                <span className="text-muted-foreground">-</span>
+                <span className="font-medium min-w-[100px]">{prop.property}:</span>
+                {prop.oldValue && (
+                  <span className="text-red-600 dark:text-red-400 line-through">
+                    {formatPropertyValue(prop.oldValue)}
+                  </span>
+                )}
+                <span className="text-muted-foreground">-&gt;</span>
+                {prop.newValue && (
+                  <span className="text-green-600 dark:text-green-400">
+                    {formatPropertyValue(prop.newValue)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -145,6 +214,8 @@ interface HyperlinkChangeViewProps {
     urlAfter?: string;
     textBefore?: string;
     textAfter?: string;
+    status?: 'updated' | 'not_found' | 'expired';
+    contentId?: string;
   };
 }
 
@@ -154,57 +225,88 @@ function HyperlinkChangeView({ change }: HyperlinkChangeViewProps) {
 
   return (
     <div className="mt-2 pl-7 space-y-3">
-      {/* URL Change */}
-      {urlChanged && (
-        <div className="space-y-1">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            URL
-          </span>
-          <div className="space-y-1 text-xs font-mono">
-            {change.urlBefore && (
-              <div className="flex items-start gap-2">
-                <span className="shrink-0 w-1 h-full bg-red-500 rounded-full" />
-                <span className="text-red-600 dark:text-red-400 line-through break-all">
-                  {truncateUrl(change.urlBefore)}
-                </span>
-              </div>
-            )}
-            {change.urlAfter && (
-              <div className="flex items-start gap-2">
-                <span className="shrink-0 w-1 h-full bg-green-500 rounded-full" />
-                <span className="text-green-600 dark:text-green-400 break-all">
-                  {truncateUrl(change.urlAfter)}
-                </span>
-              </div>
-            )}
-          </div>
+      {/* Content ID - Always shown prominently at top for identification */}
+      {change.contentId && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Content ID:</span>
+          <code className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-xs font-medium">
+            {change.contentId}
+          </code>
         </div>
       )}
 
-      {/* Text Change */}
-      {textChanged && (
-        <div className="space-y-1">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Display Text
+      {/* Status Badge (for not_found or expired) */}
+      {change.status && change.status !== 'updated' && (
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              'px-2 py-0.5 text-xs font-medium rounded uppercase',
+              change.status === 'not_found'
+                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+            )}
+          >
+            {change.status === 'not_found' ? 'Source Not Found' : 'Source Expired'}
           </span>
-          <div className="space-y-1 text-xs font-mono">
-            {change.textBefore && (
-              <div className="flex items-start gap-2">
-                <span className="shrink-0 w-1 h-full bg-red-500 rounded-full" />
-                <span className="text-red-600 dark:text-red-400 line-through break-all">
-                  {truncateText(change.textBefore, 80)}
-                </span>
+        </div>
+      )}
+
+      {/* What Changed section */}
+      {(urlChanged || textChanged) && (
+        <div className="space-y-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            What Changed:
+          </span>
+
+          {/* URL Change */}
+          {urlChanged && (
+            <div className="space-y-1 ml-2">
+              <span className="text-xs text-muted-foreground">URL:</span>
+              <div className="space-y-1 text-xs font-mono">
+                {change.urlBefore && (
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 w-1 h-full bg-red-500 rounded-full" />
+                    <span className="text-red-600 dark:text-red-400 line-through break-all">
+                      {truncateUrl(change.urlBefore)}
+                    </span>
+                  </div>
+                )}
+                {change.urlAfter && (
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 w-1 h-full bg-green-500 rounded-full" />
+                    <span className="text-green-600 dark:text-green-400 break-all">
+                      {truncateUrl(change.urlAfter)}
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
-            {change.textAfter && (
-              <div className="flex items-start gap-2">
-                <span className="shrink-0 w-1 h-full bg-green-500 rounded-full" />
-                <span className="text-green-600 dark:text-green-400 break-all">
-                  {truncateText(change.textAfter, 80)}
-                </span>
+            </div>
+          )}
+
+          {/* Text to Display Change */}
+          {textChanged && (
+            <div className="space-y-1 ml-2">
+              <span className="text-xs text-muted-foreground">Text to Display:</span>
+              <div className="space-y-1 text-xs font-mono">
+                {change.textBefore && (
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 w-1 h-full bg-red-500 rounded-full" />
+                    <span className="text-red-600 dark:text-red-400 line-through break-all">
+                      {truncateText(change.textBefore, 80)}
+                    </span>
+                  </div>
+                )}
+                {change.textAfter && (
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 w-1 h-full bg-green-500 rounded-full" />
+                    <span className="text-green-600 dark:text-green-400 break-all">
+                      {truncateText(change.textAfter, 80)}
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -237,4 +339,37 @@ function truncateUrl(url: string, maxLength: number = 60): string {
   } catch {
     return url.substring(0, maxLength) + '...';
   }
+}
+
+/**
+ * Extract the numeric suffix from a Content ID for compact display
+ * e.g., "TSRC-ABC-123456" -> "123456"
+ */
+function extractContentIdSuffix(contentId: string): string {
+  // Try to extract the last numeric/alphanumeric segment
+  const parts = contentId.split(/[-_]/);
+  const lastPart = parts[parts.length - 1];
+  if (lastPart && lastPart.length > 0) {
+    return lastPart;
+  }
+  // Fallback to last 6 characters if no delimiter found
+  return contentId.slice(-6);
+}
+
+/**
+ * Format property values for display, handling objects that would show as [object Object]
+ */
+function formatPropertyValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    try {
+      // For complex objects, show a simplified JSON representation
+      const json = JSON.stringify(value);
+      // Truncate if too long
+      return json.length > 50 ? json.substring(0, 47) + '...' : json;
+    } catch {
+      return '[complex value]';
+    }
+  }
+  return String(value);
 }

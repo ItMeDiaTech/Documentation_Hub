@@ -16,12 +16,18 @@ import type {
 import { cn } from '@/utils/cn';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  Bookmark,
+  Box,
   ChevronDown,
   ChevronRight,
   ClipboardCopy,
+  Columns,
   FileText,
   Filter,
+  Hash,
+  Image,
   Link,
+  MessageCircle,
   Minus,
   Paintbrush,
   Plus,
@@ -30,6 +36,8 @@ import {
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { ChangeItem } from './ChangeItem';
+// DEFERRED: Side-by-side document comparison feature for future implementation
+// import { DocumentComparisonModal } from './DocumentComparisonModal';
 
 interface ChangeViewerProps {
   sessionId: string;
@@ -48,7 +56,7 @@ function getUnifiedChanges(document: Document): UnifiedChange[] {
     return [];
   }
 
-  return document.wordRevisions.entries.map((entry: ChangeEntry) => ({
+  const rawChanges = document.wordRevisions.entries.map((entry: ChangeEntry) => ({
     id: entry.id,
     // Distinguish source by author: "DocHub" changes are from processing, others are original Word changes
     source: entry.author === 'DocHub' ? ('processing' as const) : ('word' as const),
@@ -64,8 +72,102 @@ function getUnifiedChanges(document: Document): UnifiedChange[] {
       : undefined,
     before: entry.content?.before,
     after: entry.content?.after,
+    // Extract affected text: prefer explicit affectedText, fallback to before/after content
+    affectedText: entry.content?.affectedText || entry.content?.before || entry.content?.after,
     hyperlinkChange: entry.content?.hyperlinkChange,
+    propertyChange: entry.propertyChange,
   }));
+
+  // Group formatting changes that affect the same text
+  return groupPropertyChanges(rawChanges);
+}
+
+/**
+ * Groups multiple property changes on the same text into a single change entry
+ * This consolidates entries like: "Changed alignment", "Changed spacing.before", "Changed size"
+ * for the same "Part 1" text into one entry with groupedProperties
+ *
+ * Also consolidates duplicate entries (same description, author, affected text)
+ */
+function groupPropertyChanges(changes: UnifiedChange[]): UnifiedChange[] {
+  const result: UnifiedChange[] = [];
+  const formattingByKey = new Map<string, UnifiedChange[]>();
+  const duplicatesByKey = new Map<string, UnifiedChange[]>();
+
+  for (const change of changes) {
+    // Group formatting changes with propertyChange and affectedText
+    if (
+      change.category === 'formatting' &&
+      change.propertyChange?.property &&
+      change.affectedText
+    ) {
+      // Create a grouping key based on text, source, author (ignore paragraphIndex to consolidate across locations)
+      const key = `${change.affectedText}|${change.source}|${change.author || ''}`;
+
+      if (!formattingByKey.has(key)) {
+        formattingByKey.set(key, []);
+      }
+      formattingByKey.get(key)!.push(change);
+    }
+    // Also consolidate duplicate entries (same description, author, affected text)
+    else if (change.affectedText && change.description) {
+      const key = `${change.description}|${change.affectedText}|${change.source}|${change.author || ''}`;
+
+      if (!duplicatesByKey.has(key)) {
+        duplicatesByKey.set(key, []);
+      }
+      duplicatesByKey.get(key)!.push(change);
+    } else {
+      // Non-groupable changes go directly to result
+      result.push(change);
+    }
+  }
+
+  // Process grouped formatting changes (with propertyChange)
+  for (const [, groupedChanges] of formattingByKey) {
+    if (groupedChanges.length === 1) {
+      // Single change - no grouping needed
+      result.push(groupedChanges[0]);
+    } else {
+      // Multiple changes - create a grouped entry
+      const first = groupedChanges[0];
+      const groupedProperties = groupedChanges.map((c) => ({
+        property: c.propertyChange!.property,
+        oldValue: c.propertyChange!.oldValue,
+        newValue: c.propertyChange!.newValue,
+      }));
+
+      result.push({
+        id: first.id,
+        source: first.source,
+        category: first.category,
+        description: `Changed ${groupedChanges.length} formatting properties`,
+        author: first.author,
+        date: first.date,
+        location: first.location,
+        affectedText: first.affectedText,
+        count: groupedChanges.length,
+        groupedProperties,
+      });
+    }
+  }
+
+  // Process duplicate entries (same description/affectedText but no propertyChange)
+  for (const [, groupedChanges] of duplicatesByKey) {
+    if (groupedChanges.length === 1) {
+      result.push(groupedChanges[0]);
+    } else {
+      // Consolidate duplicates - show count
+      const first = groupedChanges[0];
+      result.push({
+        ...first,
+        count: groupedChanges.length,
+        description: first.description,
+      });
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -80,6 +182,11 @@ const categoryConfig: Record<
   structural: { label: 'Structural', icon: Settings, color: 'text-orange-500' },
   table: { label: 'Table', icon: Table, color: 'text-green-500' },
   hyperlink: { label: 'Hyperlinks', icon: Link, color: 'text-cyan-500' },
+  image: { label: 'Images', icon: Image, color: 'text-pink-500' },
+  field: { label: 'Fields', icon: Hash, color: 'text-yellow-500' },
+  comment: { label: 'Comments', icon: MessageCircle, color: 'text-indigo-500' },
+  bookmark: { label: 'Bookmarks', icon: Bookmark, color: 'text-red-500' },
+  contentControl: { label: 'Content Controls', icon: Box, color: 'text-teal-500' },
 };
 
 export function ChangeViewer({ sessionId }: ChangeViewerProps) {
@@ -89,6 +196,8 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
+  // DEFERRED: Compare Documents modal state
+  // const [showComparisonModal, setShowComparisonModal] = useState(false);
 
   // Get the current session
   const session = sessions.find((s) => s.id === sessionId);
@@ -157,6 +266,11 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
         structural: [],
         table: [],
         hyperlink: [],
+        image: [],
+        field: [],
+        comment: [],
+        bookmark: [],
+        contentControl: [],
       };
       item.changes.forEach((change) => {
         grouped[change.category].push(change);
@@ -196,6 +310,11 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
         structural: [],
         table: [],
         hyperlink: [],
+        image: [],
+        field: [],
+        comment: [],
+        bookmark: [],
+        contentControl: [],
       };
       item.changes.forEach((change) => {
         grouped[change.category].push(change);
@@ -210,6 +329,10 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
           markdown += `- ${change.description}`;
           if (change.source === 'word' && change.author) {
             markdown += ` (by ${change.author})`;
+          }
+          // Include the affected text for context
+          if (change.affectedText) {
+            markdown += `\n  - Text: "${change.affectedText}"`;
           }
           if (change.before && change.after) {
             markdown += `\n  - Before: \`${change.before}\`\n  - After: \`${change.after}\``;
@@ -252,15 +375,30 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={exportAsMarkdown}
-          className="gap-2"
-        >
-          <ClipboardCopy className="w-4 h-4" />
-          {copiedToClipboard ? 'Copied!' : 'Copy Markdown'}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* DEFERRED: Compare Documents feature - Side-by-side comparison for future implementation
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowComparisonModal(true)}
+            className="gap-2"
+            disabled={documentChanges.length === 0}
+            title="Compare original vs processed documents"
+          >
+            <Columns className="w-4 h-4" />
+            Compare Documents
+          </Button>
+          */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportAsMarkdown}
+            className="gap-2"
+          >
+            <ClipboardCopy className="w-4 h-4" />
+            {copiedToClipboard ? 'Copied!' : 'Copy Markdown'}
+          </Button>
+        </div>
       </div>
 
       {/* Summary Stats */}
@@ -454,6 +592,15 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
           </Button>
         </div>
       )}
+
+      {/* DEFERRED: Document Comparison Modal - Side-by-side comparison for future implementation
+      <DocumentComparisonModal
+        isOpen={showComparisonModal}
+        onClose={() => setShowComparisonModal(false)}
+        sessionId={sessionId}
+        documents={documentChanges.map((item) => item.document)}
+      />
+      */}
     </div>
   );
 }

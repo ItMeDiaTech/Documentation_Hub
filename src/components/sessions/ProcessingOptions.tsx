@@ -1,13 +1,21 @@
 import { cn } from '@/utils/cn';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { RevisionHandlingOptions } from './RevisionHandlingOptions';
+
+/**
+ * TYPE SAFETY: Define processing groups as const tuple for runtime validation
+ * This allows us to derive the type from the value, ensuring consistency
+ * between runtime checks and TypeScript types.
+ */
+export const PROCESSING_GROUPS = ['text', 'hyperlinks', 'structure', 'lists'] as const;
+export type ProcessingGroup = (typeof PROCESSING_GROUPS)[number];
 
 export interface ProcessingOption {
   id: string;
   label: string;
-  group: 'text' | 'hyperlinks' | 'structure' | 'lists';
+  group: ProcessingGroup;
   enabled: boolean;
 }
 
@@ -16,8 +24,8 @@ export const defaultOptions: ProcessingOption[] = [
   { id: 'remove-italics', label: 'Remove All Italics', group: 'text', enabled: true },
   {
     id: 'replace-outdated-titles',
-    label: 'Outdated Titles',
-    group: 'text',
+    label: 'Update Outdated Hyperlink Titles',
+    group: 'hyperlinks',
     enabled: true,
   },
   {
@@ -59,7 +67,7 @@ export const defaultOptions: ProcessingOption[] = [
   { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'structure', enabled: true },
   {
     id: 'remove-paragraph-lines',
-    label: 'Remove Extra Paragraphs',
+    label: 'Remove Extra Blank Lines / Rows',
     group: 'structure',
     enabled: true,
   },
@@ -69,7 +77,7 @@ export const defaultOptions: ProcessingOption[] = [
     group: 'structure',
     enabled: true,
   },
-  { id: 'add-document-warning', label: 'Add Document Warning', group: 'structure', enabled: true },
+  { id: 'add-document-warning', label: 'Add Document Disclaimer', group: 'structure', enabled: true },
   {
     id: 'validate-header2-tables',
     label: 'Header 2 Section Tables',
@@ -88,7 +96,8 @@ export const defaultOptions: ProcessingOption[] = [
   },
 ];
 
-const groupLabels = {
+// TYPE SAFETY: Use Record with ProcessingGroup to ensure all groups have labels
+const groupLabels: Record<ProcessingGroup, string> = {
   text: 'Text Formatting Fixes',
   hyperlinks: 'Hyperlink Fixes',
   structure: 'Content Structure Fixes',
@@ -108,7 +117,7 @@ interface ProcessingOptionsProps {
 export function ProcessingOptions({
   options,
   onOptionsChange,
-  autoAcceptRevisions = true,
+  autoAcceptRevisions = false,
   onAutoAcceptRevisionsChange,
 }: ProcessingOptionsProps) {
   // REFACTORED: Fully controlled component - no local state
@@ -120,40 +129,34 @@ export function ProcessingOptions({
     return options.every((opt) => opt.enabled);
   }, [options]);
 
-  const toggleOption = (optionId: string) => {
-    const updatedOptions = options.map((opt) =>
-      opt.id === optionId ? { ...opt, enabled: !opt.enabled } : opt
-    );
+  const toggleOption = useCallback(
+    (optionId: string) => {
+      const updatedOptions = options.map((opt) =>
+        opt.id === optionId ? { ...opt, enabled: !opt.enabled } : opt
+      );
+      onOptionsChange(updatedOptions);
+    },
+    [options, onOptionsChange]
+  );
 
-    // DEBUG: Log option changes
-    const changedOption = updatedOptions.find((opt) => opt.id === optionId);
-    console.log(
-      `[ProcessingOptions] Toggled "${optionId}":`,
-      changedOption?.enabled ? 'ENABLED' : 'DISABLED'
-    );
-    console.log(
-      '[ProcessingOptions] All enabled options:',
-      updatedOptions.filter((opt) => opt.enabled).map((opt) => opt.id)
-    );
-
-    onOptionsChange(updatedOptions);
-  };
-
-  const toggleAll = () => {
+  const toggleAll = useCallback(() => {
     const newState = !masterToggle;
     const updatedOptions = options.map((opt) => ({ ...opt, enabled: newState }));
     onOptionsChange(updatedOptions);
-  };
+  }, [masterToggle, options, onOptionsChange]);
 
-  const toggleGroup = (group: string) => {
-    const groupOptions = options.filter((opt) => opt.group === group);
-    const allEnabled = groupOptions.every((opt) => opt.enabled);
+  const toggleGroup = useCallback(
+    (group: string) => {
+      const groupOptions = options.filter((opt) => opt.group === group);
+      const allEnabled = groupOptions.every((opt) => opt.enabled);
 
-    const updatedOptions = options.map((opt) =>
-      opt.group === group ? { ...opt, enabled: !allEnabled } : opt
-    );
-    onOptionsChange(updatedOptions);
-  };
+      const updatedOptions = options.map((opt) =>
+        opt.group === group ? { ...opt, enabled: !allEnabled } : opt
+      );
+      onOptionsChange(updatedOptions);
+    },
+    [options, onOptionsChange]
+  );
 
   const groupedOptions = options.reduce(
     (acc, option) => {
@@ -219,7 +222,7 @@ export function ProcessingOptions({
                   )}
                 </div>
                 <h4 className="font-semibold text-base">
-                  {groupLabels[group as keyof typeof groupLabels]}
+                  {groupLabels[group as ProcessingGroup]}
                 </h4>
               </div>
 
