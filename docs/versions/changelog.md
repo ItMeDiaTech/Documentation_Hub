@@ -1,28 +1,17 @@
-# docXMLater Version History
+# Documentation Hub - Version History
 
-All notable changes to the docXMLater framework are documented in this file.
+All notable changes to the Documentation Hub application are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current Version:** 1.19.0
-**Test Coverage:** 2,073 tests passing (100%)
+**Current App Version:** 3.3.0
+**docxmlater Framework Version:** 6.6.0
 **Status:** Production Ready
-
-## Version Overview
-
-| Version | Date       | Highlights                                   | Tests  |
-| ------- | ---------- | -------------------------------------------- | ------ |
-| 1.19.0  | 2025-11-16 | Fixed 1x1 table blank line preservation      | 2,073  |
-| 1.16.0  | 2025-11-14 | All phases complete                          | 2,073  |
-| 1.15.0  | 2025-11-14 | Hyperlink defragmentation API                | 1,188+ |
-| 1.14.0  | 2025-11-13 | List formatting helpers, special characters  | 1,188  |
-| 1.13.0  | 2025-11-12 | Fixed hyperlink duplication from Google Docs | 1,167  |
-| 1.0.0   | 2025-10-XX | Initial production release                   | 1,098  |
 
 ---
 
-## [2.1.0] - 2025-11-17
+## [3.3.0] - 2025-11-17
 
 ### Added
 
@@ -53,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Unicode Bullet Rendering**: Proper Calibri font ensures U+2022 renders as ● (not ■)
+- **Unicode Bullet Rendering**: Proper Calibri font ensures U+2022 renders as bullet (not square)
 - **Framework Conflicts**: Eliminated property override issues through explicit setting
 
 ### Documentation
@@ -63,30 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Complete property setting rationale
   - Framework method usage guidelines
 
-### Technical Details
-
-**Bullet Formatting Pattern:**
-
-```typescript
-// Complete property setting for bulletproof formatting
-level.setText(newSymbol); // Bullet symbol
-level.setFont('Calibri'); // Font for proper rendering
-level.setFontSize(24); // 12pt = 24 half-points
-level.setBold(true); // Enhanced visibility
-level.setColor('000000'); // Black color
-```
-
-### Breaking Changes
-
-- **docxmlater v3.0.0**: May include API changes from v2.5.0 - review docxmlater changelog for migration details
-
-### Migration Notes
-
-No breaking changes in Documentation Hub application code. The docxmlater upgrade is transparent to existing functionality.
-
 ---
 
-## [1.19.0] - 2025-11-16
+## [3.2.0] - 2025-11-16
 
 ### Fixed
 
@@ -110,215 +78,76 @@ No breaking changes in Documentation Hub application code. The docxmlater upgrad
   - Explains existing TOC generation capability in framework (`doc.replaceTableOfContents()`)
   - Provides 3 UI integration options with example code
   - Includes troubleshooting guide and testing strategy
-  - Issue: TOC shows only placeholder text because `options.operations.updateTocHyperlinks` not wired from UI
-
-### Technical Details
-
-**Before (Buggy):**
-
-```typescript
-const shouldPreserve = options.removeParagraphLines === true;
-doc.ensureBlankLinesAfter1x1Tables({
-  markAsPreserved: shouldPreserve, // Conditional
-});
-```
-
-**After (Fixed):**
-
-```typescript
-doc.ensureBlankLinesAfter1x1Tables({
-  markAsPreserved: true, // Always preserve when option enabled
-});
-```
-
-### Migration Notes
-
-No breaking changes. This fix only affects behavior when:
-
-- `preserveBlankLinesAfterHeader2Tables` is enabled, AND
-- `removeParagraphLines` is disabled
-
-Previous behavior: Blank lines inserted but not protected → could be removed by other operations
-New behavior: Blank lines inserted AND protected → always preserved
 
 ---
 
-## [1.15.0] - 2025-11-14
+## [3.1.0] - 2025-11-14
 
 ### Added
 
-- **Hyperlink Defragmentation API**: New methods to fix fragmented hyperlinks from Google Docs
-  - `Document.defragmentHyperlinks(options)` - Merges fragmented hyperlinks with same URL across paragraphs
-  - `Hyperlink.resetToStandardFormatting()` - Resets hyperlink to standard style (Calibri, blue, underline)
-  - Enhanced `DocumentParser.mergeConsecutiveHyperlinks()` to handle non-consecutive fragments
-
-### Improved
-
-- **Hyperlink Merging Algorithm**: Now groups ALL hyperlinks by URL, not just consecutive ones
-  - Handles hyperlinks separated by runs or other content
-  - Optional formatting reset to fix corrupted fonts (e.g., Caveat from Google Docs)
-  - Processes hyperlinks in both main content and tables
+- **Hyperlink Change Tracking**: Enhanced tracked changes display for hyperlinks
+  - Added Content ID display in tracked changes UI
+  - Added hyperlink status indicators (updated, not_found, expired)
+  - Improved hyperlink change descriptions
 
 ### Fixed
 
-- **Hyperlink Fragmentation**: Fixed issue where hyperlinks with same URL were split into multiple fragments
-- **Corrupted Hyperlink Fonts**: Added ability to reset hyperlinks to standard formatting
-- **Non-Consecutive Hyperlink Merging**: Now properly merges hyperlinks even when separated by other content
-
-### API Additions
-
-```typescript
-// Defragment hyperlinks in document
-doc.defragmentHyperlinks({
-  resetFormatting?: boolean,      // Reset to standard style
-  cleanupRelationships?: boolean  // Clean orphaned relationships
-});
-
-// Reset individual hyperlink formatting
-hyperlink.resetToStandardFormatting();
-```
-
-### Technical Changes
-
-- Enhanced `DocumentParser.mergeConsecutiveHyperlinks()` with URL grouping and optional formatting reset
-- Added `getStandardHyperlinkFormatting()` helper in DocumentParser
-- Added `resetToStandardFormatting()` method to Hyperlink class
-- Added `defragmentHyperlinks()` public method to Document class
-
----
-
-## [1.14.0] - 2025-11-13
-
-### Added
-
-- **New Helper Methods** for list formatting:
-  - `NumberingLevel.getBulletSymbolWithFont(level, style)` - Get recommended bullet symbols with proper fonts for 5 different bullet styles (standard, circle, square, arrow, check)
-  - `NumberingLevel.calculateStandardIndentation(level)` - Calculate standard Microsoft Word-compatible indentation values
-  - `NumberingLevel.getStandardNumberFormat(level)` - Get recommended number format for any level (decimal, lowerLetter, lowerRoman, upperLetter, upperRoman)
+- **Hyperlink Fragmentation from Google Docs**: Fixed issue where hyperlinks would duplicate
+  - Uses framework's `defragmentHyperlinks()` API
+  - Properly merges fragmented hyperlinks with same URL
+  - Handles formatting reset for corrupted fonts
 
 ### Changed
 
-- **BREAKING (Minor)**: Default bullet font changed from 'Symbol' to 'Calibri' for better UI compatibility across platforms
-- **List Indentation Formula**: Updated from `720 * (level + 1)` to `720 + (level * 360)` to match Microsoft Word standards
-  - Level 0: 720 twips (0.5")
-  - Level 1: 1080 twips (0.75") - was 1440 twips (1.0")
-  - Level 2: 1440 twips (1.0") - was 2160 twips (1.5")
-  - Level 3: 1800 twips (1.25") - was 2880 twips (2.0")
-  - This fixes the issue where Level 3 appeared to have "double" indentation
-- **Numbered List Formats**: Expanded from 3-level to 5-level format cycle
-  - Level 0: decimal (1., 2., 3.)
-  - Level 1: lowerLetter (a., b., c.)
-  - Level 2: lowerRoman (i., ii., iii.)
-  - Level 3: upperLetter (A., B., C.) - previously was decimal
-  - Level 4: upperRoman (I., II., III.) - new
-  - Level 5+: cycles back to decimal
-
-### Fixed
-
-- **Special Characters Serialization**: Tabs, newlines, and non-breaking hyphens now properly serialize as XML elements
-  - `\t` (tab) → `<w:tab/>`
-  - `\n` (newline) → `<w:br/>`
-  - `\u2011` (non-breaking hyphen) → `<w:noBreakHyphen/>`
-  - `\r` (carriage return) → `<w:cr/>`
-  - `\u00AD` (soft hyphen) → `<w:softHyphen/>`
-- **Run.getText()**: Now correctly reconstructs special characters from content elements
-- **List Formatting**: Fixed Level 3+ numbered lists showing incorrect format (was "1., 2., 3." instead of "A., B., C.")
-- **Bullet Display**: Improved bullet symbol display in UI contexts by using Calibri instead of Symbol font
-
-### Technical Changes
-
-- Added `parseTextWithSpecialCharacters()` private method to Run class for proper special character handling
-- Updated Run constructor and setText() to use character parsing
-- Enhanced Run.getText() to convert content elements back to their string representations
-- Updated AbstractNumbering.createNumberedList() to support upperLetter and upperRoman formats
-- Updated NumberingManager.getStandardIndentation() to use new formula
-
-### Tests
-
-- All 1188 tests passing (+21 from previous version)
-- Added comprehensive test coverage for special character handling (19 tests)
-- Updated test expectations for new list indentation and formatting behavior
-
-## [1.13.0] - 2025-11-12
-
-### Fixed
-
-- **Hyperlink Duplication**: Fixed issue where hyperlinks from Google Docs would duplicate multiple times
-  - Parse ALL runs within hyperlink elements, not just the first run
-  - Added `mergeConsecutiveHyperlinks()` method to combine fragmented hyperlinks
-  - Handles Google Docs-style hyperlinks that are split by formatting changes
-- **Blank Paragraph Detection**: Enhanced logic to properly check for hyperlinks and other content before inserting blank paragraphs
-  - Previously used `getText()` which only checked Run objects
-  - Now uses `getContent()` to inspect all content types (Hyperlinks, Images, etc.)
-- **List Indentation**: Fixed blank paragraph detection after Header 2 tables
-
-### Added
-
-- `Paragraph.clearContent()` method for removing all content from a paragraph
-
-### Changed
-
-- DocumentParser now correctly handles multi-run hyperlinks
-- Enhanced blank paragraph insertion logic for better Word compatibility
-
-## [1.12.0] - 2025-11-11
-
-### Added
-
-- Explicit spacing to Header 2 blank paragraphs (120 twips = 6pt) to ensure visibility in Word
-
-### Fixed
-
-- Blank paragraph spacing after Header 2 sections
-
-## [1.11.0] - Previous Release
-
-(See git history for earlier releases)
+- **TrackedChangesPanel**: Enhanced UI with Before/After comparison view
+  - Added inline changes view with Word-like formatting
+  - Added list view with categorized changes
+  - Added side-by-side diff comparison using document snapshots
 
 ---
 
-## Migration Guide
+## [3.0.0] - 2025-11-12
 
-### Upgrading to 1.14.0
+### Added
 
-**List Indentation Changes:**
-If you were relying on the specific indentation values, note that levels 1+ now have smaller indents:
+- **Tracked Changes Feature**: Complete integration with docxmlater's revision tracking
+  - Extract and display Word tracked changes (original document revisions)
+  - Track DocHub processing changes (hyperlinks, styles, formatting)
+  - Unified change viewer with filtering by source and category
+  - Export changes as markdown
 
-- Old Level 1: 1440 twips → New Level 1: 1080 twips
-- Old Level 2: 2160 twips → New Level 2: 1440 twips
-- Old Level 3: 2880 twips → New Level 3: 1800 twips
+### Changed
 
-To maintain old behavior, explicitly set indentation:
+- **Document Processing**: Major refactor of WordDocumentProcessor
+  - Integrated ChangelogGenerator for extracting tracked changes
+  - Added revision handling modes (accept_all, preserve, preserve_and_wrap)
+  - Auto-accept revisions for clean document output while preserving change history
 
-```typescript
-const level = NumberingLevel.createBulletLevel(1);
-level.setLeftIndent(1440); // Old value
-```
+### Added
 
-**Bullet Font Changes:**
-Bullets now use Calibri font by default instead of Symbol font. If you need Symbol font:
+- **Document Snapshots**: Pre-processing snapshots for comparison
+  - IndexedDB storage via DocumentSnapshotService
+  - Before/After comparison in TrackedChangesPanel
+  - 7-day retention with 100MB storage limit
 
-```typescript
-const level = NumberingLevel.createBulletLevel(0, '•');
-level.setFont('Symbol');
-```
+---
 
-**Numbered List Formats:**
-Level 3 now shows uppercase letters (A., B., C.) instead of numbers (1., 2., 3.). To maintain old behavior:
+## Earlier Versions
 
-```typescript
-const formats = ['decimal', 'lowerLetter', 'lowerRoman']; // 3-level cycle
-const abstractNum = AbstractNumbering.createNumberedList(1, 9, formats);
-```
+See git history for changes prior to v3.0.0.
 
-**Special Characters:**
-Text containing tabs, newlines, etc. now automatically converts to proper XML elements. This is generally what you want, but if you need literal characters:
+---
 
-```typescript
-// Tabs and newlines now auto-convert to XML elements
-const run = new Run('Text\tWith\nSpecial');
-// Generates: <w:t>Text</w:t><w:tab/><w:t>With</w:t><w:br/><w:t>Special</w:t>
+## docxmlater Framework Reference
 
-// To preserve as literal text (not recommended):
-const run = new Run('Text\\tWith\\nSpecial');
-```
+Documentation Hub uses the [docxmlater](https://www.npmjs.com/package/docxmlater) framework for Word document processing.
+
+The framework provides:
+- Document loading and saving
+- Paragraph and run manipulation
+- Hyperlink processing
+- List and numbering support
+- Table operations
+- Revision tracking and changelog generation
+
+For framework-specific API changes, refer to the docxmlater package documentation.
