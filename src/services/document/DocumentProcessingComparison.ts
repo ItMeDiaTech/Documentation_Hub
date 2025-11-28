@@ -15,6 +15,10 @@
 import { Document, Paragraph, Hyperlink } from 'docxmlater';
 import { diffWords, Change } from 'diff';
 import { sanitizeHyperlinkText, isTextCorrupted } from '../../utils/textSanitizer';
+import { logger } from '../../utils/logger';
+
+// Create namespaced logger for this module
+const log = logger.namespace('DocumentProcessingComparison');
 
 export interface ProcessingChange {
   id: string;
@@ -147,8 +151,8 @@ export class DocumentProcessingComparison {
 
           // Log if XML corruption detected
           if (isTextCorrupted(rawText)) {
-            console.warn(
-              `[DocumentProcessingComparison] XML corruption detected in hyperlink text at paragraph ${paraIndex}, hyperlink ${hyperlinkIndex}:`,
+            log.warn(
+              `XML corruption detected in hyperlink text at paragraph ${paraIndex}, hyperlink ${hyperlinkIndex}:`,
               rawText
             );
           }
@@ -384,8 +388,8 @@ export class DocumentProcessingComparison {
 
             // Log if XML corruption detected
             if (isTextCorrupted(rawCurrentText)) {
-              console.warn(
-                `[DocumentProcessingComparison] XML corruption detected in current hyperlink text at paragraph ${paraIndex}, hyperlink ${hyperlinkIndex}:`,
+              log.warn(
+                `XML corruption detected in current hyperlink text at paragraph ${paraIndex}, hyperlink ${hyperlinkIndex}:`,
                 rawCurrentText
               );
             }
