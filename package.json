@@ -2,6 +2,7 @@
   "name": "documentation-hub",
   "version": "3.3.0",
   "description": "A modern document processing and session management desktop application",
+  "type": "module",
   "main": "dist/electron/main.js",
   "scripts": {
     "dev": "vite",

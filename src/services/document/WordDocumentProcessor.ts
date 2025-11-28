@@ -4845,7 +4845,7 @@ export class WordDocumentProcessor {
       const levelsValue = outlineMatch?.[1] ?? outlineMatch?.[2] ?? outlineMatch?.[3];
 
       if (levelsValue) {
-        this.log.debug(`Found \o switch with levels value: "${levelsValue}"`);
+        this.log.debug(`Found \\o switch with levels value: "${levelsValue}"`);
 
         const rangeMatch = levelsValue.match(/^(\d+)-(\d+)$/);
         if (rangeMatch?.[1] && rangeMatch?.[2]) {

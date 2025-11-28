@@ -120,13 +120,13 @@ function sanitizeLogData(data: any): any {
     let sanitized = data;
 
     // Redact Windows file paths (C:\Users\..., D:\Documents\..., etc.)
-    sanitized = sanitized.replace(/[A-Z]:\\[\\\w\s\-\.()]+/gi, '[REDACTED_PATH]');
+    sanitized = sanitized.replace(/[A-Z]:\\[\w\s\-.()]+/gi, '[REDACTED_PATH]');
 
     // Redact Unix file paths (/home/..., /Users/..., /var/..., etc.)
-    sanitized = sanitized.replace(/\/(home|Users|var|tmp|opt)\/[\w\s\-\.\/]+/gi, '[REDACTED_PATH]');
+    sanitized = sanitized.replace(/\/(home|Users|var|tmp|opt)\/[\w\s\-./]+/gi, '[REDACTED_PATH]');
 
     // Redact full URLs (but keep domain for debugging)
-    sanitized = sanitized.replace(/(https?:\/\/[^\/\s]+)(\/[^\s]*)/gi, '$1/[REDACTED_URL]');
+    sanitized = sanitized.replace(/(https?:\/\/[^/\s]+)(\/[^\s]*)/gi, '$1/[REDACTED_URL]');
 
     // Truncate very long strings (likely document content)
     if (sanitized.length > 500) {
