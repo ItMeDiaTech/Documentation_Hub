@@ -5080,7 +5080,7 @@ export class WordDocumentProcessor {
 
       if (allHeadings.length === 0) {
         this.log.warn("No headings found - TOC cannot be populated");
-        return 0;
+        return { count: 0, headings: [] };
       }
 
       // ============================================
