@@ -107,23 +107,6 @@ export function CurrentSession() {
     }));
   }, [session?.processingOptions]);
 
-  if (!session) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Card className="max-w-md">
-          <CardContent className="p-8 text-center">
-            <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Session Not Found</h2>
-            <p className="text-muted-foreground mb-4">
-              The session you are looking for does not exist or has been deleted.
-            </p>
-            <Button onClick={() => navigate('/')}>Return to Dashboard</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const handleFileSelect = useCallback(async () => {
     // Prevent concurrent file selections
     if (isSelectingFiles.current) {
@@ -191,7 +174,7 @@ export function CurrentSession() {
           return;
         }
 
-        const name = filePath.split(/[\\\/]/).pop() || 'document.docx';
+        const name = filePath.split(/[\\/]/).pop() || 'document.docx';
 
         try {
           // Get actual file size from filesystem
@@ -278,6 +261,23 @@ export function CurrentSession() {
       isSelectingFiles.current = false;
     }
   }, [session?.id, addDocuments, toast]);
+
+  if (!session) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Card className="max-w-md">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Session Not Found</h2>
+            <p className="text-muted-foreground mb-4">
+              The session you are looking for does not exist or has been deleted.
+            </p>
+            <Button onClick={() => navigate('/')}>Return to Dashboard</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
