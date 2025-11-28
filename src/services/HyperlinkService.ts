@@ -59,6 +59,7 @@ interface HyperlinkApiResponseWithCache extends HyperlinkApiResponse {
 export class HyperlinkService {
   private static instance: HyperlinkService;
   private apiSettings: HyperlinkApiSettings | null = null;
+  private userSettings: UserSettings | null = null;
   private log = logger.namespace('HyperlinkService');
 
   private constructor() {}
@@ -101,6 +102,9 @@ export class HyperlinkService {
    * ```
    */
   public initialize(settings: UserSettings): void {
+    // Store full settings for local dictionary access
+    this.userSettings = settings;
+
     if (settings.apiConnections.powerAutomateUrl) {
       // Sanitize the API URL to fix encoding issues
       const sanitizedUrl = sanitizeUrl(settings.apiConnections.powerAutomateUrl);
@@ -122,6 +126,132 @@ export class HyperlinkService {
       };
 
       this.log.debug('Initialized API settings with sanitized URL:', sanitizedUrl);
+    }
+
+    // Log local dictionary status
+    if (settings.localDictionary?.enabled) {
+      this.log.info('Local dictionary mode enabled - using SQLite database for lookups');
+    }
+  }
+
+  /**
+   * Check if local dictionary mode is enabled
+   */
+  public isLocalDictionaryEnabled(): boolean {
+    return this.userSettings?.localDictionary?.enabled ?? false;
+  }
+
+  /**
+   * Process hyperlinks using local dictionary (SQLite database)
+   * This is used when local dictionary mode is enabled instead of Power Automate API
+   */
+  private async processHyperlinksWithLocalDictionary(
+    hyperlinks: DetailedHyperlinkInfo[]
+  ): Promise<HyperlinkApiResponse & { processedHyperlinks?: DetailedHyperlinkInfo[] }> {
+    try {
+      // Extract all IDs into a single lookup array
+      const lookupIds: string[] = [];
+      const uniqueIds = new Set<string>();
+
+      for (const hyperlink of hyperlinks) {
+        const contentId = extractContentId(hyperlink.url);
+        if (contentId && !uniqueIds.has(contentId)) {
+          lookupIds.push(contentId);
+          uniqueIds.add(contentId);
+        }
+
+        const documentId = extractDocumentId(hyperlink.url);
+        if (documentId && !uniqueIds.has(documentId)) {
+          lookupIds.push(documentId);
+          uniqueIds.add(documentId);
+        }
+      }
+
+      if (lookupIds.length === 0) {
+        return {
+          success: false,
+          timestamp: new Date(),
+          error: 'No Content_ID or Document_ID found in hyperlinks',
+        };
+      }
+
+      // Check if electronAPI is available
+      if (typeof window.electronAPI === 'undefined') {
+        return {
+          success: false,
+          timestamp: new Date(),
+          error: 'Electron API not available - local dictionary requires Electron environment',
+        };
+      }
+
+      this.log.info(`Processing ${lookupIds.length} IDs via local dictionary`);
+
+      // Call local dictionary batch lookup
+      const response = await window.electronAPI.dictionary.batchLookup(lookupIds);
+
+      if (!response.success || !response.results) {
+        return {
+          success: false,
+          timestamp: new Date(),
+          error: response.error || 'Local dictionary lookup failed',
+        };
+      }
+
+      this.log.info(`Local dictionary returned ${response.results.length} results`);
+
+      // Build results cache for O(1) lookups
+      const resultsMap = new Map<string, HyperlinkApiResult>();
+
+      const results: HyperlinkApiResult[] = response.results.map((result) => {
+        // Map local dictionary result to HyperlinkApiResult format
+        const normalizedStatus: HyperlinkApiResult['status'] =
+          result.Status?.toLowerCase() === 'deprecated'
+            ? 'deprecated'
+            : result.Status?.toLowerCase() === 'expired'
+              ? 'expired'
+              : result.Status?.toLowerCase() === 'not_found'
+                ? 'not_found'
+                : 'active';
+
+        const processed: HyperlinkApiResult = {
+          url: '',
+          documentId: result.Document_ID || '',
+          contentId: result.Content_ID || '',
+          title: result.Title || '',
+          status: normalizedStatus,
+          metadata: {},
+        };
+
+        // Cache by both IDs for quick lookup
+        if (processed.documentId) resultsMap.set(processed.documentId, processed);
+        if (processed.contentId) resultsMap.set(processed.contentId, processed);
+
+        return processed;
+      });
+
+      const apiResponse: HyperlinkApiResponse = {
+        success: true,
+        timestamp: new Date(),
+        body: {
+          results,
+          errors: [],
+        },
+      };
+
+      // Attach cache for O(1) lookups
+      (apiResponse as HyperlinkApiResponseWithCache).resultsCache = resultsMap;
+
+      return {
+        ...apiResponse,
+        processedHyperlinks: hyperlinks,
+      };
+    } catch (error) {
+      this.log.error('Local dictionary lookup error:', error);
+      return {
+        success: false,
+        timestamp: new Date(),
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
     }
   }
 
@@ -205,6 +335,13 @@ export class HyperlinkService {
     settings?: HyperlinkApiSettings,
     userProfile?: { firstName: string; lastName: string; email: string }
   ): Promise<HyperlinkApiResponse & { processedHyperlinks?: DetailedHyperlinkInfo[] }> {
+    // Check if local dictionary mode is enabled
+    // When enabled, use local SQLite database instead of Power Automate API
+    if (this.isLocalDictionaryEnabled()) {
+      this.log.info('Using local dictionary for hyperlink processing (API call bypassed)');
+      return this.processHyperlinksWithLocalDictionary(hyperlinks);
+    }
+
     const apiConfig = settings || this.apiSettings;
 
     if (!apiConfig) {

@@ -23,6 +23,28 @@ export interface UpdateSettings {
   checkForPreReleases: boolean;
 }
 
+/**
+ * Local Dictionary Settings for SharePoint Dictionary integration
+ * When enabled, hyperlink lookups use local SQLite database instead of API
+ */
+export interface LocalDictionarySettings {
+  enabled: boolean;
+  sharePointSiteUrl: string;
+  documentLibraryPath: string;
+  tenantId: string;
+  clientId: string;
+  syncIntervalHours: number;
+  lastSyncTime: string | null;
+  lastSyncSuccess: boolean;
+}
+
+/**
+ * Backup Settings for document backup configuration
+ */
+export interface BackupSettings {
+  enabled: boolean;
+}
+
 export interface UserSettings {
   profile: UserProfile;
   notifications: NotificationSettings;
@@ -31,6 +53,8 @@ export interface UserSettings {
   timezone: string;
   dateFormat: string;
   updateSettings: UpdateSettings;
+  localDictionary: LocalDictionarySettings;
+  backupSettings: BackupSettings;
 }
 
 export const defaultUserSettings: UserSettings = {
@@ -57,5 +81,18 @@ export const defaultUserSettings: UserSettings = {
   updateSettings: {
     autoUpdateOnLaunch: true,
     checkForPreReleases: false,
+  },
+  localDictionary: {
+    enabled: false,
+    sharePointSiteUrl: '',
+    documentLibraryPath: '',
+    tenantId: '',
+    clientId: '',
+    syncIntervalHours: 6,
+    lastSyncTime: null,
+    lastSyncSuccess: false,
+  },
+  backupSettings: {
+    enabled: true,
   },
 };

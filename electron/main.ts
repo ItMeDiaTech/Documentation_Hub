@@ -18,6 +18,10 @@ import type {
 } from '../src/types/hyperlink';
 import { BackupService } from './services/BackupService';
 import type { BackupInfo, StorageInfo, BackupConfig } from './services/BackupService';
+import { getDictionaryService } from './services/DictionaryService';
+import { getSharePointSyncService } from './services/SharePointSyncService';
+import { getLocalDictionaryLookupService } from './services/LocalDictionaryLookupService';
+import type { SharePointConfig } from '../src/types/dictionary';
 
 let mainWindow: BrowserWindow | null = null;
 const isDev = !app.isPackaged;
@@ -1498,6 +1502,148 @@ ipcMain.handle(
     }
   }
 );
+
+// ==============================================================================
+// Dictionary Service IPC Handlers
+// ==============================================================================
+
+// Initialize dictionary database
+ipcMain.handle('dictionary:initialize', async () => {
+  try {
+    const dictionaryService = getDictionaryService();
+    const result = await dictionaryService.initialize();
+    return result;
+  } catch (error) {
+    log.error('[Dictionary] Initialize failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to initialize dictionary';
+    return { success: false, totalEntries: 0, error: message };
+  }
+});
+
+// Configure SharePoint sync
+ipcMain.handle(
+  'dictionary:configure-sync',
+  async (...[, config]: [Electron.IpcMainInvokeEvent, SharePointConfig]) => {
+    try {
+      const syncService = getSharePointSyncService();
+      syncService.configure(config);
+
+      // Set main window for progress updates
+      if (mainWindow) {
+        syncService.setMainWindow(mainWindow);
+      }
+
+      return { success: true };
+    } catch (error) {
+      log.error('[Dictionary] Configure sync failed:', error);
+      const message = error instanceof Error ? error.message : 'Failed to configure sync';
+      return { success: false, error: message };
+    }
+  }
+);
+
+// Set client secret (sensitive, not stored in settings)
+ipcMain.handle(
+  'dictionary:set-credentials',
+  async (...[, secret]: [Electron.IpcMainInvokeEvent, string]) => {
+    try {
+      const syncService = getSharePointSyncService();
+      const result = syncService.setClientSecret(secret);
+      return result;
+    } catch (error) {
+      log.error('[Dictionary] Set credentials failed:', error);
+      const message = error instanceof Error ? error.message : 'Failed to set credentials';
+      return { success: false, error: message };
+    }
+  }
+);
+
+// Trigger dictionary sync
+ipcMain.handle('dictionary:sync', async () => {
+  try {
+    const syncService = getSharePointSyncService();
+    const result = await syncService.sync();
+    return result;
+  } catch (error) {
+    log.error('[Dictionary] Sync failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to sync dictionary';
+    return { success: false, entriesImported: 0, duration: 0, error: message };
+  }
+});
+
+// Start sync scheduler
+ipcMain.handle(
+  'dictionary:start-scheduler',
+  async (...[, intervalHours]: [Electron.IpcMainInvokeEvent, number]) => {
+    try {
+      const syncService = getSharePointSyncService();
+      syncService.startScheduler(intervalHours);
+      return { success: true };
+    } catch (error) {
+      log.error('[Dictionary] Start scheduler failed:', error);
+      const message = error instanceof Error ? error.message : 'Failed to start scheduler';
+      return { success: false, error: message };
+    }
+  }
+);
+
+// Stop sync scheduler
+ipcMain.handle('dictionary:stop-scheduler', async () => {
+  try {
+    const syncService = getSharePointSyncService();
+    syncService.stopScheduler();
+    return { success: true };
+  } catch (error) {
+    log.error('[Dictionary] Stop scheduler failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to stop scheduler';
+    return { success: false, error: message };
+  }
+});
+
+// Lookup single ID
+ipcMain.handle(
+  'dictionary:lookup',
+  async (...[, lookupId]: [Electron.IpcMainInvokeEvent, string]) => {
+    try {
+      const lookupService = getLocalDictionaryLookupService();
+      const result = lookupService.lookup(lookupId);
+      return { success: true, result };
+    } catch (error) {
+      log.error('[Dictionary] Lookup failed:', error);
+      const message = error instanceof Error ? error.message : 'Failed to lookup';
+      return { success: false, error: message };
+    }
+  }
+);
+
+// Batch lookup multiple IDs
+ipcMain.handle(
+  'dictionary:batch-lookup',
+  async (...[, lookupIds]: [Electron.IpcMainInvokeEvent, string[]]) => {
+    try {
+      const lookupService = getLocalDictionaryLookupService();
+      const results = lookupService.batchLookup(lookupIds);
+      return { success: true, results };
+    } catch (error) {
+      log.error('[Dictionary] Batch lookup failed:', error);
+      const message = error instanceof Error ? error.message : 'Failed to batch lookup';
+      return { success: false, error: message, results: [] };
+    }
+  }
+);
+
+// Get sync status
+ipcMain.handle('dictionary:get-status', async () => {
+  try {
+    const dictionaryService = getDictionaryService();
+    const status = dictionaryService.getSyncStatus();
+    return { success: true, status };
+  } catch (error) {
+    log.error('[Dictionary] Get status failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get status';
+    return { success: false, error: message };
+  }
+});
 
 // ==============================================================================
 // Certificate Management IPC Handlers

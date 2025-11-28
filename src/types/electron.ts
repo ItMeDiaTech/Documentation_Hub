@@ -26,6 +26,15 @@ import type {
   BackupConfig,
 } from './backup';
 
+import type {
+  SharePointConfig,
+  DictionarySyncStatus,
+  DictionarySyncResponse,
+  DictionaryInitResponse,
+  DictionaryCredentialsResponse,
+  SyncProgressUpdate,
+} from './dictionary';
+
 /**
  * Update event info types
  */
@@ -92,6 +101,33 @@ export interface BackupAPI {
 }
 
 /**
+ * Hyperlink lookup result type (from local dictionary)
+ */
+export interface HyperlinkLookupResult {
+  Document_ID: string;
+  Content_ID: string;
+  Title: string;
+  Status: string;
+}
+
+/**
+ * Dictionary API interface
+ */
+export interface DictionaryAPI {
+  initialize: () => Promise<DictionaryInitResponse>;
+  configureSync: (config: SharePointConfig) => Promise<{ success: boolean; error?: string }>;
+  setCredentials: (clientSecret: string) => Promise<DictionaryCredentialsResponse>;
+  sync: () => Promise<DictionarySyncResponse>;
+  startScheduler: (intervalHours: number) => Promise<{ success: boolean; error?: string }>;
+  stopScheduler: () => Promise<{ success: boolean; error?: string }>;
+  lookup: (lookupId: string) => Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }>;
+  batchLookup: (lookupIds: string[]) => Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }>;
+  getStatus: () => Promise<{ success: boolean; status?: DictionarySyncStatus; error?: string }>;
+  onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => () => void;
+  onSyncComplete: (callback: (result: DictionarySyncResponse) => void) => () => void;
+}
+
+/**
  * Main Electron API interface
  * This type defines all methods exposed to the renderer via contextBridge.
  */
@@ -155,6 +191,9 @@ export interface ElectronAPI {
 
   // Backup operations
   backup: BackupAPI;
+
+  // Dictionary operations (Local SharePoint Dictionary)
+  dictionary: DictionaryAPI;
 
   // Auto-updater
   checkForUpdates: () => Promise<void>;

@@ -1708,17 +1708,50 @@ export class WordDocumentProcessor {
     const dir = path.dirname(filePath);
     const ext = path.extname(filePath);
     const base = path.basename(filePath, ext);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
 
     // Create DocHub_Backups folder if it doesn't exist
     const backupDir = path.join(dir, 'DocHub_Backups');
     await fs.mkdir(backupDir, { recursive: true });
 
-    // Save backup inside DocHub_Backups folder
-    const backupPath = path.join(backupDir, `${base}.backup.${timestamp}${ext}`);
+    // Count existing backups to determine next number
+    const existingCount = await this.getExistingBackupCount(backupDir, base, ext);
+    const nextNumber = existingCount + 1;
+
+    // New format: filename_Backup_#.docx
+    const backupPath = path.join(backupDir, `${base}_Backup_${nextNumber}${ext}`);
 
     await fs.copyFile(filePath, backupPath);
     return backupPath;
+  }
+
+  /**
+   * Count existing backups for a file to determine the next backup number
+   */
+  private async getExistingBackupCount(
+    backupDir: string,
+    baseName: string,
+    ext: string
+  ): Promise<number> {
+    try {
+      const files = await fs.readdir(backupDir);
+      // Escape special regex characters in baseName and ext
+      const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedExt = ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`^${escapedBase}_Backup_(\\d+)${escapedExt}$`);
+
+      let maxNumber = 0;
+      for (const file of files) {
+        const match = file.match(pattern);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxNumber) maxNumber = num;
+        }
+      }
+      return maxNumber;
+    } catch {
+      // Directory doesn't exist or can't be read - start from 0
+      return 0;
+    }
   }
 
   /**
