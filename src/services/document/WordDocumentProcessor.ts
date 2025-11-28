@@ -32,7 +32,7 @@ import {
 } from "@/types/hyperlink";
 import type { ChangeEntry, ChangelogSummary, DocumentChange, WordRevisionState } from "@/types/session";
 import { MemoryMonitor } from "@/utils/MemoryMonitor";
-import { logger } from "@/utils/logger";
+import { logger, startTimer, debugModes, isDebugEnabled } from "@/utils/logger";
 import { sanitizeHyperlinkText } from "@/utils/textSanitizer";
 import { extractLookupIds } from "@/utils/urlPatterns";
 import { promises as fs } from "fs";
@@ -41,6 +41,7 @@ import * as path from "path";
 import { hyperlinkService } from "../HyperlinkService";
 import { DocXMLaterProcessor } from "./DocXMLaterProcessor";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
+import { DocumentSnapshotService } from "./DocumentSnapshotService";
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -147,6 +148,16 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   revisionAuthor?: string;
   /** Auto-accept all revisions after processing for clean output (default: true) */
   autoAcceptRevisions?: boolean;
+
+  // ═══════════════════════════════════════════════════════════
+  // Document Snapshot Options (for comparison feature)
+  // ═══════════════════════════════════════════════════════════
+  /** Session identifier for snapshot capture */
+  sessionId?: string;
+  /** Document identifier for snapshot capture */
+  documentId?: string;
+  /** Enable capturing pre-processing snapshot for comparison */
+  captureSnapshot?: boolean;
 
   // ═══════════════════════════════════════════════════════════
   // Legacy/Existing Options
@@ -297,6 +308,76 @@ export class WordDocumentProcessor {
         revisionHandling: revisionHandling as 'preserve' | 'accept' | 'strip'
       });
       this.log.debug("Document loaded successfully");
+
+      // ═══════════════════════════════════════════════════════════
+      // Capture Pre-Processing Snapshot (for comparison feature)
+      // Must be done BEFORE any modifications
+      // ═══════════════════════════════════════════════════════════
+      if (options.captureSnapshot && options.sessionId && options.documentId) {
+        this.log.debug("=== CAPTURING PRE-PROCESSING SNAPSHOT ===");
+        try {
+          // Read the original file buffer
+          const buffer = await fs.readFile(filePath);
+          const arrayBuffer = buffer.buffer.slice(
+            buffer.byteOffset,
+            buffer.byteOffset + buffer.byteLength
+          );
+
+          // Extract text content for diffing
+          const paragraphs = doc.getParagraphs();
+          const textContent = paragraphs.map((p) => p.getText());
+
+          // Extract hyperlink state
+          const hyperlinks: Array<{
+            paragraphIndex: number;
+            hyperlinkIndex: number;
+            url: string;
+            text: string;
+          }> = [];
+
+          paragraphs.forEach((paragraph, pIndex) => {
+            // Extract hyperlinks from paragraph content
+            const content = paragraph.getContent();
+            let hIndex = 0;
+            content.forEach((element) => {
+              // Check if element is a Hyperlink by checking for getUrl method
+              if (element && typeof (element as any).getUrl === 'function') {
+                const hyperlink = element as any;
+                hyperlinks.push({
+                  paragraphIndex: pIndex,
+                  hyperlinkIndex: hIndex++,
+                  url: hyperlink.getUrl() || '',
+                  text: hyperlink.getText?.() || '',
+                });
+              }
+            });
+          });
+
+          // Deduplicate hyperlinks (each paragraph was adding all its hyperlinks)
+          const uniqueHyperlinks = new Map<string, typeof hyperlinks[0]>();
+          hyperlinks.forEach((h) => {
+            const key = `${h.paragraphIndex}-${h.hyperlinkIndex}`;
+            if (!uniqueHyperlinks.has(key)) {
+              uniqueHyperlinks.set(key, h);
+            }
+          });
+
+          await DocumentSnapshotService.captureSnapshot(
+            arrayBuffer,
+            options.sessionId,
+            options.documentId,
+            textContent,
+            Array.from(uniqueHyperlinks.values())
+          );
+          this.log.info(
+            `Snapshot captured: ${textContent.length} paragraphs, ` +
+              `${uniqueHyperlinks.size} hyperlinks`
+          );
+        } catch (snapshotError) {
+          // Log error but don't fail the processing
+          this.log.warn("Failed to capture snapshot (non-fatal):", snapshotError);
+        }
+      }
 
       // ═══════════════════════════════════════════════════════════
       // Word Tracked Changes - Enable Tracking Mode
@@ -460,6 +541,11 @@ export class WordDocumentProcessor {
                 let finalUrl = hyperlinkInfo.url;
                 const modifications: string[] = [];
 
+                // Track what changed for consolidated change entry
+                let urlChanged = false;
+                let textChanged = false;
+                let newTextValue = hyperlinkInfo.displayText;
+
                 if (apiResult) {
                   // Phase 3: URL Reconstruction
                   // Collect URL updates for batch application after iteration
@@ -470,6 +556,7 @@ export class WordDocumentProcessor {
                       // Add to URL update map for batch processing
                       urlUpdateMap.set(hyperlinkInfo.url, newUrl);
                       finalUrl = newUrl;
+                      urlChanged = true;
                       modifications.push("URL updated");
 
                       this.log.debug(`Queued URL update: ${hyperlinkInfo.url} → ${newUrl}`);
@@ -509,36 +596,60 @@ export class WordDocumentProcessor {
                       // So hyperlink.hyperlink accesses the actual docxmlater Hyperlink object
                       hyperlink.hyperlink.setText(newText);
                       finalDisplayText = newText;
+                      newTextValue = newText;
+                      textChanged = true;
                       result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
                       modifications.push("Display text updated");
 
                       this.log.debug(`Updated text: "${hyperlinkInfo.displayText}" → "${newText}"`);
 
-                      // Track the change
+                      // Track the change with status (expired/updated) and contentId
                       if (options.trackChanges) {
+                        const hyperlinkStatus = apiResult.status === "expired" || apiResult.status === "deprecated"
+                          ? 'expired' as const
+                          : 'updated' as const;
                         documentProcessingComparison.recordHyperlinkTextChange(
                           hyperlink.paragraphIndex,
                           i % 10, // Approximate hyperlink index within paragraph
                           hyperlinkInfo.displayText,
                           newText,
-                          "PowerAutomate API Update"
+                          "PowerAutomate API Update",
+                          hyperlinkStatus,
+                          apiResult.contentId // Pass contentId for tracking
                         );
                       }
-
-                      // Enhanced change tracking for UI
-                      const nearestHeader2 = this.findNearestHeader2(doc, hyperlink.paragraphIndex) || undefined;
-                      result.changes?.push({
-                        type: 'hyperlink',
-                        category: 'hyperlink_update',
-                        description: `Updated hyperlink title`,
-                        before: hyperlinkInfo.displayText,
-                        after: newText,
-                        paragraphIndex: hyperlink.paragraphIndex,
-                        nearestHeader2,
-                        contentId: apiResult.contentId,
-                        hyperlinkStatus: apiResult.status === "expired" || apiResult.status === "deprecated" ? 'expired' : 'updated',
-                      });
                     }
+                  }
+
+                  // Consolidated change tracking for UI - track if URL or text changed
+                  if (urlChanged || textChanged) {
+                    const nearestHeader2 = this.findNearestHeader2(doc, hyperlink.paragraphIndex) || undefined;
+
+                    // Build description based on what changed
+                    let description = 'Updated hyperlink';
+                    if (urlChanged && textChanged) {
+                      description = 'Updated hyperlink URL and display text';
+                    } else if (urlChanged) {
+                      description = 'Updated hyperlink URL';
+                    } else if (textChanged) {
+                      description = 'Updated hyperlink display text';
+                    }
+
+                    result.changes?.push({
+                      type: 'hyperlink',
+                      category: 'hyperlink_update',
+                      description,
+                      // Text changes (before/after are for display text)
+                      before: textChanged ? hyperlinkInfo.displayText : undefined,
+                      after: textChanged ? newTextValue : undefined,
+                      // URL changes (new fields)
+                      urlBefore: urlChanged ? hyperlinkInfo.url : undefined,
+                      urlAfter: urlChanged ? finalUrl : undefined,
+                      paragraphIndex: hyperlink.paragraphIndex,
+                      nearestHeader2,
+                      contentId: apiResult.contentId,
+                      hyperlinkStatus: apiResult.status === "expired" || apiResult.status === "deprecated" ? 'expired' : 'updated',
+                    });
                   }
 
                   modifications.push("API processed");
@@ -568,6 +679,18 @@ export class WordDocumentProcessor {
                     hyperlink.hyperlink.setText(notFoundText);
                     result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
 
+                    // Track the change with not_found status for Document Changes UI
+                    if (options.trackChanges) {
+                      documentProcessingComparison.recordHyperlinkTextChange(
+                        hyperlink.paragraphIndex,
+                        i % 10, // Approximate hyperlink index within paragraph
+                        hyperlinkInfo.displayText,
+                        notFoundText,
+                        "Source not found in SharePoint",
+                        'not_found'
+                      );
+                    }
+
                     // Enhanced change tracking for failed hyperlinks
                     const nearestHeader2 = this.findNearestHeader2(doc, hyperlink.paragraphIndex) || undefined;
                     result.changes?.push({
@@ -589,7 +712,7 @@ export class WordDocumentProcessor {
                 this.log.debug(`=== APPLYING URL UPDATES (BATCH) ===`);
                 this.log.debug(`Updating ${urlUpdateMap.size} URLs via paragraph reconstruction`);
 
-                const urlUpdateResult = await this.applyUrlUpdates(doc, urlUpdateMap);
+                const urlUpdateResult = await this.applyUrlUpdates(doc, urlUpdateMap, authorName);
 
                 // Update statistics with successful updates
                 result.modifiedHyperlinks += urlUpdateResult.updated;
@@ -762,7 +885,7 @@ export class WordDocumentProcessor {
       // This ensures Header 2 table styles exist when preservation logic runs
       if (options.assignStyles && options.styles && options.styles.length > 0) {
         this.log.debug(
-          "=== ASSIGNING STYLES (USING DOCXMLATER applyCustomFormattingToExistingStyles) ==="
+          "=== ASSIGNING STYLES (USING DOCXMLATER applyStyles) ==="
         );
         // Use docXMLater's native method with preserve flag support
         // This handles style definitions, direct formatting clearing, and Header2 table wrapping
@@ -779,23 +902,23 @@ export class WordDocumentProcessor {
         // NEW v2.1.0: Apply styles and clean direct formatting with simpler API
         this.log.debug("=== APPLYING STYLES WITH CLEAN FORMATTING ===");
 
-        // Skip applyH1/H2/H3 if already processed by applyCustomFormattingToExistingStyles
+        // Skip applyH1/H2/H3 if already processed by applyStyles
         // This prevents framework defaults from overriding user-configured custom styles
         const h1Count = styleResults.heading1
           ? (this.log.debug(
-              "Skipping applyH1 - already processed by applyCustomFormattingToExistingStyles"
+              "Skipping applyH1 - already processed by applyStyles"
             ),
             0)
           : doc.applyH1();
         const h2Count = styleResults.heading2
           ? (this.log.debug(
-              "Skipping applyH2 - already processed by applyCustomFormattingToExistingStyles"
+              "Skipping applyH2 - already processed by applyStyles"
             ),
             0)
           : doc.applyH2();
         const h3Count = styleResults.heading3
           ? (this.log.debug(
-              "Skipping applyH3 - already processed by applyCustomFormattingToExistingStyles"
+              "Skipping applyH3 - already processed by applyStyles"
             ),
             0)
           : doc.applyH3();
@@ -1158,21 +1281,7 @@ export class WordDocumentProcessor {
       if (options.smartTables) {
         this.log.debug("=== SMART TABLE DETECTION & FORMATTING (NEW) ===");
 
-        // IMPORTANT: Disable track changes during smart table formatting
-        // Track changes generates pPrChange elements that corrupt list numbering
-        const wasTrackChangesEnabledForTables = doc.isTrackChangesEnabled();
-        if (wasTrackChangesEnabledForTables) {
-          this.log.debug("Temporarily disabling track changes for smart table formatting");
-          doc.disableTrackChanges();
-        }
-
         const smartFormatted = await this.applySmartTableFormatting(doc, options);
-
-        // Re-enable track changes if it was enabled before
-        if (wasTrackChangesEnabledForTables) {
-          this.log.debug("Re-enabling track changes after smart table formatting");
-          doc.enableTrackChanges();
-        }
 
         this.log.info(`Applied smart formatting to ${smartFormatted} tables`);
 
@@ -1298,8 +1407,10 @@ export class WordDocumentProcessor {
         // ═══════════════════════════════════════════════════════════
         if (options.trackChanges) {
           const comparison = documentProcessingComparison.getCurrentComparison();
+          this.log.info(`Hyperlink tracking status: comparison=${comparison ? 'exists' : 'null'}, hyperlinkChanges=${comparison?.hyperlinkChanges?.length ?? 0}`);
+
           if (comparison?.hyperlinkChanges && comparison.hyperlinkChanges.length > 0) {
-            this.log.debug(`Adding ${comparison.hyperlinkChanges.length} DocHub hyperlink changes to changelog`);
+            this.log.info(`Adding ${comparison.hyperlinkChanges.length} DocHub hyperlink changes to changelog`);
 
             for (const hc of comparison.hyperlinkChanges) {
               const urlChanged = hc.originalUrl !== hc.modifiedUrl;
@@ -1307,6 +1418,9 @@ export class WordDocumentProcessor {
 
               // Only add entry if something actually changed
               if (urlChanged || textChanged) {
+                // Find nearest Header 2 for context
+                const nearestHeading = this.findNearestHeader2(doc, hc.paragraphIndex) || undefined;
+
                 changelogEntries.push({
                   id: `dochub-hyperlink-${hc.paragraphIndex}-${hc.hyperlinkIndex}-${Date.now()}`,
                   revisionType: "hyperlinkChange",
@@ -1316,7 +1430,7 @@ export class WordDocumentProcessor {
                   date: new Date(),
                   location: {
                     paragraphIndex: hc.paragraphIndex,
-                    nearestHeading: undefined, // Could be enhanced to find nearest heading
+                    nearestHeading,
                   },
                   content: {
                     hyperlinkChange: {
@@ -1324,6 +1438,8 @@ export class WordDocumentProcessor {
                       urlAfter: hc.modifiedUrl,
                       textBefore: hc.originalText,
                       textAfter: hc.modifiedText,
+                      status: hc.status, // 'updated', 'not_found', or 'expired'
+                      contentId: hc.contentId, // Include content ID for display
                     },
                   },
                 });
@@ -1332,15 +1448,38 @@ export class WordDocumentProcessor {
           }
         }
 
+        // ═══════════════════════════════════════════════════════════
+        // ENRICH WORD TRACKED CHANGES WITH CONTEXT
+        // Add nearestHeading to entries that have paragraphIndex but no heading
+        // ═══════════════════════════════════════════════════════════
+        for (const entry of changelogEntries) {
+          if (entry.location?.paragraphIndex !== undefined && !entry.location.nearestHeading) {
+            const nearestHeading = this.findNearestHeader2(doc, entry.location.paragraphIndex);
+            if (nearestHeading) {
+              entry.location.nearestHeading = nearestHeading;
+            }
+          }
+        }
+
         // Calculate summary - need to cast back for docxmlater's getSummary, then cast result
-        // The summary may not include hyperlink category count from docxmlater, so we add it
+        // The summary may not include all category counts, so ensure they're all present
         const rawSummary = ChangelogGenerator.getSummary(changelogEntries as any);
         const hyperlinkCount = changelogEntries.filter(e => e.category === "hyperlink").length;
+        const imageCount = changelogEntries.filter(e => e.category === "image").length;
+        const fieldCount = changelogEntries.filter(e => e.category === "field").length;
+        const commentCount = changelogEntries.filter(e => e.category === "comment").length;
+        const bookmarkCount = changelogEntries.filter(e => e.category === "bookmark").length;
+        const contentControlCount = changelogEntries.filter(e => e.category === "contentControl").length;
         const summary: ChangelogSummary = {
           ...rawSummary,
           byCategory: {
             ...rawSummary.byCategory,
             hyperlink: hyperlinkCount,
+            image: imageCount,
+            field: fieldCount,
+            comment: commentCount,
+            bookmark: bookmarkCount,
+            contentControl: contentControlCount,
           },
         };
 
@@ -1423,13 +1562,31 @@ export class WordDocumentProcessor {
       result.duration = performance.now() - startTime;
       result.processingTimeMs = result.duration;
 
-      this.log.debug("═══════════════════════════════════════════════════════════");
-      this.log.debug("  PROCESSING COMPLETE");
-      this.log.debug("═══════════════════════════════════════════════════════════");
+      // PROCESSING SUMMARY - Always log key metrics
+      this.log.info("═══════════════════════════════════════════════════════════");
+      this.log.info("  PROCESSING COMPLETE");
+      this.log.info("═══════════════════════════════════════════════════════════");
+      this.log.info(`Document: ${path.basename(filePath)}`);
       this.log.info(`Total hyperlinks: ${result.totalHyperlinks}`);
       this.log.info(`Modified: ${result.modifiedHyperlinks}`);
       this.log.info(`Appended Content IDs: ${result.appendedContentIds}`);
+      this.log.info(`Total changes tracked: ${result.changes?.length || 0}`);
       this.log.info(`Duration: ${result.duration.toFixed(0)}ms`);
+
+      // VERBOSE DEBUG OUTPUT - Only when debug mode enabled
+      if (isDebugEnabled(debugModes.DOCUMENT_PROCESSING)) {
+        this.log.debug("--- Detailed Processing Stats ---");
+        this.log.debug(`File size: ${(result.documentSize || 0) / 1024}KB`);
+        this.log.debug(`URLs updated: ${result.updatedUrls}`);
+        this.log.debug(`Display texts updated: ${result.updatedDisplayTexts}`);
+        this.log.debug(`Skipped hyperlinks: ${result.skippedHyperlinks}`);
+        this.log.debug(`Errors: ${result.errorCount}`);
+        if (result.errorMessages.length > 0) {
+          this.log.debug(`Error messages: ${result.errorMessages.join(', ')}`);
+        }
+        this.log.debug(`Processing rate: ${((result.totalHyperlinks || 1) / (result.duration / 1000)).toFixed(1)} hyperlinks/sec`);
+        this.log.debug("--- End Detailed Stats ---");
+      }
 
       return result;
     } catch (error) {
@@ -1688,16 +1845,22 @@ export class WordDocumentProcessor {
    * Apply URL updates to hyperlinks using DocXMLater's setUrl() method
    * Updated to use the new setUrl() API added to DocXMLater library
    *
+   * When track changes is enabled, this method creates proper Word tracked changes:
+   * - Old hyperlink wrapped in w:del (shows as strikethrough in Word)
+   * - New hyperlink wrapped in w:ins (shows as underlined in Word)
+   *
    * Enhanced with comprehensive error handling to prevent data corruption
    * from partial updates when some URL updates fail.
    *
    * @param doc - The document being processed
    * @param urlMap - Map of old URL -> new URL
+   * @param author - Author name for tracked changes (optional, defaults to 'DocHub')
    * @returns UrlUpdateResult with success count and failure details
    */
   private async applyUrlUpdates(
     doc: Document,
-    urlMap: Map<string, string>
+    urlMap: Map<string, string>,
+    author: string = 'DocHub'
   ): Promise<UrlUpdateResult> {
     if (urlMap.size === 0) {
       return { updated: 0, failed: [] };
@@ -1706,15 +1869,20 @@ export class WordDocumentProcessor {
     const failedUrls: UrlUpdateResult["failed"] = [];
     let updatedCount = 0;
     const paragraphs = doc.getAllParagraphs();
+    const trackChangesEnabled = doc.isTrackChangesEnabled();
 
     this.log.debug(`Processing ${paragraphs.length} paragraphs for URL updates`);
+    if (trackChangesEnabled) {
+      this.log.debug(`Track changes enabled - will create tracked hyperlink changes`);
+    }
 
     for (let paraIndex = 0; paraIndex < paragraphs.length; paraIndex++) {
       const para = paragraphs[paraIndex];
       const content = para.getContent();
 
       // Find hyperlinks in this paragraph that need URL updates
-      for (const item of content) {
+      // We need to iterate over a copy since we may modify content during iteration
+      for (const item of [...content]) {
         if (item instanceof Hyperlink) {
           const oldUrl = item.getUrl();
 
@@ -1729,15 +1897,45 @@ export class WordDocumentProcessor {
             }
 
             try {
-              // Use DocXMLater's new setUrl() method to update the hyperlink
-              item.setUrl(newUrl);
-              updatedCount++;
+              if (trackChangesEnabled) {
+                // Create tracked changes for URL update:
+                // 1. Clone the hyperlink to preserve old state
+                const oldHyperlink = item.clone();
 
-              this.log.debug(`✅ Updated hyperlink URL: ${oldUrl} → ${newUrl}`);
+                // 2. Update the hyperlink with new URL
+                item.setUrl(newUrl);
+
+                // 3. Create deletion revision for old hyperlink
+                const deletion = Revision.createDeletion(author, [oldHyperlink]);
+
+                // 4. Create insertion revision for new hyperlink
+                const insertion = Revision.createInsertion(author, [item]);
+
+                // 5. Replace the hyperlink in paragraph with the revisions
+                const replaced = para.replaceContent(item, [deletion, insertion]);
+
+                if (replaced) {
+                  // 6. Register revisions with the document's revision manager
+                  const revisionManager = doc.getRevisionManager();
+                  revisionManager.register(deletion);
+                  revisionManager.register(insertion);
+
+                  this.log.debug(`Created tracked change for hyperlink URL: ${oldUrl} -> ${newUrl}`);
+                } else {
+                  // Fallback: replaceContent failed, just update the URL
+                  this.log.warn(`Could not create tracked change, falling back to direct update: ${oldUrl}`);
+                }
+              } else {
+                // No track changes - just update the URL directly
+                item.setUrl(newUrl);
+                this.log.debug(`Updated hyperlink URL: ${oldUrl} -> ${newUrl}`);
+              }
+
+              updatedCount++;
             } catch (error) {
               // Log the failure with context
               this.log.error(
-                `❌ Failed to update URL at paragraph ${paraIndex}: ${oldUrl} → ${newUrl}`,
+                `Failed to update URL at paragraph ${paraIndex}: ${oldUrl} -> ${newUrl}`,
                 error
               );
 
@@ -1757,17 +1955,17 @@ export class WordDocumentProcessor {
     // Log summary with appropriate level
     if (failedUrls.length > 0) {
       this.log.warn(
-        `⚠️ URL update completed with ${failedUrls.length} failures. ` +
+        `URL update completed with ${failedUrls.length} failures. ` +
           `Updated: ${updatedCount}, Failed: ${failedUrls.length}, Total Attempted: ${urlMap.size}`
       );
 
       // Log details of each failure for debugging
       failedUrls.forEach(({ oldUrl, newUrl, error, paragraphIndex }) => {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        this.log.error(`  - Paragraph ${paragraphIndex}: ${oldUrl} → ${newUrl} (${errorMessage})`);
+        this.log.error(`  - Paragraph ${paragraphIndex}: ${oldUrl} -> ${newUrl} (${errorMessage})`);
       });
     } else {
-      this.log.info(`✅ Successfully updated ${updatedCount} hyperlink URLs`);
+      this.log.info(`Successfully updated ${updatedCount} hyperlink URLs`);
     }
 
     return { updated: updatedCount, failed: failedUrls };
@@ -2426,7 +2624,7 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Apply custom styles from UI using docXMLater's applyCustomFormattingToExistingStyles()
+   * Apply custom styles from UI using docXMLater's applyStyles()
    * This replaces the custom implementation with the framework's native method
    *
    * NEW v1.16.0: Captures Header 2 table indices during style application
@@ -2484,24 +2682,14 @@ export class WordDocumentProcessor {
       preserveBlankLinesAfterHeader2Tables: options.preserveBlankLinesAfterHeader2Tables,
     });
 
-    // IMPORTANT: Disable track changes during style application
-    // Track changes generates pPrChange elements that don't properly serialize numbering properties,
-    // which causes list corruption when Word processes the document
-    const wasTrackChangesEnabled = doc.isTrackChangesEnabled();
-    if (wasTrackChangesEnabled) {
-      this.log.debug("Temporarily disabling track changes for style application");
-      doc.disableTrackChanges();
-    }
-
-    try {
     // Feature detection: Check if framework method exists
-    if (typeof (doc as any).applyCustomFormattingToExistingStyles === "function") {
-      this.log.debug("Using framework applyCustomFormattingToExistingStyles()");
+    if (typeof (doc as any).applyStyles === "function") {
+      this.log.debug("Using framework applyStyles()");
 
       try {
-        // Use docXMLater's native method with preserve flag support (v1.16.0)
+        // Use docXMLater's native applyStyles method
         // This handles both style definition updates and direct formatting clearing
-        const results = (doc as any).applyCustomFormattingToExistingStyles(options);
+        const results = (doc as any).applyStyles(options);
         return results;
       } catch (error) {
         this.log.warn("Framework method failed, falling back to manual implementation:", error);
@@ -2509,7 +2697,7 @@ export class WordDocumentProcessor {
       }
     } else {
       this.log.warn(
-        "Framework method applyCustomFormattingToExistingStyles not available in docxmlater v4.0.2, using manual fallback"
+        "Framework method applyStyles not available, using manual fallback"
       );
     }
 
@@ -2528,13 +2716,6 @@ export class WordDocumentProcessor {
 
     this.log.debug(`Manual fallback completed: ${JSON.stringify(appliedStyles)}`);
     return appliedStyles;
-    } finally {
-      // Re-enable track changes if it was enabled before style application
-      if (wasTrackChangesEnabled) {
-        this.log.debug("Re-enabling track changes after style application");
-        doc.enableTrackChanges();
-      }
-    }
   }
 
   /**

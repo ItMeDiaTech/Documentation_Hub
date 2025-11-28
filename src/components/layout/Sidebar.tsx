@@ -4,13 +4,9 @@ import {
   Home,
   FolderOpen,
   Settings,
-  Search,
-  User,
   ChevronRight,
   BarChart3,
-  Users,
   FileText,
-  Plug,
   X,
   Circle,
 } from 'lucide-react';
@@ -93,10 +89,7 @@ export const Sidebar = memo(function Sidebar() {
     items.push(
       { id: 'sessions', label: 'Sessions', icon: FolderOpen, path: '/sessions' },
       { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
-      { id: 'team', label: 'Team', icon: Users, path: '/team' },
-      { id: 'documents', label: 'Documents', icon: FileText, path: '/documents' },
-      { id: 'plugins', label: 'Plugins', icon: Plug, path: '/plugins' },
-      { id: 'search', label: 'Search', icon: Search, path: '/search' }
+      { id: 'documents', label: 'Documents', icon: FileText, path: '/documents' }
     );
 
     return items;
@@ -104,7 +97,6 @@ export const Sidebar = memo(function Sidebar() {
 
   const bottomItems = useMemo<NavItem[]>(
     () => [
-      { id: 'profile', label: 'Profile', icon: User, path: '/profile' },
       { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
     ],
     []
@@ -199,9 +191,9 @@ export const Sidebar = memo(function Sidebar() {
               <motion.div
                 onClick={handleLogoClick}
                 whileTap={{ scale: 0.9 }}
-                className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+                className="w-8 h-8 rounded-lg cursor-pointer hover:opacity-90 transition-opacity overflow-hidden"
               >
-                <span className="text-primary-foreground text-sm font-bold">D</span>
+                <img src="/icon.svg" alt="DocHub" className="w-full h-full" />
               </motion.div>
               <span className="font-semibold text-sm">DocHub</span>
             </motion.div>
@@ -211,9 +203,9 @@ export const Sidebar = memo(function Sidebar() {
           <motion.div
             onClick={handleLogoClick}
             whileTap={{ scale: 0.9 }}
-            className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+            className="w-8 h-8 rounded-lg cursor-pointer hover:opacity-90 transition-opacity overflow-hidden"
           >
-            <span className="text-primary-foreground text-sm font-bold">D</span>
+            <img src="/icon.svg" alt="DocHub" className="w-full h-full" />
           </motion.div>
         )}
       </div>

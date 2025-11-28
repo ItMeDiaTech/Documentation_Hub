@@ -12,7 +12,7 @@ import {
   Lock,
   Underline,
 } from 'lucide-react';
-import { memo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 
 interface StyleDefinition {
   id: string;
@@ -138,12 +138,13 @@ const lineSpacingOptions = [
 // Text indent: symbol indent + 0.25" hanging indent
 // NOTE: Levels are 0-based (0-8) per DOCX standard
 // NOTE: Using Unicode bullets instead of Wingdings private-use characters for reliable rendering
+// Default pattern: closed, open, closed, open, closed
 const defaultIndentationLevels: IndentationLevel[] = [
   { level: 0, symbolIndent: 0.5, textIndent: 0.75, bulletChar: '•', numberedFormat: '1.' },
   { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
   { level: 2, symbolIndent: 1.5, textIndent: 1.75, bulletChar: '•', numberedFormat: 'i.' },
-  { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
-  { level: 4, symbolIndent: 2.5, textIndent: 2.75, bulletChar: '○', numberedFormat: 'a)' },
+  { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },
+  { level: 4, symbolIndent: 2.5, textIndent: 2.75, bulletChar: '•', numberedFormat: 'a)' },
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {
@@ -154,15 +155,51 @@ const defaultListBulletSettings: ListBulletSettings = {
 // Note: defaultTableOfContentsSettings removed - TOC managed via Processing Options
 // Note: defaultTableUniformitySettings removed - Table settings now in Processing Options
 
+/**
+ * Convert session styles to StyleDefinition format or use defaults.
+ * MOVED OUTSIDE COMPONENT: This is a pure function that doesn't depend on component state,
+ * so moving it outside fixes the useEffect dependency warning and improves performance.
+ */
+const convertToStyleDefinitions = (
+  sessionStyles?: Partial<StyleDefinition>[]
+): StyleDefinition[] => {
+  if (!sessionStyles || sessionStyles.length === 0) {
+    return defaultStyles;
+  }
+
+  // Map session styles to style definitions
+  return sessionStyles.map((sessionStyle) => {
+    const defaultStyle = defaultStyles.find((d) => d.id === sessionStyle.id) || defaultStyles[0];
+    return {
+      id: sessionStyle.id || defaultStyle.id,
+      name: sessionStyle.name || defaultStyle.name,
+      fontFamily: sessionStyle.fontFamily || defaultStyle.fontFamily,
+      fontSize: sessionStyle.fontSize || defaultStyle.fontSize,
+      bold: sessionStyle.bold ?? defaultStyle.bold,
+      italic: sessionStyle.italic ?? defaultStyle.italic,
+      underline: sessionStyle.underline ?? defaultStyle.underline,
+      preserveBold: sessionStyle.preserveBold ?? defaultStyle.preserveBold,
+      preserveItalic: sessionStyle.preserveItalic ?? defaultStyle.preserveItalic,
+      preserveUnderline: sessionStyle.preserveUnderline ?? defaultStyle.preserveUnderline,
+      alignment: sessionStyle.alignment || defaultStyle.alignment,
+      color: sessionStyle.color || defaultStyle.color,
+      spaceBefore: sessionStyle.spaceBefore ?? defaultStyle.spaceBefore,
+      spaceAfter: sessionStyle.spaceAfter ?? defaultStyle.spaceAfter,
+      lineSpacing: sessionStyle.lineSpacing ?? defaultStyle.lineSpacing,
+      noSpaceBetweenSame: sessionStyle.noSpaceBetweenSame ?? defaultStyle.noSpaceBetweenSame,
+      indentation: sessionStyle.indentation || defaultStyle.indentation,
+    };
+  });
+};
+
 interface StylesEditorProps {
-  initialStyles?: any[];
+  initialStyles?: Partial<StyleDefinition>[];
   initialListBulletSettings?: ListBulletSettings;
   onStylesChange?: (styles: StyleDefinition[]) => void;
   onListBulletSettingsChange?: (settings: ListBulletSettings) => void;
   tableHeader2Shading?: string;
   tableOtherShading?: string;
   onTableShadingChange?: (header2: string, other: string) => void;
-  // Note: Auto-save is now implemented - no renderSaveButton needed
 }
 
 // PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
@@ -175,36 +212,8 @@ export const StylesEditor = memo(function StylesEditor({
   tableOtherShading,
   onTableShadingChange,
 }: StylesEditorProps) {
-  // Convert session styles to StyleDefinition format or use defaults
-  const convertToStyleDefinitions = (sessionStyles?: any[]): StyleDefinition[] => {
-    if (!sessionStyles || sessionStyles.length === 0) {
-      return defaultStyles;
-    }
-
-    // Map session styles to style definitions
-    return sessionStyles.map((sessionStyle) => {
-      const defaultStyle = defaultStyles.find((d) => d.id === sessionStyle.id) || defaultStyles[0];
-      return {
-        id: sessionStyle.id || defaultStyle.id,
-        name: sessionStyle.name || defaultStyle.name,
-        fontFamily: sessionStyle.fontFamily || defaultStyle.fontFamily,
-        fontSize: sessionStyle.fontSize || defaultStyle.fontSize,
-        bold: sessionStyle.bold ?? defaultStyle.bold,
-        italic: sessionStyle.italic ?? defaultStyle.italic,
-        underline: sessionStyle.underline ?? defaultStyle.underline,
-        preserveBold: sessionStyle.preserveBold ?? defaultStyle.preserveBold,
-        preserveItalic: sessionStyle.preserveItalic ?? defaultStyle.preserveItalic,
-        preserveUnderline: sessionStyle.preserveUnderline ?? defaultStyle.preserveUnderline,
-        alignment: sessionStyle.alignment || defaultStyle.alignment,
-        color: sessionStyle.color || defaultStyle.color,
-        spaceBefore: sessionStyle.spaceBefore ?? defaultStyle.spaceBefore,
-        spaceAfter: sessionStyle.spaceAfter ?? defaultStyle.spaceAfter,
-        lineSpacing: sessionStyle.lineSpacing ?? defaultStyle.lineSpacing,
-        noSpaceBetweenSame: sessionStyle.noSpaceBetweenSame ?? defaultStyle.noSpaceBetweenSame,
-        indentation: sessionStyle.indentation || defaultStyle.indentation,
-      };
-    });
-  };
+  // NOTE: convertToStyleDefinitions is now defined outside component for better performance
+  // and to fix useEffect dependency warning
 
   const [styles, setStyles] = useState<StyleDefinition[]>(() =>
     convertToStyleDefinitions(initialStyles)
@@ -218,6 +227,32 @@ export const StylesEditor = memo(function StylesEditor({
   const [localTableOtherShading, setLocalTableOtherShading] = useState<string>(
     tableOtherShading || '#DFDFDF'
   );
+
+  // Sync internal state when external props change
+  // This fixes the issue where useState initializer only runs once
+  useEffect(() => {
+    if (initialStyles) {
+      setStyles(convertToStyleDefinitions(initialStyles));
+    }
+  }, [initialStyles]);
+
+  useEffect(() => {
+    if (initialListBulletSettings) {
+      setListBulletSettings(initialListBulletSettings);
+    }
+  }, [initialListBulletSettings]);
+
+  useEffect(() => {
+    if (tableHeader2Shading !== undefined) {
+      setLocalTableHeader2Shading(tableHeader2Shading);
+    }
+  }, [tableHeader2Shading]);
+
+  useEffect(() => {
+    if (tableOtherShading !== undefined) {
+      setLocalTableOtherShading(tableOtherShading);
+    }
+  }, [tableOtherShading]);
 
   const updateStyle = (styleId: string, updates: Partial<StyleDefinition>) => {
     const updatedStyles = styles.map((style) =>
@@ -237,8 +272,14 @@ export const StylesEditor = memo(function StylesEditor({
           {/* Font Settings */}
           <div className="space-y-3">
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Font Family</label>
+              <label
+                htmlFor={`${style.id}-font-family`}
+                className="text-sm text-muted-foreground mb-1 block"
+              >
+                Font Family
+              </label>
               <select
+                id={`${style.id}-font-family`}
                 value={style.fontFamily}
                 onChange={(e) => updateStyle(style.id, { fontFamily: e.target.value })}
                 className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
@@ -252,8 +293,14 @@ export const StylesEditor = memo(function StylesEditor({
             </div>
 
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Font Size</label>
+              <label
+                htmlFor={`${style.id}-font-size`}
+                className="text-sm text-muted-foreground mb-1 block"
+              >
+                Font Size
+              </label>
               <select
+                id={`${style.id}-font-size`}
                 value={style.fontSize}
                 onChange={(e) => updateStyle(style.id, { fontSize: Number(e.target.value) })}
                 className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
@@ -267,13 +314,20 @@ export const StylesEditor = memo(function StylesEditor({
             </div>
 
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Text Color</label>
+              <label
+                htmlFor={`${style.id}-text-color`}
+                className="text-sm text-muted-foreground mb-1 block"
+              >
+                Text Color
+              </label>
               <div className="flex gap-2">
                 <input
+                  id={`${style.id}-text-color`}
                   type="color"
                   value={style.color}
                   onChange={(e) => updateStyle(style.id, { color: e.target.value })}
                   className="h-9 w-16 border border-border rounded cursor-pointer"
+                  aria-label={`${style.name} text color picker`}
                 />
                 <input
                   type="text"
@@ -281,6 +335,7 @@ export const StylesEditor = memo(function StylesEditor({
                   onChange={(e) => updateStyle(style.id, { color: e.target.value })}
                   className="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background"
                   placeholder="#000000"
+                  aria-label={`${style.name} text color hex value`}
                 />
               </div>
             </div>
@@ -289,10 +344,12 @@ export const StylesEditor = memo(function StylesEditor({
           {/* Formatting Options */}
           <div className="space-y-3">
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Formatting</label>
+              <span className="text-sm text-muted-foreground mb-1 block" id={`${style.id}-formatting-label`}>
+                Formatting
+              </span>
               {/* Headers: Binary toggles */}
               {(style.id === 'header1' || style.id === 'header2' || style.id === 'header3') && (
-                <div className="flex gap-1">
+                <div className="flex gap-1" role="group" aria-labelledby={`${style.id}-formatting-label`}>
                   <button
                     onClick={() => updateStyle(style.id, { bold: !style.bold })}
                     className={cn(
@@ -301,8 +358,10 @@ export const StylesEditor = memo(function StylesEditor({
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted hover:bg-muted/80'
                     )}
+                    aria-label={`Toggle bold for ${style.name}`}
+                    aria-pressed={style.bold}
                   >
-                    <Bold className="w-4 h-4" />
+                    <Bold className="w-4 h-4" aria-hidden="true" />
                   </button>
                   <button
                     onClick={() => updateStyle(style.id, { italic: !style.italic })}
@@ -312,8 +371,10 @@ export const StylesEditor = memo(function StylesEditor({
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted hover:bg-muted/80'
                     )}
+                    aria-label={`Toggle italic for ${style.name}`}
+                    aria-pressed={style.italic}
                   >
-                    <Italic className="w-4 h-4" />
+                    <Italic className="w-4 h-4" aria-hidden="true" />
                   </button>
                   <button
                     onClick={() => updateStyle(style.id, { underline: !style.underline })}
@@ -323,8 +384,10 @@ export const StylesEditor = memo(function StylesEditor({
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted hover:bg-muted/80'
                     )}
+                    aria-label={`Toggle underline for ${style.name}`}
+                    aria-pressed={style.underline}
                   >
-                    <Underline className="w-4 h-4" />
+                    <Underline className="w-4 h-4" aria-hidden="true" />
                   </button>
                 </div>
               )}
@@ -621,192 +684,92 @@ export const StylesEditor = memo(function StylesEditor({
   const renderListBulletSettings = () => {
     return (
       <div className="space-y-4 p-4 border border-border rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <List className="w-5 h-5 text-primary" />
-            <h3 className="font-semibold text-base">Lists & Bullets Uniformity</h3>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <span className="text-sm text-muted-foreground">Enable</span>
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={listBulletSettings.enabled}
-                onChange={(e) => {
-                  const newSettings = { ...listBulletSettings, enabled: e.target.checked };
-                  setListBulletSettings(newSettings);
-                  // Auto-save: immediately persist changes
-                  onListBulletSettingsChange?.(newSettings);
-                }}
-                className="sr-only"
-              />
-              <div
-                className={cn(
-                  'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                  listBulletSettings.enabled
-                    ? 'bg-primary border-primary checkbox-checked'
-                    : 'border-border'
-                )}
-              >
-                {listBulletSettings.enabled && (
-                  <Check className="w-3 h-3 text-white checkbox-checkmark" />
-                )}
-              </div>
-            </div>
-          </label>
+        <div className="flex items-center gap-2">
+          <List className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold text-base">Lists & Bullets Uniformity</h3>
         </div>
 
-        {listBulletSettings.enabled && (
-          <>
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Indentation Increments (Auto-applies to all 5 levels)
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">
-                    Symbol Position Increment (inches)
-                    <span className="text-xxs block text-muted-foreground/60">
-                      Bullet/number position per level
-                    </span>
-                  </label>
-                  <input
-                    type="number"
-                    value={listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25}
-                    onChange={(e) => {
-                      const increment = Number(e.target.value);
-                      const newLevels: IndentationLevel[] = [
-                        {
-                          level: 0,
-                          symbolIndent: increment * 1,
-                          textIndent:
-                            (listBulletSettings.indentationLevels[0]?.textIndent /
-                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
-                            increment *
-                            1,
-                          bulletChar: '\uF0B7',
-                          numberedFormat: '1.',
-                        },
-                        {
-                          level: 1,
-                          symbolIndent: increment * 2,
-                          textIndent:
-                            (listBulletSettings.indentationLevels[0]?.textIndent /
-                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
-                            increment *
-                            2,
-                          bulletChar: '○',
-                          numberedFormat: 'a.',
-                        },
-                        {
-                          level: 2,
-                          symbolIndent: increment * 3,
-                          textIndent:
-                            (listBulletSettings.indentationLevels[0]?.textIndent /
-                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
-                            increment *
-                            3,
-                          bulletChar: '\uF0B7',
-                          numberedFormat: 'i.',
-                        },
-                        {
-                          level: 3,
-                          symbolIndent: increment * 4,
-                          textIndent:
-                            (listBulletSettings.indentationLevels[0]?.textIndent /
-                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
-                            increment *
-                            4,
-                          bulletChar: '○',
-                          numberedFormat: '1)',
-                        },
-                        {
-                          level: 4,
-                          symbolIndent: increment * 5,
-                          textIndent:
-                            (listBulletSettings.indentationLevels[0]?.textIndent /
-                              listBulletSettings.indentationLevels[0]?.symbolIndent) *
-                            increment *
-                            5,
-                          bulletChar: '\uF0B7',
-                          numberedFormat: 'a)',
-                        },
-                      ];
-                      const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
-                      setListBulletSettings(newSettings);
-                      onListBulletSettingsChange?.(newSettings);
-                    }}
-                    className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                    min="0"
-                    max="2"
-                    step="0.25"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">
-                    Text Position Increment (inches)
-                    <span className="text-xxs block text-muted-foreground/60">
-                      Text start position per level
-                    </span>
-                  </label>
-                  <input
-                    type="number"
-                    value={listBulletSettings.indentationLevels[0]?.textIndent || 0.5}
-                    onChange={(e) => {
-                      const increment = Number(e.target.value);
-                      const newLevels: IndentationLevel[] = [
-                        {
-                          level: 0,
-                          symbolIndent:
-                            listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25,
-                          textIndent: increment * 1,
-                          bulletChar: '\uF0B7',
-                          numberedFormat: '1.',
-                        },
-                        {
-                          level: 1,
-                          symbolIndent:
-                            listBulletSettings.indentationLevels[1]?.symbolIndent || 0.5,
-                          textIndent: increment * 2,
-                          bulletChar: '○',
-                          numberedFormat: 'a.',
-                        },
-                        {
-                          level: 2,
-                          symbolIndent:
-                            listBulletSettings.indentationLevels[2]?.symbolIndent || 0.75,
-                          textIndent: increment * 3,
-                          bulletChar: '\uF0B7',
-                          numberedFormat: 'i.',
-                        },
-                        {
-                          level: 3,
-                          symbolIndent:
-                            listBulletSettings.indentationLevels[3]?.symbolIndent || 1.0,
-                          textIndent: increment * 4,
-                          bulletChar: '○',
-                          numberedFormat: '1)',
-                        },
-                        {
-                          level: 4,
-                          symbolIndent:
-                            listBulletSettings.indentationLevels[4]?.symbolIndent || 1.25,
-                          textIndent: increment * 5,
-                          bulletChar: '\uF0B7',
-                          numberedFormat: 'a)',
-                        },
-                      ];
-                      const newSettings = { ...listBulletSettings, indentationLevels: newLevels };
-                      setListBulletSettings(newSettings);
-                      onListBulletSettingsChange?.(newSettings);
-                    }}
-                    className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                    min="0"
-                    max="4"
-                    step="0.25"
-                  />
-                </div>
-              </div>
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-muted-foreground">
+            Indentation Settings
+          </h4>
+          <p className="text-xs text-muted-foreground">
+            Adjust symbol position per level. Text follows with 0.25" hanging indent.
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-muted-foreground">
+                Symbol Position Increment
+              </label>
+              <span className="text-sm font-medium tabular-nums">
+                {(listBulletSettings.indentationLevels[0]?.symbolIndent || 0.5).toFixed(2)}"
+              </span>
+            </div>
+            <input
+              type="range"
+              value={listBulletSettings.indentationLevels[0]?.symbolIndent || 0.5}
+              onChange={(e) => {
+                const increment = Number(e.target.value);
+                const hangingIndent = 0.25; // Fixed hanging indent
+                // Default pattern: closed, open, closed, open, closed
+                const newLevels: IndentationLevel[] = [
+                  {
+                    level: 0,
+                    symbolIndent: increment * 1,
+                    textIndent: increment * 1 + hangingIndent,
+                    bulletChar: listBulletSettings.indentationLevels[0]?.bulletChar || '•',
+                    numberedFormat: '1.',
+                  },
+                  {
+                    level: 1,
+                    symbolIndent: increment * 2,
+                    textIndent: increment * 2 + hangingIndent,
+                    bulletChar: listBulletSettings.indentationLevels[1]?.bulletChar || '○',
+                    numberedFormat: 'a.',
+                  },
+                  {
+                    level: 2,
+                    symbolIndent: increment * 3,
+                    textIndent: increment * 3 + hangingIndent,
+                    bulletChar: listBulletSettings.indentationLevels[2]?.bulletChar || '•',
+                    numberedFormat: 'i.',
+                  },
+                  {
+                    level: 3,
+                    symbolIndent: increment * 4,
+                    textIndent: increment * 4 + hangingIndent,
+                    bulletChar: listBulletSettings.indentationLevels[3]?.bulletChar || '○',
+                    numberedFormat: '1)',
+                  },
+                  {
+                    level: 4,
+                    symbolIndent: increment * 5,
+                    textIndent: increment * 5 + hangingIndent,
+                    bulletChar: listBulletSettings.indentationLevels[4]?.bulletChar || '•',
+                    numberedFormat: 'a)',
+                  },
+                ];
+                // Only update local state for visual feedback during drag
+                setListBulletSettings({ ...listBulletSettings, indentationLevels: newLevels });
+              }}
+              onPointerUp={() => {
+                // Save to parent only on release
+                onListBulletSettingsChange?.(listBulletSettings);
+              }}
+              onMouseUp={() => {
+                // Fallback for non-pointer devices
+                onListBulletSettingsChange?.(listBulletSettings);
+              }}
+              className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+              min="0.25"
+              max="1.5"
+              step="0.125"
+            />
+            <div className="flex justify-between text-xxs text-muted-foreground">
+              <span>0.25"</span>
+              <span>1.5"</span>
+            </div>
+          </div>
 
               {/* Preview of calculated levels */}
               <div className="p-3 bg-muted/20 rounded-md">
@@ -831,11 +794,11 @@ export const StylesEditor = memo(function StylesEditor({
                 Configure bullet symbols for each of the 5 indentation levels.
               </div>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                {/* Level 0 */}
+                {/* Level 0 - Default: Closed */}
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Level 0</label>
                   <select
-                    value={listBulletSettings.indentationLevels[0]?.bulletChar || '\uF0B7'}
+                    value={listBulletSettings.indentationLevels[0]?.bulletChar || '•'}
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[0] = { ...newLevels[0], bulletChar: e.target.value };
@@ -850,7 +813,7 @@ export const StylesEditor = memo(function StylesEditor({
                     <option value="■">■ Closed Square</option>
                   </select>
                 </div>
-                {/* Level 1 */}
+                {/* Level 1 - Default: Open */}
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Level 1</label>
                   <select
@@ -869,7 +832,7 @@ export const StylesEditor = memo(function StylesEditor({
                     <option value="■">■ Closed Square</option>
                   </select>
                 </div>
-                {/* Level 2 */}
+                {/* Level 2 - Default: Closed */}
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Level 2</label>
                   <select
@@ -888,11 +851,11 @@ export const StylesEditor = memo(function StylesEditor({
                     <option value="■">■ Closed Square</option>
                   </select>
                 </div>
-                {/* Level 3 */}
+                {/* Level 3 - Default: Open */}
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Level 3</label>
                   <select
-                    value={listBulletSettings.indentationLevels[3]?.bulletChar || '•'}
+                    value={listBulletSettings.indentationLevels[3]?.bulletChar || '○'}
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[3] = { ...newLevels[3], bulletChar: e.target.value };
@@ -907,11 +870,11 @@ export const StylesEditor = memo(function StylesEditor({
                     <option value="■">■ Closed Square</option>
                   </select>
                 </div>
-                {/* Level 4 */}
+                {/* Level 4 - Default: Closed */}
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Level 4</label>
                   <select
-                    value={listBulletSettings.indentationLevels[4]?.bulletChar || '○'}
+                    value={listBulletSettings.indentationLevels[4]?.bulletChar || '•'}
                     onChange={(e) => {
                       const newLevels = [...listBulletSettings.indentationLevels];
                       newLevels[4] = { ...newLevels[4], bulletChar: e.target.value };
@@ -937,15 +900,13 @@ export const StylesEditor = memo(function StylesEditor({
                         L{level.level}
                       </div>
                       <div className="text-lg">
-                        {level.bulletChar === '\uF0B7' ? '•' : level.bulletChar}
+                        {level.bulletChar}
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
-          </>
-        )}
       </div>
     );
   };

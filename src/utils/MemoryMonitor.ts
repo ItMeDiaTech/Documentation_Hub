@@ -6,6 +6,7 @@
  */
 
 import logger from './logger';
+import v8 from 'v8';
 
 export interface MemoryStats {
   heapUsed: number;
@@ -35,9 +36,9 @@ export class MemoryMonitor {
   static getMemoryStats(): MemoryStats {
     const usage = process.memoryUsage();
 
-    // Estimate heap limit (V8 default or set via --max-old-space-size)
-    // Default is around 1.4GB on 64-bit systems, but we'll calculate from actual usage
-    const heapLimit = usage.heapTotal * 3; // Conservative estimate
+    // Get actual V8 heap limit (set via --max-old-space-size or default ~1.4GB)
+    const heapStats = v8.getHeapStatistics();
+    const heapLimit = heapStats.heap_size_limit;
 
     return {
       heapUsed: usage.heapUsed,
@@ -45,7 +46,8 @@ export class MemoryMonitor {
       heapLimit: heapLimit,
       external: usage.external,
       arrayBuffers: usage.arrayBuffers || 0,
-      percentUsed: (usage.heapUsed / usage.heapTotal) * 100,
+      // Calculate percentage against actual V8 limit, not current allocation
+      percentUsed: (usage.heapUsed / heapLimit) * 100,
       percentOfLimit: (usage.heapUsed / heapLimit) * 100,
       timestamp: Date.now(),
     };
@@ -72,11 +74,11 @@ export class MemoryMonitor {
     // Store checkpoint for comparison
     this.checkpoints.set(label, stats);
 
-    // Build log message
+    // Build log message - show percentage of actual limit, not current allocation
     const logParts = [
       `[Memory] ${label}:`,
       `Used: ${this.formatBytes(stats.heapUsed)}`,
-      `Total: ${this.formatBytes(stats.heapTotal)}`,
+      `/ ${this.formatBytes(stats.heapLimit)} limit`,
       `(${stats.percentUsed.toFixed(1)}% of heap)`,
     ];
 
@@ -109,7 +111,7 @@ export class MemoryMonitor {
     if (percentUsed >= this.CRITICAL_THRESHOLD) {
       return {
         level: 'critical',
-        message: `Memory usage critical (${stats.percentUsed.toFixed(1)}% of ${this.formatBytes(stats.heapTotal)}). Consider:
+        message: `Memory usage critical (${stats.percentUsed.toFixed(1)}% of ${this.formatBytes(stats.heapLimit)} limit). Consider:
 - Reducing document size
 - Optimizing/compressing images
 - Splitting into multiple documents
@@ -119,7 +121,7 @@ export class MemoryMonitor {
     } else if (percentUsed >= this.WARNING_THRESHOLD) {
       return {
         level: 'warning',
-        message: `Memory usage high (${stats.percentUsed.toFixed(1)}% of ${this.formatBytes(stats.heapTotal)})`,
+        message: `Memory usage high (${stats.percentUsed.toFixed(1)}% of ${this.formatBytes(stats.heapLimit)} limit)`,
         stats,
       };
     }
@@ -201,12 +203,12 @@ export class MemoryMonitor {
 
     // If required bytes specified, check if we have enough headroom
     if (requiredBytes) {
-      const available = stats.heapTotal - stats.heapUsed;
+      const available = stats.heapLimit - stats.heapUsed;
       const needsHeadroom = requiredBytes * 1.5; // 50% safety margin
 
       if (available < needsHeadroom) {
         logger.warn(
-          `⚠️ [Memory] Insufficient memory. Need ${this.formatBytes(needsHeadroom)}, have ${this.formatBytes(available)}`
+          `[Memory] Insufficient memory. Need ${this.formatBytes(needsHeadroom)}, have ${this.formatBytes(available)}`
         );
         return false;
       }

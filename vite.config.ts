@@ -29,7 +29,7 @@ export default defineConfig({
           },
           build: {
             outDir: 'dist/electron',
-            emptyOutDir: true,
+            emptyOutDir: false,
             rollupOptions: {
               external: ['electron'],
             },

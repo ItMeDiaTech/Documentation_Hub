@@ -162,35 +162,63 @@ function HyperlinkUpdatesView({ items }: { items: DocumentChange[] }) {
               <span>Under "{section.header}"</span>
             </div>
           )}
-          <div className="space-y-2 pl-5">
+          <div className="space-y-3 pl-5">
             {section.items.map((change, itemIdx) => (
-              <div key={itemIdx} className="space-y-1 text-xs">
-                <div className="flex items-start gap-2">
-                  <span className="font-medium text-foreground">
-                    {change.description}
-                  </span>
-                  {change.contentId && (
-                    <code className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px]">
+              <div key={itemIdx} className="space-y-1.5 text-xs border-l-2 border-primary/30 pl-3">
+                {/* Content ID - Always shown prominently at top for identification */}
+                {change.contentId && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-[10px]">Content ID:</span>
+                    <code className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] font-medium">
                       {change.contentId}
                     </code>
+                  </div>
+                )}
+
+                {/* What Changed section */}
+                <div className="space-y-1">
+                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                    What Changed:
+                  </span>
+
+                  {/* URL change (if URL changed) */}
+                  {change.urlBefore && change.urlAfter && (
+                    <div className="space-y-0.5 ml-2">
+                      <span className="text-[10px] text-muted-foreground">URL:</span>
+                      <div className="flex items-start gap-2">
+                        <span className="text-muted-foreground min-w-[45px]">Before:</span>
+                        <code className="bg-red-500/10 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded break-all flex-1 line-through">
+                          {change.urlBefore}
+                        </code>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-muted-foreground min-w-[45px]">After:</span>
+                        <code className="bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded break-all flex-1">
+                          {change.urlAfter}
+                        </code>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Text to Display change (if text changed) */}
+                  {change.before && change.after && (
+                    <div className="space-y-0.5 ml-2">
+                      <span className="text-[10px] text-muted-foreground">Text to Display:</span>
+                      <div className="flex items-start gap-2">
+                        <span className="text-muted-foreground min-w-[45px]">Before:</span>
+                        <code className="bg-red-500/10 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded break-all flex-1 line-through">
+                          {change.before}
+                        </code>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-muted-foreground min-w-[45px]">After:</span>
+                        <code className="bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded break-all flex-1">
+                          {change.after}
+                        </code>
+                      </div>
+                    </div>
                   )}
                 </div>
-                {change.before && (
-                  <div className="flex items-start gap-2">
-                    <span className="text-muted-foreground min-w-[45px]">Before:</span>
-                    <code className="bg-muted px-1.5 py-0.5 rounded break-all flex-1">
-                      {change.before}
-                    </code>
-                  </div>
-                )}
-                {change.after && (
-                  <div className="flex items-start gap-2">
-                    <span className="text-muted-foreground min-w-[45px]">After:</span>
-                    <code className="bg-primary/10 text-primary px-1.5 py-0.5 rounded break-all flex-1">
-                      {change.after}
-                    </code>
-                  </div>
-                )}
               </div>
             ))}
           </div>

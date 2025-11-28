@@ -2,7 +2,17 @@
 export type RevisionHandlingMode = 'accept_all' | 'preserve' | 'preserve_and_wrap';
 
 // Change category type
-export type ChangeCategory = 'content' | 'formatting' | 'structural' | 'table' | 'hyperlink';
+export type ChangeCategory =
+  | 'content'
+  | 'formatting'
+  | 'structural'
+  | 'table'
+  | 'hyperlink'
+  | 'image'
+  | 'field'
+  | 'comment'
+  | 'bookmark'
+  | 'contentControl';
 
 /**
  * Change entry from Word tracked changes (compatible with docxmlater ChangeEntry)
@@ -30,6 +40,10 @@ export interface ChangeEntry {
       urlAfter?: string;
       textBefore?: string;
       textAfter?: string;
+      /** Status of the hyperlink source (for theSource links) */
+      status?: 'updated' | 'not_found' | 'expired';
+      /** Content ID for theSource documents */
+      contentId?: string;
     };
   };
   propertyChange?: {
@@ -66,13 +80,30 @@ export interface UnifiedChange {
   };
   before?: string;
   after?: string;
+  affectedText?: string; // The text that was affected by this change
   count?: number; // For consolidated changes
   hyperlinkChange?: {
     urlBefore?: string;
     urlAfter?: string;
     textBefore?: string;
     textAfter?: string;
+    /** Status of the hyperlink source (for theSource links) */
+    status?: 'updated' | 'not_found' | 'expired';
+    /** Content ID for theSource documents */
+    contentId?: string;
   };
+  /** Property change details (for formatting changes) */
+  propertyChange?: {
+    property: string;
+    oldValue?: string;
+    newValue?: string;
+  };
+  /** Multiple property changes grouped together (when same text has multiple formatting changes) */
+  groupedProperties?: Array<{
+    property: string;
+    oldValue?: string;
+    newValue?: string;
+  }>;
 }
 
 /**
@@ -145,6 +176,10 @@ export interface DocumentChange {
   // NEW: Hyperlink-specific metadata
   contentId?: string; // Content ID if applicable
   hyperlinkStatus?: 'updated' | 'expired' | 'not_found' | 'valid';
+
+  // NEW: URL change tracking for hyperlinks
+  urlBefore?: string; // Original URL (before change)
+  urlAfter?: string; // New URL (after change)
 }
 
 export interface SessionStats {
@@ -176,7 +211,7 @@ export interface Session {
     revisionHandlingMode?: RevisionHandlingMode;
     /** Author name for preserve_and_wrap mode */
     revisionAuthor?: string;
-    /** Auto-accept all revisions after processing for clean output (default: true) */
+    /** Auto-accept all revisions after processing for clean output (default: false) */
     autoAcceptRevisions?: boolean;
   };
   // Style configuration
@@ -324,4 +359,8 @@ export interface SessionContextType {
   // Persistence
   saveSession: (session: Session) => void;
   loadSessionFromStorage: (id: string) => Session | null;
+
+  // Defaults management
+  resetSessionToDefaults: (sessionId: string) => void;
+  saveAsCustomDefaults: (sessionId: string) => void;
 }

@@ -1,10 +1,11 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { UserSettings, defaultUserSettings } from '@/types/settings';
 import { logger } from '@/utils/logger';
 import { safeJsonParse, safeJsonStringify } from '@/utils/safeJsonParse';
 
 interface UserSettingsContextType {
   settings: UserSettings;
+  isLoading: boolean;
   updateSettings: (updates: Partial<UserSettings>) => void;
   updateProfile: (updates: Partial<UserSettings['profile']>) => void;
   updateNotifications: (updates: Partial<UserSettings['notifications']>) => void;
@@ -22,18 +23,24 @@ const STORAGE_KEY = 'userSettings';
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
   const log = logger.namespace('UserSettings');
   const [settings, setSettings] = useState<UserSettings>(defaultUserSettings);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadSettings = () => {
-    const storedSettings = localStorage.getItem(STORAGE_KEY);
-    const parsed = safeJsonParse<Partial<UserSettings>>(
-      storedSettings,
-      {},
-      'UserSettings.loadSettings'
-    );
-    setSettings({ ...defaultUserSettings, ...parsed });
-  };
+  const loadSettings = useCallback(() => {
+    setIsLoading(true);
+    try {
+      const storedSettings = localStorage.getItem(STORAGE_KEY);
+      const parsed = safeJsonParse<Partial<UserSettings>>(
+        storedSettings,
+        {},
+        'UserSettings.loadSettings'
+      );
+      setSettings({ ...defaultUserSettings, ...parsed });
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  const saveSettings = async (): Promise<boolean> => {
+  const saveSettings = useCallback(async (): Promise<boolean> => {
     const jsonString = safeJsonStringify(settings, undefined, 'UserSettings.saveSettings');
     if (jsonString) {
       try {
@@ -45,9 +52,9 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       }
     }
     return false;
-  };
+  }, [settings, log]);
 
-  const updateSettings = (updates: Partial<UserSettings>) => {
+  const updateSettings = useCallback((updates: Partial<UserSettings>) => {
     setSettings((prev) => {
       const newSettings = { ...prev, ...updates };
       // Auto-save to localStorage
@@ -56,28 +63,60 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         try {
           localStorage.setItem(STORAGE_KEY, jsonString);
         } catch (error) {
-          log.error('Failed to auto-save settings:', error);
+          // Silent fail - logged elsewhere
         }
       }
       return newSettings;
     });
-  };
+  }, []);
 
-  const updateProfile = (updates: Partial<UserSettings['profile']>) => {
-    setSettings((prev) => ({
-      ...prev,
-      profile: { ...prev.profile, ...updates },
-    }));
-  };
+  const updateProfile = useCallback((updates: Partial<UserSettings['profile']>) => {
+    setSettings((prev) => {
+      const newSettings = {
+        ...prev,
+        profile: { ...prev.profile, ...updates },
+      };
+      // Auto-save profile settings to localStorage
+      const jsonString = safeJsonStringify(
+        newSettings,
+        undefined,
+        'UserSettings.updateProfile'
+      );
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          // Silent fail - logged elsewhere
+        }
+      }
+      return newSettings;
+    });
+  }, []);
 
-  const updateNotifications = (updates: Partial<UserSettings['notifications']>) => {
-    setSettings((prev) => ({
-      ...prev,
-      notifications: { ...prev.notifications, ...updates },
-    }));
-  };
+  const updateNotifications = useCallback((updates: Partial<UserSettings['notifications']>) => {
+    setSettings((prev) => {
+      const newSettings = {
+        ...prev,
+        notifications: { ...prev.notifications, ...updates },
+      };
+      // Auto-save notification settings to localStorage
+      const jsonString = safeJsonStringify(
+        newSettings,
+        undefined,
+        'UserSettings.updateNotifications'
+      );
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          // Silent fail - logged elsewhere
+        }
+      }
+      return newSettings;
+    });
+  }, []);
 
-  const updateApiConnections = (updates: Partial<UserSettings['apiConnections']>) => {
+  const updateApiConnections = useCallback((updates: Partial<UserSettings['apiConnections']>) => {
     setSettings((prev) => {
       const newSettings = {
         ...prev,
@@ -93,14 +132,14 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         try {
           localStorage.setItem(STORAGE_KEY, jsonString);
         } catch (error) {
-          log.error('Failed to auto-save API connections:', error);
+          // Silent fail - logged elsewhere
         }
       }
       return newSettings;
     });
-  };
+  }, []);
 
-  const updateUpdateSettings = (updates: Partial<UserSettings['updateSettings']>) => {
+  const updateUpdateSettings = useCallback((updates: Partial<UserSettings['updateSettings']>) => {
     setSettings((prev) => {
       const newSettings = {
         ...prev,
@@ -116,33 +155,50 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         try {
           localStorage.setItem(STORAGE_KEY, jsonString);
         } catch (error) {
-          log.error('Failed to auto-save update settings:', error);
+          // Silent fail - logged elsewhere
         }
       }
       return newSettings;
     });
-  };
+  }, []);
 
-  const resetSettings = () => {
+  const resetSettings = useCallback(() => {
     setSettings(defaultUserSettings);
     localStorage.removeItem(STORAGE_KEY);
-  };
+  }, []);
 
   useEffect(() => {
     loadSettings();
-  }, []);
+  }, [loadSettings]);
 
-  const value: UserSettingsContextType = {
-    settings,
-    updateSettings,
-    updateProfile,
-    updateNotifications,
-    updateApiConnections,
-    updateUpdateSettings,
-    saveSettings,
-    loadSettings,
-    resetSettings,
-  };
+  // PERFORMANCE FIX: Memoize context value to prevent unnecessary re-renders in consumers
+  // Without this, every render creates a new object reference, causing all consumers to re-render
+  const value = useMemo<UserSettingsContextType>(
+    () => ({
+      settings,
+      isLoading,
+      updateSettings,
+      updateProfile,
+      updateNotifications,
+      updateApiConnections,
+      updateUpdateSettings,
+      saveSettings,
+      loadSettings,
+      resetSettings,
+    }),
+    [
+      settings,
+      isLoading,
+      updateSettings,
+      updateProfile,
+      updateNotifications,
+      updateApiConnections,
+      updateUpdateSettings,
+      saveSettings,
+      loadSettings,
+      resetSettings,
+    ]
+  );
 
   return <UserSettingsContext.Provider value={value}>{children}</UserSettingsContext.Provider>;
 }

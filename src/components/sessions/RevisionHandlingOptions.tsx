@@ -32,8 +32,8 @@ export function RevisionHandlingOptions({
           <div>
             <p className="text-sm font-medium">All changes are tracked</p>
             <p className="text-xs text-muted-foreground mt-1">
-              DocHub tracks all modifications as Word tracked changes.
-              You can view these changes in the Document Changes tab and in Microsoft Word.
+              When enabled, DocHub records all document modifications as Word tracked changes (revisions).
+              These changes appear in the Document Changes tab and are visible when opening the file in Microsoft Word.
             </p>
           </div>
         </div>
@@ -69,12 +69,7 @@ export function RevisionHandlingOptions({
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm">Auto-accept revisions</span>
-            <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded">
-              Recommended
-            </span>
-          </div>
+          <span className="font-medium text-sm">Auto-accept revisions</span>
           <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
             Creates a clean document without visible tracked changes.
             Changes are still recorded in DocHub for review.
@@ -82,9 +77,9 @@ export function RevisionHandlingOptions({
         </div>
       </label>
 
-      {!autoAccept && (
-        <p className="text-xs text-amber-600 dark:text-amber-400">
-          Note: When disabled, tracked changes will be visible when the document is opened in Microsoft Word.
+      {autoAccept && (
+        <p className="text-xs text-blue-600 dark:text-blue-400">
+          Tracked changes will be auto-accepted and not visible in Microsoft Word.
         </p>
       )}
     </div>

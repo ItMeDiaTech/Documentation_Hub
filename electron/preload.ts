@@ -41,6 +41,14 @@ const electronAPI = {
     return files.map((file) => webUtils.getPathForFile(file));
   },
 
+  // Document text extraction (for comparison views)
+  extractDocumentText: (filePath: string) =>
+    ipcRenderer.invoke('document:extract-text', filePath),
+
+  // Read file as buffer (for snapshot capture)
+  readFileAsBuffer: (filePath: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('file:read-buffer', filePath),
+
   // Hyperlink processing
   selectFiles: () => ipcRenderer.invoke('hyperlink:select-files'),
   processHyperlinkDocument: (filePath: string, options: HyperlinkProcessingOptions) =>
@@ -243,10 +251,8 @@ const electronAPI = {
 // This is the correct, secure way to expose APIs to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 
-export type ElectronAPI = typeof electronAPI;
+// TYPE EXPORT: The ElectronAPI type is now defined in src/types/electron.ts
+// This provides a single source of truth for the API interface, shared between
+// the preload script and the renderer process.
+// Import from '@/types/electron' in renderer code for full type safety.
 
-declare global {
-  interface Window {
-    electronAPI: ElectronAPI;
-  }
-}

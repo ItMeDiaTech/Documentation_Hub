@@ -176,6 +176,8 @@ export function sessionToProcessorOptions(session: Session): WordProcessingOptio
   const options: WordProcessingOptions = {
     createBackup: session.processingOptions?.createBackup ?? true,
     validateBeforeProcessing: session.processingOptions?.validateUrls ?? true,
+    // Enable change tracking for Document Changes UI - tracks hyperlink and other modifications
+    trackChanges: true,
   };
 
   // Map enabled operations to boolean flags

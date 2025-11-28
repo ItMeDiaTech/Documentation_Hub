@@ -50,6 +50,16 @@ export type ElectronAPI = {
   restoreFromBackup: (backupPath: string, targetPath: string) => Promise<any>;
   getPathsForFiles: (files: File[]) => string[];
 
+  // Document text extraction (for comparison views)
+  extractDocumentText: (filePath: string) => Promise<{
+    success: boolean;
+    textContent?: string[];
+    error?: string;
+  }>;
+
+  // Read file as buffer (for snapshot capture)
+  readFileAsBuffer: (filePath: string) => Promise<ArrayBuffer>;
+
   // Hyperlink processing
   selectFiles: () => Promise<string[]>;
   processHyperlinkDocument: (

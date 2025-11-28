@@ -63,6 +63,10 @@ export interface HyperlinkChange {
   originalText: string;
   modifiedText: string;
   changeReason: string; // e.g., "Content ID appended", "URL updated by API"
+  /** Status of the hyperlink source - 'not_found' for theSource links that couldn't be resolved */
+  status?: 'updated' | 'not_found' | 'expired';
+  /** Content ID associated with this hyperlink change (for theSource links) */
+  contentId?: string;
 }
 
 export interface StyleChange {
@@ -235,13 +239,17 @@ export class DocumentProcessingComparison {
 
   /**
    * Record a hyperlink text change
+   * @param status - Optional status for theSource links ('not_found', 'expired')
+   * @param contentId - Optional content ID associated with this hyperlink
    */
   recordHyperlinkTextChange(
     paragraphIndex: number,
     hyperlinkIndex: number,
     originalText: string,
     newText: string,
-    reason: string
+    reason: string,
+    status?: 'updated' | 'not_found' | 'expired',
+    contentId?: string
   ): void {
     if (!this.comparison) return;
 
@@ -267,6 +275,8 @@ export class DocumentProcessingComparison {
     if (existingChange) {
       existingChange.modifiedText = newText;
       existingChange.changeReason += `, ${reason}`;
+      if (status) existingChange.status = status;
+      if (contentId) existingChange.contentId = contentId;
     } else {
       const key = `${paragraphIndex}-${hyperlinkIndex}`;
       const original = this.originalHyperlinks.get(key);
@@ -279,6 +289,8 @@ export class DocumentProcessingComparison {
         originalText: original?.text || originalText,
         modifiedText: newText,
         changeReason: reason,
+        status,
+        contentId,
       });
     }
 

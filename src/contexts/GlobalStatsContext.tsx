@@ -6,6 +6,7 @@ import React, {
   ReactNode,
   useCallback,
   useMemo,
+  useRef,
 } from 'react';
 import {
   GlobalStats,
@@ -24,10 +25,41 @@ import { logger } from '@/utils/logger';
 
 const GlobalStatsContext = createContext<GlobalStatsContextType | undefined>(undefined);
 
+/**
+ * Formats a date to YYYY-MM-DD string in local timezone.
+ * Using local timezone prevents off-by-one errors that occur when using
+ * toISOString() which uses UTC (e.g., 11pm local could be next day in UTC).
+ */
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Formats a date to YYYY-MM string in local timezone.
+ */
+const formatLocalMonth = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
 export function GlobalStatsProvider({ children }: { children: ReactNode }) {
   const log = logger.namespace('GlobalStats');
   const [stats, setStats] = useState<GlobalStats>(createDefaultGlobalStats());
   const [isLoading, setIsLoading] = useState(true);
+
+  // RACE CONDITION FIX: Debounce save operations to prevent concurrent writes
+  // When updateStats is called rapidly, we only want to save once after updates settle
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const latestStatsRef = useRef<GlobalStats>(stats);
+
+  // Keep latestStatsRef updated for debounced saves
+  useEffect(() => {
+    latestStatsRef.current = stats;
+  }, [stats]);
 
   // Initialize GlobalStats - Load from IndexedDB using connection pool
   useEffect(() => {
@@ -72,14 +104,19 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
     // Cleanup: mark component as unmounted (connection pool handles db cleanup)
     return () => {
       isMounted = false;
+      // Clear any pending debounced save to prevent memory leaks
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
     };
   }, []); // Empty deps = runs once on mount, cleanup on unmount
 
   // Check if we need to roll over to new day/week/month
   const checkAndRollOverPeriods = (currentStats: GlobalStats): GlobalStats => {
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const currentMonth = today.substring(0, 7);
+    // Use local timezone to prevent off-by-one errors
+    const today = formatLocalDate(now);
+    const currentMonth = formatLocalMonth(now);
 
     let updated = { ...currentStats };
 
@@ -92,14 +129,14 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
       updated.today = createEmptyDailyStats(today);
     }
 
-    // Check if new week
-    const monday = getMonday(now).toISOString().split('T')[0];
+    // Check if new week (use local timezone for consistency)
+    const monday = formatLocalDate(getMonday(now));
     if (updated.currentWeek.weekStart !== monday) {
       // Archive last week's stats
       updated.weeklyHistory = [updated.currentWeek, ...updated.weeklyHistory].slice(0, 12);
 
       // Create new week
-      const sunday = getSunday(now).toISOString().split('T')[0];
+      const sunday = formatLocalDate(getSunday(now));
       updated.currentWeek = createEmptyWeeklyStats(monday, sunday);
     }
 
@@ -186,10 +223,18 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
 
         updatedStats.lastUpdated = now;
 
-        // Persist to IndexedDB using connection pool
-        saveGlobalStats(updatedStats).catch((error: Error) =>
-          log.error('Failed to save stats:', error)
-        );
+        // DEBOUNCED SAVE: Clear any pending save and schedule a new one
+        // This prevents race conditions when updateStats is called rapidly
+        if (saveTimerRef.current) {
+          clearTimeout(saveTimerRef.current);
+        }
+
+        saveTimerRef.current = setTimeout(() => {
+          // Use latestStatsRef to ensure we save the most recent state
+          saveGlobalStats(latestStatsRef.current).catch((error: Error) =>
+            log.error('Failed to save stats:', error)
+          );
+        }, 1000); // 1 second debounce
 
         return updatedStats;
       });
