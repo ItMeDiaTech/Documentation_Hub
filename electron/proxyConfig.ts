@@ -115,7 +115,7 @@ export class ProxyConfig {
 
     if (proxyUsername && proxyPassword) {
       this.proxyAuth = { username: proxyUsername, password: proxyPassword };
-      log.info('[ZscalerConfig] Proxy authentication configured');
+      log.info('[ZscalerConfig] Proxy authentication configured (credentials masked)');
     }
 
     // Log corporate CA certificate configuration

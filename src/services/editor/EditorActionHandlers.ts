@@ -693,13 +693,61 @@ const actionHandlers: Partial<Record<QuickActionId, ActionHandler>> = {
     };
   },
 
-  'remove-hyperlink': async (_ctx) => {
-    // TODO: Implement when Paragraph.getHyperlinks() is available in docxmlater
-    return {
-      success: false,
-      error: 'Remove hyperlink not yet implemented',
-      description: 'Remove hyperlink',
-    };
+  'remove-hyperlink': async (ctx) => {
+    if (!ctx.selection) {
+      return { success: false, error: 'No text selected', description: 'Remove hyperlink' };
+    }
+
+    try {
+      const paragraphs = ctx.document.getAllParagraphs();
+      const para = paragraphs[ctx.selection.paragraphIndex];
+      if (!para) {
+        return { success: false, error: 'Paragraph not found', description: 'Remove hyperlink' };
+      }
+
+      // Get paragraph content to find hyperlinks
+      const content = para.getContent();
+      let removedCount = 0;
+
+      // Find and remove hyperlinks in the paragraph
+      for (const item of content) {
+        // Check if item is a hyperlink using duck typing
+        if (item && typeof (item as any).getUrl === 'function') {
+          const hyperlink = item as any;
+          const hyperlinkText = hyperlink.getText() || '';
+
+          // Convert hyperlink to plain text run
+          // Create a new run with the hyperlink's text
+          if (typeof hyperlink.convertToRun === 'function') {
+            // Use docxmlater's built-in conversion if available
+            hyperlink.convertToRun();
+            removedCount++;
+          } else if (typeof para.replaceContent === 'function') {
+            // Alternative: replace hyperlink with a text run
+            const Run = (await import('docxmlater')).Run;
+            const newRun = Run.create({ text: hyperlinkText });
+            para.replaceContent(hyperlink, [newRun]);
+            removedCount++;
+          }
+        }
+      }
+
+      if (removedCount > 0) {
+        return { success: true, description: `Removed ${removedCount} hyperlink(s)` };
+      }
+
+      return {
+        success: false,
+        error: 'No hyperlinks found in selection',
+        description: 'Remove hyperlink',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to remove hyperlink',
+        description: 'Remove hyperlink',
+      };
+    }
   },
 
   // Tracked Changes

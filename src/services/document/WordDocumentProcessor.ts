@@ -565,7 +565,7 @@ export class WordDocumentProcessor {
                       if (options.trackChanges) {
                         documentProcessingComparison.recordHyperlinkUrlChange(
                           hyperlink.paragraphIndex,
-                          i % 10, // Approximate hyperlink index within paragraph
+                          hyperlink.hyperlinkIndexInParagraph,
                           hyperlinkInfo.url,
                           newUrl,
                           "PowerAutomate API - Fix Content IDs"
@@ -610,7 +610,7 @@ export class WordDocumentProcessor {
                           : 'updated' as const;
                         documentProcessingComparison.recordHyperlinkTextChange(
                           hyperlink.paragraphIndex,
-                          i % 10, // Approximate hyperlink index within paragraph
+                          hyperlink.hyperlinkIndexInParagraph,
                           hyperlinkInfo.displayText,
                           newText,
                           "PowerAutomate API Update",
@@ -683,7 +683,7 @@ export class WordDocumentProcessor {
                     if (options.trackChanges) {
                       documentProcessingComparison.recordHyperlinkTextChange(
                         hyperlink.paragraphIndex,
-                        i % 10, // Approximate hyperlink index within paragraph
+                        hyperlink.hyperlinkIndexInParagraph,
                         hyperlinkInfo.displayText,
                         notFoundText,
                         "Source not found in SharePoint",
