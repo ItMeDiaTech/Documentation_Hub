@@ -162,6 +162,8 @@ function DiffLine({
         bgColors[lineType],
         isHighlighted && 'ring-2 ring-primary ring-inset'
       )}
+      data-paragraph-index={paragraphDiff.index}
+      data-side={side}
       onClick={onClick}
     >
       {/* Line number */}
@@ -274,6 +276,41 @@ export function SideBySideDiff({
     [isSyncScrollEnabled]
   );
 
+  // Scroll to a specific paragraph index in both panels
+  const scrollToIndex = useCallback((paragraphIndex: number) => {
+    const leftPanel = leftScrollRef.current;
+    const rightPanel = rightScrollRef.current;
+
+    if (!leftPanel || !rightPanel) return;
+
+    // Try to find the actual DOM element using data attribute
+    const leftElement = leftPanel.querySelector(`[data-paragraph-index="${paragraphIndex}"][data-side="left"]`);
+    const rightElement = rightPanel.querySelector(`[data-paragraph-index="${paragraphIndex}"][data-side="right"]`);
+
+    if (leftElement && rightElement) {
+      // Use scrollIntoView for precise positioning
+      leftElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+      // The sync scroll handler will sync the right panel
+    } else {
+      // Fallback to calculated position
+      const lineHeight = 28;
+      const scrollPosition = paragraphIndex * lineHeight;
+
+      leftPanel.scrollTo({
+        top: scrollPosition,
+        behavior: 'smooth',
+      });
+
+      rightPanel.scrollTo({
+        top: scrollPosition,
+        behavior: 'smooth',
+      });
+    }
+  }, []);
+
   // Navigate to change
   const navigateToChange = useCallback(
     (direction: 'prev' | 'next') => {
@@ -287,9 +324,9 @@ export function SideBySideDiff({
       setHighlightedIndex(paragraphIndex);
 
       // Scroll to the change
-      // This is a simplified version - in production, you'd scroll to the actual element
+      scrollToIndex(paragraphIndex);
     },
-    [changedIndices, currentChangeIndex]
+    [changedIndices, currentChangeIndex, scrollToIndex]
   );
 
   // Stats display

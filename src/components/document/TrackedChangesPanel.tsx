@@ -7,7 +7,7 @@
  * - Comparison view: Side-by-side pre vs post processing diff
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
@@ -20,6 +20,9 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  ChevronsUpDown,
+  ChevronsDownUp,
+  Keyboard,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import type { TrackedChangesViewMode, TrackedChangesPanelProps } from '@/types/editor';
@@ -205,6 +208,11 @@ export function TrackedChangesPanel({
   const [originalText, setOriginalText] = useState<string[]>([]);
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
   const [currentChangeIndex, setCurrentChangeIndex] = useState(0);
+  const [allParagraphsExpanded, setAllParagraphsExpanded] = useState(true);
+  const [showKeyboardHint, setShowKeyboardHint] = useState(false);
+
+  // Ref for keyboard focus
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // Combine all changes for total count
   const allChanges = useMemo(() => {
@@ -239,8 +247,132 @@ export function TrackedChangesPanel({
     setCurrentChangeIndex((prev) => Math.min(allChanges.length - 1, prev + 1));
   }, [allChanges.length]);
 
+  // Toggle all paragraphs expanded/collapsed
+  const toggleAllParagraphs = useCallback(() => {
+    setAllParagraphsExpanded((prev) => !prev);
+  }, []);
+
+  // Keyboard navigation handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if panel is focused or contains focus
+      if (!panelRef.current?.contains(document.activeElement) && document.activeElement !== panelRef.current) {
+        return;
+      }
+
+      // Don't handle if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case 'j':
+        case 'ArrowDown':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            handleNextChange();
+          }
+          break;
+        case 'k':
+        case 'ArrowUp':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            handlePreviousChange();
+          }
+          break;
+        case 'e':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            toggleAllParagraphs();
+          }
+          break;
+        case '1':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setActiveTab('inline');
+          }
+          break;
+        case '2':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setActiveTab('list');
+          }
+          break;
+        case '3':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setActiveTab('comparison');
+          }
+          break;
+        case '?':
+          e.preventDefault();
+          setShowKeyboardHint((prev) => !prev);
+          break;
+        case 'Escape':
+          setShowKeyboardHint(false);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleNextChange, handlePreviousChange, toggleAllParagraphs]);
+
   return (
-    <div className="bg-card border border-border rounded-lg overflow-hidden">
+    <div
+      ref={panelRef}
+      tabIndex={0}
+      className="bg-card border border-border rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/50"
+    >
+      {/* Keyboard Shortcuts Hint Overlay */}
+      <AnimatePresence>
+        {showKeyboardHint && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 bg-background/95 backdrop-blur-sm flex items-center justify-center"
+            onClick={() => setShowKeyboardHint(false)}
+          >
+            <div className="bg-card border border-border rounded-lg p-6 shadow-lg max-w-sm">
+              <h4 className="font-medium mb-4 flex items-center gap-2">
+                <Keyboard className="w-4 h-4" />
+                Keyboard Shortcuts
+              </h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between gap-8">
+                  <span className="text-muted-foreground">Next change</span>
+                  <kbd className="px-2 py-0.5 bg-muted rounded text-xs font-mono">j</kbd>
+                </div>
+                <div className="flex justify-between gap-8">
+                  <span className="text-muted-foreground">Previous change</span>
+                  <kbd className="px-2 py-0.5 bg-muted rounded text-xs font-mono">k</kbd>
+                </div>
+                <div className="flex justify-between gap-8">
+                  <span className="text-muted-foreground">Expand/Collapse all</span>
+                  <kbd className="px-2 py-0.5 bg-muted rounded text-xs font-mono">e</kbd>
+                </div>
+                <div className="flex justify-between gap-8">
+                  <span className="text-muted-foreground">Inline view</span>
+                  <kbd className="px-2 py-0.5 bg-muted rounded text-xs font-mono">1</kbd>
+                </div>
+                <div className="flex justify-between gap-8">
+                  <span className="text-muted-foreground">List view</span>
+                  <kbd className="px-2 py-0.5 bg-muted rounded text-xs font-mono">2</kbd>
+                </div>
+                <div className="flex justify-between gap-8">
+                  <span className="text-muted-foreground">Comparison view</span>
+                  <kbd className="px-2 py-0.5 bg-muted rounded text-xs font-mono">3</kbd>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-4">
+                Press <kbd className="px-1 bg-muted rounded">?</kbd> or <kbd className="px-1 bg-muted rounded">Esc</kbd> to close
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div
         className="flex items-center justify-between px-4 py-3 bg-muted/30 cursor-pointer"
@@ -256,6 +388,17 @@ export function TrackedChangesPanel({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Keyboard hint button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowKeyboardHint(true);
+            }}
+            className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground"
+            title="Keyboard shortcuts (?)"
+          >
+            <Keyboard className="w-4 h-4" />
+          </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -308,28 +451,54 @@ export function TrackedChangesPanel({
                 />
               </div>
 
-              {/* Navigation controls */}
+              {/* Controls */}
               {allChanges.length > 0 && activeTab !== 'comparison' && (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={handlePreviousChange}
-                    disabled={currentChangeIndex === 0}
-                    className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Previous change"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="text-xs text-muted-foreground px-2">
-                    {currentChangeIndex + 1} / {allChanges.length}
-                  </span>
-                  <button
-                    onClick={handleNextChange}
-                    disabled={currentChangeIndex === allChanges.length - 1}
-                    className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Next change"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                <div className="flex items-center gap-2">
+                  {/* Expand/Collapse All button (for inline view) */}
+                  {activeTab === 'inline' && (
+                    <button
+                      onClick={toggleAllParagraphs}
+                      className="p-1.5 rounded hover:bg-muted transition-colors flex items-center gap-1 text-xs text-muted-foreground"
+                      title={allParagraphsExpanded ? 'Collapse all paragraphs (e)' : 'Expand all paragraphs (e)'}
+                    >
+                      {allParagraphsExpanded ? (
+                        <ChevronsDownUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronsUpDown className="w-4 h-4" />
+                      )}
+                      <span className="hidden sm:inline">
+                        {allParagraphsExpanded ? 'Collapse' : 'Expand'}
+                      </span>
+                    </button>
+                  )}
+
+                  {/* Separator */}
+                  {activeTab === 'inline' && (
+                    <div className="w-px h-4 bg-border" />
+                  )}
+
+                  {/* Navigation controls */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handlePreviousChange}
+                      disabled={currentChangeIndex === 0}
+                      className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Previous change (k)"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-xs text-muted-foreground px-2">
+                      {currentChangeIndex + 1} / {allChanges.length}
+                    </span>
+                    <button
+                      onClick={handleNextChange}
+                      disabled={currentChangeIndex === allChanges.length - 1}
+                      className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Next change (j)"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -341,6 +510,7 @@ export function TrackedChangesPanel({
                   changes={allChanges}
                   highlightedChangeIndex={currentChangeIndex}
                   onChangeClick={(change, index) => setCurrentChangeIndex(index)}
+                  allExpanded={allParagraphsExpanded}
                 />
               )}
 

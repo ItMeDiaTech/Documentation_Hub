@@ -33,8 +33,10 @@ import {
   Plus,
   Settings,
   Table,
+  User,
+  X,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { ChangeItem } from './ChangeItem';
 // DEFERRED: Side-by-side document comparison feature for future implementation
 // import { DocumentComparisonModal } from './DocumentComparisonModal';
@@ -194,8 +196,11 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+  const [authorFilter, setAuthorFilter] = useState<string>('all');
+  const [showAuthorDropdown, setShowAuthorDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
+  const authorDropdownRef = useRef<HTMLDivElement>(null);
   // DEFERRED: Compare Documents modal state
   // const [showComparisonModal, setShowComparisonModal] = useState(false);
 
@@ -235,6 +240,30 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
     };
   }, [documentChanges]);
 
+  // Extract unique authors from all changes
+  const uniqueAuthors = useMemo(() => {
+    const allChanges = documentChanges.flatMap((d) => d.changes);
+    const authors = new Set<string>();
+    allChanges.forEach((change) => {
+      if (change.author) {
+        authors.add(change.author);
+      }
+    });
+    return Array.from(authors).sort();
+  }, [documentChanges]);
+
+  // Close author dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (authorDropdownRef.current && !authorDropdownRef.current.contains(event.target as Node)) {
+        setShowAuthorDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Filter changes based on current filters
   const filteredDocumentChanges = useMemo(() => {
     return documentChanges.map((item) => ({
@@ -244,6 +273,8 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
         if (sourceFilter !== 'all' && change.source !== sourceFilter) return false;
         // Category filter
         if (categoryFilter !== 'all' && change.category !== categoryFilter) return false;
+        // Author filter
+        if (authorFilter !== 'all' && change.author !== authorFilter) return false;
         // Search filter
         if (searchQuery) {
           const query = searchQuery.toLowerCase();
@@ -255,7 +286,7 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
         return true;
       }),
     })).filter((item) => item.changes.length > 0);
-  }, [documentChanges, sourceFilter, categoryFilter, searchQuery]);
+  }, [documentChanges, sourceFilter, categoryFilter, authorFilter, searchQuery]);
 
   // Group changes by category within each document
   const groupedDocumentChanges = useMemo(() => {
@@ -492,6 +523,76 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
 
         <div className="w-px h-6 bg-border" />
 
+        {/* Author Filter Dropdown */}
+        {uniqueAuthors.length > 0 && (
+          <>
+            <div className="relative" ref={authorDropdownRef}>
+              <button
+                onClick={() => setShowAuthorDropdown(!showAuthorDropdown)}
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1 text-xs rounded-md transition-colors',
+                  authorFilter !== 'all'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-background hover:bg-muted border border-border'
+                )}
+              >
+                <User className="w-3 h-3" />
+                <span>{authorFilter === 'all' ? 'All Authors' : authorFilter}</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {/* Dropdown menu */}
+              {showAuthorDropdown && (
+                <div className="absolute top-full left-0 mt-1 z-50 min-w-[180px] bg-popover border border-border rounded-md shadow-lg py-1">
+                  <button
+                    onClick={() => {
+                      setAuthorFilter('all');
+                      setShowAuthorDropdown(false);
+                    }}
+                    className={cn(
+                      'w-full px-3 py-1.5 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2',
+                      authorFilter === 'all' && 'bg-muted'
+                    )}
+                  >
+                    <span className="w-4" />
+                    All Authors
+                  </button>
+                  <div className="h-px bg-border my-1" />
+                  {uniqueAuthors.map((author) => (
+                    <button
+                      key={author}
+                      onClick={() => {
+                        setAuthorFilter(author);
+                        setShowAuthorDropdown(false);
+                      }}
+                      className={cn(
+                        'w-full px-3 py-1.5 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2',
+                        authorFilter === author && 'bg-muted'
+                      )}
+                    >
+                      <User className="w-3 h-3 text-muted-foreground" />
+                      {author}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Clear author filter button */}
+            {authorFilter !== 'all' && (
+              <button
+                onClick={() => setAuthorFilter('all')}
+                className="p-1 rounded hover:bg-muted transition-colors"
+                title="Clear author filter"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+
+            <div className="w-px h-6 bg-border" />
+          </>
+        )}
+
         {/* Search */}
         <input
           type="text"
@@ -585,6 +686,7 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
             onClick={() => {
               setSourceFilter('all');
               setCategoryFilter('all');
+              setAuthorFilter('all');
               setSearchQuery('');
             }}
           >
