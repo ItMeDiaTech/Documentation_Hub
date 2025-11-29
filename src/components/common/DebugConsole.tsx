@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Terminal, AlertTriangle, Network, Shield, Download, Trash2, Copy } from 'lucide-react';
-import { Button } from './Button';
 import { cn } from '@/utils/cn';
 
 interface LogEntry {

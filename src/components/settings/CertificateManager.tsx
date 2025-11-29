@@ -43,7 +43,7 @@ export function CertificateManager() {
     loadExistingCertificates();
 
     // Listen for certificate configuration from main process
-    const handleCertificateConfigured = (_event: any, data: { certPath: string }) => {
+    const handleCertificateConfigured = (_event: unknown, data: { certPath: string }) => {
       setCertificateStatus('configured');
       setCurrentCertPath(data.certPath);
       loadExistingCertificates();
@@ -85,8 +85,8 @@ export function CertificateManager() {
       } else {
         setCertificateStatus('not-configured');
       }
-    } catch (error) {
-      logger.error('Error checking certificate status:', error);
+    } catch (_error) {
+      logger.error('Error checking certificate status:', _error);
       setCertificateStatus('error');
     }
   };
@@ -100,8 +100,8 @@ export function CertificateManager() {
         isActive: path === currentCertPath,
       }));
       setCertificates(certs);
-    } catch (error) {
-      logger.error('Error loading certificates:', error);
+    } catch (_error) {
+      logger.error('Error loading certificates:', _error);
     }
   };
 
@@ -122,7 +122,7 @@ export function CertificateManager() {
           message: result.error || 'Failed to import certificate',
         });
       }
-    } catch (error) {
+    } catch (_error) {
       setImportStatus({
         type: 'error',
         message: 'Error importing certificate',
@@ -145,8 +145,8 @@ export function CertificateManager() {
       await window.electronAPI.openExternal(
         'https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Export-Certificate-From-Browser'
       );
-    } catch (error) {
-      logger.error('Error opening browser guide:', error);
+    } catch (_error) {
+      logger.error('Error opening browser guide:', _error);
     }
   };
 
@@ -169,7 +169,7 @@ export function CertificateManager() {
           message: 'No Zscaler certificates found. You may need to export manually.',
         });
       }
-    } catch (error) {
+    } catch (_error) {
       setImportStatus({
         type: 'error',
         message: 'Error detecting certificates',
@@ -191,8 +191,8 @@ export function CertificateManager() {
       if (result.success) {
         loadExistingCertificates();
       }
-    } catch (error) {
-      logger.error('Error removing certificate:', error);
+    } catch (_error) {
+      logger.error('Error removing certificate:', _error);
     }
   };
 
@@ -213,7 +213,7 @@ export function CertificateManager() {
           message: `Connection failed: ${result.error}`,
         });
       }
-    } catch (error) {
+    } catch (_error) {
       setImportStatus({
         type: 'error',
         message: 'Error testing connection',

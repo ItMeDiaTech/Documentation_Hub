@@ -8,8 +8,7 @@
  * - Hyperlink changes: Link icon badge with URL diff tooltip
  */
 
-import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useMemo, useState } from 'react';
 import {
   FileText,
   Link2,
@@ -22,8 +21,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import type { ChangeEntry, UnifiedChange } from '@/types/session';
-import { DEFAULT_INLINE_CHANGE_STYLES } from '@/types/editor';
+import type { ChangeEntry } from '@/types/session';
 
 interface InlineChangesViewProps {
   /** All changes from tracked changes */

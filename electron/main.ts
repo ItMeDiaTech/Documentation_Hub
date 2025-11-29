@@ -1,5 +1,4 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, dialog, session, net } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { join } from 'path';
 import * as fs from 'fs';
@@ -11,13 +10,11 @@ import { zscalerConfig } from './zscalerConfig';
 import { MemoryConfig } from './memoryConfig';
 import { logger, initializeLogging } from '../src/utils/logger';
 import type {
-  BatchProcessingOptions,
   BatchProcessingResult,
-  HyperlinkProcessingOptions,
   HyperlinkProcessingResult,
 } from '../src/types/hyperlink';
 import { BackupService } from './services/BackupService';
-import type { BackupInfo, StorageInfo, BackupConfig } from './services/BackupService';
+import type { BackupConfig } from './services/BackupService';
 import { getDictionaryService } from './services/DictionaryService';
 import { getSharePointSyncService } from './services/SharePointSyncService';
 import { getLocalDictionaryLookupService } from './services/LocalDictionaryLookupService';

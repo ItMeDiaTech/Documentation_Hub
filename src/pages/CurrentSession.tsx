@@ -1,27 +1,27 @@
-import { Button } from '@/components/common/Button';
+import { Button } from "@/components/common/Button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/common/Card';
-import { Toaster } from '@/components/common/Toast';
+} from "@/components/common/Card";
+import { Toaster } from "@/components/common/Toast";
+import { ChangeViewer } from "@/components/sessions/ChangeViewer";
 import {
-  ProcessingOption,
   ProcessingOptions,
   defaultOptions,
-} from '@/components/sessions/ProcessingOptions';
-import { ReplacementsTab } from '@/components/sessions/ReplacementsTab';
-import { StylesEditor } from '@/components/sessions/StylesEditor';
-import { TabContainer } from '@/components/sessions/TabContainer';
-import { ChangeViewer } from '@/components/sessions/ChangeViewer';
-import { useSession } from '@/contexts/SessionContext';
-import { useToast } from '@/hooks/useToast';
-import type { Document } from '@/types/session';
-import { cn } from '@/utils/cn';
-import logger from '@/utils/logger';
-import { AnimatePresence, motion } from 'framer-motion';
+  type ProcessingOption,
+} from "@/components/sessions/ProcessingOptions";
+import { ReplacementsTab } from "@/components/sessions/ReplacementsTab";
+import { StylesEditor } from "@/components/sessions/StylesEditor";
+import { TabContainer } from "@/components/sessions/TabContainer";
+import { useSession } from "@/contexts/SessionContext";
+import { useToast } from "@/hooks/useToast";
+import type { Document } from "@/types/session";
+import { cn } from "@/utils/cn";
+import logger from "@/utils/logger";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   Check,
@@ -40,9 +40,9 @@ import {
   Timer,
   Upload,
   X,
-} from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 export function CurrentSession() {
   const { id } = useParams<{ id: string }>();
@@ -68,7 +68,7 @@ export function CurrentSession() {
   const [isDragging, setIsDragging] = useState(false);
   const [processingQueue, setProcessingQueue] = useState<string[]>([]);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [editedTitle, setEditedTitle] = useState('');
+  const [editedTitle, setEditedTitle] = useState("");
 
   // Refs for preventing race conditions
   const isSelectingFiles = useRef(false);
@@ -110,7 +110,7 @@ export function CurrentSession() {
   const handleFileSelect = useCallback(async () => {
     // Prevent concurrent file selections
     if (isSelectingFiles.current) {
-      logger.debug('[File Select] Already selecting files, ignoring request');
+      logger.debug("[File Select] Already selecting files, ignoring request");
       return;
     }
 
@@ -118,8 +118,8 @@ export function CurrentSession() {
     const currentSessionId = session?.id;
     if (!currentSessionId) {
       toast({
-        title: 'No active session',
-        variant: 'destructive',
+        title: "No active session",
+        variant: "destructive",
       });
       return;
     }
@@ -127,11 +127,11 @@ export function CurrentSession() {
     // Safely check if electronAPI is available
     const api = window.electronAPI;
     if (!api?.selectDocuments || !api?.getFileStats) {
-      console.warn('CurrentSession: electronAPI methods not available');
+      console.warn("CurrentSession: electronAPI methods not available");
       toast({
-        title: 'File selection unavailable',
-        description: 'Please restart app',
-        variant: 'destructive',
+        title: "File selection unavailable",
+        description: "Please restart app",
+        variant: "destructive",
       });
       return;
     }
@@ -144,7 +144,7 @@ export function CurrentSession() {
 
       // Check if component is still mounted and session hasn't changed
       if (!isMountedRef.current) {
-        logger.debug('[File Select] Component unmounted during file selection');
+        logger.debug("[File Select] Component unmounted during file selection");
         return;
       }
 
@@ -154,11 +154,11 @@ export function CurrentSession() {
 
       // Verify session is still valid
       if (session?.id !== currentSessionId) {
-        logger.warn('[File Select] Session changed during file selection');
+        logger.warn("[File Select] Session changed during file selection");
         toast({
-          title: 'Session changed',
-          description: 'Please try again',
-          variant: 'destructive',
+          title: "Session changed",
+          description: "Please try again",
+          variant: "destructive",
         });
         return;
       }
@@ -170,11 +170,11 @@ export function CurrentSession() {
       for (const filePath of filePaths) {
         // Early exit if component unmounted
         if (!isMountedRef.current) {
-          logger.debug('[File Select] Component unmounted during file processing');
+          logger.debug("[File Select] Component unmounted during file processing");
           return;
         }
 
-        const name = filePath.split(/[\\/]/).pop() || 'document.docx';
+        const name = filePath.split(/[\\/]/).pop() || "document.docx";
 
         try {
           // Get actual file size from filesystem
@@ -186,22 +186,22 @@ export function CurrentSession() {
             path: filePath,
             name: name,
             size: stats.size,
-            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             lastModified: stats.mtimeMs || Date.now(),
-            webkitRelativePath: '',
+            webkitRelativePath: "",
             // Stub methods - these are not used since we process via Electron IPC with file paths
             arrayBuffer: async () => {
-              throw new Error('Use Electron IPC for file operations');
+              throw new Error("Use Electron IPC for file operations");
             },
             slice: () => new Blob(),
             stream: () => {
-              throw new Error('Use Electron IPC for file operations');
+              throw new Error("Use Electron IPC for file operations");
             },
             text: async () => {
-              throw new Error('Use Electron IPC for file operations');
+              throw new Error("Use Electron IPC for file operations");
             },
             bytes: async () => {
-              throw new Error('Use Electron IPC for file operations');
+              throw new Error("Use Electron IPC for file operations");
             },
           } as unknown as File & { path: string };
 
@@ -224,8 +224,8 @@ export function CurrentSession() {
 
         if (isMountedRef.current) {
           toast({
-            title: `${validFiles.length} file${validFiles.length > 1 ? 's' : ''} added`,
-            variant: 'success',
+            title: `${validFiles.length} file${validFiles.length > 1 ? "s" : ""} added`,
+            variant: "success",
           });
         }
       }
@@ -234,27 +234,27 @@ export function CurrentSession() {
       if (invalidFiles.length > 0 && isMountedRef.current) {
         logger.warn(`[File Select] Rejected ${invalidFiles.length} file(s):`, invalidFiles);
         toast({
-          title: 'Access denied',
-          description: `${invalidFiles.length} file${invalidFiles.length > 1 ? 's' : ''} skipped`,
-          variant: 'destructive',
+          title: "Access denied",
+          description: `${invalidFiles.length} file${invalidFiles.length > 1 ? "s" : ""} skipped`,
+          variant: "destructive",
         });
       }
 
       // If no files were valid at all
       if (validFiles.length === 0 && filePaths.length > 0 && isMountedRef.current) {
         toast({
-          title: 'Cannot access files',
-          description: 'Check file permissions',
-          variant: 'destructive',
+          title: "Cannot access files",
+          description: "Check file permissions",
+          variant: "destructive",
         });
       }
     } catch (error) {
       if (isMountedRef.current) {
-        logger.error('[File Select] Unexpected error:', error);
+        logger.error("[File Select] Unexpected error:", error);
         toast({
-          title: 'Selection failed',
-          description: error instanceof Error ? error.message : 'Unexpected error',
-          variant: 'destructive',
+          title: "Selection failed",
+          description: error instanceof Error ? error.message : "Unexpected error",
+          variant: "destructive",
         });
       }
     } finally {
@@ -272,7 +272,7 @@ export function CurrentSession() {
             <p className="text-muted-foreground mb-4">
               The session you are looking for does not exist or has been deleted.
             </p>
-            <Button onClick={() => navigate('/')}>Return to Dashboard</Button>
+            <Button onClick={() => navigate("/")}>Return to Dashboard</Button>
           </CardContent>
         </Card>
       </div>
@@ -304,32 +304,37 @@ export function CurrentSession() {
     const validFiles = files
       .map((file, i) => ({
         file,
-        path: paths[i] || '',
+        path: paths[i] || "",
       }))
-      .filter(({ file, path }) => file.name.endsWith('.docx') && path)
-      .map(({ file, path }) => ({
-        name: file.name,
-        path: path,
-        size: file.size,
-        type: file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        lastModified: file.lastModified,
-        arrayBuffer: async () => new ArrayBuffer(0),
-        slice: () => new Blob(),
-        stream: () => new ReadableStream(),
-        text: async () => '',
-        webkitRelativePath: '',
-      } as File & { path: string }));
+      .filter(({ file, path }) => file.name.endsWith(".docx") && path)
+      .map(
+        ({ file, path }) =>
+          ({
+            name: file.name,
+            path: path,
+            size: file.size,
+            type:
+              file.type ||
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            lastModified: file.lastModified,
+            arrayBuffer: async () => new ArrayBuffer(0),
+            slice: () => new Blob(),
+            stream: () => new ReadableStream(),
+            text: async () => "",
+            webkitRelativePath: "",
+          }) as File & { path: string }
+      );
 
     if (validFiles.length === 0) {
-      logger.warn('[Drag-Drop] No valid .docx files dropped');
+      logger.warn("[Drag-Drop] No valid .docx files dropped");
       return;
     }
 
     addDocuments(session.id, validFiles);
 
     toast({
-      title: `${validFiles.length} file${validFiles.length > 1 ? 's' : ''} added`,
-      variant: 'success',
+      title: `${validFiles.length} file${validFiles.length > 1 ? "s" : ""} added`,
+      variant: "success",
     });
   };
 
@@ -340,9 +345,9 @@ export function CurrentSession() {
 
     if (operationsCount > 0) {
       toast({
-        title: 'Processing...',
-        description: `${operationsCount} operation${operationsCount > 1 ? 's' : ''}`,
-        variant: 'default',
+        title: "Processing...",
+        description: `${operationsCount} operation${operationsCount > 1 ? "s" : ""}`,
+        variant: "default",
         duration: 2000,
       });
     }
@@ -359,24 +364,24 @@ export function CurrentSession() {
     const freshSession = sessionsRef.current.find((s) => s.id === sessionId);
     const processedDoc = freshSession?.documents.find((d) => d.id === documentId);
 
-    if (processedDoc?.status === 'completed' && processedDoc.path) {
+    if (processedDoc?.status === "completed" && processedDoc.path) {
       toast({
-        title: 'Done',
+        title: "Done",
         description: processedDoc.name,
-        variant: 'success',
+        variant: "success",
       });
-    } else if (processedDoc?.status === 'error') {
+    } else if (processedDoc?.status === "error") {
       toast({
-        title: 'Processing failed',
-        description: processedDoc.errors?.[0] || 'Document error',
-        variant: 'destructive',
+        title: "Processing failed",
+        description: processedDoc.errors?.[0] || "Document error",
+        variant: "destructive",
       });
     }
   };
 
   const handleSaveAndClose = () => {
     closeSession(session.id);
-    navigate('/');
+    navigate("/");
   };
 
   const handleEditTitle = () => {
@@ -393,7 +398,7 @@ export function CurrentSession() {
 
   const handleCancelEdit = () => {
     setIsEditingTitle(false);
-    setEditedTitle('');
+    setEditedTitle("");
   };
 
   const handleProcessingOptionsChange = (options: Array<{ id: string; enabled: boolean }>) => {
@@ -401,23 +406,23 @@ export function CurrentSession() {
     const enabledOperations = options.filter((opt) => opt.enabled).map((opt) => opt.id);
 
     // DEBUG: Log processing options changes
-    console.log('[CurrentSession] Processing options changed:');
-    console.log('  - Enabled operations:', enabledOperations);
-    console.log('  - TOC enabled:', enabledOperations.includes('update-toc-hyperlinks'));
+    console.log("[CurrentSession] Processing options changed:");
+    console.log("  - Enabled operations:", enabledOperations);
+    console.log("  - TOC enabled:", enabledOperations.includes("update-toc-hyperlinks"));
     console.log(
-      '  - Validate styles enabled:',
-      enabledOperations.includes('validate-document-styles')
+      "  - Validate styles enabled:",
+      enabledOperations.includes("validate-document-styles")
     );
     console.log(
-      '  - Validate Header2 tables enabled:',
-      enabledOperations.includes('validate-header2-tables')
+      "  - Validate Header2 tables enabled:",
+      enabledOperations.includes("validate-header2-tables")
     );
 
     // Update session processing options using the context method
     updateSessionOptions(session.id, {
       validateUrls: true,
       createBackup: true,
-      processInternalLinks: enabledOperations.includes('fix-internal-hyperlinks'),
+      processInternalLinks: enabledOperations.includes("fix-internal-hyperlinks"),
       processExternalLinks: true,
       enabledOperations: enabledOperations,
     });
@@ -444,23 +449,23 @@ export function CurrentSession() {
     });
   };
 
-  const getStatusIcon = (status: Document['status']) => {
+  const getStatusIcon = (status: Document["status"]) => {
     switch (status) {
-      case 'pending':
+      case "pending":
         return <Clock className="w-4 h-4 text-muted-foreground" />;
-      case 'processing':
+      case "processing":
         return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
-      case 'completed':
+      case "completed":
         return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'error':
+      case "error":
         return <AlertCircle className="w-4 h-4 text-red-500" />;
     }
   };
 
   const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
   // Create session content for the Session tab
@@ -542,8 +547,8 @@ export function CurrentSession() {
           {session.documents.length === 0 ? (
             <div
               className={cn(
-                'border-2 border-dashed rounded-lg p-8 text-center transition-colors',
-                isDragging ? 'border-primary bg-primary/5' : 'border-border'
+                "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
+                isDragging ? "border-primary bg-primary/5" : "border-border"
               )}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -551,7 +556,7 @@ export function CurrentSession() {
             >
               <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">
-                {isDragging ? 'Drop files here' : 'Upload Documents'}
+                {isDragging ? "Drop files here" : "Upload Documents"}
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
                 Drag and drop .docx files here, or click to browse
@@ -567,14 +572,14 @@ export function CurrentSession() {
                   onClick={() => {
                     // Process all pending documents
                     session.documents
-                      .filter((doc) => doc.status === 'pending')
+                      .filter((doc) => doc.status === "pending")
                       .forEach((doc) => handleProcessDocument(doc.id));
                   }}
                   size="sm"
                   variant="default"
                   className="bg-green-600 hover:bg-green-700 text-white"
                   icon={<Play className="w-4 h-4" />}
-                  disabled={!session.documents.some((doc) => doc.status === 'pending')}
+                  disabled={!session.documents.some((doc) => doc.status === "pending")}
                 >
                   Process Documents
                 </Button>
@@ -612,7 +617,7 @@ export function CurrentSession() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {doc.status === 'pending' && (
+                        {doc.status === "pending" && (
                           <Button
                             size="xs"
                             onClick={() => handleProcessDocument(doc.id)}
@@ -622,34 +627,34 @@ export function CurrentSession() {
                           </Button>
                         )}
 
-                        {doc.status === 'processing' && (
+                        {doc.status === "processing" && (
                           <span className="text-xs text-blue-500 font-medium">Processing...</span>
                         )}
 
-                        {doc.status === 'completed' && (
+                        {doc.status === "completed" && (
                           <span className="text-xs text-green-500 font-medium">Completed</span>
                         )}
 
-                        {doc.status === 'error' && (
+                        {doc.status === "error" && (
                           <span className="text-xs text-red-500 font-medium">Error</span>
                         )}
 
                         {/* Open Document button - only show for completed documents */}
-                        {doc.status === 'completed' && doc.path && (
+                        {doc.status === "completed" && doc.path && (
                           <button
                             onClick={async () => {
                               try {
                                 await window.electronAPI.openDocument(doc.path!);
                                 toast({
-                                  title: 'Opening in Word',
-                                  variant: 'default',
+                                  title: "Opening in Word",
+                                  variant: "default",
                                 });
                               } catch (err) {
-                                logger.error('Failed to open document:', err);
+                                logger.error("Failed to open document:", err);
                                 toast({
-                                  title: 'Cannot open file',
+                                  title: "Cannot open file",
                                   description: err instanceof Error ? err.message : undefined,
-                                  variant: 'destructive',
+                                  variant: "destructive",
                                 });
                               }
                             }}
@@ -667,7 +672,7 @@ export function CurrentSession() {
                               try {
                                 await window.electronAPI.showInFolder(doc.path!);
                               } catch (err) {
-                                logger.error('Failed to open file location:', err);
+                                logger.error("Failed to open file location:", err);
                               }
                             }}
                             className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-background"
@@ -691,15 +696,15 @@ export function CurrentSession() {
 
               <div
                 className={cn(
-                  'mt-4 border-2 border-dashed rounded-lg p-4 text-center transition-colors',
-                  isDragging ? 'border-primary bg-primary/5' : 'border-border'
+                  "mt-4 border-2 border-dashed rounded-lg p-4 text-center transition-colors",
+                  isDragging ? "border-primary bg-primary/5" : "border-border"
                 )}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
               >
                 <p className="text-sm text-muted-foreground">
-                  {isDragging ? 'Drop files here to add' : 'Drag and drop more files here'}
+                  {isDragging ? "Drop files here to add" : "Drag and drop more files here"}
                 </p>
               </div>
             </>
@@ -714,8 +719,8 @@ export function CurrentSession() {
     if (session) {
       resetSessionToDefaults(session.id);
       toast({
-        title: 'Settings reset',
-        variant: 'default',
+        title: "Settings reset",
+        variant: "default",
       });
     }
   };
@@ -724,8 +729,8 @@ export function CurrentSession() {
     if (session) {
       saveAsCustomDefaults(session.id);
       toast({
-        title: 'Saved as default',
-        variant: 'success',
+        title: "Saved as default",
+        variant: "success",
       });
     }
   };
@@ -761,13 +766,13 @@ export function CurrentSession() {
   // Create tabs configuration
   const tabs = [
     {
-      id: 'session',
+      id: "session",
       label: `Session: ${session.name}`,
       content: sessionContent,
     },
     {
-      id: 'processing',
-      label: 'Processing Options',
+      id: "processing",
+      label: "Processing Options",
       content: (
         <ProcessingOptions
           sessionId={session.id}
@@ -779,8 +784,8 @@ export function CurrentSession() {
       ),
     },
     {
-      id: 'styles',
-      label: 'Styles',
+      id: "styles",
+      label: "Styles",
       content: (
         <StylesEditor
           initialStyles={session.styles}
@@ -793,20 +798,20 @@ export function CurrentSession() {
             // Auto-save: changes are persisted immediately to SessionContext
             updateSessionListBulletSettings(session.id, settings);
           }}
-          tableHeader2Shading={session.tableShadingSettings?.header2Shading || '#BFBFBF'}
-          tableOtherShading={session.tableShadingSettings?.otherShading || '#DFDFDF'}
+          tableHeader2Shading={session.tableShadingSettings?.header2Shading || "#BFBFBF"}
+          tableOtherShading={session.tableShadingSettings?.otherShading || "#DFDFDF"}
           onTableShadingChange={handleTableShadingChange}
         />
       ),
     },
     {
-      id: 'replacements',
-      label: 'Replacements',
+      id: "replacements",
+      label: "Replacements",
       content: <ReplacementsTab sessionId={session.id} />,
     },
     {
-      id: 'tracked-changes',
-      label: 'Document Changes',
+      id: "tracked-changes",
+      label: "Document Changes",
       content: <ChangeViewer sessionId={session.id} />,
     },
   ];
@@ -827,8 +832,8 @@ export function CurrentSession() {
                 value={editedTitle}
                 onChange={(e) => setEditedTitle(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveTitle();
-                  if (e.key === 'Escape') handleCancelEdit();
+                  if (e.key === "Enter") handleSaveTitle();
+                  if (e.key === "Escape") handleCancelEdit();
                 }}
                 className="text-3xl font-bold bg-transparent border-b-2 border-primary outline-none px-1"
                 autoFocus

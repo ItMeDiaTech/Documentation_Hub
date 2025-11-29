@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download,
   X,
-  AlertCircle,
   FileArchive,
   Info,
   ExternalLink,
