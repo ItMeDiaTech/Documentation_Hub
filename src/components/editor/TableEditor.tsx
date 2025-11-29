@@ -31,13 +31,6 @@ import {
   Merge,
   Split,
   Paintbrush,
-  Grid3X3,
-  AlignVerticalJustifyStart,
-  AlignVerticalJustifyCenter,
-  AlignVerticalJustifyEnd,
-  Trash2,
-  Copy,
-  Clipboard,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import type { CellSelection, QuickActionId } from '@/types/editor';

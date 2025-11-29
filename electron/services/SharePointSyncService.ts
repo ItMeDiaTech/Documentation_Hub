@@ -11,10 +11,8 @@
  * @performance Supports chunked download with progress reporting
  */
 
-import * as path from 'path';
-import * as fs from 'fs/promises';
 import { createHash } from 'crypto';
-import { app, BrowserWindow } from 'electron';
+import { BrowserWindow } from 'electron';
 import {
   ConfidentialClientApplication,
   Configuration,

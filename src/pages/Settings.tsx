@@ -151,7 +151,7 @@ export function Settings() {
         }
         const version = await window.electronAPI.getCurrentVersion();
         setCurrentVersion(version);
-    } catch (error) {
+    } catch (_error) {
       // Silently handle version retrieval errors
     }
     };
@@ -239,7 +239,7 @@ export function Settings() {
         if (result.success && result.status) {
           setDictionaryStatus(result.status);
         }
-      } catch (error) {
+      } catch (_error) {
         // Silent fail - dictionary not initialized yet
       }
     };
@@ -364,7 +364,7 @@ export function Settings() {
     try {
       await window.electronAPI?.checkForUpdates();
       // Status will be updated by event listeners
-    } catch (error) {
+    } catch (_error) {
       setUpdateStatus('Error checking for updates');
       setCheckingForUpdates(false);
     }
@@ -375,7 +375,7 @@ export function Settings() {
     try {
       await window.electronAPI?.downloadUpdate();
       // Progress will be updated by event listeners
-    } catch (error) {
+    } catch (_error) {
       setUpdateStatus('Download failed');
     }
   };
@@ -454,7 +454,7 @@ export function Settings() {
           prev ? { ...prev, syncError: result.error || 'Sync failed', syncInProgress: false } : null
         );
       }
-    } catch (error) {
+    } catch (_error) {
       setDictionaryStatus((prev) =>
         prev ? { ...prev, syncError: 'Sync failed', syncInProgress: false } : null
       );
@@ -521,8 +521,8 @@ export function Settings() {
       } else {
         logger.error('Failed to save export data:', saveResult.error);
       }
-    } catch (error) {
-      logger.error('Export failed:', error);
+    } catch (_error) {
+      logger.error('Export failed:', _error);
     }
   };
 
@@ -564,8 +564,8 @@ export function Settings() {
         // Reload page to apply all changes
         window.location.reload();
       }, 2000);
-    } catch (error) {
-      logger.error('Import failed:', error);
+    } catch (_error) {
+      logger.error('Import failed:', _error);
     }
   };
 
@@ -2002,8 +2002,8 @@ Submitted: ${new Date().toLocaleString()}
                         } else {
                           alert('Failed to submit idea. Please try again.');
                         }
-                      } catch (error) {
-                        logger.error('Error submitting idea:', error);
+                      } catch (_error) {
+                        logger.error('Error submitting idea:', _error);
                         alert('Failed to submit idea. Please check your API configuration.');
                       }
                     }}

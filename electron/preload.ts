@@ -1,9 +1,7 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils, shell } from 'electron';
 import type {
   HyperlinkProcessingOptions,
-  HyperlinkProcessingResult,
   BatchProcessingOptions,
-  BatchProcessingResult,
   BatchProgress,
 } from '../src/types/hyperlink';
 import type {

@@ -3,7 +3,6 @@ import { app, shell, net, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
-import * as https from 'https';
 import AdmZip from 'adm-zip';
 import { proxyConfig } from './proxyConfig';
 import { zscalerConfig } from './zscalerConfig';

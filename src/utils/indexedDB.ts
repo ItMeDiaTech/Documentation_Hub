@@ -52,9 +52,9 @@ class IndexedDBConnectionPool {
       // Check if connection is still valid
       try {
         // Simple health check - access object store names
-        const _ = this.db.objectStoreNames;
+        const _objectStoreNames = this.db.objectStoreNames;
         return this.db;
-      } catch (error) {
+      } catch (_error) {
         logger.warn('[IndexedDB Pool] Connection invalid, reconnecting...');
         this.db = null;
       }
@@ -222,9 +222,9 @@ class GlobalStatsConnectionPool {
       // Check if connection is still valid
       try {
         // Simple health check - access object store names
-        const _ = this.db.objectStoreNames;
+        const _objectStoreNames = this.db.objectStoreNames;
         return this.db;
-      } catch (error) {
+      } catch (_error) {
         logger.warn('[GlobalStats Pool] Connection invalid, reconnecting...');
         this.db = null;
       }

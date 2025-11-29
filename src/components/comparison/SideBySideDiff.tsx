@@ -10,24 +10,20 @@
  * - Collapse unchanged sections
  */
 
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import {
   Columns,
   ChevronUp,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Link,
   Unlink,
   Minimize2,
-  Maximize2,
   Eye,
   EyeOff,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { generateDocumentDiff, filterChangedParagraphs } from '@/utils/diffUtils';
-import type { ParagraphDiff, DiffSegment, DocumentDiff } from '@/types/editor';
+import type { ParagraphDiff, DiffSegment } from '@/types/editor';
 
 interface SideBySideDiffProps {
   /** Original content (pre-processing paragraphs) */

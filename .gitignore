@@ -254,3 +254,6 @@ CLAUDE.md
 /STYLE_PARAMETER_ENHANCEMENT.md
 # jest.config.js - REMOVED: Needed for test configuration
 /index.html
+/.blackboxrules
+/.prettierignore
+/.prettierrc
