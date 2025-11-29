@@ -20,6 +20,9 @@ import {
   Edit3,
   ChevronDown,
   ChevronRight,
+  MoveRight,
+  ArrowRightFromLine,
+  ArrowRightToLine,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import type { ChangeEntry, UnifiedChange } from '@/types/session';
@@ -44,6 +47,8 @@ interface InlineChangesViewProps {
   highlightedChangeIndex?: number;
   /** Whether to use virtualization for large documents */
   virtualized?: boolean;
+  /** Control all paragraphs expanded/collapsed from parent */
+  allExpanded?: boolean;
 }
 
 /**
@@ -55,6 +60,10 @@ function getChangeIcon(revisionType: string) {
       return Plus;
     case 'delete':
       return Trash2;
+    case 'moveFrom':
+      return ArrowRightFromLine;
+    case 'moveTo':
+      return ArrowRightToLine;
     case 'runPropertiesChange':
     case 'paragraphPropertiesChange':
       return Edit3;
@@ -71,9 +80,10 @@ function getChangeIcon(revisionType: string) {
 /**
  * Get styling classes for change type
  */
-function getChangeStyles(revisionType: string, isHighlighted: boolean) {
+function getChangeStyles(revisionType: string, isHighlighted: boolean, isMoveLinked: boolean = false) {
   const baseClasses = 'inline-flex items-center rounded px-1 py-0.5 transition-all';
   const highlightClasses = isHighlighted ? 'ring-2 ring-primary ring-offset-1' : '';
+  const moveLinkClasses = isMoveLinked ? 'ring-2 ring-amber-400 ring-offset-1 animate-pulse' : '';
 
   switch (revisionType) {
     case 'insert':
@@ -87,6 +97,20 @@ function getChangeStyles(revisionType: string, isHighlighted: boolean) {
         baseClasses,
         highlightClasses,
         'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 line-through'
+      );
+    case 'moveFrom':
+      return cn(
+        baseClasses,
+        highlightClasses,
+        moveLinkClasses,
+        'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-dashed border-amber-400'
+      );
+    case 'moveTo':
+      return cn(
+        baseClasses,
+        highlightClasses,
+        moveLinkClasses,
+        'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-solid border-amber-400'
       );
     case 'runPropertiesChange':
     case 'paragraphPropertiesChange':
@@ -124,15 +148,21 @@ function ChangeBadge({
   change,
   index,
   isHighlighted,
+  isMoveLinked,
   onClick,
+  onMoveHover,
 }: {
   change: ChangeEntry;
   index: number;
   isHighlighted: boolean;
+  isMoveLinked?: boolean;
   onClick?: () => void;
+  onMoveHover?: (moveId: string | null) => void;
 }) {
   const [showTooltip, setShowTooltip] = useState(false);
   const Icon = getChangeIcon(change.revisionType);
+  const isMove = change.revisionType === 'moveFrom' || change.revisionType === 'moveTo';
+  const moveId = (change as ChangeEntry & { moveId?: string }).moveId;
 
   const getDisplayText = () => {
     if (change.content?.affectedText) {
@@ -147,16 +177,34 @@ function ChangeBadge({
     return change.description || 'Change';
   };
 
+  const handleMouseEnter = () => {
+    setShowTooltip(true);
+    if (isMove && moveId && onMoveHover) {
+      onMoveHover(moveId);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setShowTooltip(false);
+    if (isMove && onMoveHover) {
+      onMoveHover(null);
+    }
+  };
+
   return (
     <span className="relative inline-block">
       <span
-        className={cn(getChangeStyles(change.revisionType, isHighlighted), 'cursor-pointer')}
+        className={cn(getChangeStyles(change.revisionType, isHighlighted, isMoveLinked), 'cursor-pointer')}
         onClick={onClick}
-        onMouseEnter={() => setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <Icon className="w-3 h-3 mr-1 inline" />
         <span className="text-sm">{getDisplayText()}</span>
+        {/* Move indicator */}
+        {isMove && (
+          <MoveRight className="w-3 h-3 ml-1 inline opacity-60" />
+        )}
       </span>
 
       {/* Tooltip */}
@@ -265,14 +313,29 @@ function ParagraphWithChanges({
   changes,
   highlightedChangeIndex,
   onChangeClick,
+  allExpanded,
+  hoveredMoveId,
+  onMoveHover,
 }: {
   paragraphIndex: number;
   paragraphText?: string;
   changes: ChangeEntry[];
   highlightedChangeIndex?: number;
   onChangeClick?: (change: ChangeEntry, index: number) => void;
+  allExpanded?: boolean;
+  hoveredMoveId?: string | null;
+  onMoveHover?: (moveId: string | null) => void;
 }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isLocalExpanded, setIsLocalExpanded] = useState(true);
+
+  // Sync with parent's allExpanded when it changes
+  useEffect(() => {
+    if (allExpanded !== undefined) {
+      setIsLocalExpanded(allExpanded);
+    }
+  }, [allExpanded]);
+
+  const isExpanded = allExpanded !== undefined ? allExpanded : isLocalExpanded;
 
   // Sort changes by run index
   const sortedChanges = useMemo(() => {
@@ -283,11 +346,16 @@ function ParagraphWithChanges({
     });
   }, [changes]);
 
+  // Check if any change in this paragraph is linked via move
+  const hasMoveChanges = changes.some(
+    (c) => c.revisionType === 'moveFrom' || c.revisionType === 'moveTo'
+  );
+
   return (
     <div className="border-b border-border/50 last:border-b-0">
       {/* Paragraph header */}
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => setIsLocalExpanded(!isLocalExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
       >
         {isExpanded ? (
@@ -296,6 +364,11 @@ function ParagraphWithChanges({
           <ChevronRight className="w-3 h-3" />
         )}
         <span>Paragraph {paragraphIndex + 1}</span>
+        {hasMoveChanges && (
+          <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-[10px]">
+            has moves
+          </span>
+        )}
         <span className="ml-auto px-1.5 py-0.5 bg-muted rounded-full">
           {changes.length} {changes.length === 1 ? 'change' : 'changes'}
         </span>
@@ -311,18 +384,25 @@ function ParagraphWithChanges({
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            {sortedChanges.map((change, idx) => (
-              <ChangeBadge
-                key={`${change.id || idx}-${idx}`}
-                change={change}
-                index={idx}
-                isHighlighted={
-                  highlightedChangeIndex !== undefined &&
-                  changes.indexOf(change) === highlightedChangeIndex
-                }
-                onClick={() => onChangeClick?.(change, idx)}
-              />
-            ))}
+            {sortedChanges.map((change, idx) => {
+              const changeWithMoveId = change as ChangeEntry & { moveId?: string };
+              const isMoveLinked = hoveredMoveId !== null && changeWithMoveId.moveId === hoveredMoveId;
+
+              return (
+                <ChangeBadge
+                  key={`${change.id || idx}-${idx}`}
+                  change={change}
+                  index={idx}
+                  isHighlighted={
+                    highlightedChangeIndex !== undefined &&
+                    changes.indexOf(change) === highlightedChangeIndex
+                  }
+                  isMoveLinked={isMoveLinked}
+                  onClick={() => onChangeClick?.(change, idx)}
+                  onMoveHover={onMoveHover}
+                />
+              );
+            })}
           </div>
         </div>
       )}
@@ -337,19 +417,34 @@ function OtherChanges({
   changes,
   highlightedChangeIndex,
   onChangeClick,
+  allExpanded,
+  hoveredMoveId,
+  onMoveHover,
 }: {
   changes: ChangeEntry[];
   highlightedChangeIndex?: number;
   onChangeClick?: (change: ChangeEntry, index: number) => void;
+  allExpanded?: boolean;
+  hoveredMoveId?: string | null;
+  onMoveHover?: (moveId: string | null) => void;
 }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isLocalExpanded, setIsLocalExpanded] = useState(true);
+
+  // Sync with parent's allExpanded when it changes
+  useEffect(() => {
+    if (allExpanded !== undefined) {
+      setIsLocalExpanded(allExpanded);
+    }
+  }, [allExpanded]);
+
+  const isExpanded = allExpanded !== undefined ? allExpanded : isLocalExpanded;
 
   if (changes.length === 0) return null;
 
   return (
     <div className="border-b border-border/50">
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => setIsLocalExpanded(!isLocalExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
       >
         {isExpanded ? (
@@ -366,21 +461,106 @@ function OtherChanges({
       {isExpanded && (
         <div className="px-4 py-3 bg-muted/10">
           <div className="flex flex-wrap gap-2">
-            {changes.map((change, idx) => (
-              <ChangeBadge
-                key={`other-${change.id || idx}-${idx}`}
-                change={change}
-                index={idx}
-                isHighlighted={highlightedChangeIndex === idx}
-                onClick={() => onChangeClick?.(change, idx)}
-              />
-            ))}
+            {changes.map((change, idx) => {
+              const changeWithMoveId = change as ChangeEntry & { moveId?: string };
+              const isMoveLinked = hoveredMoveId !== null && changeWithMoveId.moveId === hoveredMoveId;
+
+              return (
+                <ChangeBadge
+                  key={`other-${change.id || idx}-${idx}`}
+                  change={change}
+                  index={idx}
+                  isHighlighted={highlightedChangeIndex === idx}
+                  isMoveLinked={isMoveLinked}
+                  onClick={() => onChangeClick?.(change, idx)}
+                  onMoveHover={onMoveHover}
+                />
+              );
+            })}
           </div>
         </div>
       )}
     </div>
   );
 }
+
+/**
+ * Virtualized paragraph wrapper - only renders content when visible
+ */
+function VirtualizedParagraph({
+  paragraphIndex,
+  paragraphText,
+  changes,
+  highlightedChangeIndex,
+  onChangeClick,
+  allExpanded,
+  hoveredMoveId,
+  onMoveHover,
+}: {
+  paragraphIndex: number;
+  paragraphText?: string;
+  changes: ChangeEntry[];
+  highlightedChangeIndex?: number;
+  onChangeClick?: (change: ChangeEntry, index: number) => void;
+  allExpanded?: boolean;
+  hoveredMoveId?: string | null;
+  onMoveHover?: (moveId: string | null) => void;
+}) {
+  const [isVisible, setIsVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Once visible, keep it rendered to avoid layout shifts
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+        }
+      },
+      {
+        rootMargin: '100px', // Pre-load items 100px before they come into view
+        threshold: 0,
+      }
+    );
+
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Placeholder height when not visible
+  if (!isVisible) {
+    return (
+      <div
+        ref={ref}
+        className="border-b border-border/50 h-10 flex items-center px-3 text-xs text-muted-foreground"
+      >
+        <ChevronRight className="w-3 h-3 mr-2" />
+        Paragraph {paragraphIndex + 1} ({changes.length} changes)
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref}>
+      <ParagraphWithChanges
+        paragraphIndex={paragraphIndex}
+        paragraphText={paragraphText}
+        changes={changes}
+        highlightedChangeIndex={highlightedChangeIndex}
+        onChangeClick={onChangeClick}
+        allExpanded={allExpanded}
+        hoveredMoveId={hoveredMoveId}
+        onMoveHover={onMoveHover}
+      />
+    </div>
+  );
+}
+
+// Threshold for enabling virtualization
+const VIRTUALIZATION_THRESHOLD = 100;
 
 /**
  * Main InlineChangesView component
@@ -391,13 +571,20 @@ export function InlineChangesView({
   onChangeClick,
   highlightedChangeIndex,
   virtualized = false,
+  allExpanded,
 }: InlineChangesViewProps) {
+  // State for move operation linking
+  const [hoveredMoveId, setHoveredMoveId] = useState<string | null>(null);
+
   // Group changes by paragraph
   const groupedChanges = useMemo(() => groupChangesByParagraph(changes), [changes]);
 
   // Separate paragraph changes from document-level changes
   const paragraphChanges = groupedChanges.filter(([index]) => index >= 0);
   const otherChanges = groupedChanges.find(([index]) => index === -1)?.[1] || [];
+
+  // Auto-enable virtualization for large change lists
+  const shouldVirtualize = virtualized || changes.length >= VIRTUALIZATION_THRESHOLD;
 
   // Statistics
   const stats = useMemo(() => {
@@ -409,9 +596,17 @@ export function InlineChangesView({
         c.revisionType === 'paragraphPropertiesChange'
     ).length;
     const hyperlinks = changes.filter((c) => c.revisionType === 'hyperlinkChange').length;
+    const moves = changes.filter(
+      (c) => c.revisionType === 'moveFrom' || c.revisionType === 'moveTo'
+    ).length;
 
-    return { insertions, deletions, formatting, hyperlinks };
+    return { insertions, deletions, formatting, hyperlinks, moves };
   }, [changes]);
+
+  // Handler for move hover linking
+  const handleMoveHover = useCallback((moveId: string | null) => {
+    setHoveredMoveId(moveId);
+  }, []);
 
   if (changes.length === 0) {
     return (
@@ -452,26 +647,59 @@ export function InlineChangesView({
             {stats.hyperlinks} links
           </span>
         )}
+        {stats.moves > 0 && (
+          <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+            <MoveRight className="w-3 h-3" />
+            {stats.moves} moved
+          </span>
+        )}
       </div>
+
+      {/* Virtualization indicator */}
+      {shouldVirtualize && (
+        <div className="px-4 py-1 bg-amber-50 dark:bg-amber-900/20 border-b border-border text-xs text-amber-700 dark:text-amber-300">
+          Large change list ({changes.length} changes) - using optimized rendering
+        </div>
+      )}
 
       {/* Changes by paragraph */}
       <div className="divide-y divide-border/50">
-        {paragraphChanges.map(([paragraphIndex, paragraphChangesList]) => (
-          <ParagraphWithChanges
-            key={`para-${paragraphIndex}`}
-            paragraphIndex={paragraphIndex}
-            paragraphText={paragraphs?.[paragraphIndex]?.text}
-            changes={paragraphChangesList}
-            highlightedChangeIndex={highlightedChangeIndex}
-            onChangeClick={onChangeClick}
-          />
-        ))}
+        {paragraphChanges.map(([paragraphIndex, paragraphChangesList]) =>
+          shouldVirtualize ? (
+            <VirtualizedParagraph
+              key={`para-${paragraphIndex}`}
+              paragraphIndex={paragraphIndex}
+              paragraphText={paragraphs?.[paragraphIndex]?.text}
+              changes={paragraphChangesList}
+              highlightedChangeIndex={highlightedChangeIndex}
+              onChangeClick={onChangeClick}
+              allExpanded={allExpanded}
+              hoveredMoveId={hoveredMoveId}
+              onMoveHover={handleMoveHover}
+            />
+          ) : (
+            <ParagraphWithChanges
+              key={`para-${paragraphIndex}`}
+              paragraphIndex={paragraphIndex}
+              paragraphText={paragraphs?.[paragraphIndex]?.text}
+              changes={paragraphChangesList}
+              highlightedChangeIndex={highlightedChangeIndex}
+              onChangeClick={onChangeClick}
+              allExpanded={allExpanded}
+              hoveredMoveId={hoveredMoveId}
+              onMoveHover={handleMoveHover}
+            />
+          )
+        )}
 
         {/* Document-level changes */}
         <OtherChanges
           changes={otherChanges}
           highlightedChangeIndex={highlightedChangeIndex}
           onChangeClick={onChangeClick}
+          allExpanded={allExpanded}
+          hoveredMoveId={hoveredMoveId}
+          onMoveHover={handleMoveHover}
         />
       </div>
     </div>
