@@ -91,19 +91,142 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
       level: 2,
       symbolIndent: 1.5,
       textIndent: 1.75,
-      bulletChar: '•',
+      bulletChar: '■',
       numberedFormat: 'i.',
     },
-    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },
+    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
     {
       level: 4,
       symbolIndent: 2.5,
       textIndent: 2.75,
-      bulletChar: '•',
+      bulletChar: '○',
       numberedFormat: 'a)',
     },
   ],
 });
+
+/**
+ * Default session styles - Shared between createSession and resetSessionToDefaults
+ * Matches StylesEditor defaults for consistency
+ */
+const DEFAULT_SESSION_STYLES: SessionStyle[] = [
+  {
+    id: 'header1',
+    name: 'Header 1',
+    fontSize: 18,
+    fontFamily: 'Verdana',
+    bold: true,
+    italic: false,
+    underline: false,
+    alignment: 'left',
+    spaceBefore: 0,
+    spaceAfter: 12,
+    lineSpacing: 1.0,
+    color: '#000000',
+  },
+  {
+    id: 'header2',
+    name: 'Header 2',
+    fontSize: 14,
+    fontFamily: 'Verdana',
+    bold: true,
+    italic: false,
+    underline: false,
+    alignment: 'left',
+    spaceBefore: 6,
+    spaceAfter: 6,
+    lineSpacing: 1.0,
+    color: '#000000',
+  },
+  {
+    id: 'header3',
+    name: 'Header 3',
+    fontSize: 12,
+    fontFamily: 'Verdana',
+    bold: true,
+    italic: false,
+    underline: false,
+    alignment: 'left',
+    spaceBefore: 3,
+    spaceAfter: 3,
+    lineSpacing: 1.0,
+    color: '#000000',
+  },
+  {
+    id: 'normal',
+    name: 'Normal',
+    fontSize: 12,
+    fontFamily: 'Verdana',
+    bold: false,
+    italic: false,
+    underline: false,
+    preserveBold: true,
+    preserveItalic: false,
+    preserveUnderline: false,
+    alignment: 'left',
+    spaceBefore: 3,
+    spaceAfter: 3,
+    lineSpacing: 1.0,
+    color: '#000000',
+    noSpaceBetweenSame: false,
+  },
+  {
+    id: 'listParagraph',
+    name: 'List Paragraph',
+    fontSize: 12,
+    fontFamily: 'Verdana',
+    bold: false,
+    italic: false,
+    underline: false,
+    preserveBold: true,
+    preserveItalic: false,
+    preserveUnderline: false,
+    alignment: 'left',
+    spaceBefore: 0,
+    spaceAfter: 6,
+    lineSpacing: 1.0,
+    color: '#000000',
+    noSpaceBetweenSame: true,
+    indentation: { left: 0.25, firstLine: 0.5 },
+  },
+];
+
+/**
+ * Default processing options - Shared between createSession and resetSessionToDefaults
+ */
+const DEFAULT_PROCESSING_OPTIONS = {
+  validateUrls: true,
+  createBackup: true,
+  processInternalLinks: true,
+  processExternalLinks: true,
+  autoAcceptRevisions: false,
+  enabledOperations: [
+    'remove-italics',
+    'replace-outdated-titles',
+    'validate-document-styles',
+    'update-top-hyperlinks',
+    'update-toc-hyperlinks',
+    'fix-internal-hyperlinks',
+    'fix-content-ids',
+    'center-border-images',
+    'remove-whitespace',
+    'remove-paragraph-lines',
+    'remove-headers-footers',
+    'add-document-warning',
+    'validate-header2-tables',
+    'list-indentation',
+    'bullet-uniformity',
+    'smart-tables',
+  ],
+};
+
+/**
+ * Default table shading settings
+ */
+const DEFAULT_TABLE_SHADING_SETTINGS: TableShadingSettings = {
+  header2Shading: '#BFBFBF',
+  otherShading: '#DFDFDF',
+};
 
 /**
  * Ensures session has valid listBulletSettings with non-empty indentation levels
@@ -470,131 +593,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [debouncedPersistSessions, log]);
 
   const createSession = (name: string): Session => {
-    // Default styles for new sessions (matching StylesEditor defaults)
-    const defaultStyles: SessionStyle[] = [
-      {
-        id: 'header1',
-        name: 'Header 1',
-        fontSize: 18,
-        fontFamily: 'Verdana',
-        bold: true,
-        italic: false,
-        underline: false,
-        alignment: 'left',
-        spaceBefore: 0,
-        spaceAfter: 12,
-        lineSpacing: 1.0,
-        color: '#000000',
-      },
-      {
-        id: 'header2',
-        name: 'Header 2',
-        fontSize: 14,
-        fontFamily: 'Verdana',
-        bold: true,
-        italic: false,
-        underline: false,
-        alignment: 'left',
-        spaceBefore: 6,
-        spaceAfter: 6,
-        lineSpacing: 1.0,
-        color: '#000000',
-      },
-      {
-        id: 'header3',
-        name: 'Header 3',
-        fontSize: 12,
-        fontFamily: 'Verdana',
-        bold: true,
-        italic: false,
-        underline: false,
-        alignment: 'left',
-        spaceBefore: 3,
-        spaceAfter: 3,
-        lineSpacing: 1.0,
-        color: '#000000',
-      },
-      {
-        id: 'normal',
-        name: 'Normal',
-        fontSize: 12,
-        fontFamily: 'Verdana',
-        bold: false, // Not bold by default
-        italic: false, // Not italic by default
-        underline: false, // Not underlined by default
-        preserveBold: true, // Preserve existing bold formatting (Requirement 5)
-        preserveItalic: false, // Apply italic setting (not preserved)
-        preserveUnderline: false, // Apply underline setting (not preserved)
-        alignment: 'left',
-        spaceBefore: 3,
-        spaceAfter: 3,
-        lineSpacing: 1.0,
-        color: '#000000',
-        noSpaceBetweenSame: false, // Allow spacing between Normal paragraphs (Requirement 5)
-      },
-      {
-        id: 'listParagraph',
-        name: 'List Paragraph',
-        fontSize: 12,
-        fontFamily: 'Verdana',
-        bold: false, // Not bold by default
-        italic: false, // Not italic by default
-        underline: false, // Not underlined by default
-        preserveBold: true, // Preserve existing bold formatting (Requirement 6)
-        preserveItalic: false, // Apply italic setting (not preserved)
-        preserveUnderline: false, // Apply underline setting (not preserved)
-        alignment: 'left',
-        spaceBefore: 0,
-        spaceAfter: 6,
-        lineSpacing: 1.0,
-        color: '#000000',
-        noSpaceBetweenSame: true, // No spacing between list items (Requirement 6)
-        indentation: {
-          left: 0.25, // Bullet position at 0.25 inches
-          firstLine: 0.5, // Text position at 0.5 inches (0.25 additional from left)
-        },
-      },
-    ];
-
-    // Default list bullet settings (matching StylesEditor defaults)
-    // NOTE: These must be initialized to prevent "No indentation levels provided" errors
-    // Symbol indent: 0.5" base with 0.5" increments per level
-    // Text indent: symbol indent + 0.25" hanging indent
-    const defaultListBulletSettings: ListBulletSettings = {
-      enabled: true,
-      indentationLevels: [
-        {
-          level: 0,
-          symbolIndent: 0.5,
-          textIndent: 0.75,
-          bulletChar: '•',
-          numberedFormat: '1.',
-        },
-        { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
-        {
-          level: 2,
-          symbolIndent: 1.5,
-          textIndent: 1.75,
-          bulletChar: '■',
-          numberedFormat: 'i.',
-        },
-        {
-          level: 3,
-          symbolIndent: 2.0,
-          textIndent: 2.25,
-          bulletChar: '•',
-          numberedFormat: '1)',
-        },
-        {
-          level: 4,
-          symbolIndent: 2.5,
-          textIndent: 2.75,
-          bulletChar: '○',
-          numberedFormat: 'a)',
-        },
-      ],
-    };
-
     const newSession: Session = {
       id: `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       name,
@@ -608,36 +606,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         timeSaved: 0,
       },
       status: 'active',
-      styles: defaultStyles, // Initialize with default styles
-      listBulletSettings: createDefaultListBulletSettings(), // Initialize with default list settings
-      tableShadingSettings: {
-        header2Shading: '#BFBFBF', // Default for Header 2 / 1x1 table cells
-        otherShading: '#DFDFDF', // Default for other table cells
-      },
+      styles: [...DEFAULT_SESSION_STYLES], // Use shared defaults
+      listBulletSettings: createDefaultListBulletSettings(),
+      tableShadingSettings: { ...DEFAULT_TABLE_SHADING_SETTINGS },
       processingOptions: {
-        validateUrls: true,
-        createBackup: true,
-        processInternalLinks: true,
-        processExternalLinks: true,
-        autoAcceptRevisions: false, // Default: keep tracked changes visible in Word
-        enabledOperations: [
-          'remove-italics',
-          'replace-outdated-titles',
-          'validate-document-styles',
-          'update-top-hyperlinks',
-          'update-toc-hyperlinks',
-          'fix-internal-hyperlinks',
-          'fix-content-ids',
-          'center-border-images',
-          'remove-whitespace',
-          'remove-paragraph-lines',
-          'remove-headers-footers',
-          'add-document-warning',
-          'validate-header2-tables',
-          'list-indentation',
-          'bullet-uniformity',
-          'smart-tables',
-        ],
+        ...DEFAULT_PROCESSING_OPTIONS,
+        enabledOperations: [...DEFAULT_PROCESSING_OPTIONS.enabledOperations],
       },
     };
 
@@ -1724,127 +1698,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const resetSessionToDefaults = (sessionId: string) => {
     log.info('[SessionContext] Resetting session to defaults:', sessionId);
 
-    const defaultStyles: SessionStyle[] = [
-      {
-        id: 'header1',
-        name: 'Header 1',
-        fontSize: 18,
-        fontFamily: 'Verdana',
-        bold: true,
-        italic: false,
-        underline: false,
-        alignment: 'left',
-        spaceBefore: 0,
-        spaceAfter: 12,
-        lineSpacing: 1.0,
-        color: '#000000',
-      },
-      {
-        id: 'header2',
-        name: 'Header 2',
-        fontSize: 14,
-        fontFamily: 'Verdana',
-        bold: true,
-        italic: false,
-        underline: false,
-        alignment: 'left',
-        spaceBefore: 6,
-        spaceAfter: 6,
-        lineSpacing: 1.0,
-        color: '#000000',
-      },
-      {
-        id: 'header3',
-        name: 'Header 3',
-        fontSize: 12,
-        fontFamily: 'Verdana',
-        bold: true,
-        italic: false,
-        underline: false,
-        alignment: 'left',
-        spaceBefore: 3,
-        spaceAfter: 3,
-        lineSpacing: 1.0,
-        color: '#000000',
-      },
-      {
-        id: 'normal',
-        name: 'Normal',
-        fontSize: 12,
-        fontFamily: 'Verdana',
-        bold: false,
-        italic: false,
-        underline: false,
-        preserveBold: true,
-        preserveItalic: false,
-        preserveUnderline: false,
-        alignment: 'left',
-        spaceBefore: 3,
-        spaceAfter: 3,
-        lineSpacing: 1.0,
-        color: '#000000',
-        noSpaceBetweenSame: false,
-      },
-      {
-        id: 'listParagraph',
-        name: 'List Paragraph',
-        fontSize: 12,
-        fontFamily: 'Verdana',
-        bold: false,
-        italic: false,
-        underline: false,
-        preserveBold: true,
-        preserveItalic: false,
-        preserveUnderline: false,
-        alignment: 'left',
-        spaceBefore: 0,
-        spaceAfter: 6,
-        lineSpacing: 1.0,
-        color: '#000000',
-        noSpaceBetweenSame: true,
-        indentation: { left: 0.25, firstLine: 0.5 },
-      },
-    ];
-
-    const defaultListBulletSettings = createDefaultListBulletSettings();
-
-    const defaultProcessingOptions = {
-      validateUrls: true,
-      createBackup: true,
-      processInternalLinks: true,
-      processExternalLinks: true,
-      autoAcceptRevisions: false, // Default: keep tracked changes visible in Word
-      enabledOperations: [
-        'remove-italics',
-        'replace-outdated-titles',
-        'validate-document-styles',
-        'update-top-hyperlinks',
-        'update-toc-hyperlinks',
-        'fix-internal-hyperlinks',
-        'fix-content-ids',
-        'center-border-images',
-        'remove-whitespace',
-        'remove-paragraph-lines',
-        'remove-headers-footers',
-        'add-document-warning',
-        'validate-header2-tables',
-        'list-indentation',
-        'bullet-uniformity',
-        'smart-tables',
-      ],
-    };
-
-    const defaultTableShadingSettings = {
-      header2Shading: '#BFBFBF',
-      otherShading: '#DFDFDF',
-    };
-
     updateSessionById(sessionId, (session) => ({
       ...session,
-      styles: defaultStyles,
-      listBulletSettings: defaultListBulletSettings,
-      processingOptions: defaultProcessingOptions,
-      tableShadingSettings: defaultTableShadingSettings,
+      styles: [...DEFAULT_SESSION_STYLES],
+      listBulletSettings: createDefaultListBulletSettings(),
+      processingOptions: {
+        ...DEFAULT_PROCESSING_OPTIONS,
+        enabledOperations: [...DEFAULT_PROCESSING_OPTIONS.enabledOperations],
+      },
+      tableShadingSettings: { ...DEFAULT_TABLE_SHADING_SETTINGS },
       lastModified: new Date(),
     }));
 

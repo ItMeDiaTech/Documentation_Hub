@@ -30,6 +30,129 @@ import { Document, Paragraph, Table } from 'docxmlater';
 // DocumentEditor has its own type definitions that we pass through
 
 /**
+ * Sync editor bodyElements changes back to docxmlater Document
+ * Maps the editor's internal format back to docxmlater API calls
+ */
+async function syncBodyElementsToDocument(
+  doc: Document,
+  bodyElements: any[]
+): Promise<void> {
+  const docElements = doc.getBodyElements();
+
+  // Track which paragraphs/tables have been modified
+  let paragraphIndex = 0;
+  let tableIndex = 0;
+
+  for (const element of bodyElements) {
+    if (element.type === 'paragraph') {
+      // Find corresponding paragraph in document
+      let docParagraphIndex = 0;
+      for (const docElement of docElements) {
+        if (docElement instanceof Paragraph) {
+          if (docParagraphIndex === paragraphIndex) {
+            // Sync text changes - update runs
+            const editorPara = element.paragraph;
+            const docPara = docElement;
+
+            // Clear existing runs and rebuild from editor state
+            if (editorPara.runs && editorPara.runs.length > 0) {
+              const docRuns = docPara.getRuns();
+
+              // Update each run's text and formatting
+              for (let i = 0; i < Math.min(docRuns.length, editorPara.runs.length); i++) {
+                const editorRun = editorPara.runs[i];
+                const docRun = docRuns[i];
+
+                if (editorRun.text !== docRun.getText()) {
+                  docRun.setText(editorRun.text);
+                }
+
+                // Sync formatting if changed
+                if (editorRun.bold !== undefined) docRun.setBold(editorRun.bold);
+                if (editorRun.italic !== undefined) docRun.setItalic(editorRun.italic);
+                if (editorRun.underline !== undefined) {
+                  docRun.setUnderline(editorRun.underline ? 'single' : false);
+                }
+                if (editorRun.color) docRun.setColor(editorRun.color.replace('#', ''));
+                if (editorRun.font) docRun.setFont(editorRun.font);
+                if (editorRun.size) docRun.setSize(editorRun.size);
+              }
+            }
+
+            // Sync paragraph formatting
+            if (editorPara.alignment) {
+              docPara.setAlignment(editorPara.alignment);
+            }
+
+            break;
+          }
+          docParagraphIndex++;
+        }
+      }
+      paragraphIndex++;
+    } else if (element.type === 'table') {
+      // Find corresponding table in document
+      let docTableIndex = 0;
+      for (const docElement of docElements) {
+        if (docElement instanceof Table) {
+          if (docTableIndex === tableIndex) {
+            const editorTable = element.table;
+            const docTable = docElement;
+            const docRows = docTable.getRows();
+
+            // Sync each row/cell
+            for (let rowIdx = 0; rowIdx < Math.min(docRows.length, editorTable.rows.length); rowIdx++) {
+              const editorRow = editorTable.rows[rowIdx];
+              const docRow = docRows[rowIdx];
+              const docCells = docRow.getCells();
+
+              for (let cellIdx = 0; cellIdx < Math.min(docCells.length, editorRow.cells.length); cellIdx++) {
+                const editorCell = editorRow.cells[cellIdx];
+                const docCell = docCells[cellIdx];
+                const docCellParas = docCell.getParagraphs();
+
+                // Sync cell shading
+                if (editorCell.shading) {
+                  docCell.setShading(editorCell.shading.replace('#', ''));
+                }
+
+                // Sync cell paragraphs
+                for (let paraIdx = 0; paraIdx < Math.min(docCellParas.length, editorCell.paragraphs.length); paraIdx++) {
+                  const editorCellPara = editorCell.paragraphs[paraIdx];
+                  const docCellPara = docCellParas[paraIdx];
+                  const docCellRuns = docCellPara.getRuns();
+
+                  // Sync runs
+                  for (let runIdx = 0; runIdx < Math.min(docCellRuns.length, (editorCellPara.runs || []).length); runIdx++) {
+                    const editorRun = editorCellPara.runs[runIdx];
+                    const docRun = docCellRuns[runIdx];
+
+                    if (editorRun.text !== docRun.getText()) {
+                      docRun.setText(editorRun.text);
+                    }
+                    if (editorRun.bold !== undefined) docRun.setBold(editorRun.bold);
+                    if (editorRun.italic !== undefined) docRun.setItalic(editorRun.italic);
+                  }
+
+                  // Sync paragraph alignment
+                  if (editorCellPara.alignment) {
+                    docCellPara.setAlignment(editorCellPara.alignment);
+                  }
+                }
+              }
+            }
+
+            break;
+          }
+          docTableIndex++;
+        }
+      }
+      tableIndex++;
+    }
+  }
+}
+
+/**
  * Convert docxmlater Document body to editor-compatible format
  * Returns any[] to allow passing to DocumentEditor which has its own types
  */
@@ -270,8 +393,10 @@ export function DocumentEditorModal({
 
     setIsSaving(true);
     try {
-      // TODO: Sync bodyElements changes back to docInstance
-      // For now, save the document as-is
+      // Sync editor bodyElements changes back to docxmlater document
+      await syncBodyElementsToDocument(docInstance, bodyElements);
+
+      // Save the document with synced changes
       const buffer = await docInstance.toBuffer();
       // Convert Buffer to ArrayBuffer for onSave callback
       const arrayBuffer = buffer.buffer.slice(
@@ -289,7 +414,7 @@ export function DocumentEditorModal({
     } finally {
       setIsSaving(false);
     }
-  }, [docInstance, onSave]);
+  }, [docInstance, bodyElements, onSave]);
 
   // Handle undo
   const handleUndo = useCallback(() => {

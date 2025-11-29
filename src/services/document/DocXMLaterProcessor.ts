@@ -411,6 +411,7 @@ export class DocXMLaterProcessor {
       hyperlink: any; // Hyperlink type from docxmlater
       paragraph: any; // Paragraph type from docxmlater
       paragraphIndex: number;
+      hyperlinkIndexInParagraph: number; // Index of this hyperlink within its paragraph
       url?: string;
       text: string;
     }>
@@ -423,6 +424,7 @@ export class DocXMLaterProcessor {
       hyperlink: any;
       paragraph: any;
       paragraphIndex: number;
+      hyperlinkIndexInParagraph: number;
       url?: string;
       text: string;
     }> = [];
@@ -437,6 +439,9 @@ export class DocXMLaterProcessor {
 
       // Get the content of the paragraph (can include Runs, Hyperlinks, Images, etc.)
       const content = para.getContent();
+
+      // Track hyperlink index within this paragraph
+      let hyperlinkIndexInParagraph = 0;
 
       // Check each content item for hyperlinks
       for (const item of content) {
@@ -454,9 +459,12 @@ export class DocXMLaterProcessor {
             hyperlink: item,
             paragraph: para,
             paragraphIndex: i,
+            hyperlinkIndexInParagraph,
             url: url,
             text: sanitizedText,
           });
+
+          hyperlinkIndexInParagraph++;
         }
       }
     }

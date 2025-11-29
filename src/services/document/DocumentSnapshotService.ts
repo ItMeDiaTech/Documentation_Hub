@@ -443,7 +443,79 @@ export class DocumentSnapshotService {
   }
 
   /**
+   * Get oldest snapshots sorted by timestamp
+   * Used for cleanup when storage exceeds limits
+   */
+  static async getOldestSnapshots(limit: number): Promise<SerializedDocumentSnapshot[]> {
+    try {
+      const db = await connectionPool.getConnection();
+
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([SNAPSHOTS_STORE], 'readonly');
+        const store = transaction.objectStore(SNAPSHOTS_STORE);
+        const index = store.index('timestamp');
+        const request = index.getAll();
+
+        request.onsuccess = () => {
+          const snapshots = request.result as SerializedDocumentSnapshot[];
+          // Sort by timestamp (oldest first) and take limit
+          const sorted = snapshots
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+            .slice(0, limit);
+          resolve(sorted);
+        };
+
+        request.onerror = () => {
+          reject(new Error(`Failed to get oldest snapshots: ${request.error?.message}`));
+        };
+      });
+    } catch (error) {
+      logger.error('[SnapshotDB] Error getting oldest snapshots:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete snapshots by session and document ID pairs
+   */
+  static async deleteSnapshots(
+    snapshots: Array<{ sessionId: string; documentId: string }>
+  ): Promise<number> {
+    if (snapshots.length === 0) return 0;
+
+    try {
+      const db = await connectionPool.getConnection();
+      let deletedCount = 0;
+
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([SNAPSHOTS_STORE], 'readwrite');
+        const store = transaction.objectStore(SNAPSHOTS_STORE);
+
+        for (const { sessionId, documentId } of snapshots) {
+          const request = store.delete([sessionId, documentId]);
+          request.onsuccess = () => {
+            deletedCount++;
+          };
+        }
+
+        transaction.oncomplete = () => {
+          logger.info(`[SnapshotDB] Deleted ${deletedCount} snapshots`);
+          resolve(deletedCount);
+        };
+
+        transaction.onerror = () => {
+          reject(new Error(`Failed to delete snapshots: ${transaction.error?.message}`));
+        };
+      });
+    } catch (error) {
+      logger.error('[SnapshotDB] Error deleting snapshots:', error);
+      return 0;
+    }
+  }
+
+  /**
    * Ensure storage is within limits, cleaning up if necessary
+   * Implements oldest-first deletion strategy
    */
   static async ensureStorageLimit(): Promise<void> {
     const currentSize = await this.calculateStorageSize();
@@ -454,15 +526,47 @@ export class DocumentSnapshotService {
           `exceeds limit ${(MAX_STORAGE_BYTES / 1024 / 1024).toFixed(0)}MB`
       );
 
-      // First, clean up old snapshots
+      // First, clean up old snapshots (older than MAX_SNAPSHOT_AGE_MS)
       await this.cleanupOldSnapshots();
 
-      // Check again and delete more if needed
-      const newSize = await this.calculateStorageSize();
-      if (newSize > MAX_STORAGE_BYTES) {
+      // Check again and delete more if needed using oldest-first strategy
+      let newSize = await this.calculateStorageSize();
+      let iterationCount = 0;
+      const maxIterations = 10; // Safety limit
+
+      while (newSize > MAX_STORAGE_BYTES && iterationCount < maxIterations) {
         logger.warn('[SnapshotDB] Still over limit, deleting oldest snapshots');
-        // Would need to implement oldest-first deletion
-        // For now, just log the warning
+
+        // Get oldest snapshots (batch of 5)
+        const oldestSnapshots = await this.getOldestSnapshots(5);
+
+        if (oldestSnapshots.length === 0) {
+          logger.warn('[SnapshotDB] No more snapshots to delete');
+          break;
+        }
+
+        // Delete oldest snapshots
+        const toDelete = oldestSnapshots.map((s) => ({
+          sessionId: s.sessionId,
+          documentId: s.documentId,
+        }));
+
+        const deletedCount = await this.deleteSnapshots(toDelete);
+        logger.info(`[SnapshotDB] Deleted ${deletedCount} oldest snapshots to free space`);
+
+        // Recalculate size
+        newSize = await this.calculateStorageSize();
+        logger.debug(
+          `[SnapshotDB] Size after cleanup: ${(newSize / 1024 / 1024).toFixed(2)}MB`
+        );
+
+        iterationCount++;
+      }
+
+      if (iterationCount >= maxIterations) {
+        logger.warn('[SnapshotDB] Max cleanup iterations reached');
+      } else if (newSize <= MAX_STORAGE_BYTES) {
+        logger.info('[SnapshotDB] Storage now within limits');
       }
     }
   }
