@@ -3,12 +3,7 @@ import react from '@vitejs/plugin-react';
 import electron from 'vite-plugin-electron';
 import renderer from 'vite-plugin-electron-renderer';
 import tailwindcss from '@tailwindcss/vite';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-// ES Module polyfill for __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { resolve } from 'path';
 
 export default defineConfig({
   optimizeDeps: {
@@ -31,10 +26,6 @@ export default defineConfig({
               '@pages': resolve(__dirname, './src/pages'),
               '@contexts': resolve(__dirname, './src/contexts'),
             },
-          },
-          define: {
-            __dirname: 'import.meta.dirname',
-            __filename: 'import.meta.filename',
           },
           build: {
             outDir: 'dist/electron',
