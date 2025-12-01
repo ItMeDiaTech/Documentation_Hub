@@ -20,21 +20,20 @@ describe('StructureProcessor', () => {
 
     mockDoc = {
       getAllParagraphs: jest.fn().mockReturnValue([]),
-      removeExtraBlankParagraphs: jest.fn().mockReturnValue({ removed: 0, added: 0 }),
+      removeExtraBlankParagraphs: jest.fn().mockReturnValue({ removed: 0, added: 0, total: 0 }),
       ensureBlankLinesAfter1x1Tables: jest.fn().mockReturnValue({
         tablesProcessed: 0,
         blankLinesAdded: 0,
         existingLinesMarked: 0,
       }),
-      getHeaders: jest.fn().mockReturnValue([]),
-      getFooters: jest.fn().mockReturnValue([]),
-      appendContent: jest.fn(),
+      removeAllHeadersFooters: jest.fn().mockReturnValue(0),
+      addParagraph: jest.fn().mockReturnThis(),
     } as unknown as jest.Mocked<Document>;
   });
 
   describe('removeExtraBlankParagraphs', () => {
     it('should call document method with default options', async () => {
-      mockDoc.removeExtraBlankParagraphs.mockReturnValue({ removed: 5, added: 2 });
+      mockDoc.removeExtraBlankParagraphs.mockReturnValue({ removed: 5, added: 2, total: 7 });
 
       const result = await processor.removeExtraBlankParagraphs(mockDoc);
 
@@ -148,21 +147,16 @@ describe('StructureProcessor', () => {
 
   describe('removeHeadersFooters', () => {
     it('should remove all headers and footers', async () => {
-      const mockHeader = { remove: jest.fn() };
-      const mockFooter = { remove: jest.fn() };
-      mockDoc.getHeaders.mockReturnValue([mockHeader, mockHeader]);
-      mockDoc.getFooters.mockReturnValue([mockFooter]);
+      mockDoc.removeAllHeadersFooters.mockReturnValue(3);
 
       const count = await processor.removeHeadersFooters(mockDoc);
 
       expect(count).toBe(3);
-      expect(mockHeader.remove).toHaveBeenCalledTimes(2);
-      expect(mockFooter.remove).toHaveBeenCalledTimes(1);
+      expect(mockDoc.removeAllHeadersFooters).toHaveBeenCalled();
     });
 
     it('should handle documents without headers/footers', async () => {
-      mockDoc.getHeaders.mockReturnValue([]);
-      mockDoc.getFooters.mockReturnValue([]);
+      mockDoc.removeAllHeadersFooters.mockReturnValue(0);
 
       const count = await processor.removeHeadersFooters(mockDoc);
 
@@ -179,7 +173,7 @@ describe('StructureProcessor', () => {
       const result = await processor.addDocumentWarning(mockDoc);
 
       expect(result).toBe(true);
-      expect(mockDoc.appendContent).toHaveBeenCalled();
+      expect(mockDoc.addParagraph).toHaveBeenCalled();
     });
 
     it('should not add duplicate warning', async () => {
@@ -191,7 +185,7 @@ describe('StructureProcessor', () => {
       const result = await processor.addDocumentWarning(mockDoc);
 
       expect(result).toBe(false);
-      expect(mockDoc.appendContent).not.toHaveBeenCalled();
+      expect(mockDoc.addParagraph).not.toHaveBeenCalled();
     });
   });
 
@@ -219,7 +213,7 @@ describe('StructureProcessor', () => {
     });
 
     it('should not mark paragraphs with hyperlinks as empty', () => {
-      const mockHyperlink = new Hyperlink();
+      const mockHyperlink = Object.create(Hyperlink.prototype);
       const mockParagraph = {
         getNumbering: jest.fn().mockReturnValue(null),
         getContent: jest.fn().mockReturnValue([mockHyperlink]),
@@ -231,7 +225,7 @@ describe('StructureProcessor', () => {
     });
 
     it('should not mark paragraphs with images as empty', () => {
-      const mockImage = new Image();
+      const mockImage = Object.create(Image.prototype);
       const mockParagraph = {
         getNumbering: jest.fn().mockReturnValue(null),
         getContent: jest.fn().mockReturnValue([mockImage]),

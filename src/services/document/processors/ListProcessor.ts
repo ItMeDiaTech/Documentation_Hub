@@ -72,11 +72,11 @@ export class ListProcessor {
 
       if (indentSetting) {
         try {
-          // Apply indentation
-          para.setIndentation({
-            left: this.inchesToTwips(indentSetting.textIndent),
-            hanging: this.inchesToTwips(indentSetting.textIndent - indentSetting.symbolIndent),
-          });
+          // Apply indentation using individual methods
+          para.setLeftIndent(this.inchesToTwips(indentSetting.textIndent));
+          // Hanging indent is implemented as a negative first-line indent
+          const hangingTwips = this.inchesToTwips(indentSetting.textIndent - indentSetting.symbolIndent);
+          para.setFirstLineIndent(-hangingTwips);
 
           // Apply spacing if configured
           if (settings.spacingBetweenItems > 0) {
@@ -237,14 +237,16 @@ export class ListProcessor {
    */
   isBulletList(doc: Document, numId: number): boolean {
     try {
-      const numberingDef = doc.getNumberingDefinition?.(numId);
-      if (!numberingDef) return false;
+      const numberingManager = doc.getNumberingManager();
+      const instance = numberingManager?.getNumberingInstance(numId);
+      if (!instance) return false;
 
-      const abstractNum = numberingDef.getAbstractNumbering?.();
+      const abstractNumId = instance.getAbstractNumId();
+      const abstractNum = numberingManager?.getAbstractNumbering(abstractNumId);
       if (!abstractNum) return false;
 
-      const level0 = abstractNum.getLevel?.(0);
-      return level0?.getFormat?.() === "bullet";
+      const level0 = abstractNum.getLevel(0);
+      return level0?.getFormat() === "bullet";
     } catch {
       return false;
     }
@@ -255,14 +257,16 @@ export class ListProcessor {
    */
   isNumberedList(doc: Document, numId: number): boolean {
     try {
-      const numberingDef = doc.getNumberingDefinition?.(numId);
-      if (!numberingDef) return false;
+      const numberingManager = doc.getNumberingManager();
+      const instance = numberingManager?.getNumberingInstance(numId);
+      if (!instance) return false;
 
-      const abstractNum = numberingDef.getAbstractNumbering?.();
+      const abstractNumId = instance.getAbstractNumId();
+      const abstractNum = numberingManager?.getAbstractNumbering(abstractNumId);
       if (!abstractNum) return false;
 
-      const level0 = abstractNum.getLevel?.(0);
-      const format = level0?.getFormat?.();
+      const level0 = abstractNum.getLevel(0);
+      const format = level0?.getFormat();
       return (
         format === "decimal" ||
         format === "lowerLetter" ||

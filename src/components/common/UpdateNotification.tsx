@@ -7,6 +7,7 @@ import {
   Info,
   ExternalLink,
   AlertTriangle,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from './Button';
 

@@ -32,6 +32,9 @@ export default defineConfig({
             emptyOutDir: false,
             rollupOptions: {
               external: ['electron'],
+              output: {
+                format: 'cjs', // Use CommonJS to support __dirname natively
+              },
             },
           },
         },
@@ -57,6 +60,9 @@ export default defineConfig({
             outDir: 'dist/electron',
             rollupOptions: {
               external: ['electron'],
+              output: {
+                format: 'cjs', // Use CommonJS to support __dirname natively
+              },
             },
           },
         },
