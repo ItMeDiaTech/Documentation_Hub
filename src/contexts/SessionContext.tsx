@@ -1,5 +1,6 @@
 import type { HyperlinkProcessingOptions } from '@/types/hyperlink';
 import {
+  CustomSessionDefaults,
   Document,
   ListBulletSettings,
   ReplacementRule,
@@ -226,6 +227,37 @@ const DEFAULT_PROCESSING_OPTIONS = {
 const DEFAULT_TABLE_SHADING_SETTINGS: TableShadingSettings = {
   header2Shading: '#BFBFBF',
   otherShading: '#DFDFDF',
+};
+
+/**
+ * localStorage key for custom session defaults
+ * Stores user's preferred defaults set via "Save as Default" button
+ */
+const CUSTOM_DEFAULTS_KEY = 'dochub_custom_defaults';
+
+/**
+ * Load custom defaults from localStorage if available
+ * Returns null if no custom defaults exist or if parsing fails
+ */
+const loadCustomDefaults = (): CustomSessionDefaults | null => {
+  try {
+    const stored = localStorage.getItem(CUSTOM_DEFAULTS_KEY);
+    if (!stored) {
+      return null;
+    }
+    const parsed = safeJsonParse<CustomSessionDefaults | null>(stored, null, 'loadCustomDefaults');
+    if (!parsed) {
+      return null;
+    }
+    // Validate that we have at least some valid data
+    if (!parsed.styles && !parsed.listBulletSettings && !parsed.processingOptions && !parsed.tableShadingSettings) {
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    logger.warn('[SessionContext] Failed to load custom defaults:', error);
+    return null;
+  }
 };
 
 /**
@@ -593,6 +625,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [debouncedPersistSessions, log]);
 
   const createSession = (name: string): Session => {
+    // Load custom defaults if user has saved them via "Save as Default"
+    const customDefaults = loadCustomDefaults();
+    const hasCustomDefaults = customDefaults !== null;
+
+    if (hasCustomDefaults) {
+      log.info('[createSession] Using custom defaults for new session');
+    }
+
     const newSession: Session = {
       id: `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       name,
@@ -606,13 +646,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         timeSaved: 0,
       },
       status: 'active',
-      styles: [...DEFAULT_SESSION_STYLES], // Use shared defaults
-      listBulletSettings: createDefaultListBulletSettings(),
-      tableShadingSettings: { ...DEFAULT_TABLE_SHADING_SETTINGS },
-      processingOptions: {
-        ...DEFAULT_PROCESSING_OPTIONS,
-        enabledOperations: [...DEFAULT_PROCESSING_OPTIONS.enabledOperations],
-      },
+      // Use custom defaults if available, otherwise fall back to factory defaults
+      styles: customDefaults?.styles
+        ? [...customDefaults.styles]
+        : [...DEFAULT_SESSION_STYLES],
+      listBulletSettings: customDefaults?.listBulletSettings
+        ? { ...customDefaults.listBulletSettings, indentationLevels: [...customDefaults.listBulletSettings.indentationLevels] }
+        : createDefaultListBulletSettings(),
+      tableShadingSettings: customDefaults?.tableShadingSettings
+        ? { ...customDefaults.tableShadingSettings }
+        : { ...DEFAULT_TABLE_SHADING_SETTINGS },
+      processingOptions: customDefaults?.processingOptions
+        ? {
+            ...customDefaults.processingOptions,
+            enabledOperations: [...(customDefaults.processingOptions.enabledOperations || [])],
+          }
+        : {
+            ...DEFAULT_PROCESSING_OPTIONS,
+            enabledOperations: [...DEFAULT_PROCESSING_OPTIONS.enabledOperations],
+          },
     };
 
     // DEBUG: Log state transition
@@ -1690,9 +1742,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     return null;
   };
-
-  // Custom defaults storage key
-  const CUSTOM_DEFAULTS_KEY = 'dochub_custom_defaults';
 
   // Reset session to factory defaults
   const resetSessionToDefaults = (sessionId: string) => {

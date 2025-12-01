@@ -307,6 +307,17 @@ export interface ReplacementRule {
   caseSensitive?: boolean;
 }
 
+/**
+ * Custom session defaults stored in localStorage
+ * Used when user clicks "Save as Default" to persist their preferred settings
+ */
+export interface CustomSessionDefaults {
+  styles?: SessionStyle[];
+  listBulletSettings?: ListBulletSettings;
+  processingOptions?: Session['processingOptions'];
+  tableShadingSettings?: TableShadingSettings;
+}
+
 export interface SessionContextType {
   sessions: Session[];
   activeSessions: Session[];
