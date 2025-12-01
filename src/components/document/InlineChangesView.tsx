@@ -8,7 +8,7 @@
  * - Hyperlink changes: Link icon badge with URL diff tooltip
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   FileText,
   Link2,

@@ -22,7 +22,7 @@ describe('ListProcessor', () => {
       getAllParagraphs: jest.fn().mockReturnValue([]),
       getPart: jest.fn().mockResolvedValue(null),
       setPart: jest.fn().mockResolvedValue(undefined),
-      getNumberingDefinition: jest.fn().mockReturnValue(null),
+      getNumberingManager: jest.fn().mockReturnValue(null),
     } as unknown as jest.Mocked<Document>;
   });
 
@@ -43,7 +43,7 @@ describe('ListProcessor', () => {
       const result = await processor.applyListIndentation(mockDoc, settings);
 
       expect(result.listsUpdated).toBe(1);
-      expect(mockParagraph.setIndentation).toHaveBeenCalled();
+      expect(mockParagraph.setLeftIndent).toHaveBeenCalled();
       expect(mockParagraph.setSpaceAfter).toHaveBeenCalledWith(120); // 6 * 20 twips
     });
 
@@ -60,7 +60,7 @@ describe('ListProcessor', () => {
       const result = await processor.applyListIndentation(mockDoc, settings);
 
       expect(result.listsUpdated).toBe(0);
-      expect(mockParagraph.setIndentation).not.toHaveBeenCalled();
+      expect(mockParagraph.setLeftIndent).not.toHaveBeenCalled();
     });
 
     it('should return zero counts when disabled', async () => {
@@ -96,9 +96,9 @@ describe('ListProcessor', () => {
       const result = await processor.applyListIndentation(mockDoc, settings);
 
       expect(result.listsUpdated).toBe(3);
-      expect(level0Para.setIndentation).toHaveBeenCalled();
-      expect(level1Para.setIndentation).toHaveBeenCalled();
-      expect(level2Para.setIndentation).toHaveBeenCalled();
+      expect(level0Para.setLeftIndent).toHaveBeenCalled();
+      expect(level1Para.setLeftIndent).toHaveBeenCalled();
+      expect(level2Para.setLeftIndent).toHaveBeenCalled();
     });
   });
 
@@ -116,7 +116,7 @@ describe('ListProcessor', () => {
           </w:abstractNum>
         </w:numbering>`;
 
-      mockDoc.getPart.mockResolvedValue({ content: mockNumberingXml });
+      mockDoc.getPart.mockResolvedValue({ name: 'word/numbering.xml', content: mockNumberingXml });
 
       const count = await processor.standardizeListPrefixFormatting(mockDoc);
 
@@ -148,7 +148,7 @@ describe('ListProcessor', () => {
           </w:abstractNum>
         </w:numbering>`;
 
-      mockDoc.getPart.mockResolvedValue({ content: mockNumberingXml });
+      mockDoc.getPart.mockResolvedValue({ name: 'word/numbering.xml', content: mockNumberingXml });
 
       await processor.standardizeListPrefixFormatting(mockDoc);
 
@@ -166,10 +166,14 @@ describe('ListProcessor', () => {
           getFormat: jest.fn().mockReturnValue('bullet'),
         }),
       };
-      const mockNumberingDef = {
+      const mockInstance = {
+        getAbstractNumId: jest.fn().mockReturnValue(0),
+      };
+      const mockNumberingManager = {
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
         getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingDefinition = jest.fn().mockReturnValue(mockNumberingDef);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isBulletList(mockDoc, 1);
 
@@ -182,10 +186,14 @@ describe('ListProcessor', () => {
           getFormat: jest.fn().mockReturnValue('decimal'),
         }),
       };
-      const mockNumberingDef = {
+      const mockInstance = {
+        getAbstractNumId: jest.fn().mockReturnValue(0),
+      };
+      const mockNumberingManager = {
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
         getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingDefinition = jest.fn().mockReturnValue(mockNumberingDef);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isBulletList(mockDoc, 1);
 
@@ -200,10 +208,14 @@ describe('ListProcessor', () => {
           getFormat: jest.fn().mockReturnValue('decimal'),
         }),
       };
-      const mockNumberingDef = {
+      const mockInstance = {
+        getAbstractNumId: jest.fn().mockReturnValue(0),
+      };
+      const mockNumberingManager = {
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
         getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingDefinition = jest.fn().mockReturnValue(mockNumberingDef);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isNumberedList(mockDoc, 1);
 
@@ -216,10 +228,14 @@ describe('ListProcessor', () => {
           getFormat: jest.fn().mockReturnValue('lowerLetter'),
         }),
       };
-      const mockNumberingDef = {
+      const mockInstance = {
+        getAbstractNumId: jest.fn().mockReturnValue(0),
+      };
+      const mockNumberingManager = {
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
         getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingDefinition = jest.fn().mockReturnValue(mockNumberingDef);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isNumberedList(mockDoc, 1);
 
@@ -232,10 +248,14 @@ describe('ListProcessor', () => {
           getFormat: jest.fn().mockReturnValue('bullet'),
         }),
       };
-      const mockNumberingDef = {
+      const mockInstance = {
+        getAbstractNumId: jest.fn().mockReturnValue(0),
+      };
+      const mockNumberingManager = {
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
         getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingDefinition = jest.fn().mockReturnValue(mockNumberingDef);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isNumberedList(mockDoc, 1);
 
@@ -249,7 +269,8 @@ describe('ListProcessor', () => {
 function createMockListParagraph(level: number, numId: number): jest.Mocked<Paragraph> {
   return {
     getNumbering: jest.fn().mockReturnValue({ level, numId }),
-    setIndentation: jest.fn(),
+    setLeftIndent: jest.fn().mockReturnThis(),
+    setFirstLineIndent: jest.fn().mockReturnThis(),
     setSpaceAfter: jest.fn(),
     getText: jest.fn().mockReturnValue('List item'),
     getStyle: jest.fn().mockReturnValue('ListParagraph'),
@@ -259,7 +280,8 @@ function createMockListParagraph(level: number, numId: number): jest.Mocked<Para
 function createMockNormalParagraph(): jest.Mocked<Paragraph> {
   return {
     getNumbering: jest.fn().mockReturnValue(null),
-    setIndentation: jest.fn(),
+    setLeftIndent: jest.fn().mockReturnThis(),
+    setFirstLineIndent: jest.fn().mockReturnThis(),
     setSpaceAfter: jest.fn(),
     getText: jest.fn().mockReturnValue('Normal paragraph'),
     getStyle: jest.fn().mockReturnValue('Normal'),

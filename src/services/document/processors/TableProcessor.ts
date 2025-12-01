@@ -76,7 +76,7 @@ export class TableProcessor {
           // Apply Header2 shading to 1x1 tables
           const singleCell = rows[0].getCells()[0];
           if (singleCell) {
-            singleCell.setShading(header2Shading);
+            singleCell.setShading({ fill: header2Shading });
             cellsRecolored++;
 
             // Also format text in the cell
@@ -92,7 +92,7 @@ export class TableProcessor {
           for (const row of rows) {
             for (const cell of row.getCells()) {
               // Check if cell already has shading
-              const currentShading = cell.getShading?.();
+              const currentShading = cell.getFormatting().shading?.fill;
 
               // Skip cells that are white or have no color
               const hasNoColor = !currentShading || currentShading === "FFFFFF";
@@ -103,7 +103,7 @@ export class TableProcessor {
               if (!hasNoColor && !isWhite) {
                 // Only recolor cells that already have shading
                 // This preserves intentionally unstyled cells
-                cell.setShading(otherShading);
+                cell.setShading({ fill: otherShading });
                 cellsRecolored++;
 
                 // Format cell text
@@ -189,7 +189,7 @@ export class TableProcessor {
         if (isHeaderRow) {
           // Apply header row shading
           for (const cell of firstRowCells) {
-            cell.setShading("BFBFBF");
+            cell.setShading({ fill: "BFBFBF" });
           }
         }
 

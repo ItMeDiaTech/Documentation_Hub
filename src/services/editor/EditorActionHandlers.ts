@@ -725,7 +725,7 @@ const actionHandlers: Partial<Record<QuickActionId, ActionHandler>> = {
           } else if (typeof para.replaceContent === 'function') {
             // Alternative: replace hyperlink with a text run
             const Run = (await import('docxmlater')).Run;
-            const newRun = Run.create({ text: hyperlinkText });
+            const newRun = Run.create(hyperlinkText);
             para.replaceContent(hyperlink, [newRun]);
             removedCount++;
           }

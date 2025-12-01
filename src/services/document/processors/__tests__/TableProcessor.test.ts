@@ -5,7 +5,7 @@
  */
 
 import { TableProcessor } from '../TableProcessor';
-import { Document, Table, Paragraph, Run, Cell, Row } from 'docxmlater';
+import { Document, Table, Paragraph, Run, TableCell, TableRow } from 'docxmlater';
 
 // Mock docxmlater
 jest.mock('docxmlater');
@@ -173,29 +173,29 @@ describe('TableProcessor', () => {
 
 // Helper functions
 
-function createMockCell(shading: string): jest.Mocked<Cell> {
+function createMockCell(shading: string): jest.Mocked<TableCell> {
   const mockParagraph = createMockParagraph('Normal');
   return {
     getShading: jest.fn().mockReturnValue(shading),
     setShading: jest.fn(),
     getParagraphs: jest.fn().mockReturnValue([mockParagraph]),
     getFormatting: jest.fn().mockReturnValue({ shading: { fill: shading } }),
-  } as unknown as jest.Mocked<Cell>;
+  } as unknown as jest.Mocked<TableCell>;
 }
 
-function createMockCellWithParagraphs(paragraphs: any[]): jest.Mocked<Cell> {
+function createMockCellWithParagraphs(paragraphs: any[]): jest.Mocked<TableCell> {
   return {
     getShading: jest.fn().mockReturnValue('FFFFFF'),
     setShading: jest.fn(),
     getParagraphs: jest.fn().mockReturnValue(paragraphs),
     getFormatting: jest.fn().mockReturnValue({}),
-  } as unknown as jest.Mocked<Cell>;
+  } as unknown as jest.Mocked<TableCell>;
 }
 
-function createMockRow(cells: any[]): jest.Mocked<Row> {
+function createMockRow(cells: any[]): jest.Mocked<TableRow> {
   return {
     getCells: jest.fn().mockReturnValue(cells),
-  } as unknown as jest.Mocked<Row>;
+  } as unknown as jest.Mocked<TableRow>;
 }
 
 function createMockTable(rows: any[]): jest.Mocked<Table> {

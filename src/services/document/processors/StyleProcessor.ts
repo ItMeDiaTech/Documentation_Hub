@@ -179,12 +179,12 @@ export class StyleProcessor {
     }
 
     if (style.indentation) {
-      para.setIndentation({
-        left: style.indentation.left ? pointsToTwips(style.indentation.left) : undefined,
-        firstLine: style.indentation.firstLine
-          ? pointsToTwips(style.indentation.firstLine)
-          : undefined,
-      });
+      if (style.indentation.left !== undefined) {
+        para.setLeftIndent(pointsToTwips(style.indentation.left));
+      }
+      if (style.indentation.firstLine !== undefined) {
+        para.setFirstLineIndent(pointsToTwips(style.indentation.firstLine));
+      }
     }
 
     // Apply text formatting to all runs

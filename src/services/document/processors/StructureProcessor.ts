@@ -136,37 +136,14 @@ export class StructureProcessor {
    * Remove headers and footers from document
    */
   async removeHeadersFooters(doc: Document): Promise<number> {
-    let removedCount = 0;
-
     try {
-      // Remove headers
-      const headers = doc.getHeaders?.() || [];
-      for (const header of headers) {
-        try {
-          header.remove?.();
-          removedCount++;
-        } catch (error) {
-          log.warn(`Failed to remove header: ${error}`);
-        }
-      }
-
-      // Remove footers
-      const footers = doc.getFooters?.() || [];
-      for (const footer of footers) {
-        try {
-          footer.remove?.();
-          removedCount++;
-        } catch (error) {
-          log.warn(`Failed to remove footer: ${error}`);
-        }
-      }
-
+      const removedCount = doc.removeAllHeadersFooters();
       log.info(`Removed ${removedCount} headers/footers`);
+      return removedCount;
     } catch (error) {
       log.error(`Error removing headers/footers: ${error}`);
+      return 0;
     }
-
-    return removedCount;
   }
 
   /**
@@ -190,23 +167,15 @@ export class StructureProcessor {
       }
 
       // Create warning paragraphs
-      const warningParagraph1 = Paragraph.create({
-        text: "This is electronic data and is not to be reproduced, copied, or distributed.",
-        formatting: {
-          alignment: "center",
-          spaceBefore: 240,
-          spaceAfter: 0,
-        },
-      });
+      const warningParagraph1 = Paragraph.create("This is electronic data and is not to be reproduced, copied, or distributed.");
+      warningParagraph1.setAlignment("center");
+      warningParagraph1.setSpaceBefore(240);
+      warningParagraph1.setSpaceAfter(0);
 
-      const warningParagraph2 = Paragraph.create({
-        text: "For internal use only.",
-        formatting: {
-          alignment: "center",
-          spaceBefore: 0,
-          spaceAfter: 0,
-        },
-      });
+      const warningParagraph2 = Paragraph.create("For internal use only.");
+      warningParagraph2.setAlignment("center");
+      warningParagraph2.setSpaceBefore(0);
+      warningParagraph2.setSpaceAfter(0);
 
       // Apply italic formatting to runs
       for (const run of warningParagraph1.getRuns()) {
@@ -222,7 +191,8 @@ export class StructureProcessor {
       }
 
       // Append to document
-      doc.appendContent([warningParagraph1, warningParagraph2]);
+      doc.addParagraph(warningParagraph1);
+      doc.addParagraph(warningParagraph2);
 
       log.info("Added document warning");
       return true;
