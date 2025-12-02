@@ -20,6 +20,7 @@ import sys
 import time
 import zipfile
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from xml.etree import ElementTree as ET
@@ -32,7 +33,11 @@ from xml.etree import ElementTree as ET
 CONTENT_ID_PATTERN = re.compile(r'(TSRC|CMS)-([a-zA-Z0-9]+)-(\d{6})', re.IGNORECASE)
 
 # Document ID pattern: docid=abc-123-def or docid=abc123
-DOCUMENT_ID_PATTERN = re.compile(r'docid=([a-zA-Z0-9-]+)(?:[^a-zA-Z0-9-]|$)', re.IGNORECASE)
+# Also matches URL-encoded versions: docid%3D or docid%3d
+DOCUMENT_ID_PATTERN = re.compile(r'docid[=%]3[dD]=?([a-zA-Z0-9-]+)(?:[^a-zA-Z0-9-]|$)', re.IGNORECASE)
+
+# Alternative pattern for docid without encoding
+DOCUMENT_ID_PATTERN_SIMPLE = re.compile(r'docid=([a-zA-Z0-9-]+)(?:[^a-zA-Z0-9-]|$)', re.IGNORECASE)
 
 
 def extract_content_id(url: str) -> Optional[str]:
@@ -44,10 +49,22 @@ def extract_content_id(url: str) -> Optional[str]:
 
 
 def extract_document_id(url: str) -> Optional[str]:
-    """Extract Document ID from URL (value after docid=)."""
+    """Extract Document ID from URL (value after docid=).
+
+    Handles both regular and URL-encoded formats:
+    - docid=abc-123-def
+    - docid%3Dabc-123-def (URL encoded)
+    """
     if not url:
         return None
+
+    # Try URL-encoded pattern first
     match = DOCUMENT_ID_PATTERN.search(url)
+    if match:
+        return match.group(1)
+
+    # Try simple pattern
+    match = DOCUMENT_ID_PATTERN_SIMPLE.search(url)
     return match.group(1) if match else None
 
 
@@ -75,7 +92,13 @@ NAMESPACES = {
 
 
 def extract_hyperlinks_from_docx(filepath: str) -> List[Dict[str, Any]]:
-    """Extract all hyperlinks from a DOCX file."""
+    """Extract all hyperlinks from a DOCX file.
+
+    Handles:
+    - URL-encoded URLs (decodes them)
+    - Fragment identifiers stored separately as anchors
+    - URLs with hashbang (#!) routing
+    """
     hyperlinks = []
 
     try:
@@ -96,7 +119,12 @@ def extract_hyperlinks_from_docx(filepath: str) -> List[Dict[str, Any]]:
                         rel_type = rel.get('Type', '')
 
                         if 'hyperlink' in rel_type.lower():
-                            rels_map[rel_id] = target
+                            # URL-decode the target
+                            decoded_target = unquote(target)
+                            rels_map[rel_id] = {
+                                'raw': target,
+                                'decoded': decoded_target
+                            }
 
             # Now parse document.xml for hyperlinks
             with zf.open('word/document.xml') as f:
@@ -118,19 +146,43 @@ def extract_hyperlinks_from_docx(filepath: str) -> List[Dict[str, Any]]:
                     display_text = ''.join(text_parts)
 
                     # Get URL from relationships
-                    url = rels_map.get(r_id, '')
+                    rel_info = rels_map.get(r_id, {})
+                    raw_url = rel_info.get('raw', '') if isinstance(rel_info, dict) else rel_info
+                    url = rel_info.get('decoded', raw_url) if isinstance(rel_info, dict) else rel_info
 
-                    if url or anchor:
+                    # Combine URL with anchor if both exist
+                    # Word sometimes stores fragment (after #) separately as anchor
+                    full_url = url
+                    if url and anchor:
+                        # Check if URL already has a fragment
+                        if '#' not in url:
+                            full_url = f"{url}#{anchor}"
+                        else:
+                            full_url = url  # Already has fragment
+                    elif anchor and not url:
+                        full_url = f"#{anchor}"  # Internal bookmark
+
+                    if full_url or anchor:
                         hyperlink_info = {
-                            'url': url,
+                            'url': full_url,
+                            'rawUrl': raw_url,  # Keep original for debugging
                             'displayText': display_text,
                             'relationshipId': r_id,
                             'anchor': anchor,
                             'isInternal': bool(anchor and not url),
                         }
 
-                        # Extract lookup IDs
-                        lookup_ids = extract_lookup_ids(url)
+                        # Extract lookup IDs from full URL
+                        lookup_ids = extract_lookup_ids(full_url)
+
+                        # Also try extracting from raw URL in case decoding changed something
+                        if not lookup_ids and raw_url:
+                            lookup_ids = extract_lookup_ids(raw_url)
+
+                        # Also try the display text - sometimes the ID is visible there
+                        if not lookup_ids and display_text:
+                            lookup_ids = extract_lookup_ids(display_text)
+
                         if lookup_ids:
                             hyperlink_info['lookupIds'] = lookup_ids
 
@@ -472,12 +524,19 @@ Config file format (JSON):
                 docx_ids.add(ids['documentId'])
 
             if args.verbose or args.extract_only:
-                url = hl.get('url', '')[:80]
-                text = hl.get('displayText', '')[:40]
+                url = hl.get('url', '')[:100]
+                raw_url = hl.get('rawUrl', '')[:100]
+                text = hl.get('displayText', '')[:50]
+                anchor = hl.get('anchor', '')
                 id_str = ', '.join(f"{k}={v}" for k, v in ids.items()) if ids else 'None'
-                print(f"  - {url}...")
+                print(f"  - URL: {url}")
+                if raw_url and raw_url != url:
+                    print(f"    Raw: {raw_url}")
+                if anchor:
+                    print(f"    Anchor: {anchor}")
                 print(f"    Text: {text}")
                 print(f"    IDs: {id_str}")
+                print()
 
         print(f"\n{Colors.BOLD}Summary:{Colors.RESET}")
         print(f"  Internal hyperlinks: {internal_count}")
