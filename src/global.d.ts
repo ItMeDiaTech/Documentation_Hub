@@ -89,31 +89,22 @@ export type ElectronAPI = {
     options: BatchProcessingOptions
   ) => Promise<BatchProcessingResult>;
   validateApi: (apiUrl: string) => Promise<{ valid: boolean; error?: string }>;
-  callPowerAutomateApi: (request: {
-    apiUrl: string;
-    body: {
+  callPowerAutomateApi: (
+    apiUrl: string,
+    payload: {
       Lookup_ID: string[];
       Hyperlinks_Checked: number;
       Total_Hyperlinks: number;
       First_Name: string;
       Last_Name: string;
       Email: string;
-    };
-    timeout?: number;
-    headers?: Record<string, string>;
-  }) => Promise<{
+    },
+    timeout?: number
+  ) => Promise<{
     success: boolean;
-    data?: {
-      Results?: Array<{
-        Document_ID?: string;
-        Content_ID?: string;
-        Title?: string;
-        Status?: string;
-      }>;
-    };
+    statusCode?: number;
+    data?: unknown;
     error?: string;
-    statusCode: number;
-    responseTime?: number;
     rawResponse?: string;
   }>;
   cancelOperation: (operationId: string) => Promise<void>;

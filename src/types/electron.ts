@@ -86,42 +86,6 @@ export interface CertificateConfiguredInfo {
 }
 
 /**
- * Power Automate API request type
- */
-export interface PowerAutomateApiRequest {
-  apiUrl: string;
-  body: {
-    Lookup_ID: string[];
-    Hyperlinks_Checked: number;
-    Total_Hyperlinks: number;
-    First_Name: string;
-    Last_Name: string;
-    Email: string;
-  };
-  timeout?: number;
-  headers?: Record<string, string>;
-}
-
-/**
- * Power Automate API response type
- */
-export interface PowerAutomateApiResponse {
-  success: boolean;
-  data?: {
-    Results?: Array<{
-      Document_ID?: string;
-      Content_ID?: string;
-      Title?: string;
-      Status?: string;
-    }>;
-  };
-  error?: string;
-  statusCode: number;
-  responseTime?: number;
-  rawResponse?: string;
-}
-
-/**
  * Backup API interface
  */
 export interface BackupAPI {
@@ -211,7 +175,24 @@ export interface ElectronAPI {
     options: BatchProcessingOptions
   ) => Promise<unknown>;
   validateApi: (apiUrl: string) => Promise<unknown>;
-  callPowerAutomateApi: (request: PowerAutomateApiRequest) => Promise<PowerAutomateApiResponse>;
+  callPowerAutomateApi: (
+    apiUrl: string,
+    payload: {
+      Lookup_ID: string[];
+      Hyperlinks_Checked: number;
+      Total_Hyperlinks: number;
+      First_Name: string;
+      Last_Name: string;
+      Email: string;
+    },
+    timeout?: number
+  ) => Promise<{
+    success: boolean;
+    statusCode?: number;
+    data?: unknown;
+    error?: string;
+    rawResponse?: string;
+  }>;
   cancelOperation: (operationId: string) => Promise<void>;
   onBatchProgress: (callback: (progress: BatchProgress) => void) => () => void;
 

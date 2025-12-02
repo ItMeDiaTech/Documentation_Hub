@@ -843,17 +843,13 @@ export class HyperlinkService {
     }
   ): Promise<HyperlinkApiResponse> {
     const timeoutMs = settings.timeout || 30000;
+    const maxRetries = settings.retryAttempts || 3;
 
     // Sanitize the API URL to fix any encoding issues
-    // This is critical for Azure Logic Apps URLs which often have encoded query parameters
     const sanitizedUrl = sanitizeUrl(settings.apiUrl);
 
-    this.log.debug('Original API URL:', settings.apiUrl);
     if (sanitizedUrl !== settings.apiUrl) {
-      this.log.info('URL sanitized - Fixed encoding issues:', {
-        original: settings.apiUrl.substring(0, 100) + '...',
-        sanitized: sanitizedUrl.substring(0, 100) + '...',
-      });
+      this.log.info('URL sanitized - Fixed encoding issues');
     }
 
     // Validate the URL before using it
@@ -864,123 +860,86 @@ export class HyperlinkService {
       throw new Error(errorMsg);
     }
 
-    // Use Electron IPC bridge if available (uses net.request which respects proxy/Zscaler)
-    // This is the recommended approach for corporate environments with proxies
-    if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.callPowerAutomateApi === 'function') {
-      return this.callPowerAutomateApiViaIPC(sanitizedUrl, request, settings, timeoutMs);
-    }
+    // Use main process net.request via IPC (matches C# HttpClient behavior on corporate networks)
+    // This uses Chromium's networking stack which respects system proxy and certificates
+    if (typeof window !== 'undefined' && window.electronAPI?.callPowerAutomateApi) {
+      this.log.debug('Using main process net.request for API call');
 
-    // Fallback to direct fetch (for non-Electron environments or testing)
-    return this.callPowerAutomateApiDirect(sanitizedUrl, request, settings, timeoutMs);
-  }
+      let lastError: Error | null = null;
 
-  /**
-   * Call Power Automate API via Electron IPC bridge
-   * Uses net.request which properly respects system proxy and certificate settings
-   */
-  private async callPowerAutomateApiViaIPC(
-    sanitizedUrl: string,
-    request: {
-      Lookup_ID: string[];
-      Hyperlinks_Checked: number;
-      Total_Hyperlinks: number;
-      First_Name: string;
-      Last_Name: string;
-      Email: string;
-    },
-    settings: HyperlinkApiSettings,
-    timeoutMs: number
-  ): Promise<HyperlinkApiResponse> {
-    const maxRetries = settings.retryAttempts || 3;
-    let lastError: Error | null = null;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+            this.log.info(`Retry attempt ${attempt + 1} of ${maxRetries}`);
+          }
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        if (attempt > 0) {
-          // Exponential backoff
-          await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-          this.log.info(`Retry attempt ${attempt} of ${maxRetries}`);
-        }
+          this.log.debug('Sending API request to:', sanitizedUrl.substring(0, 80) + '...');
 
-        this.log.debug('Sending API request via IPC to:', sanitizedUrl);
-        this.log.debug('Request body:', JSON.stringify(request));
+          const response = await window.electronAPI.callPowerAutomateApi(
+            sanitizedUrl,
+            request,
+            timeoutMs
+          );
 
-        const response = await window.electronAPI.callPowerAutomateApi({
-          apiUrl: sanitizedUrl,
-          body: request,
-          timeout: timeoutMs,
-          headers: settings.headers,
-        });
+          if (!response.success) {
+            this.log.error('API Error Response:', response.error);
+            throw new Error(response.error || `API returned status ${response.statusCode}`);
+          }
 
-        if (!response.success) {
-          throw new Error(response.error || `API returned status ${response.statusCode}`);
-        }
+          const data = response.data as { Results?: Array<{ Document_ID?: string; Content_ID?: string; Title?: string; Status?: string }> };
+          this.log.info('API Response received');
 
-        this.log.info('API Response via IPC:', response.data);
+          const apiResponse: HyperlinkApiResponse = {
+            success: Array.isArray(data?.Results),
+            timestamp: new Date(),
+            statusCode: response.statusCode,
+          };
 
-        // Parse response - simplified format: { Results: [...] }
-        const apiResponse: HyperlinkApiResponse = {
-          success: response.success && Array.isArray(response.data?.Results),
-          timestamp: new Date(),
-          statusCode: response.statusCode,
-        };
+          if (data?.Results) {
+            apiResponse.body = this.parseApiResults(data.Results);
+          }
 
-        if (response.data?.Results) {
-          apiResponse.body = this.parseApiResults(response.data.Results);
-        }
-
-        return apiResponse;
-      } catch (error) {
-        lastError = error as Error;
-        this.log.error(`API attempt ${attempt + 1} failed:`, error);
-        // Don't retry on timeout
-        if (error instanceof Error && error.message.includes('timeout')) {
-          break;
+          return apiResponse;
+        } catch (error) {
+          lastError = error as Error;
+          // Check if it's a timeout error
+          if (error instanceof Error && error.message.includes('timeout')) {
+            break;
+          }
         }
       }
+
+      if (lastError && lastError.message.includes('timeout')) {
+        throw new Error(`API request timeout after ${timeoutMs}ms`);
+      }
+
+      throw lastError || new Error('API request failed after retries');
     }
 
-    throw lastError || new Error('API request failed after retries');
-  }
+    // Fallback to fetch for non-Electron environments
+    this.log.debug('Using fetch fallback for API call (non-Electron environment)');
 
-  /**
-   * Call Power Automate API directly via fetch (fallback for non-Electron environments)
-   */
-  private async callPowerAutomateApiDirect(
-    sanitizedUrl: string,
-    request: {
-      Lookup_ID: string[];
-      Hyperlinks_Checked: number;
-      Total_Hyperlinks: number;
-      First_Name: string;
-      Last_Name: string;
-      Email: string;
-    },
-    settings: HyperlinkApiSettings,
-    timeoutMs: number
-  ): Promise<HyperlinkApiResponse> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       let lastError: Error | null = null;
-      const maxRetries = settings.retryAttempts || 3;
 
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
           if (attempt > 0) {
-            // Exponential backoff
             await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-            this.log.info(`Retry attempt ${attempt} of ${maxRetries}`);
+            this.log.info(`Retry attempt ${attempt + 1} of ${maxRetries}`);
           }
 
-          this.log.debug('Sending API request (direct) to:', sanitizedUrl);
-          this.log.debug('Request body:', JSON.stringify(request));
+          this.log.debug('Sending API request to:', sanitizedUrl.substring(0, 80) + '...');
 
           const response = await fetch(sanitizedUrl, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
+              'Content-Type': 'application/json; charset=utf-8',
+              'User-Agent': 'DocHub/1.0',
               ...settings.headers,
             },
             body: JSON.stringify(request),
@@ -990,15 +949,12 @@ export class HyperlinkService {
           if (!response.ok) {
             const errorText = await response.text().catch(() => 'No error details');
             this.log.error('API Error Response:', errorText);
-            throw new Error(
-              `API returned status ${response.status} ${response.statusText}. Details: ${errorText}`
-            );
+            throw new Error(`API returned status ${response.status}: ${errorText}`);
           }
 
           const data = await response.json();
-          this.log.info('API Response:', data);
+          this.log.info('API Response received');
 
-          // Parse response - simplified format: { Results: [...] }
           const apiResponse: HyperlinkApiResponse = {
             success: response.ok && Array.isArray(data.Results),
             timestamp: new Date(),
@@ -1014,7 +970,7 @@ export class HyperlinkService {
         } catch (error) {
           lastError = error as Error;
           if (error instanceof Error && error.name === 'AbortError') {
-            break; // Don't retry on timeout
+            break;
           }
         }
       }
