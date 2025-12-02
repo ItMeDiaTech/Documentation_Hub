@@ -1461,7 +1461,7 @@ export class WordDocumentProcessor {
                   revisionType: "hyperlinkChange",
                   category: "hyperlink",
                   description: this.describeHyperlinkProcessingChange(hc),
-                  author: "DocHub",
+                  author: authorName,
                   date: new Date(),
                   location: {
                     paragraphIndex: hc.paragraphIndex,
@@ -4429,6 +4429,11 @@ export class WordDocumentProcessor {
                 "Applied TopHyperlink style and explicit right alignment (spacing before alignment)"
               );
             }
+
+            // Fix spacing on pre-existing hyperlinks (may not have correct spacing)
+            // Force 0pt spacing after regardless of original formatting
+            para.setSpaceAfter(0);
+            this.log.debug("Set space after to 0pt for Top of Document hyperlink");
           }
         }
       }
@@ -4709,6 +4714,40 @@ export class WordDocumentProcessor {
         doc.removeParagraph(paragraphs[index]);
         this.log.debug(`Removed existing warning paragraph at index ${index}`);
       }
+    }
+
+    // Step 2b: Check if "Top of Document" hyperlink exists near end of document
+    // If not, add one above the warning with a blank line separator
+    const refreshedParagraphs = doc.getAllParagraphs();
+    const checkStartIndex = Math.max(0, refreshedParagraphs.length - 2);
+    let hasTopHyperlinkNearEnd = false;
+
+    for (let i = refreshedParagraphs.length - 1; i >= checkStartIndex; i--) {
+      const content = refreshedParagraphs[i].getContent();
+      for (const item of content) {
+        if (item instanceof Hyperlink) {
+          const text = sanitizeHyperlinkText(item.getText()).toLowerCase();
+          if (text.includes("top of")) {
+            hasTopHyperlinkNearEnd = true;
+            break;
+          }
+        }
+      }
+      if (hasTopHyperlinkNearEnd) break;
+    }
+
+    // If no "Top of Document" hyperlink near end, add one above the warning
+    if (!hasTopHyperlinkNearEnd) {
+      // Insert blank line for separation from content above
+      const separatorPara = doc.createParagraph("");
+      separatorPara.setStyle("Normal");
+      separatorPara.setSpaceBefore(pointsToTwips(0));
+      separatorPara.setSpaceAfter(pointsToTwips(0));
+
+      // Insert Top of Document hyperlink
+      this.createTopHyperlinkParagraph(doc);
+
+      this.log.debug("Added Top of Document hyperlink above document warning");
     }
 
     // Step 3: Create blank line for separation before warning
