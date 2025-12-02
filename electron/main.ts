@@ -263,7 +263,57 @@ async function configureSessionProxyAndNetworking(): Promise<void> {
       }
     });
 
-    log.info("✓ Session proxy and network monitoring configured successfully");
+    // Configure certificate verification for net.request (API calls)
+    // This allows corporate proxies like Zscaler to work with PowerAutomate
+    session.defaultSession.setCertificateVerifyProc((request, callback) => {
+      const { hostname, certificate, verificationResult, errorCode } = request;
+
+      // List of trusted hosts for API calls (PowerAutomate, Azure, Microsoft)
+      const trustedApiHosts = [
+        "logic.azure.com",
+        "azure.com",
+        "microsoft.com",
+        "microsoftonline.com",
+        "windows.net",
+        "azure-api.net",
+        "azureedge.net",
+        "powerplatform.com",  // New PowerAutomate API endpoint
+        "api.powerplatform.com",
+        "github.com",
+        "githubusercontent.com",
+      ];
+
+      // Check if this is a trusted host
+      const isTrustedHost = trustedApiHosts.some((host) =>
+        hostname.toLowerCase().includes(host)
+      );
+
+      // Check if this might be a Zscaler or corporate proxy certificate
+      const isProxyCert =
+        certificate.issuerName?.includes("Zscaler") ||
+        certificate.issuerName?.includes("ZScaler") ||
+        certificate.subjectName?.includes("Zscaler") ||
+        zscalerConfig.isDetected();
+
+      if (verificationResult === 0) {
+        // Certificate is valid
+        callback(0);
+      } else if (isTrustedHost) {
+        // Trust certificates for known API hosts (handles corporate proxy SSL inspection)
+        log.info(`[CertVerify] Trusting certificate for API host: ${hostname}`);
+        callback(0);
+      } else if (isProxyCert) {
+        // Trust Zscaler/corporate proxy certificates
+        log.info(`[CertVerify] Trusting corporate proxy certificate for: ${hostname}`);
+        callback(0);
+      } else {
+        // Log and reject unknown certificates
+        log.warn(`[CertVerify] Rejecting certificate for: ${hostname}, error: ${errorCode}`);
+        callback(verificationResult);
+      }
+    });
+
+    log.info("✓ Session proxy, certificate verification, and network monitoring configured successfully");
   } catch (error) {
     log.error("❌ Failed to configure session:", error);
     throw error; // Re-throw to allow caller to handle
@@ -569,13 +619,23 @@ app.on("certificate-error", (event, webContents, url, error, certificate, callba
     }
   }
 
-  // Check if this is for GitHub or our update server
+  // Check if this is for GitHub, update server, or PowerAutomate/Azure
   const trustedHosts = [
     "github.com",
     "githubusercontent.com",
     "github.io",
     "github-releases.githubusercontent.com",
     "objects.githubusercontent.com",
+    // PowerAutomate / Azure Logic Apps hosts
+    "logic.azure.com",
+    "azure.com",
+    "microsoft.com",
+    "microsoftonline.com",
+    "windows.net",
+    "azure-api.net",
+    "azureedge.net",
+    "powerplatform.com",  // New PowerAutomate API endpoint
+    "api.powerplatform.com",
   ];
   const urlHost = new URL(url).hostname.toLowerCase();
 
