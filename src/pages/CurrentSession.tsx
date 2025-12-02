@@ -778,7 +778,7 @@ export function CurrentSession() {
           sessionId={session.id}
           options={processingOptions}
           onOptionsChange={handleProcessingOptionsChange}
-          autoAcceptRevisions={session.processingOptions?.autoAcceptRevisions ?? true}
+          autoAcceptRevisions={session.processingOptions?.autoAcceptRevisions ?? false}
           onAutoAcceptRevisionsChange={handleAutoAcceptRevisionsChange}
         />
       ),

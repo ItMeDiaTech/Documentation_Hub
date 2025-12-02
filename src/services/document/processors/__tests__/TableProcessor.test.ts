@@ -50,7 +50,7 @@ describe('TableProcessor', () => {
       });
 
       expect(result.tablesProcessed).toBe(1);
-      expect(mockCell.setShading).toHaveBeenCalledWith('BFBFBF');
+      expect(mockCell.setShading).toHaveBeenCalledWith({ fill: 'BFBFBF' });
     });
 
     it('should preserve cells without shading', async () => {
@@ -150,7 +150,7 @@ describe('TableProcessor', () => {
       const count = await processor.applySmartTableFormatting(mockDoc);
 
       expect(count).toBe(1);
-      expect(headerCell.setShading).toHaveBeenCalledWith('BFBFBF');
+      expect(headerCell.setShading).toHaveBeenCalledWith({ fill: 'BFBFBF' });
     });
 
     it('should handle tables without header rows', async () => {

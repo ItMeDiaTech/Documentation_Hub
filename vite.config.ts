@@ -7,7 +7,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   optimizeDeps: {
-    include: ['lucide-react'],
+    include: ['lucide-react', 'docxmlater'],
   },
   plugins: [
     tailwindcss(),
@@ -26,12 +26,16 @@ export default defineConfig({
               '@pages': resolve(__dirname, './src/pages'),
               '@contexts': resolve(__dirname, './src/contexts'),
             },
+            preserveSymlinks: false,
           },
           build: {
             outDir: 'dist/electron',
             emptyOutDir: false,
+            commonjsOptions: {
+              include: [/node_modules/, /docxmlater/],
+            },
             rollupOptions: {
-              external: ['electron'],
+              external: ['electron', 'docxmlater'],
               output: {
                 format: 'cjs', // Use CommonJS to support __dirname natively
               },
@@ -55,11 +59,15 @@ export default defineConfig({
               '@pages': resolve(__dirname, './src/pages'),
               '@contexts': resolve(__dirname, './src/contexts'),
             },
+            preserveSymlinks: false,
           },
           build: {
             outDir: 'dist/electron',
+            commonjsOptions: {
+              include: [/node_modules/, /docxmlater/],
+            },
             rollupOptions: {
-              external: ['electron'],
+              external: ['electron', 'docxmlater'],
               output: {
                 format: 'cjs', // Use CommonJS to support __dirname natively
               },
@@ -80,6 +88,7 @@ export default defineConfig({
       '@pages': resolve(__dirname, './src/pages'),
       '@contexts': resolve(__dirname, './src/contexts'),
     },
+    preserveSymlinks: false,
   },
   server: {
     port: 5173,
@@ -90,7 +99,7 @@ export default defineConfig({
     emptyOutDir: true,
     chunkSizeWarningLimit: 600, // Increase from 500kb to 600kb
     commonjsOptions: {
-      include: [/lucide-react/, /node_modules/],
+      include: [/lucide-react/, /node_modules/, /docxmlater/],
     },
     // Use esbuild minification (faster and already included)
     minify: 'esbuild',
