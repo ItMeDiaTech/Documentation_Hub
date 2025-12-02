@@ -16,6 +16,7 @@ Author: Documentation Hub Team
 import argparse
 import json
 import re
+import ssl
 import sys
 import time
 import zipfile
@@ -218,12 +219,16 @@ def test_api_connection(
     lookup_ids: List[str],
     user_profile: Optional[Dict[str, str]] = None,
     timeout: int = 30,
-    verbose: bool = False
+    verbose: bool = False,
+    insecure: bool = False
 ) -> Dict[str, Any]:
     """
     Test the PowerAutomate API with given lookup IDs.
 
     Returns diagnostic information about the request and response.
+
+    Args:
+        insecure: If True, skip SSL certificate verification (for corporate proxies)
     """
     result = {
         'success': False,
@@ -266,10 +271,18 @@ def test_api_connection(
     # Make request
     start_time = time.time()
 
+    # Create SSL context
+    ssl_context = None
+    if insecure:
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        result['warnings'].append('SSL certificate verification disabled (--insecure flag)')
+
     try:
         req = Request(api_url, data=json_payload, headers=headers, method='POST')
 
-        with urlopen(req, timeout=timeout) as response:
+        with urlopen(req, timeout=timeout, context=ssl_context) as response:
             elapsed = time.time() - start_time
             result['timing']['elapsed_ms'] = round(elapsed * 1000, 2)
 
@@ -471,6 +484,8 @@ Config file format (JSON):
     parser.add_argument('--verbose', '-v', action='store_true', help='Show full response data')
     parser.add_argument('--json', action='store_true', help='Output as JSON')
     parser.add_argument('--no-color', action='store_true', help='Disable colored output')
+    parser.add_argument('--insecure', '-k', action='store_true',
+                        help='Skip SSL certificate verification (use for corporate proxies like Zscaler)')
     parser.add_argument('--extract-only', action='store_true', help='Only extract and show IDs from DOCX, do not call API')
 
     args = parser.parse_args()
@@ -586,12 +601,15 @@ Config file format (JSON):
 
     # Run diagnostic
     print(f"\n{Colors.BOLD}Testing API connection...{Colors.RESET}")
+    if args.insecure:
+        print(f"{Colors.YELLOW}WARNING: SSL certificate verification disabled{Colors.RESET}")
     result = test_api_connection(
         api_url=api_url,
         lookup_ids=lookup_ids,
         user_profile=user_profile,
         timeout=timeout,
-        verbose=args.verbose
+        verbose=args.verbose,
+        insecure=args.insecure
     )
 
     # Output
