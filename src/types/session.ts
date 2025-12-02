@@ -107,12 +107,25 @@ export interface UnifiedChange {
 }
 
 /**
- * Word revision state for a document - tracked changes from the original Word document
+ * Previous revision state - tracked changes that existed in the document BEFORE DocHub processing
+ * These are captured on document load and displayed separately in the UI
+ */
+export interface PreviousRevisionState {
+  /** Whether document had pre-existing tracked changes */
+  hadRevisions: boolean;
+  /** Changelog entries from pre-existing Word revisions (before DocHub processing) */
+  entries: ChangeEntry[];
+  /** Summary statistics for pre-existing revisions */
+  summary: ChangelogSummary | null;
+}
+
+/**
+ * Word revision state for a document - tracked changes from DocHub processing
  */
 export interface WordRevisionState {
   /** Whether document has Word tracked changes */
   hasRevisions: boolean;
-  /** Changelog entries from Word revisions */
+  /** Changelog entries from DocHub processing (author is typically 'DocHub' or user name) */
   entries: ChangeEntry[];
   /** Summary statistics */
   summary: ChangelogSummary | null;
@@ -136,7 +149,9 @@ export interface Document {
   processedAt?: Date;
   errors?: string[];
   fileData?: ArrayBuffer; // Store file data for processing
-  /** Word tracked changes state */
+  /** Pre-existing tracked changes that were in the document BEFORE DocHub processing */
+  previousRevisions?: PreviousRevisionState;
+  /** Word tracked changes state from DocHub processing */
   wordRevisions?: WordRevisionState;
   // Processing results
   processingResult?: {

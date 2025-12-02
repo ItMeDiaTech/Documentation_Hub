@@ -92,15 +92,15 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
       level: 2,
       symbolIndent: 1.5,
       textIndent: 1.75,
-      bulletChar: '■',
+      bulletChar: '•',
       numberedFormat: 'i.',
     },
-    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
+    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },
     {
       level: 4,
       symbolIndent: 2.5,
       textIndent: 2.75,
-      bulletChar: '○',
+      bulletChar: '•',
       numberedFormat: 'a)',
     },
   ],
@@ -280,6 +280,31 @@ const ensureListBulletSettings = (session: Session): Session => {
   return session;
 };
 
+/**
+ * Ensures session has valid styles array with all required styles
+ * Backfills with defaults if missing or invalid
+ *
+ * This is critical for:
+ * 1. Historical sessions created before styles were added
+ * 2. Sessions loaded from storage that may have corrupted/missing styles
+ * 3. Ensuring font color is properly applied (requires styles to be defined)
+ */
+const ensureSessionStyles = (session: Session): Session => {
+  const needsBackfill =
+    !session.styles ||
+    !Array.isArray(session.styles) ||
+    session.styles.length === 0;
+
+  if (needsBackfill) {
+    return {
+      ...session,
+      styles: [...DEFAULT_SESSION_STYLES],
+    };
+  }
+
+  return session;
+};
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const log = logger.namespace('SessionContext');
   // Conditional verbose logger - only logs when SESSION_STATE debug mode is enabled
@@ -419,15 +444,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
         // BACKFILL FIX: Ensure all loaded sessions have valid listBulletSettings
         // This repairs historical sessions that were created before list settings were added
-        const backfilledSessions = cleanedSessions.map(ensureListBulletSettings);
+        const listBackfilledSessions = cleanedSessions.map(ensureListBulletSettings);
 
-        // Log how many sessions were backfilled
-        const backfillCount = backfilledSessions.filter(
+        // Log how many sessions were backfilled for list settings
+        const listBackfillCount = listBackfilledSessions.filter(
           (s, idx) => s.listBulletSettings !== cleanedSessions[idx].listBulletSettings
         ).length;
-        if (backfillCount > 0) {
+        if (listBackfillCount > 0) {
           log.info(
-            `[Session] Backfilled ${backfillCount} session(s) with default list bullet settings`
+            `[Session] Backfilled ${listBackfillCount} session(s) with default list bullet settings`
+          );
+        }
+
+        // BACKFILL FIX: Ensure all loaded sessions have valid styles
+        // This is critical for font color to be applied - without styles, applyStyles() is skipped
+        const backfilledSessions = listBackfilledSessions.map(ensureSessionStyles);
+
+        // Log how many sessions were backfilled for styles
+        const stylesBackfillCount = backfilledSessions.filter(
+          (s, idx) => s.styles !== listBackfilledSessions[idx].styles
+        ).length;
+        if (stylesBackfillCount > 0) {
+          log.info(
+            `[Session] Backfilled ${stylesBackfillCount} session(s) with default styles`
           );
         }
 
@@ -941,6 +980,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // ENSURE SESSION HAS REQUIRED DATA: Backfill styles and list settings if missing
+      // This ensures font color and other style-dependent features work correctly
+      // even if the session was created before these features were added
+      const ensuredSession = ensureSessionStyles(ensureListBulletSettings(session));
+      if (ensuredSession !== session) {
+        log.info('[Session] Backfilled session with missing styles or list settings during processing');
+        // Update the session in state with the backfilled data
+        setSessions((prev) =>
+          prev.map((s) => (s.id === sessionId ? ensuredSession : s))
+        );
+      }
+
+      // Use the ensured session for processing
+      const sessionToProcess = ensuredSession;
+
       // PERFORMANCE: Update document status to processing (first setState)
       setSessions((prev) =>
         prev.map((s) =>
@@ -984,9 +1038,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Convert session processing options to hyperlink processing options
         // Extract style spacing from session styles
         log.debug('\n=== SESSION CONTEXT: Extracting Style Spacing ===');
-        log.debug('session.styles:', session.styles);
+        log.debug('sessionToProcess.styles:', sessionToProcess.styles);
 
-        // Default style spacing (applied when session.styles is undefined/empty)
+        // Default style spacing (applied when sessionToProcess.styles is undefined/empty)
         const defaultStyleSpacing = {
           header1: {
             spaceBefore: 0,
@@ -1005,8 +1059,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           },
         };
 
-        // Check if session has configured styles
-        const hasSessionStyles = session.styles && session.styles.length > 0;
+        // Check if session has configured styles (should always be true after ensureSessionStyles)
+        const hasSessionStyles = sessionToProcess.styles && sessionToProcess.styles.length > 0;
 
         if (!hasSessionStyles) {
           log.debug('   No styles configured in session - using default spacing values');
@@ -1015,9 +1069,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           log.debug('   Default Normal: 3pt before, 3pt after, 1.0 line spacing');
         }
 
-        const header1Style = session.styles?.find((s: SessionStyle) => s.id === 'header1');
-        const header2Style = session.styles?.find((s: SessionStyle) => s.id === 'header2');
-        const normalStyle = session.styles?.find((s: SessionStyle) => s.id === 'normal');
+        const header1Style = sessionToProcess.styles?.find((s: SessionStyle) => s.id === 'header1');
+        const header2Style = sessionToProcess.styles?.find((s: SessionStyle) => s.id === 'header2');
+        const normalStyle = sessionToProcess.styles?.find((s: SessionStyle) => s.id === 'normal');
 
         log.debug('Found header1Style:', header1Style);
         log.debug('Found header2Style:', header2Style);
@@ -1098,7 +1152,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
         // DEBUG: Log enabled operations before processing
         log.info('\n=== PROCESSING DOCUMENT - OPTIONS DEBUG ===');
-        log.info('Session enabled operations:', session.processingOptions?.enabledOperations || []);
+        log.info('Session enabled operations:', sessionToProcess.processingOptions?.enabledOperations || []);
 
         const processingOptions: HyperlinkProcessingOptions & {
           // User Profile for API
@@ -1147,31 +1201,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           // Hyperlink Operations (operations object)
           operations: {
             fixContentIds:
-              session.processingOptions?.enabledOperations?.includes('fix-content-ids'),
+              sessionToProcess.processingOptions?.enabledOperations?.includes('fix-content-ids'),
             updateTitles:
-              session.processingOptions?.enabledOperations?.includes('replace-outdated-titles'),
+              sessionToProcess.processingOptions?.enabledOperations?.includes('replace-outdated-titles'),
             replaceOutdatedTitles:
-              session.processingOptions?.enabledOperations?.includes('replace-outdated-titles'), // Same flag, standalone fallback
+              sessionToProcess.processingOptions?.enabledOperations?.includes('replace-outdated-titles'), // Same flag, standalone fallback
             fixInternalHyperlinks:
-              session.processingOptions?.enabledOperations?.includes('fix-internal-hyperlinks'),
+              sessionToProcess.processingOptions?.enabledOperations?.includes('fix-internal-hyperlinks'),
             updateTopHyperlinks:
-              session.processingOptions?.enabledOperations?.includes('update-top-hyperlinks'),
+              sessionToProcess.processingOptions?.enabledOperations?.includes('update-top-hyperlinks'),
             updateTocHyperlinks: true, // Always enabled - no UI control
             standardizeHyperlinkColor: true, // Always enabled - removed from UI
             validateHeader2Tables:
-              session.processingOptions?.enabledOperations?.includes('validate-header2-tables'),
-            validateDocumentStyles: session.processingOptions?.enabledOperations?.includes(
+              sessionToProcess.processingOptions?.enabledOperations?.includes('validate-header2-tables'),
+            validateDocumentStyles: sessionToProcess.processingOptions?.enabledOperations?.includes(
               'validate-document-styles'
             ),
           },
 
           // Text replacements and styles
-          textReplacements: session.replacements?.filter((r) => r.enabled) || [],
+          textReplacements: sessionToProcess.replacements?.filter((r) => r.enabled) || [],
           // Transform session styles array to include all formatting properties
           // This matches the format expected by WordDocumentProcessor for custom style application
           styles:
-            session.styles && Array.isArray(session.styles) && session.styles.length > 0
-              ? session.styles.map((style: any) => {
+            sessionToProcess.styles && Array.isArray(sessionToProcess.styles) && sessionToProcess.styles.length > 0
+              ? sessionToProcess.styles.map((style: any) => {
                   // DUAL TOGGLE FORMATTING SYSTEM
                   // For formatting properties (bold, italic, underline):
                   //   - If preserveBold/preserveItalic/preserveUnderline === true: Don't call setter (preserve existing)
@@ -1211,14 +1265,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
           // Text Formatting Options (mapped from ProcessingOptions UI)
           removeWhitespace:
-            session.processingOptions?.enabledOperations?.includes('remove-whitespace'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes('remove-whitespace'),
           removeParagraphLines:
-            session.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
           // Preserve blank lines after Header 2 tables ONLY when removing paragraph lines
           // This ensures we don't accidentally remove spacing after Header 2 tables (docxmlater v1.16.0)
           preserveBlankLinesAfterHeader2Tables:
-            session.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
-          removeItalics: session.processingOptions?.enabledOperations?.includes('remove-italics'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
+          removeItalics: sessionToProcess.processingOptions?.enabledOperations?.includes('remove-italics'),
 
           // ALWAYS ENABLED: Standardize hyperlink formatting (remove bold/italic from all hyperlinks)
           // This is intentional and required for the work environment to maintain professional document standards.
@@ -1235,45 +1289,45 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           assignStyles: true, // Always apply custom styles from Styles tab
           centerImages: true, // Always center images in processed documents
           removeHeadersFooters:
-            session.processingOptions?.enabledOperations?.includes('remove-headers-footers'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes('remove-headers-footers'),
           addDocumentWarning:
-            session.processingOptions?.enabledOperations?.includes('add-document-warning'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes('add-document-warning'),
 
           // Lists & Tables Options (mapped from ProcessingOptions UI)
           // Map list-indentation checkbox to listBulletSettings.enabled
           // This controls Phase 3 (indentation), while bullet-uniformity controls Phases 1+2 (symbols)
-          listBulletSettings: session.processingOptions?.enabledOperations?.includes(
+          listBulletSettings: sessionToProcess.processingOptions?.enabledOperations?.includes(
             'list-indentation'
           )
             ? {
                 enabled: true,
-                indentationLevels: session.listBulletSettings?.indentationLevels || [],
+                indentationLevels: sessionToProcess.listBulletSettings?.indentationLevels || [],
               }
             : undefined,
           bulletUniformity:
-            session.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
-          tableUniformity: session.processingOptions?.enabledOperations?.includes('smart-tables'),
-          smartTables: session.processingOptions?.enabledOperations?.includes('smart-tables'),
-          tableShadingSettings: session.tableShadingSettings
+            sessionToProcess.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
+          tableUniformity: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
+          smartTables: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
+          tableShadingSettings: sessionToProcess.tableShadingSettings
             ? {
-                header2Shading: session.tableShadingSettings.header2Shading,
-                otherShading: session.tableShadingSettings.otherShading,
+                header2Shading: sessionToProcess.tableShadingSettings.header2Shading,
+                otherShading: sessionToProcess.tableShadingSettings.otherShading,
               }
             : undefined,
 
           // Table of Contents Settings - Simplified to enabled flag only
-          tableOfContentsSettings: session.tableOfContentsSettings,
+          tableOfContentsSettings: sessionToProcess.tableOfContentsSettings,
 
           // Word Tracked Changes Handling
-          revisionHandlingMode: session.processingOptions?.revisionHandlingMode || 'accept_all',
-          revisionAuthor: session.processingOptions?.revisionAuthor || 'DocHub',
-          autoAcceptRevisions: session.processingOptions?.autoAcceptRevisions ?? true, // Default: true
+          revisionHandlingMode: sessionToProcess.processingOptions?.revisionHandlingMode || 'accept_all',
+          revisionAuthor: sessionToProcess.processingOptions?.revisionAuthor || 'DocHub',
+          autoAcceptRevisions: sessionToProcess.processingOptions?.autoAcceptRevisions ?? false, // Default: false
 
           // DocHub Change Tracking (for Document Changes UI)
           trackChanges: true, // Enable hyperlink change tracking for DocumentProcessingComparison
 
           // Legacy (deprecated, kept for backwards compatibility)
-          tableUniformitySettings: session.tableUniformitySettings,
+          tableUniformitySettings: sessionToProcess.tableUniformitySettings,
         };
 
         // DEBUG: Log final operations object being passed to processor
@@ -1312,21 +1366,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
         // Also log session state right before IPC call
         log.info('Session state right before IPC:');
-        log.info('  - Session has listBulletSettings?', !!session.listBulletSettings);
-        log.info('  - Session listBulletSettings enabled?', session.listBulletSettings?.enabled);
+        log.info('  - Session has listBulletSettings?', !!sessionToProcess.listBulletSettings);
+        log.info('  - Session listBulletSettings enabled?', sessionToProcess.listBulletSettings?.enabled);
         log.info(
           '  - Session indentationLevels length:',
-          session.listBulletSettings?.indentationLevels?.length || 0
+          sessionToProcess.listBulletSettings?.indentationLevels?.length || 0
         );
-        if (session.listBulletSettings?.indentationLevels) {
-          session.listBulletSettings.indentationLevels.forEach((level, idx) => {
+        if (sessionToProcess.listBulletSettings?.indentationLevels) {
+          sessionToProcess.listBulletSettings.indentationLevels.forEach((level, idx) => {
             log.info(
               `    - Session Level ${level.level}: symbol=${level.symbolIndent}", text=${level.textIndent}", char="${level.bulletChar}"`
             );
           });
         }
         // Check enabled operations
-        log.info('  - Enabled operations:', session.processingOptions?.enabledOperations || []);
+        log.info('  - Enabled operations:', sessionToProcess.processingOptions?.enabledOperations || []);
         // DEBUG: Show formatting preservation for Normal/ListParagraph styles
         const normalStyleInOptions = processingOptions.styles?.find((s: any) => s.id === 'normal');
         const listParaStyleInOptions = processingOptions.styles?.find(
@@ -1406,6 +1460,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           duration: number;
           errorMessages?: string[];
           changes?: import('@/types/session').DocumentChange[];
+          previousRevisions?: import('@/types/session').PreviousRevisionState;
           wordRevisions?: import('@/types/session').WordRevisionState;
         };
 
@@ -1423,7 +1478,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           status: result.success ? ('completed' as const) : ('error' as const),
                           processedAt: new Date(),
                           errors: result.errorMessages,
-                          // Store Word revisions state (from docxmlater)
+                          // Store pre-existing revisions (from before DocHub processing)
+                          previousRevisions: result.previousRevisions,
+                          // Store Word revisions state from DocHub processing
                           wordRevisions: result.wordRevisions,
                           processingResult: {
                             hyperlinksProcessed: result.processedHyperlinks,

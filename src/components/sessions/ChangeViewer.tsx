@@ -11,6 +11,7 @@ import type {
   ChangeCategory,
   ChangeEntry,
   Document,
+  PreviousRevisionState,
   UnifiedChange,
 } from '@/types/session';
 import { cn } from '@/utils/cn';
@@ -25,6 +26,7 @@ import {
   FileText,
   Filter,
   Hash,
+  History,
   Image,
   Link,
   MessageCircle,
@@ -81,6 +83,39 @@ function getUnifiedChanges(document: Document): UnifiedChange[] {
   }));
 
   // Group formatting changes that affect the same text
+  return groupPropertyChanges(rawChanges);
+}
+
+/**
+ * Gets pre-existing tracked changes that were in the document BEFORE DocHub processing
+ * These are stored separately in document.previousRevisions
+ */
+function getPreviousChanges(document: Document): UnifiedChange[] {
+  if (!document.previousRevisions?.entries || document.previousRevisions.entries.length === 0) {
+    return [];
+  }
+
+  const rawChanges = document.previousRevisions.entries.map((entry: ChangeEntry) => ({
+    id: `previous-${entry.id}`,
+    // All previous changes are marked as 'word' source since they came from Word before DocHub
+    source: 'word' as const,
+    category: entry.category,
+    description: entry.description,
+    author: entry.author,
+    date: entry.date,
+    location: entry.location
+      ? {
+          paragraphIndex: entry.location.paragraphIndex,
+          nearestHeading: entry.location.nearestHeading,
+        }
+      : undefined,
+    before: entry.content?.before,
+    after: entry.content?.after,
+    affectedText: entry.content?.affectedText || entry.content?.before || entry.content?.after,
+    hyperlinkChange: entry.content?.hyperlinkChange,
+    propertyChange: entry.propertyChange,
+  }));
+
   return groupPropertyChanges(rawChanges);
 }
 
@@ -207,7 +242,7 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
   // Get the current session
   const session = sessions.find((s) => s.id === sessionId);
 
-  // Get all changes from all documents
+  // Get all changes from all documents (DocHub processing changes)
   const documentChanges = useMemo(() => {
     if (!session) return [];
 
@@ -219,6 +254,23 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
       }))
       .filter((item) => item.changes.length > 0);
   }, [session]);
+
+  // Get previous tracked changes (pre-existing changes from before DocHub processing)
+  const previousChanges = useMemo(() => {
+    if (!session) return [];
+
+    return session.documents
+      .filter((doc) => doc.status === 'completed')
+      .map((doc) => ({
+        document: doc,
+        changes: getPreviousChanges(doc),
+      }))
+      .filter((item) => item.changes.length > 0);
+  }, [session]);
+
+  // Check if there are any previous changes to display
+  const hasPreviousChanges = previousChanges.length > 0;
+  const totalPreviousChanges = previousChanges.reduce((acc, item) => acc + item.changes.length, 0);
 
   // Calculate summary statistics
   const stats = useMemo(() => {
@@ -381,8 +433,8 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
     });
   }, [filteredDocumentChanges]);
 
-  // Empty state
-  if (documentChanges.length === 0) {
+  // Empty state - only show if there are no DocHub changes AND no previous changes
+  if (documentChanges.length === 0 && !hasPreviousChanges) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <FileText className="w-12 h-12 text-muted-foreground mb-4" />
@@ -397,82 +449,87 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
 
   return (
     <div className="space-y-4">
-      {/* Header with Summary Stats */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">Document Changes</h3>
-          <p className="text-sm text-muted-foreground">
-            {stats.total} total changes across {documentChanges.length} document(s)
-          </p>
-        </div>
+      {/* Header with Summary Stats - only show if there are DocHub changes */}
+      {documentChanges.length > 0 && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold">Document Changes</h3>
+              <p className="text-sm text-muted-foreground">
+                {stats.total} total changes across {documentChanges.length} document(s)
+              </p>
+            </div>
 
-        <div className="flex items-center gap-2">
-          {/* DEFERRED: Compare Documents feature - Side-by-side comparison for future implementation
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowComparisonModal(true)}
-            className="gap-2"
-            disabled={documentChanges.length === 0}
-            title="Compare original vs processed documents"
-          >
-            <Columns className="w-4 h-4" />
-            Compare Documents
-          </Button>
-          */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportAsMarkdown}
-            className="gap-2"
-          >
-            <ClipboardCopy className="w-4 h-4" />
-            {copiedToClipboard ? 'Copied!' : 'Copy Markdown'}
-          </Button>
-        </div>
-      </div>
+            <div className="flex items-center gap-2">
+              {/* DEFERRED: Compare Documents feature - Side-by-side comparison for future implementation
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowComparisonModal(true)}
+                className="gap-2"
+                disabled={documentChanges.length === 0}
+                title="Compare original vs processed documents"
+              >
+                <Columns className="w-4 h-4" />
+                Compare Documents
+              </Button>
+              */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportAsMarkdown}
+                className="gap-2"
+              >
+                <ClipboardCopy className="w-4 h-4" />
+                {copiedToClipboard ? 'Copied!' : 'Copy Markdown'}
+              </Button>
+            </div>
+          </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-        <StatBadge
-          icon={Plus}
-          label="Insertions"
-          count={stats.insertions}
-          color="text-green-500"
-        />
-        <StatBadge
-          icon={Minus}
-          label="Deletions"
-          count={stats.deletions}
-          color="text-red-500"
-        />
-        <StatBadge
-          icon={Paintbrush}
-          label="Formatting"
-          count={stats.formatting}
-          color="text-purple-500"
-        />
-        <StatBadge
-          icon={Settings}
-          label="Structural"
-          count={stats.structural}
-          color="text-orange-500"
-        />
-        <StatBadge
-          icon={FileText}
-          label="Word"
-          count={stats.wordRevisions}
-          color="text-blue-500"
-        />
-        <StatBadge
-          icon={Settings}
-          label="Processing"
-          count={stats.processingChanges}
-          color="text-gray-500"
-        />
-      </div>
+          {/* Summary Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+            <StatBadge
+              icon={Plus}
+              label="Insertions"
+              count={stats.insertions}
+              color="text-green-500"
+            />
+            <StatBadge
+              icon={Minus}
+              label="Deletions"
+              count={stats.deletions}
+              color="text-red-500"
+            />
+            <StatBadge
+              icon={Paintbrush}
+              label="Formatting"
+              count={stats.formatting}
+              color="text-purple-500"
+            />
+            <StatBadge
+              icon={Settings}
+              label="Structural"
+              count={stats.structural}
+              color="text-orange-500"
+            />
+            <StatBadge
+              icon={FileText}
+              label="Word"
+              count={stats.wordRevisions}
+              color="text-blue-500"
+            />
+            <StatBadge
+              icon={Settings}
+              label="Processing"
+              count={stats.processingChanges}
+              color="text-gray-500"
+            />
+          </div>
+        </>
+      )}
 
-      {/* Filter Controls */}
+      {/* Filter Controls - only show if there are DocHub changes */}
+      {documentChanges.length > 0 && (
       <div className="flex flex-wrap items-center gap-3 p-3 bg-muted/50 rounded-lg">
         <Filter className="w-4 h-4 text-muted-foreground" />
 
@@ -602,8 +659,10 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
           className="px-3 py-1 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50"
         />
       </div>
+      )}
 
-      {/* Document List */}
+      {/* Document List - only show if there are DocHub changes */}
+      {documentChanges.length > 0 && (
       <div className="space-y-3">
         {groupedDocumentChanges.map((item) => (
           <div
@@ -671,6 +730,7 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
           </div>
         ))}
       </div>
+      )}
 
       {/* Empty filtered state */}
       {filteredDocumentChanges.length === 0 && documentChanges.length > 0 && (
@@ -692,6 +752,31 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
           >
             Clear Filters
           </Button>
+        </div>
+      )}
+
+      {/* Previous Tracked Changes Section */}
+      {hasPreviousChanges && (
+        <div className="mt-8 pt-6 border-t border-border">
+          <div className="flex items-center gap-3 mb-4">
+            <History className="w-5 h-5 text-amber-500" />
+            <div>
+              <h3 className="text-lg font-semibold">Previous Tracked Changes</h3>
+              <p className="text-sm text-muted-foreground">
+                {totalPreviousChanges} change{totalPreviousChanges !== 1 ? 's' : ''} that existed in the document before DocHub processing
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {previousChanges.map((item) => (
+              <PreviousChangesSection
+                key={`previous-${item.document.id}`}
+                document={item.document}
+                changes={item.changes}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -747,5 +832,101 @@ function FilterButton({ active, onClick, children }: FilterButtonProps) {
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Component for displaying previous tracked changes for a single document
+ */
+interface PreviousChangesSectionProps {
+  document: Document;
+  changes: UnifiedChange[];
+}
+
+function PreviousChangesSection({ document, changes }: PreviousChangesSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Group changes by category
+  const grouped = useMemo(() => {
+    const result: Record<ChangeCategory, UnifiedChange[]> = {
+      content: [],
+      formatting: [],
+      structural: [],
+      table: [],
+      hyperlink: [],
+      image: [],
+      field: [],
+      comment: [],
+      bookmark: [],
+      contentControl: [],
+    };
+    changes.forEach((change) => {
+      result[change.category].push(change);
+    });
+    return result;
+  }, [changes]);
+
+  return (
+    <div className="border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 rounded-lg overflow-hidden">
+      {/* Document Header */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-amber-100/50 dark:hover:bg-amber-900/20 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          {isExpanded ? (
+            <ChevronDown className="w-4 h-4 text-amber-600" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-amber-600" />
+          )}
+          <FileText className="w-4 h-4 text-amber-600" />
+          <span className="font-medium">{document.name}</span>
+        </div>
+        <span className="text-sm text-amber-700 dark:text-amber-400">
+          {changes.length} previous change{changes.length !== 1 ? 's' : ''}
+        </span>
+      </button>
+
+      {/* Previous Changes */}
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-4 space-y-4">
+              {(Object.keys(categoryConfig) as ChangeCategory[]).map((category) => {
+                const categoryChanges = grouped[category];
+                if (categoryChanges.length === 0) return null;
+
+                const config = categoryConfig[category];
+                const Icon = config.icon;
+
+                return (
+                  <div key={category} className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Icon className={cn('w-4 h-4', config.color)} />
+                      <span>{config.label}</span>
+                      <span className="text-muted-foreground">
+                        ({categoryChanges.length})
+                      </span>
+                    </div>
+                    <div className="pl-6 space-y-2">
+                      {categoryChanges.map((change) => (
+                        <ChangeItem key={change.id} change={change} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

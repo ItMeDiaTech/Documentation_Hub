@@ -30,7 +30,7 @@ import {
   HyperlinkProcessingResult,
   HyperlinkType,
 } from "@/types/hyperlink";
-import type { ChangeEntry, ChangelogSummary, DocumentChange, WordRevisionState } from "@/types/session";
+import type { ChangeEntry, ChangelogSummary, DocumentChange, PreviousRevisionState, WordRevisionState } from "@/types/session";
 import { MemoryMonitor } from "@/utils/MemoryMonitor";
 import { logger, startTimer, debugModes, isDebugEnabled } from "@/utils/logger";
 import { sanitizeHyperlinkText } from "@/utils/textSanitizer";
@@ -195,7 +195,9 @@ export interface WordProcessingResult extends HyperlinkProcessingResult {
   comparisonData?: any; // Data for before/after comparison
   hasTrackedChanges?: boolean; // Added: Indicates if document has tracked changes that must be approved first
   changes?: DocumentChange[]; // Enhanced tracked changes with context
-  /** Word tracked changes state (from docxmlater) */
+  /** Pre-existing tracked changes that were in the document BEFORE DocHub processing */
+  previousRevisions?: PreviousRevisionState;
+  /** Word tracked changes state from DocHub processing */
   wordRevisions?: WordRevisionState;
 }
 
@@ -297,17 +299,48 @@ export class WordDocumentProcessor {
       this.log.info(`Backup created: ${backupPath}`);
 
       // Load document using DocXMLater
-      // Determine revisionHandling based on autoAcceptRevisions option:
-      // - TRUE (default): Accept existing tracked changes for clean output
-      // - FALSE (unchecked): Preserve existing tracked changes in document
+      // ALWAYS load with 'preserve' to capture pre-existing tracked changes first
+      // Auto-accept is applied at the END of processing (after extracting changes for UI)
       this.log.debug("=== LOADING DOCUMENT WITH DOCXMLATER ===");
-      const revisionHandling = options.autoAcceptRevisions === false ? 'preserve' : 'accept';
-      this.log.debug(`Revision handling mode: ${revisionHandling} (autoAcceptRevisions=${options.autoAcceptRevisions})`);
+      this.log.debug(`autoAcceptRevisions=${options.autoAcceptRevisions} (will be applied after processing)`);
       doc = await Document.load(filePath, {
         strictParsing: false,
-        revisionHandling: revisionHandling as 'preserve' | 'accept' | 'strip'
+        revisionHandling: 'preserve' // Always preserve to capture pre-existing changes
       });
       this.log.debug("Document loaded successfully");
+
+      // ═══════════════════════════════════════════════════════════
+      // CAPTURE PRE-EXISTING TRACKED CHANGES
+      // These are changes that existed in the document BEFORE DocHub processing
+      // Must be done BEFORE enabling track changes (which adds DocHub's author)
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== CAPTURING PRE-EXISTING TRACKED CHANGES ===");
+      try {
+        const preExistingEntries = ChangelogGenerator.fromDocument(doc) as ChangeEntry[];
+        if (preExistingEntries.length > 0) {
+          const preExistingSummary = ChangelogGenerator.getSummary(preExistingEntries as any);
+          result.previousRevisions = {
+            hadRevisions: true,
+            entries: preExistingEntries,
+            summary: preExistingSummary as ChangelogSummary,
+          };
+          this.log.info(`Captured ${preExistingEntries.length} pre-existing tracked changes`);
+        } else {
+          result.previousRevisions = {
+            hadRevisions: false,
+            entries: [],
+            summary: null,
+          };
+          this.log.debug("No pre-existing tracked changes found");
+        }
+      } catch (preExistingError) {
+        this.log.warn("Failed to capture pre-existing changes (non-fatal):", preExistingError);
+        result.previousRevisions = {
+          hadRevisions: false,
+          entries: [],
+          summary: null,
+        };
+      }
 
       // ═══════════════════════════════════════════════════════════
       // Capture Pre-Processing Snapshot (for comparison feature)
@@ -1501,16 +1534,50 @@ export class WordDocumentProcessor {
 
       // ═══════════════════════════════════════════════════════════
       // OPTIONALLY AUTO-ACCEPT REVISIONS
-      // If autoAcceptRevisions is true (default), accept all tracked changes
+      // If autoAcceptRevisions is true, accept ALL tracked changes
+      // (both pre-existing and DocHub processing changes)
       // This produces a clean document while UI still shows what changed
+      // Default: false - preserve tracked changes in document
+      //
+      // NOTE: We explicitly call acceptAllRevisions() before save rather than
+      // relying on setAcceptRevisionsBeforeSave(). This ensures ALL revision
+      // types are accepted including w:pPrChange (paragraph property changes)
+      // which may not be handled by the deferred approach.
       // ═══════════════════════════════════════════════════════════
-      const autoAccept = options.autoAcceptRevisions ?? true; // Default to true for clean output
+      const autoAccept = options.autoAcceptRevisions ?? false;
       if (autoAccept) {
-        this.log.debug("=== AUTO-ACCEPTING ALL REVISIONS ===");
+        this.log.debug("=== ACCEPTING ALL REVISIONS ===");
         try {
-          await RevisionAwareProcessor.prepare(doc, { mode: "accept_all" });
+          // First, flush any pending changes so they're registered in RevisionManager
+          if (typeof (doc as any).flushPendingChanges === 'function') {
+            const flushed = (doc as any).flushPendingChanges();
+            this.log.debug(`Flushed ${flushed?.length || 0} pending changes before acceptance`);
+          }
+
+          // Explicitly accept all revisions NOW (not deferred to save)
+          // This handles all revision types: w:ins, w:del, w:pPrChange, w:rPrChange, etc.
+          let acceptedCount = 0;
+          const revisionManager = (doc as any).getRevisionManager?.();
+          if (revisionManager && typeof revisionManager.acceptAll === 'function') {
+            acceptedCount = revisionManager.acceptAll();
+            this.log.info(`Accepted ${acceptedCount} revisions via RevisionManager.acceptAll()`);
+          } else if (typeof (doc as any).acceptAllRevisions === 'function') {
+            acceptedCount = (doc as any).acceptAllRevisions();
+            this.log.info(`Accepted ${acceptedCount} revisions via Document.acceptAllRevisions()`);
+          } else {
+            // Fallback: try setAcceptRevisionsBeforeSave if direct methods not available
+            this.log.warn("Direct acceptance methods not available, using setAcceptRevisionsBeforeSave fallback");
+            doc.setAcceptRevisionsBeforeSave(true);
+          }
+
+          // Disable track changes so no new revisions are created during save
           doc.disableTrackChanges();
-          this.log.info("All revisions accepted - document will be clean");
+
+          // Count total expected revisions (pre-existing + DocHub)
+          const preExistingCount = result.previousRevisions?.entries.length || 0;
+          const docHubCount = result.wordRevisions?.entries.length || 0;
+          this.log.info(`Auto-accept complete - ${preExistingCount + docHubCount} total revisions accepted (${preExistingCount} pre-existing + ${docHubCount} DocHub changes)`);
+
           if (result.wordRevisions) {
             result.wordRevisions.handlingResult = {
               accepted: result.wordRevisions.entries.map((e) => e.id),
@@ -1519,11 +1586,14 @@ export class WordDocumentProcessor {
             };
           }
         } catch (acceptError) {
-          this.log.warn("Failed to auto-accept revisions:", acceptError);
+          this.log.warn("Failed to accept revisions:", acceptError);
           // Non-fatal - document will have tracked changes visible
         }
       } else {
-        this.log.info("Auto-accept disabled - tracked changes will be visible in Word");
+        // When auto-accept is OFF, both pre-existing AND DocHub changes remain visible in Word
+        const preExistingCount = result.previousRevisions?.entries.length || 0;
+        const docHubCount = result.wordRevisions?.entries.length || 0;
+        this.log.info(`Auto-accept disabled - ${preExistingCount + docHubCount} tracked changes will be visible in Word (${preExistingCount} pre-existing + ${docHubCount} DocHub)`);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -2491,6 +2561,7 @@ export class WordDocumentProcessor {
     // Find configured styles
     const header1Style = styles.find((s) => s.id === "header1");
     const header2Style = styles.find((s) => s.id === "header2");
+    const header3Style = styles.find((s) => s.id === "header3");
     const normalStyle = styles.find((s) => s.id === "normal");
 
     for (const para of paragraphs) {
@@ -2504,20 +2575,37 @@ export class WordDocumentProcessor {
           styleToApply = header1Style;
         } else if (headingLevel === 2 && header2Style) {
           styleToApply = header2Style;
+        } else if (headingLevel === 3 && header3Style) {
+          styleToApply = header3Style;
         } else if (!headingLevel && para.getText().trim() && normalStyle) {
           // Not a heading but has content - apply normal style
           styleToApply = normalStyle;
         }
       } catch (error) {
-        // Fallback to old method if helper not available
-        const currentStyle = para.getStyle() || para.getFormatting().style;
+        // Fallback to style-based matching when detectHeadingLevel is not available
+        const currentStyle = para.getStyle() || (para.getFormatting()?.style) || '';
 
         if ((currentStyle === "Heading1" || currentStyle === "Heading 1") && header1Style) {
           styleToApply = header1Style;
         } else if ((currentStyle === "Heading2" || currentStyle === "Heading 2") && header2Style) {
           styleToApply = header2Style;
-        } else if ((!currentStyle || currentStyle === "Normal") && normalStyle) {
-          styleToApply = normalStyle;
+        } else if ((currentStyle === "Heading3" || currentStyle === "Heading 3") && header3Style) {
+          styleToApply = header3Style;
+        } else if (currentStyle === "ListParagraph" || currentStyle === "List Paragraph") {
+          // List paragraphs get normal style formatting for text properties
+          if (normalStyle) {
+            styleToApply = normalStyle;
+          }
+        } else if (normalStyle && para.getText()?.trim()) {
+          // KEY FIX: Any paragraph with content that doesn't match a specific style
+          // gets Normal style applied. This catches:
+          // - Unstyled table cell paragraphs (style === "" or null)
+          // - Paragraphs explicitly set to "Normal"
+          // - Any other unknown style types
+          // Skip TOC paragraphs which have special formatting
+          if (!currentStyle?.startsWith?.('TOC')) {
+            styleToApply = normalStyle;
+          }
         }
       }
 
@@ -2718,14 +2806,15 @@ export class WordDocumentProcessor {
     });
 
     // Feature detection: Check if framework method exists
+    let frameworkResults = null;
     if (typeof (doc as any).applyStyles === "function") {
       this.log.debug("Using framework applyStyles()");
 
       try {
         // Use docXMLater's native applyStyles method
         // This handles both style definition updates and direct formatting clearing
-        const results = (doc as any).applyStyles(options);
-        return results;
+        frameworkResults = (doc as any).applyStyles(options);
+        this.log.debug("Framework applyStyles completed");
       } catch (error) {
         this.log.warn("Framework method failed, falling back to manual implementation:", error);
         // Fall through to manual implementation
@@ -2736,12 +2825,15 @@ export class WordDocumentProcessor {
       );
     }
 
-    // FALLBACK: Use manual style assignment implementation
-    this.log.debug("Using manual assignStylesToDocument() fallback");
-    await this.assignStylesToDocument(doc, styles);
+    // ALWAYS run manual style assignment to catch unstyled paragraphs
+    // The framework method may not process paragraphs without explicit styles
+    // (e.g., table cell paragraphs that have no w:pStyle defined)
+    this.log.debug("Running manual assignStylesToDocument() for comprehensive coverage");
+    const manualCount = await this.assignStylesToDocument(doc, styles);
+    this.log.debug(`Manual style assignment applied to ${manualCount} additional paragraphs`);
 
-    // Return results matching framework format (all styles processed)
-    const appliedStyles = {
+    // Return results - use framework results if available, otherwise construct from styles
+    const appliedStyles = frameworkResults || {
       heading1: styles.some((s) => s.id === "header1"),
       heading2: styles.some((s) => s.id === "header2"),
       heading3: styles.some((s) => s.id === "header3"),
@@ -2749,7 +2841,7 @@ export class WordDocumentProcessor {
       listParagraph: styles.some((s) => s.id === "listParagraph"),
     };
 
-    this.log.debug(`Manual fallback completed: ${JSON.stringify(appliedStyles)}`);
+    this.log.debug(`Style application completed: ${JSON.stringify(appliedStyles)}`);
     return appliedStyles;
   }
 
@@ -5002,8 +5094,8 @@ export class WordDocumentProcessor {
     this.applyTOCStyles(doc, levelsToInclude);
     this.log.debug("✓ Step 3: Applied TOC styles");
 
-    // Step 4: Populate TOC manually with styled entries
-    const tocResult = await this.manuallyPopulateTOC(doc);
+    // Step 4: Populate TOC manually with styled entries (pass levels to avoid re-parsing)
+    const tocResult = await this.manuallyPopulateTOC(doc, levelsToInclude);
     this.log.debug(`✓ Step 4: Created ${tocResult.count} TOC entries`);
 
     this.log.info(
@@ -5019,14 +5111,15 @@ export class WordDocumentProcessor {
    * 1. Finds all existing headings (Heading1, Heading2, Heading3) in document
    * 2. Creates bookmarks for each heading
    * 3. Finds all TOC field elements in document (or creates TOC from scratch if none exist)
-   * 4. Parses TOC field instructions to determine which levels to include
+   * 4. Uses provided levels or falls back to all heading levels in document
    * 5. Replaces TOC fields with manual hyperlink paragraphs
    * 6. Formats TOC entries with proper indentation and Verdana 12pt blue styling
    *
    * @param doc - Document to process
+   * @param precomputedLevels - Optional pre-parsed TOC levels to avoid re-parsing
    * @returns Object with count of TOC entries created and list of heading names included
    */
-  private async manuallyPopulateTOC(doc: Document): Promise<{ count: number; headings: string[] }> {
+  private async manuallyPopulateTOC(doc: Document, precomputedLevels?: number[]): Promise<{ count: number; headings: string[] }> {
     let totalEntriesCreated = 0;
     const includedHeadings: string[] = [];
 
@@ -5123,18 +5216,16 @@ export class WordDocumentProcessor {
       // ============================================
       let levelsToInclude: number[] = [];
 
-      // Parse TOC levels from document (handles &quot; entities correctly)
-      levelsToInclude = await this.parseTOCLevels(doc);
-      if (levelsToInclude.length > 0) {
-        this.log.info(`Parsed levels from TOC field: ${levelsToInclude.join(", ")}`);
-      }
-
-      // If no levels found, use all heading levels found in document
-      if (levelsToInclude.length === 0) {
+      // Use precomputed levels if provided, otherwise fall back to all heading levels
+      if (precomputedLevels && precomputedLevels.length > 0) {
+        levelsToInclude = precomputedLevels;
+        this.log.debug(`Using precomputed TOC levels: ${levelsToInclude.join(", ")}`);
+      } else {
+        // Fall back to all heading levels found in document
         const uniqueLevels = new Set(allHeadings.map((h) => h.level));
         levelsToInclude = Array.from(uniqueLevels).sort((a, b) => a - b);
         this.log.info(
-          `No TOC field found or parsed - using all heading levels in document: ${levelsToInclude.join(", ")}`
+          `No precomputed levels - using all heading levels in document: ${levelsToInclude.join(", ")}`
         );
       }
 

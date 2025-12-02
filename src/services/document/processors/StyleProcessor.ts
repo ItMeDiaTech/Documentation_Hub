@@ -245,7 +245,8 @@ export class StyleProcessor {
     const config: Record<string, unknown> = {};
 
     for (const style of styles) {
-      const runFormatting = {
+      // Use 'run' property name as expected by docxmlater applyStyles
+      const run = {
         font: style.fontFamily,
         size: style.fontSize,
         bold: style.bold,
@@ -257,21 +258,25 @@ export class StyleProcessor {
         preserveUnderline: style.preserveUnderline,
       };
 
-      const paragraphFormatting = {
+      // Use 'paragraph' property name with nested 'spacing' as expected by docxmlater
+      const paragraph: Record<string, unknown> = {
         alignment: style.alignment,
-        spaceBefore: style.spaceBefore,
-        spaceAfter: style.spaceAfter,
-        lineSpacing: style.lineSpacing,
+        spacing: {
+          before: style.spaceBefore,
+          after: style.spaceAfter,
+          line: style.lineSpacing ? style.lineSpacing * 20 : undefined, // Convert to twips if provided
+        },
       };
+
+      // Add indentation if provided
+      if (style.indentation) {
+        paragraph.indentation = style.indentation;
+      }
 
       const styleConfig: Record<string, unknown> = {
-        runFormatting,
-        paragraphFormatting,
+        run,
+        paragraph,
       };
-
-      if (style.indentation) {
-        (styleConfig as any).indentation = style.indentation;
-      }
 
       if (style.noSpaceBetweenSame !== undefined) {
         (styleConfig as any).noSpaceBetweenSame = style.noSpaceBetweenSame;
@@ -285,7 +290,9 @@ export class StyleProcessor {
         case "header2":
           config.heading2 = {
             ...styleConfig,
-            tableShading: tableShadingSettings?.header2Shading,
+            tableOptions: tableShadingSettings?.header2Shading
+              ? { shading: tableShadingSettings.header2Shading }
+              : undefined,
           };
           break;
         case "header3":
