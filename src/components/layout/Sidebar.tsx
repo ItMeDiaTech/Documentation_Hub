@@ -13,6 +13,7 @@ import {
 import { cn } from '@/utils/cn';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
+import iconSvg from '/icon.svg';
 
 interface NavItem {
   id: string;
@@ -193,7 +194,7 @@ export const Sidebar = memo(function Sidebar() {
                 whileTap={{ scale: 0.9 }}
                 className="w-8 h-8 rounded-lg cursor-pointer hover:opacity-90 transition-opacity overflow-hidden"
               >
-                <img src="/icon.svg" alt="DocHub" className="w-full h-full" />
+                <img src={iconSvg} alt="DocHub" className="w-full h-full" />
               </motion.div>
               <span className="font-semibold text-sm">DocHub</span>
             </motion.div>
@@ -205,7 +206,7 @@ export const Sidebar = memo(function Sidebar() {
             whileTap={{ scale: 0.9 }}
             className="w-8 h-8 rounded-lg cursor-pointer hover:opacity-90 transition-opacity overflow-hidden"
           >
-            <img src="/icon.svg" alt="DocHub" className="w-full h-full" />
+            <img src={iconSvg} alt="DocHub" className="w-full h-full" />
           </motion.div>
         )}
       </div>

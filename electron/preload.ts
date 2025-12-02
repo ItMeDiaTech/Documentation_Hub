@@ -63,19 +63,18 @@ const electronAPI = {
   batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) =>
     ipcRenderer.invoke('hyperlink:batch-process', { filePaths, options }),
   validateApi: (apiUrl: string) => ipcRenderer.invoke('hyperlink:validate-api', { apiUrl }),
-  callPowerAutomateApi: (request: {
-    apiUrl: string;
-    body: {
+  callPowerAutomateApi: (
+    apiUrl: string,
+    payload: {
       Lookup_ID: string[];
       Hyperlinks_Checked: number;
       Total_Hyperlinks: number;
       First_Name: string;
       Last_Name: string;
       Email: string;
-    };
-    timeout?: number;
-    headers?: Record<string, string>;
-  }) => ipcRenderer.invoke('hyperlink:call-api', request),
+    },
+    timeout?: number
+  ) => ipcRenderer.invoke('hyperlink:call-api', { apiUrl, payload, timeout }),
   cancelOperation: (operationId: string) =>
     ipcRenderer.invoke('hyperlink:cancel-operation', { operationId }),
   onBatchProgress: (callback: (progress: BatchProgress) => void) => {
