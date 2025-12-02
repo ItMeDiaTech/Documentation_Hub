@@ -910,34 +910,204 @@ class HyperlinkIPCHandler {
       }
     });
 
-    // Validate PowerAutomate API endpoint
+    // Validate PowerAutomate API endpoint using net.request (respects proxy/Zscaler)
     ipcMain.handle("hyperlink:validate-api", async (event, request) => {
       try {
         const startTime = performance.now();
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
 
-        const response = await fetch(request.apiUrl, {
-          method: "OPTIONS",
-          signal: controller.signal,
+        return new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            resolve({
+              isValid: false,
+              message: "Connection timeout after 5000ms",
+              responseTime: 5000,
+            });
+          }, 5000);
+
+          const netRequest = net.request({
+            method: "OPTIONS",
+            url: request.apiUrl,
+            session: session.defaultSession,
+          });
+
+          netRequest.on("response", (response) => {
+            clearTimeout(timeout);
+            const responseTime = performance.now() - startTime;
+            const isValid = response.statusCode >= 200 && response.statusCode < 400 || response.statusCode === 405;
+            resolve({
+              isValid,
+              message: isValid
+                ? "API endpoint is reachable"
+                : `API returned status ${response.statusCode}`,
+              responseTime,
+            });
+          });
+
+          netRequest.on("error", (error) => {
+            clearTimeout(timeout);
+            resolve({
+              isValid: false,
+              message: error.message || "Validation failed",
+            });
+          });
+
+          netRequest.end();
         });
-
-        clearTimeout(timeout);
-        const responseTime = performance.now() - startTime;
-
-        return {
-          isValid: response.ok || response.status === 405, // 405 if OPTIONS not supported
-          message: response.ok
-            ? "API endpoint is reachable"
-            : `API returned status ${response.status}`,
-          responseTime,
-        };
       } catch (error) {
         return {
           isValid: false,
           message: error instanceof Error ? error.message : "Validation failed",
         };
       }
+    });
+
+    // Call PowerAutomate API using net.request (respects proxy/Zscaler settings)
+    // This is the main handler for sending hyperlink data to Power Automate
+    ipcMain.handle("hyperlink:call-api", async (event, request: {
+      apiUrl: string;
+      body: {
+        Lookup_ID: string[];
+        Hyperlinks_Checked: number;
+        Total_Hyperlinks: number;
+        First_Name: string;
+        Last_Name: string;
+        Email: string;
+      };
+      timeout?: number;
+      headers?: Record<string, string>;
+    }) => {
+      const timeoutMs = request.timeout || 30000;
+      const startTime = performance.now();
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          log.warn(`PowerAutomate API call timed out after ${timeoutMs}ms`);
+          resolve({
+            success: false,
+            error: `API request timeout after ${timeoutMs}ms`,
+            statusCode: 0,
+          });
+        }, timeoutMs);
+
+        try {
+          const netRequest = net.request({
+            method: "POST",
+            url: request.apiUrl,
+            session: session.defaultSession,
+          });
+
+          // Set headers
+          netRequest.setHeader("Content-Type", "application/json");
+
+          // Add Zscaler bypass headers if detected
+          if (zscalerConfig.isDetected()) {
+            const bypassHeaders = zscalerConfig.getBypassHeaders();
+            for (const [key, value] of Object.entries(bypassHeaders)) {
+              // Skip User-Agent as it may cause issues
+              if (key !== "User-Agent") {
+                netRequest.setHeader(key, value);
+              }
+            }
+          }
+
+          // Add custom headers if provided
+          if (request.headers) {
+            for (const [key, value] of Object.entries(request.headers)) {
+              netRequest.setHeader(key, value);
+            }
+          }
+
+          let responseData = "";
+
+          netRequest.on("response", (response) => {
+            log.info(`PowerAutomate API response status: ${response.statusCode}`);
+
+            response.on("data", (chunk: Buffer) => {
+              responseData += chunk.toString();
+            });
+
+            response.on("end", () => {
+              clearTimeout(timeout);
+              const responseTime = performance.now() - startTime;
+
+              if (response.statusCode >= 200 && response.statusCode < 300) {
+                try {
+                  const data = JSON.parse(responseData);
+                  log.info(`PowerAutomate API call successful (${responseTime.toFixed(0)}ms)`);
+                  resolve({
+                    success: true,
+                    data,
+                    statusCode: response.statusCode,
+                    responseTime,
+                  });
+                } catch (parseError) {
+                  log.error("Failed to parse API response:", parseError);
+                  resolve({
+                    success: false,
+                    error: "Failed to parse API response",
+                    statusCode: response.statusCode,
+                    rawResponse: responseData,
+                  });
+                }
+              } else {
+                log.error(`PowerAutomate API error: ${response.statusCode} - ${responseData}`);
+                resolve({
+                  success: false,
+                  error: `API returned status ${response.statusCode}: ${responseData}`,
+                  statusCode: response.statusCode,
+                });
+              }
+            });
+
+            response.on("error", (error) => {
+              clearTimeout(timeout);
+              log.error("PowerAutomate response error:", error);
+              resolve({
+                success: false,
+                error: error.message || "Response error",
+                statusCode: response.statusCode,
+              });
+            });
+          });
+
+          netRequest.on("error", (error) => {
+            clearTimeout(timeout);
+            log.error("PowerAutomate API request error:", error);
+
+            // Check if it's a certificate/Zscaler error
+            const errorMessage = error.message?.toLowerCase() || "";
+            let userFriendlyError = error.message;
+
+            if (
+              errorMessage.includes("certificate") ||
+              errorMessage.includes("ssl") ||
+              errorMessage.includes("unable to verify")
+            ) {
+              userFriendlyError =
+                "SSL/Certificate error - this may be caused by corporate proxy (Zscaler). " +
+                "Please check Settings > Certificates to configure your corporate certificate.";
+            }
+
+            resolve({
+              success: false,
+              error: userFriendlyError,
+              statusCode: 0,
+            });
+          });
+
+          // Write request body and send
+          netRequest.write(JSON.stringify(request.body));
+          netRequest.end();
+        } catch (error) {
+          clearTimeout(timeout);
+          log.error("PowerAutomate API call failed:", error);
+          resolve({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+            statusCode: 0,
+          });
+        }
+      });
     });
 
     // Cancel ongoing operation
