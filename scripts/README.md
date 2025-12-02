@@ -218,6 +218,112 @@ Statistics:
 ==============================================================
 ```
 
+### `api_diagnostic.py` - PowerAutomate API Diagnostic Tool
+
+**Purpose:** Tests the PowerAutomate API connection and response format independently of the application. Helps diagnose API-related processing failures.
+
+**What it does:**
+
+1. **Extract Lookup IDs from DOCX** - Parses document hyperlinks to find Content_ID and Document_ID values
+2. **Test API Connection** - Sends test request matching DocHub's exact payload format
+3. **Validate Response Format** - Checks if response has expected `Results` array structure
+4. **Report Timing** - Shows request duration to detect timeout issues
+5. **Show Full Response** - Displays actual API response for debugging
+
+**Requirements:**
+
+- Python 3.6 or higher
+- No external dependencies (uses only standard library)
+- Network access to PowerAutomate endpoint
+
+**Usage:**
+
+```bash
+# Test with specific Lookup IDs
+python scripts/api_diagnostic.py --url "https://your-api-url" --ids "TSRC-ABC-123456,TSRC-DEF-789012"
+
+# Extract IDs from DOCX and test API
+python scripts/api_diagnostic.py --url "https://your-api-url" --docx document.docx
+
+# Only extract IDs from DOCX (no API call)
+python scripts/api_diagnostic.py --docx document.docx --extract-only
+
+# Verbose mode - show full response data
+python scripts/api_diagnostic.py --url "https://your-api-url" --ids "TSRC-ABC-123456" --verbose
+
+# Use a config file
+python scripts/api_diagnostic.py --config api_config.json
+
+# JSON output
+python scripts/api_diagnostic.py --url "https://your-api-url" --ids "TSRC-ABC-123456" --json
+
+# Custom timeout (default 30s)
+python scripts/api_diagnostic.py --url "https://your-api-url" --ids "TSRC-ABC-123456" --timeout 60
+```
+
+**Config File Format (JSON):**
+
+```json
+{
+  "apiUrl": "https://your-powerautomate-url",
+  "lookupIds": ["TSRC-ABC-123456", "TSRC-DEF-789012"],
+  "userProfile": {
+    "firstName": "John",
+    "lastName": "Doe",
+    "email": "john@example.com"
+  },
+  "timeout": 30
+}
+```
+
+**What it checks:**
+
+- HTTP status code (200-299 = success)
+- Response is valid JSON
+- Response contains `Results` key (case-sensitive - must be uppercase)
+- `Results` is an array
+- Shows fields available in result objects
+
+**Common Issues Detected:**
+
+| Issue | Symptom | Solution |
+|-------|---------|----------|
+| Wrong case | `results` instead of `Results` | Update PowerAutomate flow to use uppercase |
+| Empty results | `Results: []` | Check if Lookup IDs are valid |
+| No Results key | Different response structure | Check PowerAutomate flow response format |
+| Timeout | Request exceeds 30s | Increase timeout or optimize flow |
+| Auth error | 401/403 status | Check API permissions |
+
+**Example Output:**
+
+```
+======================================================================
+PowerAutomate API Diagnostic Report
+======================================================================
+
+[Request]
+  URL: https://prod-xx.westus.logic.azure.com/workflows/...
+  Method: POST
+  Timeout: 30s
+  Lookup_ID count: 5
+  Lookup_IDs: TSRC-ABC-123456, TSRC-DEF-789012...
+
+[Timing]
+  Elapsed: 1234.56 ms
+
+[Response]
+  Status: 200
+  JSON Parsed: Yes
+  Body Length: 2048 bytes
+  Results Count: 5
+  Result Fields: Document_ID, Content_ID, Title, Status
+
+======================================================================
+Status: SUCCESS
+The API returned a valid response with Results array.
+======================================================================
+```
+
 ### Internal Diagnostic Scripts
 
 Located in `scripts/diagnostics/` (gitignored - development only):
