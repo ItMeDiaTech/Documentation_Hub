@@ -118,9 +118,109 @@ During `npm install`, you may see these warnings which are safe to ignore:
 
 These warnings don't affect the build process and can be safely ignored.
 
-## Diagnostic Scripts
+## Document Diagnostic Scripts
 
-Located in `scripts/diagnostics/`:
+### `docx_diagnostic.py` - DOCX File Diagnostic Tool
+
+**Purpose:** Analyzes Word documents (.docx) for potential processing issues without requiring the full application. Detects common problems that cause document processing errors.
+
+**What it checks:**
+
+1. **ZIP Structure** - Verifies DOCX is a valid ZIP archive with required files
+2. **Invalid XML Characters** - Scans for control characters (0x00-0x1F) that break XML parsing
+3. **Tracked Changes** - Counts revisions (w:ins, w:del) and detects nested revisions
+4. **Smart Tags** - Finds deprecated smart tag elements
+5. **Content Controls** - Detects SDT elements and locked controls
+6. **Field Codes** - Identifies TOC, cross-references, mail merge fields
+7. **Embedded Objects** - Checks for OLE objects that may cause issues
+8. **Equations** - Finds OMML equations that may not process correctly
+9. **Relationships** - Validates internal references and detects broken links
+10. **Custom Namespaces** - Detects third-party extensions
+
+**Requirements:**
+
+- Python 3.6 or higher
+- No external dependencies (uses only standard library)
+
+**Usage:**
+
+```bash
+# Basic usage - analyze a single file
+python scripts/docx_diagnostic.py document.docx
+
+# Verbose mode - show detailed context for issues
+python scripts/docx_diagnostic.py document.docx --verbose
+
+# JSON output - for programmatic use
+python scripts/docx_diagnostic.py document.docx --json
+
+# Analyze multiple files
+python scripts/docx_diagnostic.py *.docx
+
+# Save JSON report to file
+python scripts/docx_diagnostic.py document.docx --json > report.json
+
+# Disable colored output
+python scripts/docx_diagnostic.py document.docx --no-color
+```
+
+**Output:**
+
+- Color-coded console output with severity levels (ERROR, WARNING, INFO)
+- Detailed location and context for each issue found
+- Suggestions for how to fix each issue
+- Summary statistics (tracked changes count, hyperlinks, embedded objects, etc.)
+
+**Exit Codes:**
+
+- `0` - All files passed (no errors found)
+- `1` - One or more files had errors
+- `2` - Invalid arguments or file not found
+
+**When to use:**
+
+- Before processing a document that shows "Error" status
+- To diagnose why a document fails to process
+- To check documents from external sources before importing
+- To verify document integrity after manual edits
+
+**Example Output:**
+
+```
+Analyzing: problematic_document.docx
+
+==============================================================
+DOCX Diagnostic Report
+File: problematic_document.docx
+Size: 2.45 MB
+==============================================================
+
+[Invalid Characters]
+[ERROR] Invalid Characters: Found 3 invalid XML character(s) in word/document.xml
+  Location: Characters found: 0x03: 2x, 0x1f: 1x
+  Suggestion: Remove control characters. These often come from copy/paste operations.
+
+[Tracked Changes]
+[WARNING] Tracked Changes: Document contains 47 tracked change(s)
+  Location: Insertions: 23, Deletions: 20, Paragraph changes: 4, Run changes: 0
+  Suggestion: Accept or reject all tracked changes before processing to avoid issues.
+
+==============================================================
+Status: FAIL
+Errors: 1
+Warnings: 1
+Info: 3
+
+Statistics:
+  Tracked Changes: 47
+  Hyperlinks: 15
+  Media Files: 8
+==============================================================
+```
+
+### Internal Diagnostic Scripts
+
+Located in `scripts/diagnostics/` (gitignored - development only):
 
 - `analyze-test6.js` - Test file analysis
 - `diagnose-before-tables.ts` - Table diagnostics
