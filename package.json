@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "3.5.0",
+  "version": "3.5.1",
   "description": "A modern document processing and session management desktop application",
   "main": "dist/electron/main.js",
   "scripts": {
@@ -73,7 +73,6 @@
   },
   "dependencies": {
     "@azure/msal-node": "^3.8.3",
-    "@kilocode/cli": "^0.6.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-popover": "^1.1.15",

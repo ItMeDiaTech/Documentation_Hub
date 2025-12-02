@@ -842,32 +842,127 @@ export class HyperlinkService {
       Email: string;
     }
   ): Promise<HyperlinkApiResponse> {
-    const controller = new AbortController();
     const timeoutMs = settings.timeout || 30000;
+
+    // Sanitize the API URL to fix any encoding issues
+    // This is critical for Azure Logic Apps URLs which often have encoded query parameters
+    const sanitizedUrl = sanitizeUrl(settings.apiUrl);
+
+    this.log.debug('Original API URL:', settings.apiUrl);
+    if (sanitizedUrl !== settings.apiUrl) {
+      this.log.info('URL sanitized - Fixed encoding issues:', {
+        original: settings.apiUrl.substring(0, 100) + '...',
+        sanitized: sanitizedUrl.substring(0, 100) + '...',
+      });
+    }
+
+    // Validate the URL before using it
+    const validation = validatePowerAutomateUrl(sanitizedUrl);
+    if (!validation.valid) {
+      const errorMsg = `Invalid PowerAutomate URL: ${validation.issues.join(', ')}`;
+      this.log.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    // Use Electron IPC bridge if available (uses net.request which respects proxy/Zscaler)
+    // This is the recommended approach for corporate environments with proxies
+    if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.callPowerAutomateApi === 'function') {
+      return this.callPowerAutomateApiViaIPC(sanitizedUrl, request, settings, timeoutMs);
+    }
+
+    // Fallback to direct fetch (for non-Electron environments or testing)
+    return this.callPowerAutomateApiDirect(sanitizedUrl, request, settings, timeoutMs);
+  }
+
+  /**
+   * Call Power Automate API via Electron IPC bridge
+   * Uses net.request which properly respects system proxy and certificate settings
+   */
+  private async callPowerAutomateApiViaIPC(
+    sanitizedUrl: string,
+    request: {
+      Lookup_ID: string[];
+      Hyperlinks_Checked: number;
+      Total_Hyperlinks: number;
+      First_Name: string;
+      Last_Name: string;
+      Email: string;
+    },
+    settings: HyperlinkApiSettings,
+    timeoutMs: number
+  ): Promise<HyperlinkApiResponse> {
+    const maxRetries = settings.retryAttempts || 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          // Exponential backoff
+          await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          this.log.info(`Retry attempt ${attempt} of ${maxRetries}`);
+        }
+
+        this.log.debug('Sending API request via IPC to:', sanitizedUrl);
+        this.log.debug('Request body:', JSON.stringify(request));
+
+        const response = await window.electronAPI.callPowerAutomateApi({
+          apiUrl: sanitizedUrl,
+          body: request,
+          timeout: timeoutMs,
+          headers: settings.headers,
+        });
+
+        if (!response.success) {
+          throw new Error(response.error || `API returned status ${response.statusCode}`);
+        }
+
+        this.log.info('API Response via IPC:', response.data);
+
+        // Parse response - simplified format: { Results: [...] }
+        const apiResponse: HyperlinkApiResponse = {
+          success: response.success && Array.isArray(response.data?.Results),
+          timestamp: new Date(),
+          statusCode: response.statusCode,
+        };
+
+        if (response.data?.Results) {
+          apiResponse.body = this.parseApiResults(response.data.Results);
+        }
+
+        return apiResponse;
+      } catch (error) {
+        lastError = error as Error;
+        this.log.error(`API attempt ${attempt + 1} failed:`, error);
+        // Don't retry on timeout
+        if (error instanceof Error && error.message.includes('timeout')) {
+          break;
+        }
+      }
+    }
+
+    throw lastError || new Error('API request failed after retries');
+  }
+
+  /**
+   * Call Power Automate API directly via fetch (fallback for non-Electron environments)
+   */
+  private async callPowerAutomateApiDirect(
+    sanitizedUrl: string,
+    request: {
+      Lookup_ID: string[];
+      Hyperlinks_Checked: number;
+      Total_Hyperlinks: number;
+      First_Name: string;
+      Last_Name: string;
+      Email: string;
+    },
+    settings: HyperlinkApiSettings,
+    timeoutMs: number
+  ): Promise<HyperlinkApiResponse> {
+    const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      // Sanitize the API URL to fix any encoding issues
-      // This is critical for Azure Logic Apps URLs which often have encoded query parameters
-      const sanitizedUrl = sanitizeUrl(settings.apiUrl);
-
-      this.log.debug('Original API URL:', settings.apiUrl);
-      if (sanitizedUrl !== settings.apiUrl) {
-        this.log.info('URL sanitized - Fixed encoding issues:', {
-          original: settings.apiUrl.substring(0, 100) + '...',
-          sanitized: sanitizedUrl.substring(0, 100) + '...',
-        });
-      }
-
-      // Validate the URL before using it
-      const validation = validatePowerAutomateUrl(sanitizedUrl);
-      if (!validation.valid) {
-        const errorMsg = `Invalid PowerAutomate URL: ${validation.issues.join(', ')}`;
-        this.log.error(errorMsg);
-        throw new Error(errorMsg);
-      }
-
-      // Add retry logic from Feature implementation
       let lastError: Error | null = null;
       const maxRetries = settings.retryAttempts || 3;
 
@@ -879,14 +974,13 @@ export class HyperlinkService {
             this.log.info(`Retry attempt ${attempt} of ${maxRetries}`);
           }
 
-          this.log.debug('Sending API request to:', sanitizedUrl);
+          this.log.debug('Sending API request (direct) to:', sanitizedUrl);
           this.log.debug('Request body:', JSON.stringify(request));
 
           const response = await fetch(sanitizedUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              // Note: User-Agent may be blocked in browser environment
               ...settings.headers,
             },
             body: JSON.stringify(request),
@@ -906,53 +1000,13 @@ export class HyperlinkService {
 
           // Parse response - simplified format: { Results: [...] }
           const apiResponse: HyperlinkApiResponse = {
-            // Success if HTTP 200 AND we have Results array
             success: response.ok && Array.isArray(data.Results),
             timestamp: new Date(),
             statusCode: response.status,
           };
 
           if (data.Results) {
-            // Cache results for efficient lookup
-            const resultsMap = new Map<string, HyperlinkApiResult>();
-
-            apiResponse.body = {
-              results:
-                data.Results?.map((result: PowerAutomateResponse['Body']['Results'][0]) => {
-                  // Trim whitespace from all fields as specified
-                  const rawStatus = result.Status?.trim() || 'Active';
-                  // Normalize status to match HyperlinkApiResult type
-                  const normalizedStatus: HyperlinkApiResult['status'] =
-                    rawStatus.toLowerCase() === 'deprecated'
-                      ? 'deprecated'
-                      : rawStatus.toLowerCase() === 'expired'
-                        ? 'expired'
-                        : rawStatus.toLowerCase() === 'moved'
-                          ? 'moved'
-                          : rawStatus.toLowerCase() === 'not_found'
-                            ? 'not_found'
-                            : 'active';
-
-                  const processed: HyperlinkApiResult = {
-                    url: '', // Will be constructed from Document_ID
-                    documentId: result.Document_ID?.trim() || '',
-                    contentId: result.Content_ID?.trim() || '',
-                    title: result.Title?.trim() || '',
-                    status: normalizedStatus,
-                    metadata: {},
-                  };
-
-                  // Cache by both IDs for quick lookup
-                  if (processed.documentId) resultsMap.set(processed.documentId, processed);
-                  if (processed.contentId) resultsMap.set(processed.contentId, processed);
-
-                  return processed;
-                }) || [],
-              errors: [],
-            };
-
-            // Store cache for quick lookups
-            (apiResponse as HyperlinkApiResponseWithCache).resultsCache = resultsMap;
+            apiResponse.body = this.parseApiResults(data.Results);
           }
 
           clearTimeout(timeout);
@@ -976,6 +1030,56 @@ export class HyperlinkService {
       clearTimeout(timeout);
       throw error;
     }
+  }
+
+  /**
+   * Parse API results into standardized format with caching
+   * Accepts results from both IPC (optional fields) and direct API (required fields)
+   */
+  private parseApiResults(results: Array<{
+    Document_ID?: string;
+    Content_ID?: string;
+    Title?: string;
+    Status?: string;
+  }>): HyperlinkApiResponse['body'] {
+    const resultsMap = new Map<string, HyperlinkApiResult>();
+
+    const parsedResults = results?.map((result) => {
+      // Trim whitespace from all fields as specified
+      const rawStatus = result.Status?.trim() || 'Active';
+      // Normalize status to match HyperlinkApiResult type
+      const normalizedStatus: HyperlinkApiResult['status'] =
+        rawStatus.toLowerCase() === 'deprecated'
+          ? 'deprecated'
+          : rawStatus.toLowerCase() === 'expired'
+            ? 'expired'
+            : rawStatus.toLowerCase() === 'moved'
+              ? 'moved'
+              : rawStatus.toLowerCase() === 'not_found'
+                ? 'not_found'
+                : 'active';
+
+      const processed: HyperlinkApiResult = {
+        url: '', // Will be constructed from Document_ID
+        documentId: result.Document_ID?.trim() || '',
+        contentId: result.Content_ID?.trim() || '',
+        title: result.Title?.trim() || '',
+        status: normalizedStatus,
+        metadata: {},
+      };
+
+      // Cache by both IDs for quick lookup
+      if (processed.documentId) resultsMap.set(processed.documentId, processed);
+      if (processed.contentId) resultsMap.set(processed.contentId, processed);
+
+      return processed;
+    }) || [];
+
+    return {
+      results: parsedResults,
+      errors: [],
+      // Note: resultsCache is added by caller if needed
+    };
   }
 
   // Utility methods matching the C# implementation
