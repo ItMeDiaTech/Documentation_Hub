@@ -1,45 +1,19 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, session, shell } from "electron";
 import * as fs from "fs";
 import { promises as fsPromises } from "fs";
-import * as https from "https";
-import * as http from "http";
 import * as path from "path";
-import { dirname, join } from "path";
+import { join } from "path";
 import { WordDocumentProcessor } from "../src/services/document/WordDocumentProcessor";
 import type { SharePointConfig } from "../src/types/dictionary";
 import type { BatchProcessingResult, HyperlinkProcessingResult } from "../src/types/hyperlink";
 import { initializeLogging, logger } from "../src/utils/logger";
 import { CustomUpdater } from "./customUpdater";
 import { MemoryConfig } from "./memoryConfig";
-import { proxyConfig } from "./proxyConfig";
 import type { BackupConfig } from "./services/BackupService";
 import { BackupService } from "./services/BackupService";
 import { getDictionaryService } from "./services/DictionaryService";
 import { getLocalDictionaryLookupService } from "./services/LocalDictionaryLookupService";
 import { getSharePointSyncService } from "./services/SharePointSyncService";
-import { zscalerConfig } from "./zscalerConfig";
-
-// ============================================================================
-// CRITICAL: SSL/TLS BYPASS FOR CORPORATE NETWORKS
-// These settings MUST be set before app.ready() for corporate proxies/Zscaler
-// ============================================================================
-
-// Method 1: Disable TLS certificate verification globally (Node.js level)
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-
-// Method 2: Chromium command line switches for certificate bypass
-// Must be called before app.ready()
-app.commandLine.appendSwitch("ignore-certificate-errors");
-app.commandLine.appendSwitch("allow-insecure-localhost");
-app.commandLine.appendSwitch("ignore-urlfetcher-cert-requests");
-app.commandLine.appendSwitch("allow-running-insecure-content");
-
-// Method 3: Disable HTTP/2 which can cause issues with some proxies
-app.commandLine.appendSwitch("disable-http2");
-
-// Method 4: Additional proxy-related switches
-app.commandLine.appendSwitch("disable-features", "OutOfBlinkCors");
-app.commandLine.appendSwitch("disable-site-isolation-trials");
 
 let mainWindow: BrowserWindow | null = null;
 const isDev = !app.isPackaged;
@@ -68,333 +42,24 @@ log.info("========================================");
 log.info("Configuring memory and heap size...");
 MemoryConfig.configureApp();
 
-// ============================================================================
-// Proxy, Zscaler, and TLS/Certificate Configuration
-// ============================================================================
-
-// Configure Zscaler detection and setup before anything else
-log.info("Initializing Zscaler detection...");
-zscalerConfig.logConfiguration();
-zscalerConfig.configureApp();
-
-// Log Zscaler status prominently
-if (zscalerConfig.isDetected()) {
-  log.warn("⚠️  ZSCALER DETECTED - Using enhanced certificate handling and fallback methods");
-} else {
-  log.info("✓ No Zscaler detected - Using standard network configuration");
-}
-
-// Configure proxy settings
-log.info("Initializing proxy and TLS configuration...");
-proxyConfig.logConfiguration();
-proxyConfig.configureApp();
 
 // ============================================================================
-// Pre-flight Certificate Check for GitHub Connectivity
-// Now optimized for background execution
+// Session Configuration
 // ============================================================================
-async function performPreflightCertificateCheck(): Promise<void> {
-  log.info("Performing pre-flight certificate check for GitHub...");
-
-  // Early return if offline
-  if (!app.isReady()) {
-    log.warn("App not ready for certificate check");
-    return;
-  }
-
+async function configureSession(): Promise<void> {
+  log.info("Configuring session...");
   try {
-    // Test connection to GitHub API with reduced timeout
-    const testUrl = "https://api.github.com/";
-    const request = net.request({
-      method: "GET",
-      url: testUrl,
-      session: session.defaultSession,
-    });
+    // Set User-Agent
+    const userAgent = `DocumentationHub/${app.getVersion()} (${process.platform})`;
+    session.defaultSession.setUserAgent(userAgent);
 
-    // Set shorter timeout for background check
-    const timeout = setTimeout(() => {
-      request.abort();
-    }, 5000); // 5 second timeout (reduced from 10)
-
-    // Promise to handle the response
-    const testResult = await new Promise<boolean>((resolve) => {
-      let responseReceived = false;
-
-      request.on("response", (response: Electron.IncomingMessage) => {
-        clearTimeout(timeout);
-        responseReceived = true;
-        const statusCode = response.statusCode;
-
-        if (statusCode >= 200 && statusCode < 400) {
-          log.info("✅ GitHub connection test PASSED");
-          resolve(true);
-        } else {
-          log.warn(`⚠️ GitHub returned status ${statusCode}`);
-          resolve(false);
-        }
-      });
-
-      request.on("error", async (error: Error) => {
-        clearTimeout(timeout);
-        if (!responseReceived) {
-          log.error("GitHub connection test FAILED:", error);
-
-          // Check if it's a certificate error
-          const errorMessage = error.message?.toLowerCase() || "";
-          if (
-            errorMessage.includes("certificate") ||
-            errorMessage.includes("ssl") ||
-            errorMessage.includes("tls") ||
-            errorMessage.includes("unable to verify") ||
-            errorMessage.includes("self signed")
-          ) {
-            log.info("Certificate error detected, attempting automatic fix...");
-
-            // If Zscaler is detected, try to find and configure its certificate
-            if (zscalerConfig.isDetected() && process.platform === "win32") {
-              try {
-                const { windowsCertStore } = await import("./windowsCertStore");
-                const certPath = await windowsCertStore.findZscalerCertificate();
-
-                if (certPath) {
-                  log.info("Found Zscaler certificate, configuring...");
-                  process.env.NODE_EXTRA_CA_CERTS = certPath;
-                  log.info("Set NODE_EXTRA_CA_CERTS to:", certPath);
-
-                  // Show user dialog about certificate configuration
-                  if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send("certificate-configured", {
-                      message:
-                        "Zscaler certificate automatically configured. Updates should work now.",
-                      certPath: certPath,
-                    });
-                  }
-                } else {
-                  // Show dialog to user about manual certificate configuration
-                  if (mainWindow && !mainWindow.isDestroyed()) {
-                    const choice = await dialog.showMessageBox(mainWindow, {
-                      type: "warning",
-                      buttons: ["Open Certificate Guide", "Continue Anyway"],
-                      defaultId: 0,
-                      title: "Certificate Configuration Required",
-                      message: "Zscaler is blocking secure connections to GitHub.",
-                      detail:
-                        "To enable automatic updates:\n\n" +
-                        "1. Export Zscaler certificate from your browser\n" +
-                        "2. Save it as C:\\Zscaler\\ZscalerRootCertificate.pem\n" +
-                        "3. Restart the application\n\n" +
-                        "Or contact your IT department to bypass GitHub.com from SSL inspection.",
-                    });
-
-                    if (choice.response === 0) {
-                      // Open guide in browser
-                      shell.openExternal(
-                        "https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Zscaler-Certificate-Setup"
-                      );
-                    }
-                  }
-                }
-              } catch (certError) {
-                log.error("Failed to configure certificate:", certError);
-              }
-            }
-          }
-          resolve(false);
-        }
-      });
-
-      request.end();
-    });
-
-    return;
-  } catch (error) {
-    log.error("Pre-flight check error:", error);
-  }
-}
-
-// ============================================================================
-// Session Proxy and Network Monitoring Configuration
-// MOVED to consolidated initialization in app.whenReady() below
-// ============================================================================
-async function configureSessionProxyAndNetworking(): Promise<void> {
-  log.info("Configuring session-level proxy and network monitoring...");
-  try {
-    await proxyConfig.configureSessionProxy();
-
-    // Set clean User-Agent to avoid proxy rejection
-    const cleanUA = proxyConfig.getCleanUserAgent();
-    session.defaultSession.setUserAgent(cleanUA);
-
-    // Set up comprehensive network request monitoring
-    session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-      const requestInfo = {
-        timestamp: new Date().toISOString(),
-        url: details.url,
-        method: details.method,
-        resourceType: details.resourceType,
-        referrer: details.referrer,
-      };
-
-      // Log network requests (skip data URLs and devtools)
-      if (!details.url.startsWith("data:") && !details.url.includes("devtools://")) {
-        log.debug("[Network Request]", requestInfo);
-
-        // Send to renderer for debug console
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("debug-network-request", requestInfo);
-        }
-      }
-
-      callback({});
-    });
-
-    // Monitor response headers for debugging
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-      if (details.url.includes("github.com") || details.url.includes("githubusercontent.com")) {
-        log.debug("[Network Response]", {
-          url: details.url,
-          statusCode: details.statusCode,
-          statusLine: details.statusLine,
-          headers: details.responseHeaders,
-        });
-      }
-      callback({});
-    });
-
-    // Monitor network errors
-    session.defaultSession.webRequest.onErrorOccurred((details) => {
-      const errorInfo = {
-        timestamp: new Date().toISOString(),
-        url: details.url,
-        error: details.error,
-        method: details.method,
-        resourceType: details.resourceType,
-      };
-
-      log.error("[Network Error]", errorInfo);
-
-      // Send to renderer for debug console
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("debug-network-error", errorInfo);
-      }
-    });
-
-    // Configure certificate verification for net.request (API calls)
-    // This allows corporate proxies like Zscaler to work with PowerAutomate
-    session.defaultSession.setCertificateVerifyProc((request, callback) => {
-      const { hostname, certificate, verificationResult, errorCode } = request;
-
-      // List of trusted hosts for API calls (PowerAutomate, Azure, Microsoft)
-      const trustedApiHosts = [
-        "logic.azure.com",
-        "azure.com",
-        "microsoft.com",
-        "microsoftonline.com",
-        "windows.net",
-        "azure-api.net",
-        "azureedge.net",
-        "powerplatform.com",  // New PowerAutomate API endpoint
-        "api.powerplatform.com",
-        "github.com",
-        "githubusercontent.com",
-      ];
-
-      // Check if this is a trusted host
-      const isTrustedHost = trustedApiHosts.some((host) =>
-        hostname.toLowerCase().includes(host)
-      );
-
-      // Check if this might be a Zscaler or corporate proxy certificate
-      const isProxyCert =
-        certificate.issuerName?.includes("Zscaler") ||
-        certificate.issuerName?.includes("ZScaler") ||
-        certificate.subjectName?.includes("Zscaler") ||
-        zscalerConfig.isDetected();
-
-      // IMPORTANT: Electron 39.x requires callback to receive a number
-      // verificationResult may not always be a valid number, so we must normalize it
-      // 0 = trust, -2 = ERR_CERT_AUTHORITY_INVALID (reject)
-      const normalizedResult = typeof verificationResult === 'number' ? verificationResult : -2;
-
-      if (normalizedResult === 0) {
-        // Certificate is valid
-        callback(0);
-      } else if (isTrustedHost) {
-        // Trust certificates for known API hosts (handles corporate proxy SSL inspection)
-        log.info(`[CertVerify] Trusting certificate for API host: ${hostname}`);
-        callback(0);
-      } else if (isProxyCert) {
-        // Trust Zscaler/corporate proxy certificates
-        log.info(`[CertVerify] Trusting corporate proxy certificate for: ${hostname}`);
-        callback(0);
-      } else {
-        // Log and reject unknown certificates - always pass a number to callback
-        log.warn(`[CertVerify] Rejecting certificate for: ${hostname}, error: ${errorCode}`);
-        callback(-2); // ERR_CERT_AUTHORITY_INVALID
-      }
-    });
-
-    log.info("✓ Session proxy, certificate verification, and network monitoring configured successfully");
+    log.info("✓ Session configured successfully");
   } catch (error) {
     log.error("❌ Failed to configure session:", error);
-    throw error; // Re-throw to allow caller to handle
+    throw error;
   }
 }
 
-// Enhanced login handler for proxy authentication
-app.on("login", async (event, webContents, details, authInfo, callback) => {
-  log.info("Login event received:", {
-    isProxy: authInfo.isProxy,
-    scheme: authInfo.scheme,
-    host: authInfo.host,
-    port: authInfo.port,
-    realm: authInfo.realm,
-  });
-
-  if (authInfo.isProxy) {
-    event.preventDefault();
-
-    const proxyAuth = proxyConfig.getProxyAuth();
-    if (proxyAuth) {
-      log.info("Providing proxy authentication from configuration");
-      callback(proxyAuth.username, proxyAuth.password);
-    } else {
-      // Try to get credentials from environment or prompt user
-      const username = process.env.PROXY_USER || process.env.proxy_user;
-      const password = process.env.PROXY_PASS || process.env.proxy_pass;
-
-      if (username && password) {
-        log.info("Providing proxy authentication from environment");
-        callback(username, password);
-      } else {
-        log.warn("No proxy credentials available, cancelling authentication");
-        callback("", ""); // Cancel authentication
-      }
-    }
-  }
-});
-
-// Configure TLS settings for corporate proxies and firewalls
-// This helps with certificate issues like "unable to get local issuer certificate"
-if (!isDev) {
-  log.info("Configuring global TLS settings for corporate environments...");
-
-  // Note: We're being more selective with certificate errors now
-  // Only ignore for known GitHub domains to maintain security
-
-  // Log the configuration
-  log.info("TLS Configuration:", {
-    platform: process.platform,
-    nodeVersion: process.version,
-    electronVersion: process.versions.electron,
-    isDev: isDev,
-    proxyUrl: proxyConfig.getProxyUrl(),
-  });
-}
-
-// Set environment variable for Node.js HTTPS module
-// This affects all HTTPS requests made by the app
-process.env["NODE_NO_WARNINGS"] = "1"; // Suppress TLS warnings in production
 
 // ============================================================================
 // CRITICAL SECURITY CONFIGURATION - DO NOT MODIFY
@@ -590,64 +255,18 @@ if (!isDev) {
   app.commandLine.appendSwitch("vmodule", "network_delegate=1");
 }
 
-// Handle certificate errors globally with comprehensive logging
+// Handle certificate errors globally
 app.on("certificate-error", (event, webContents, url, error, certificate, callback) => {
-  // Enhanced certificate error logging for debugging
-  const certError = {
-    timestamp: new Date().toISOString(),
-    url,
-    error,
-    certificate: {
-      issuerName: certificate.issuerName,
-      subjectName: certificate.subjectName,
-      serialNumber: certificate.serialNumber,
-      validStart: certificate.validStart,
-      validExpiry: certificate.validExpiry,
-      fingerprint: certificate.fingerprint,
-    },
-    network: {
-      proxy: proxyConfig.getProxyUrl(),
-      zscaler: zscalerConfig.isDetected(),
-      mutualTLS: "LIKELY", // Based on user's environment
-    },
-  };
+  log.warn("[Certificate Error]", { url, error });
 
-  log.warn("[Certificate Error - DETAILED]", JSON.stringify(certError, null, 2));
-
-  // Send to renderer for debug console if available
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("debug-cert-error", certError);
-  }
-
-  // Prevent the default behavior (which is to reject the certificate)
+  // Prevent the default behavior
   event.preventDefault();
 
-  // Check if this is a Zscaler-related error
-  if (zscalerConfig.isDetected()) {
-    log.info(
-      "[Certificate Error] Zscaler detected - checking if this is a Zscaler certificate issue"
-    );
-
-    // Check if the certificate issuer contains Zscaler
-    if (
-      certificate.issuerName?.includes("Zscaler") ||
-      certificate.subjectName?.includes("Zscaler") ||
-      zscalerConfig.isZscalerError({ message: error })
-    ) {
-      log.info("[Certificate Error] Detected Zscaler certificate - trusting it");
-      callback(true); // Trust Zscaler certificates
-      return;
-    }
-  }
-
-  // Check if this is for GitHub, update server, or PowerAutomate/Azure
+  // Trust certificates for known hosts (GitHub, Azure, Microsoft)
   const trustedHosts = [
     "github.com",
     "githubusercontent.com",
     "github.io",
-    "github-releases.githubusercontent.com",
-    "objects.githubusercontent.com",
-    // PowerAutomate / Azure Logic Apps hosts
     "logic.azure.com",
     "azure.com",
     "microsoft.com",
@@ -655,55 +274,39 @@ app.on("certificate-error", (event, webContents, url, error, certificate, callba
     "windows.net",
     "azure-api.net",
     "azureedge.net",
-    "powerplatform.com",  // New PowerAutomate API endpoint
+    "powerplatform.com",
     "api.powerplatform.com",
   ];
   const urlHost = new URL(url).hostname.toLowerCase();
 
   if (trustedHosts.some((host) => urlHost.includes(host))) {
     log.info(`[Certificate Error] Trusting certificate for known host: ${urlHost}`);
-    if (zscalerConfig.isDetected()) {
-      log.info("[Certificate Error] Note: Zscaler is performing SSL inspection on this connection");
-    }
-    callback(true); // Trust the certificate
+    callback(true);
   } else {
     log.warn(`[Certificate Error] Rejecting certificate for unknown host: ${urlHost}`);
-    callback(false); // Don't trust unknown certificates
+    callback(false);
   }
 });
 
 // ============================================================================
-// CONSOLIDATED APP INITIALIZATION - ISSUE #1 FIX
+// CONSOLIDATED APP INITIALIZATION
 // ============================================================================
-// CRITICAL FIX: Previously had 3 separate app.whenReady() handlers that ran
-// in parallel with no execution order guarantee. This caused race conditions:
-// - mainWindow could be null when updater tries to access it
-// - Proxy config might not complete before window loads
-// - Certificate check timing was unpredictable
-//
-// NOW: Single sequential initialization flow with guaranteed order:
-// 1. Configure session proxy and networking
-// 2. Create main window
-// 3. Perform certificate check (prerequisite for auto-updater)
-// 4. Initialize auto-updater (Issue #7 - depends on cert check)
-// ============================================================================
-
 app.whenReady().then(async () => {
   const startTime = Date.now();
-  log.info("🚀 App ready - beginning sequential initialization...");
+  log.info("🚀 App ready - beginning initialization...");
 
   try {
     // ========================================================================
-    // STEP 1: Configure Session Proxy and Network Monitoring
+    // STEP 1: Configure Session
     // ========================================================================
-    log.info("[1/4] Configuring session proxy and network monitoring...");
-    await configureSessionProxyAndNetworking();
+    log.info("[1/3] Configuring session...");
+    await configureSession();
     log.info(`✓ Step 1 complete (${Date.now() - startTime}ms)`);
 
     // ========================================================================
     // STEP 2: Create Main Window
     // ========================================================================
-    log.info("[2/4] Creating main window...");
+    log.info("[2/3] Creating main window...");
     const windowStartTime = Date.now();
     await createWindow();
     log.info(`✓ Step 2 complete - Window created (${Date.now() - windowStartTime}ms)`);
@@ -714,44 +317,9 @@ app.whenReady().then(async () => {
     }
 
     // ========================================================================
-    // STEP 3: Certificate Check (Prerequisite for Auto-Updater - Issue #7)
+    // STEP 3: Initialize Auto-Updater
     // ========================================================================
-    log.info("[3/4] Performing pre-flight certificate check...");
-    const certStartTime = Date.now();
-
-    try {
-      await performPreflightCertificateCheck();
-      log.info(`✓ Step 3 complete - Certificate check passed (${Date.now() - certStartTime}ms)`);
-
-      // Send success status to renderer
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("certificate-check-complete", {
-          success: true,
-          timestamp: new Date().toISOString(),
-          duration: Date.now() - certStartTime,
-        });
-      }
-    } catch (error) {
-      log.error(`❌ Certificate check failed (${Date.now() - certStartTime}ms):`, error);
-
-      // Send error status to renderer
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("certificate-check-complete", {
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-          timestamp: new Date().toISOString(),
-          duration: Date.now() - certStartTime,
-        });
-      }
-
-      // Don't throw - allow app to continue even if cert check fails
-      log.warn("⚠️  Continuing app initialization despite certificate check failure");
-    }
-
-    // ========================================================================
-    // STEP 4: Initialize Auto-Updater (Issue #7 - After Certificate Check)
-    // ========================================================================
-    log.info("[4/4] Initializing auto-updater...");
+    log.info("[3/3] Initializing auto-updater...");
     const updaterStartTime = Date.now();
 
     // Initialize updater (mainWindow is guaranteed to exist now)
@@ -761,20 +329,19 @@ app.whenReady().then(async () => {
       updaterHandler = new AutoUpdaterHandler();
       updaterHandler.checkOnStartup();
       updaterHandler.startScheduledChecks(); // Check for updates every 4 hours
-      log.info(`✓ Step 4 complete - Auto-updater initialized (${Date.now() - updaterStartTime}ms)`);
+      log.info(`✓ Step 3 complete - Auto-updater initialized (${Date.now() - updaterStartTime}ms)`);
     } else {
-      log.info("⊘ Step 4 skipped - Auto-updater disabled in development mode");
+      log.info("⊘ Step 3 skipped - Auto-updater disabled in development mode");
     }
 
     // ========================================================================
     // Initialization Complete
     // ========================================================================
     const totalTime = Date.now() - startTime;
-    log.info(`✅ Sequential initialization complete in ${totalTime}ms`);
-    log.info("   1. Session proxy configured");
+    log.info(`✅ Initialization complete in ${totalTime}ms`);
+    log.info("   1. Session configured");
     log.info("   2. Main window created");
-    log.info("   3. Certificate check completed");
-    log.info("   4. Auto-updater initialized");
+    log.info("   3. Auto-updater initialized");
   } catch (error) {
     log.error("❌ CRITICAL: App initialization failed:", error);
     log.error("Stack trace:", error instanceof Error ? error.stack : "No stack trace");
@@ -2009,173 +1576,9 @@ ipcMain.handle("dictionary:get-status", async () => {
   }
 });
 
-// ==============================================================================
-// Certificate Management IPC Handlers
-// ==============================================================================
-
-ipcMain.handle("check-zscaler-status", async () => {
-  return {
-    detected: zscalerConfig.isDetected(),
-    certificatePath: zscalerConfig.getCertPath(),
-  };
-});
-
-ipcMain.handle("get-certificate-path", async () => {
-  return process.env.NODE_EXTRA_CA_CERTS || null;
-});
-
-ipcMain.handle("get-installed-certificates", async () => {
-  const certificates = [];
-
-  // Check for Zscaler certificate
-  if (zscalerConfig.getCertPath()) {
-    certificates.push({
-      path: zscalerConfig.getCertPath(),
-      name: "Zscaler Root Certificate",
-      isActive: process.env.NODE_EXTRA_CA_CERTS === zscalerConfig.getCertPath(),
-      isZscaler: true,
-    });
-  }
-
-  // Check for other configured certificates
-  if (
-    process.env.NODE_EXTRA_CA_CERTS &&
-    process.env.NODE_EXTRA_CA_CERTS !== zscalerConfig.getCertPath()
-  ) {
-    certificates.push({
-      path: process.env.NODE_EXTRA_CA_CERTS,
-      name: path.basename(process.env.NODE_EXTRA_CA_CERTS),
-      isActive: true,
-    });
-  }
-
-  return certificates;
-});
-
-ipcMain.handle("import-certificate", async () => {
-  try {
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: "Import Certificate",
-      filters: [
-        { name: "Certificate Files", extensions: ["pem", "crt", "cer", "ca"] },
-        { name: "All Files", extensions: ["*"] },
-      ],
-      properties: ["openFile"],
-    });
-
-    if (!result.canceled && result.filePaths.length > 0) {
-      const certPath = result.filePaths[0];
-
-      // Validate it's a certificate file
-      const content = await fsPromises.readFile(certPath, "utf-8");
-      if (content.includes("BEGIN CERTIFICATE")) {
-        // Set as the NODE_EXTRA_CA_CERTS
-        process.env.NODE_EXTRA_CA_CERTS = certPath;
-
-        return {
-          success: true,
-          name: path.basename(certPath),
-          path: certPath,
-        };
-      } else {
-        return {
-          success: false,
-          error: "Invalid certificate file format",
-        };
-      }
-    }
-
-    return { success: false, error: "No file selected" };
-  } catch (error) {
-    log.error("Error importing certificate:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
-  }
-});
-
-ipcMain.handle("auto-detect-certificates", async () => {
-  if (process.platform !== "win32") {
-    return { success: false, error: "Auto-detect only available on Windows" };
-  }
-
-  try {
-    const { windowsCertStore } = await import("./windowsCertStore");
-    const certPath = await windowsCertStore.findZscalerCertificate();
-
-    if (certPath) {
-      process.env.NODE_EXTRA_CA_CERTS = certPath;
-      return { success: true, count: 1, path: certPath };
-    } else {
-      // Try to create a bundle of all corporate certificates
-      const bundlePath = await windowsCertStore.createCombinedBundle();
-      if (bundlePath) {
-        process.env.NODE_EXTRA_CA_CERTS = bundlePath;
-        return { success: true, count: "multiple", path: bundlePath };
-      }
-    }
-
-    return { success: false, error: "No certificates found" };
-  } catch (error) {
-    log.error("Error auto-detecting certificates:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
-  }
-});
-
-ipcMain.handle(
-  "remove-certificate",
-  async (...[, certPath]: [Electron.IpcMainInvokeEvent, string]) => {
-    try {
-      if (process.env.NODE_EXTRA_CA_CERTS === certPath) {
-        delete process.env.NODE_EXTRA_CA_CERTS;
-      }
-      return { success: true };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { success: false, error: message };
-    }
-  }
-);
-
-ipcMain.handle("test-github-connection", async () => {
-  try {
-    const testUrl = "https://api.github.com/";
-    const request = net.request({
-      method: "GET",
-      url: testUrl,
-      session: session.defaultSession,
-    });
-
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        request.abort();
-        resolve({ success: false, error: "Connection timeout" });
-      }, 10000);
-
-      request.on("response", (response: Electron.IncomingMessage) => {
-        clearTimeout(timeout);
-        if (response.statusCode >= 200 && response.statusCode < 400) {
-          resolve({ success: true });
-        } else {
-          resolve({ success: false, error: `HTTP ${response.statusCode}` });
-        }
-      });
-
-      request.on("error", (error) => {
-        clearTimeout(timeout);
-        resolve({ success: false, error: error.message });
-      });
-
-      request.end();
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
-  }
-});
 
 // ==============================================================================
-// Auto-Updater Configuration with ZIP Fallback Support
+// Auto-Updater Configuration
 // ==============================================================================
 
 class AutoUpdaterHandler {
@@ -2238,27 +1641,6 @@ class AutoUpdaterHandler {
     // Install update and restart
     ipcMain.handle("install-update", () => {
       this.customUpdater.quitAndInstall();
-    });
-
-    // Note: 'get-app-version' is now registered earlier in main.ts for early availability
-
-    // Reset fallback mode (for testing)
-    ipcMain.handle("reset-update-fallback", () => {
-      this.customUpdater.resetFallbackMode();
-      return { success: true };
-    });
-
-    // Open download in browser (manual fallback)
-    ipcMain.handle("open-update-in-browser", async () => {
-      try {
-        await this.customUpdater.openDownloadInBrowser();
-        return { success: true };
-      } catch (error) {
-        return {
-          success: false,
-          message: error instanceof Error ? error.message : "Failed to open download page",
-        };
-      }
     });
   }
 
