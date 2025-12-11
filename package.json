@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "4.0.9",
+  "version": "4.0.10",
   "description": "A modern document processing and session management desktop application",
   "main": "dist/electron/main.js",
   "scripts": {
@@ -121,6 +121,14 @@
     "appId": "com.documentationhub.app",
     "productName": "Documentation Hub",
     "artifactName": "${productName}-Setup-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ItMeDiaTech",
+        "repo": "Documentation_Hub",
+        "releaseType": "release"
+      }
+    ],
     "asar": true,
     "asarUnpack": [
       "**/*.node",
@@ -140,12 +148,6 @@
       "target": [
         "msi"
       ],
-      "publish": [
-        {
-          "provider": "github",
-          "releaseType": "release"
-        }
-      ],
       "icon": "build/icon.ico",
       "artifactName": "Documentation-Hub-${version}.${ext}",
       "signAndEditExecutable": false
@@ -164,12 +166,6 @@
         "dmg"
       ],
       "category": "public.app-category.productivity",
-      "publish": [
-        {
-          "provider": "github",
-          "releaseType": "release"
-        }
-      ],
       "icon": "build/icon.png",
       "artifactName": "Documentation-Hub-${version}.${ext}"
     },
