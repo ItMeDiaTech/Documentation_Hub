@@ -17,6 +17,7 @@ import { ReplacementsTab } from "@/components/sessions/ReplacementsTab";
 import { StylesEditor } from "@/components/sessions/StylesEditor";
 import { TabContainer } from "@/components/sessions/TabContainer";
 import { useSession } from "@/contexts/SessionContext";
+import { useDocumentQueue } from "@/hooks/useDocumentQueue";
 import { useToast } from "@/hooks/useToast";
 import type { Document } from "@/types/session";
 import { cn } from "@/utils/cn";
@@ -53,6 +54,7 @@ export function CurrentSession() {
     currentSession,
     loadSession,
     closeSession,
+    reopenSession,
     addDocuments,
     removeDocument,
     processDocument,
@@ -66,7 +68,6 @@ export function CurrentSession() {
   } = useSession();
 
   const [isDragging, setIsDragging] = useState(false);
-  const [processingQueue, setProcessingQueue] = useState<string[]>([]);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
 
@@ -106,6 +107,47 @@ export function CurrentSession() {
       enabled: enabledOps.includes(opt.id),
     }));
   }, [session?.processingOptions]);
+
+  // Document processing queue - ensures documents process one at a time
+  // to avoid API throttling errors from simultaneous requests
+  const {
+    queue: documentQueue,
+    currentDocumentId,
+    addToQueue,
+    addManyToQueue,
+    clearQueue,
+    getQueuePosition,
+    isInQueue,
+  } = useDocumentQueue({
+    onDocumentComplete: (docId, success) => {
+      // Get fresh session data after async operation
+      const freshSession = sessionsRef.current.find((s) => s.id === session?.id);
+      const processedDoc = freshSession?.documents.find((d) => d.id === docId);
+
+      if (success && processedDoc?.status === 'completed') {
+        toast({
+          title: 'Done',
+          description: processedDoc.name,
+          variant: 'success',
+        });
+      } else if (processedDoc?.status === 'error') {
+        toast({
+          title: 'Processing failed',
+          description: processedDoc.errors?.[0] || 'Document error',
+          variant: 'destructive',
+        });
+      }
+    },
+    onQueueComplete: () => {
+      if (documentQueue.length > 1) {
+        toast({
+          title: 'All documents processed',
+          variant: 'success',
+          duration: 5000,
+        });
+      }
+    },
+  });
 
   const handleFileSelect = useCallback(async () => {
     // Prevent concurrent file selections
@@ -338,45 +380,12 @@ export function CurrentSession() {
     });
   };
 
-  const handleProcessDocument = async (documentId: string) => {
-    // Show brief processing indicator
-    const enabledOps = session.processingOptions?.enabledOperations || [];
-    const operationsCount = enabledOps.length;
+  const handleProcessDocument = (documentId: string) => {
+    if (!session || isInQueue(documentId)) return;
 
-    if (operationsCount > 0) {
-      toast({
-        title: "Processing...",
-        description: `${operationsCount} operation${operationsCount > 1 ? "s" : ""}`,
-        variant: "default",
-        duration: 2000,
-      });
-    }
-
-    setProcessingQueue((prev) => [...prev, documentId]);
-    const sessionId = session.id; // Capture sessionId before async operation
-    await processDocument(sessionId, documentId);
-    setProcessingQueue((prev) => prev.filter((id) => id !== documentId));
-
-    // STALE CLOSURE FIX: Get fresh session data from sessionsRef after async operation
-    // The `session` and `sessions` variables from the closure would be stale after processDocument completes
-    // because React state updates are batched and the closure captures the old value.
-    // Using sessionsRef.current ensures we always get the latest state.
-    const freshSession = sessionsRef.current.find((s) => s.id === sessionId);
-    const processedDoc = freshSession?.documents.find((d) => d.id === documentId);
-
-    if (processedDoc?.status === "completed" && processedDoc.path) {
-      toast({
-        title: "Done",
-        description: processedDoc.name,
-        variant: "success",
-      });
-    } else if (processedDoc?.status === "error") {
-      toast({
-        title: "Processing failed",
-        description: processedDoc.errors?.[0] || "Document error",
-        variant: "destructive",
-      });
-    }
+    // Add to queue - the queue hook handles sequential processing
+    // and toast notifications via onDocumentComplete callback
+    addToQueue(session.id, documentId);
   };
 
   const handleSaveAndClose = () => {
@@ -428,11 +437,12 @@ export function CurrentSession() {
     });
   };
 
-  const handleTableShadingChange = (header2: string, other: string) => {
+  const handleTableShadingChange = (header2: string, other: string, imageBorderWidth?: number) => {
     // Update session table shading settings
     updateSessionTableShadingSettings(session.id, {
       header2Shading: header2,
       otherShading: other,
+      imageBorderWidth: imageBorderWidth,
     });
   };
 
@@ -471,16 +481,27 @@ export function CurrentSession() {
   // Create session content for the Session tab
   const sessionContent = (
     <div className="space-y-6">
-      {/* Save and Close Button */}
+      {/* Action Button - Context dependent */}
       <div className="flex justify-end">
-        <Button
-          onClick={handleSaveAndClose}
-          variant="default"
-          className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
-          icon={<Save className="w-4 h-4" />}
-        >
-          Save and Close Session
-        </Button>
+        {session.status === 'closed' ? (
+          <Button
+            onClick={() => reopenSession(session.id)}
+            variant="default"
+            className="bg-green-600 hover:bg-green-700 text-white font-medium"
+            icon={<FolderOpen className="w-4 h-4" />}
+          >
+            Re-Open Session
+          </Button>
+        ) : (
+          <Button
+            onClick={handleSaveAndClose}
+            variant="default"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+            icon={<Save className="w-4 h-4" />}
+          >
+            Save and Close Session
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -567,19 +588,35 @@ export function CurrentSession() {
             </div>
           ) : (
             <>
+              {/* Queue status banner - shows when documents are queued */}
+              {documentQueue.length > 0 && (
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                    <span className="text-sm">
+                      Processing document {documentQueue.findIndex(q => q.status === 'processing') + 1} of {documentQueue.length}
+                    </span>
+                  </div>
+                  <Button size="xs" variant="ghost" onClick={clearQueue}>
+                    Cancel All
+                  </Button>
+                </div>
+              )}
+
               <div className="mb-4 flex justify-between">
                 <Button
                   onClick={() => {
-                    // Process all pending documents
-                    session.documents
+                    // Add all pending documents to the queue for sequential processing
+                    const pendingDocs = session.documents
                       .filter((doc) => doc.status === "pending")
-                      .forEach((doc) => handleProcessDocument(doc.id));
+                      .map((doc) => doc.id);
+                    addManyToQueue(session.id, pendingDocs);
                   }}
                   size="sm"
                   variant="default"
                   className="bg-green-600 hover:bg-green-700 text-white"
                   icon={<Play className="w-4 h-4" />}
-                  disabled={!session.documents.some((doc) => doc.status === "pending")}
+                  disabled={!session.documents.some((doc) => doc.status === "pending") || documentQueue.length > 0}
                 >
                   Process Documents
                 </Button>
@@ -617,14 +654,28 @@ export function CurrentSession() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {doc.status === "pending" && (
+                        {doc.status === "pending" && !isInQueue(doc.id) && (
                           <Button
                             size="xs"
                             onClick={() => handleProcessDocument(doc.id)}
-                            disabled={processingQueue.includes(doc.id)}
+                            disabled={isInQueue(doc.id)}
                           >
                             Process
                           </Button>
+                        )}
+
+                        {/* Queue position indicator */}
+                        {doc.status === "pending" && isInQueue(doc.id) && (
+                          <span className="text-xs text-blue-500 font-medium flex items-center gap-1">
+                            {currentDocumentId === doc.id ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                Processing...
+                              </>
+                            ) : (
+                              `Queue #${getQueuePosition(doc.id) + 1}`
+                            )}
+                          </span>
                         )}
 
                         {doc.status === "processing" && (
@@ -636,7 +687,20 @@ export function CurrentSession() {
                         )}
 
                         {doc.status === "error" && (
-                          <span className="text-xs text-red-500 font-medium">Error</span>
+                          <>
+                            <span className="text-xs text-red-500 font-medium">
+                              {doc.errorType === 'file_locked' ? "Close File Before Processing" : "Error"}
+                            </span>
+                            {doc.errorType === 'file_locked' && (
+                              <Button
+                                size="xs"
+                                onClick={() => handleProcessDocument(doc.id)}
+                                disabled={isInQueue(doc.id)}
+                              >
+                                Retry
+                              </Button>
+                            )}
+                          </>
                         )}
 
                         {/* Open Document button - only show for completed documents */}
@@ -800,6 +864,7 @@ export function CurrentSession() {
           }}
           tableHeader2Shading={session.tableShadingSettings?.header2Shading || "#BFBFBF"}
           tableOtherShading={session.tableShadingSettings?.otherShading || "#DFDFDF"}
+          imageBorderWidth={session.tableShadingSettings?.imageBorderWidth ?? 1.0}
           onTableShadingChange={handleTableShadingChange}
         />
       ),
@@ -854,6 +919,11 @@ export function CurrentSession() {
           ) : (
             <>
               <h1 className="text-3xl font-bold">{session.name}</h1>
+              {session.status === 'closed' && (
+                <span className="text-sm px-2 py-1 rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                  Closed
+                </span>
+              )}
               <button
                 onClick={handleEditTitle}
                 className="p-1.5 rounded-lg hover:bg-muted transition-colors"

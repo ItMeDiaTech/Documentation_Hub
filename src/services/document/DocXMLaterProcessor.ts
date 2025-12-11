@@ -186,6 +186,99 @@ export class DocXMLaterProcessor {
     }
   }
 
+  /**
+   * Load a document with revision handling based on auto-accept setting.
+   *
+   * This method simplifies the common pattern of loading documents for processing
+   * where you need to handle tracked changes differently based on user preferences.
+   *
+   * **When acceptRevisions is TRUE:**
+   * - Document is loaded with revisions preserved for inspection
+   * - Revisions are then accepted using in-memory transformation
+   * - Document is clean and ready for modifications
+   * - Track changes is enabled for the specified author
+   *
+   * **When acceptRevisions is FALSE:**
+   * - Document is loaded with revisions preserved
+   * - All pre-existing tracked changes remain in the document
+   * - Track changes is enabled for the specified author
+   * - Both pre-existing AND new changes will be visible in Word
+   *
+   * @async
+   * @param filePath - Path to the DOCX file
+   * @param options - Revision handling options
+   * @param options.acceptRevisions - Whether to accept pre-existing revisions (default: false)
+   * @param options.author - Author name for tracked changes (default: 'Doc Hub')
+   * @param options.trackFormatting - Whether to track formatting changes (default: true)
+   * @returns ProcessorResult containing the loaded Document ready for processing
+   *
+   * @example
+   * ```typescript
+   * // Auto-Accept ON: Clean document, track DocHub changes
+   * const result = await processor.loadWithRevisionHandling('input.docx', {
+   *   acceptRevisions: true,
+   *   author: 'Doc Hub'
+   * });
+   *
+   * // Auto-Accept OFF: Preserve all revisions
+   * const result = await processor.loadWithRevisionHandling('input.docx', {
+   *   acceptRevisions: false,
+   *   author: 'Doc Hub'
+   * });
+   * ```
+   */
+  async loadWithRevisionHandling(
+    filePath: string,
+    options: {
+      acceptRevisions?: boolean;
+      author?: string;
+      trackFormatting?: boolean;
+    } = {}
+  ): Promise<ProcessorResult<Document>> {
+    const { acceptRevisions = false, author = 'Doc Hub', trackFormatting = true } = options;
+
+    log.debug('Loading document with revision handling', {
+      filePath,
+      acceptRevisions,
+      author,
+    });
+
+    try {
+      // Load document with appropriate revision handling
+      const doc = await Document.load(filePath, {
+        strictParsing: false,
+        acceptRevisions: acceptRevisions, // NEW: Uses in-memory acceptance if true
+        revisionHandling: acceptRevisions ? undefined : 'preserve', // Preserve if not accepting
+      });
+
+      // Enable track changes for subsequent modifications
+      doc.enableTrackChanges({
+        author,
+        trackFormatting,
+      });
+
+      log.info('Document loaded with revision handling', {
+        filePath,
+        acceptRevisions,
+        author,
+      });
+
+      return {
+        success: true,
+        data: doc,
+      };
+    } catch (error: any) {
+      log.error('Failed to load document with revision handling', {
+        filePath,
+        error: error.message,
+      });
+      return {
+        success: false,
+        error: `Failed to load document: ${error.message}`,
+      };
+    }
+  }
+
   async saveToFile(doc: Document, filePath: string): Promise<ProcessorResult<void>> {
     log.debug('Saving document to file', { filePath });
     try {
@@ -449,7 +542,39 @@ export class DocXMLaterProcessor {
         // We use duck-typing here since we can't import the Hyperlink type without formatter removing it
         if (item && typeof (item as any).getUrl === 'function') {
           // This is a hyperlink - extract its data
-          const url = (item as any).getUrl?.();
+          let url = (item as any).getUrl?.();
+
+          // If getUrl() returns undefined, try fallback methods to retrieve the URL
+          // This handles file-type hyperlinks where getUrl() may return undefined
+          // even though the URL is stored in the relationship target
+          if (!url) {
+            // Try accessing the relationship via the hyperlink's internal state
+            const relationshipId = (item as any).getRelationshipId?.() || (item as any).relationshipId;
+            if (relationshipId) {
+              // Try to get the relationship from the document
+              const relationship = (doc as any).getRelationship?.(relationshipId);
+              if (relationship) {
+                url = relationship.getTarget?.() || relationship.target;
+                if (url) {
+                  log.debug('Retrieved URL from relationship fallback', {
+                    relationshipId,
+                    url: url.substring(0, 100),
+                  });
+                }
+              }
+            }
+
+            // Final fallback: check if hyperlink has a target attribute directly
+            if (!url) {
+              url = (item as any).target || (item as any).href || (item as any)._url;
+              if (url) {
+                log.debug('Retrieved URL from direct property fallback', {
+                  url: url.substring(0, 100),
+                });
+              }
+            }
+          }
+
           const rawText = (item as any).getText?.() || '';
 
           // Sanitize the text to prevent XML issues

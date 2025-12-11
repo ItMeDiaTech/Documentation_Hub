@@ -170,7 +170,15 @@ export class StyleProcessor {
    */
   private applyStyleToParagraph(para: Paragraph, style: SessionStyle): void {
     // Apply paragraph formatting
-    para.setAlignment(style.alignment);
+    // PRESERVE center alignment if it already exists in the document
+    // This prevents overriding intentional center formatting (like image captions)
+    const existingAlignment = para.getFormatting().alignment;
+    if (existingAlignment === 'center') {
+      log.debug(`Preserving center alignment for: "${para.getText().substring(0, 30)}..."`);
+      // Don't change alignment - keep center
+    } else {
+      para.setAlignment(style.alignment);
+    }
     para.setSpaceBefore(pointsToTwips(style.spaceBefore));
     para.setSpaceAfter(pointsToTwips(style.spaceAfter));
 

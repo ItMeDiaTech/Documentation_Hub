@@ -53,17 +53,23 @@ type CategoryFilter = 'all' | ChangeCategory;
 /**
  * Converts Word revision entries to unified format
  * All changes (both original Word changes and DocHub changes) come from wordRevisions.entries
- * DocHub changes are identified by author === 'DocHub'
+ * DocHub changes are identified by matching the processingAuthor from the document
  */
 function getUnifiedChanges(document: Document): UnifiedChange[] {
   if (!document.wordRevisions?.entries) {
     return [];
   }
 
+  // Get the processing author used for this document's DocHub changes
+  // This allows proper source detection regardless of the actual author name used
+  const processingAuthor = document.wordRevisions.processingAuthor;
+
   const rawChanges = document.wordRevisions.entries.map((entry: ChangeEntry) => ({
     id: entry.id,
-    // Distinguish source by author: "DocHub" changes are from processing, others are original Word changes
-    source: entry.author === 'DocHub' ? ('processing' as const) : ('word' as const),
+    // Distinguish source by comparing to the actual processing author, not a hardcoded string
+    source: processingAuthor && entry.author === processingAuthor
+      ? ('processing' as const)
+      : ('word' as const),
     category: entry.category,
     description: entry.description,
     author: entry.author,
@@ -82,8 +88,13 @@ function getUnifiedChanges(document: Document): UnifiedChange[] {
     propertyChange: entry.propertyChange,
   }));
 
-  // Group formatting changes that affect the same text
-  return groupPropertyChanges(rawChanges);
+  // Apply processing pipeline:
+  // 1. Filter out unhelpful changes (empty spaces, etc.)
+  // 2. Combine delete+insert pairs into "Updated" changes
+  // 3. Group formatting changes that affect the same text
+  const filtered = rawChanges.filter(isHelpfulChange);
+  const combined = combineDeleteInsertPairs(filtered);
+  return groupPropertyChanges(combined);
 }
 
 /**
@@ -116,7 +127,205 @@ function getPreviousChanges(document: Document): UnifiedChange[] {
     propertyChange: entry.propertyChange,
   }));
 
-  return groupPropertyChanges(rawChanges);
+  // Apply processing pipeline:
+  // 1. Filter out unhelpful changes (empty spaces, etc.)
+  // 2. Combine delete+insert pairs into "Updated" changes
+  // 3. Group formatting changes that affect the same text
+  const filtered = rawChanges.filter(isHelpfulChange);
+  const combined = combineDeleteInsertPairs(filtered);
+  return groupPropertyChanges(combined);
+}
+
+/**
+ * Filters out unhelpful/trivial changes that don't provide meaningful context
+ * Examples: empty spaces, whitespace-only insertions/deletions
+ */
+function isHelpfulChange(change: UnifiedChange): boolean {
+  // Always keep hyperlink changes - they're meaningful
+  if (change.hyperlinkChange) {
+    return true;
+  }
+
+  // Always keep property/formatting changes
+  if (change.propertyChange) {
+    return true;
+  }
+
+  // Check if content is meaningful
+  const beforeTrimmed = change.before?.trim() || '';
+  const afterTrimmed = change.after?.trim() || '';
+  const affectedTrimmed = change.affectedText?.trim() || '';
+
+  // Skip if all content fields are empty/whitespace
+  if (!beforeTrimmed && !afterTrimmed && !affectedTrimmed) {
+    return false;
+  }
+
+  // Skip changes that are just single spaces or very short whitespace
+  if (
+    (beforeTrimmed.length === 0 && afterTrimmed.length <= 1) ||
+    (afterTrimmed.length === 0 && beforeTrimmed.length <= 1)
+  ) {
+    // Allow if it's part of a larger description that's meaningful
+    const desc = change.description?.toLowerCase() || '';
+    if (desc.includes('inserted " "') || desc.includes('deleted " "') ||
+        desc.includes("inserted ' '") || desc.includes("deleted ' '")) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Combines deletion + insertion pairs at the same location into "Updated" changes
+ * This provides cleaner display when text is replaced rather than showing separate delete/insert
+ */
+function combineDeleteInsertPairs(changes: UnifiedChange[]): UnifiedChange[] {
+  const result: UnifiedChange[] = [];
+  const processed = new Set<string>();
+
+  // Collect all deletions and insertions for potential pairing
+  const deletions: UnifiedChange[] = [];
+  const insertions: UnifiedChange[] = [];
+
+  for (const change of changes) {
+    // Only consider content changes for pairing
+    if (change.category === 'content') {
+      const isDeletion = change.before && !change.after;
+      const isInsertion = change.after && !change.before;
+
+      if (isDeletion) {
+        deletions.push(change);
+        continue;
+      }
+      if (isInsertion) {
+        insertions.push(change);
+        continue;
+      }
+    }
+
+    // Non-pairable changes go directly to result
+    result.push(change);
+  }
+
+  // Try to pair deletions with insertions using multiple matching strategies
+  for (const deletion of deletions) {
+    if (processed.has(deletion.id)) continue;
+
+    let matchingInsertion: UnifiedChange | null = null;
+    let bestScore = 0;
+
+    for (const insertion of insertions) {
+      if (processed.has(insertion.id)) continue;
+
+      // Must have same source and author to be paired
+      if (deletion.source !== insertion.source) continue;
+      if (deletion.author !== insertion.author) continue;
+
+      let score = 0;
+
+      // Strategy 1: Same paragraph index (strongest signal)
+      const delPara = deletion.location?.paragraphIndex ?? -1;
+      const insPara = insertion.location?.paragraphIndex ?? -1;
+      if (delPara >= 0 && insPara >= 0) {
+        if (delPara === insPara) {
+          score += 10;
+        } else if (Math.abs(delPara - insPara) <= 1) {
+          score += 5;
+        } else if (Math.abs(delPara - insPara) <= 3) {
+          score += 2;
+        }
+      }
+
+      // Strategy 2: Same nearest heading (strong signal)
+      const delHeading = deletion.location?.nearestHeading;
+      const insHeading = insertion.location?.nearestHeading;
+      if (delHeading && insHeading && delHeading === insHeading) {
+        score += 8;
+      }
+
+      // Strategy 3: Same or similar text content (very strong signal)
+      const delText = deletion.before?.trim().toLowerCase() || '';
+      const insText = insertion.after?.trim().toLowerCase() || '';
+      if (delText && insText) {
+        if (delText === insText) {
+          // Exact same text deleted and inserted - definitely a pair
+          score += 15;
+        } else if (delText.includes(insText) || insText.includes(delText)) {
+          // One contains the other - likely a pair
+          score += 7;
+        }
+      }
+
+      // Require minimum score to consider it a match
+      if (score > bestScore && score >= 5) {
+        bestScore = score;
+        matchingInsertion = insertion;
+      }
+    }
+
+    if (matchingInsertion) {
+      // Combine into "Updated" change
+      processed.add(deletion.id);
+      processed.add(matchingInsertion.id);
+
+      // Create context from before/after content
+      const beforeText = deletion.before || '';
+      const afterText = matchingInsertion.after || '';
+      const contextWords = getContextSnippet(beforeText, afterText);
+
+      result.push({
+        id: `updated-${deletion.id}`,
+        source: deletion.source,
+        category: 'content',
+        description: `Updated${contextWords ? `: "${contextWords}"` : ''}`,
+        author: deletion.author,
+        date: deletion.date || matchingInsertion.date,
+        location: deletion.location,
+        before: beforeText,
+        after: afterText,
+        affectedText: beforeText || afterText,
+      });
+    } else {
+      // No matching insertion - keep as deletion
+      result.push(deletion);
+      processed.add(deletion.id);
+    }
+  }
+
+  // Add remaining unpaired insertions
+  for (const insertion of insertions) {
+    if (!processed.has(insertion.id)) {
+      result.push(insertion);
+      processed.add(insertion.id);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Extracts a context snippet (5-8 words) from text for display
+ */
+function getContextSnippet(before: string, after: string): string {
+  const text = after || before || '';
+  if (!text) return '';
+
+  // Clean up the text
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+
+  // Split into words and take up to 8 words
+  const words = cleaned.split(' ').filter(w => w.length > 0);
+  if (words.length === 0) return '';
+
+  if (words.length <= 8) {
+    return cleaned;
+  }
+
+  // Take first 5-8 words and add ellipsis
+  return words.slice(0, 6).join(' ') + '...';
 }
 
 /**
@@ -138,17 +347,20 @@ function groupPropertyChanges(changes: UnifiedChange[]): UnifiedChange[] {
       change.propertyChange?.property &&
       change.affectedText
     ) {
-      // Create a grouping key based on text, source, author (ignore paragraphIndex to consolidate across locations)
-      const key = `${change.affectedText}|${change.source}|${change.author || ''}`;
+      // Create a grouping key based on text, source, author, AND location
+      // This ensures changes at different paragraphs are NOT incorrectly consolidated
+      const locationKey = change.location?.paragraphIndex ?? 'unknown';
+      const key = `${change.affectedText}|${change.source}|${change.author || ''}|${locationKey}`;
 
       if (!formattingByKey.has(key)) {
         formattingByKey.set(key, []);
       }
       formattingByKey.get(key)!.push(change);
     }
-    // Also consolidate duplicate entries (same description, author, affected text)
+    // Also consolidate duplicate entries (same description, author, affected text, AND location)
     else if (change.affectedText && change.description) {
-      const key = `${change.description}|${change.affectedText}|${change.source}|${change.author || ''}`;
+      const locationKey = change.location?.paragraphIndex ?? 'unknown';
+      const key = `${change.description}|${change.affectedText}|${change.source}|${change.author || ''}|${locationKey}`;
 
       if (!duplicatesByKey.has(key)) {
         duplicatesByKey.set(key, []);

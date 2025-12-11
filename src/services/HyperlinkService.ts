@@ -168,15 +168,21 @@ export class HyperlinkService {
       }
 
       if (lookupIds.length === 0) {
+        // No IDs found is not a failure - it just means no hyperlinks need API processing
+        // Return success with empty results so other formatting operations can continue
+        this.log.warn('No Content_ID or Document_ID patterns found in hyperlinks - skipping API call');
         return {
-          success: false,
+          success: true,
           timestamp: new Date(),
-          error: 'No Content_ID or Document_ID found in hyperlinks',
+          body: {
+            results: [],
+            errors: [],
+          },
         };
       }
 
-      // Check if electronAPI is available
-      if (typeof window.electronAPI === 'undefined') {
+      // Check if electronAPI is available (handles SSR, tests, and browser contexts)
+      if (typeof window === 'undefined' || !window.electronAPI) {
         return {
           success: false,
           timestamp: new Date(),
@@ -376,10 +382,16 @@ export class HyperlinkService {
 
       // If no IDs found, return early
       if (lookupIds.length === 0) {
+        // No IDs found is not a failure - it just means no hyperlinks need API processing
+        // Return success with empty results so other formatting operations can continue
+        this.log.warn('No Content_ID or Document_ID patterns found in hyperlinks - skipping API call');
         return {
-          success: false,
+          success: true,
           timestamp: new Date(),
-          error: 'No Content_ID or Document_ID found in hyperlinks',
+          body: {
+            results: [],
+            errors: [],
+          },
         };
       }
 
@@ -845,36 +857,57 @@ export class HyperlinkService {
     const timeoutMs = settings.timeout || 30000;
     const maxRetries = settings.retryAttempts || 3;
 
+    // =========================================================================
+    // COMPREHENSIVE LOGGING - API CALL START
+    // =========================================================================
+    this.log.info('═══════════════════════════════════════════════════════════════');
+    this.log.info('[HyperlinkService] Starting Power Automate API Call');
+    this.log.info('═══════════════════════════════════════════════════════════════');
+    this.log.info(`[HyperlinkService] Timestamp: ${new Date().toISOString()}`);
+    this.log.info(`[HyperlinkService] Lookup IDs: ${request.Lookup_ID.length} IDs`);
+    this.log.info(`[HyperlinkService] IDs: ${request.Lookup_ID.join(', ')}`);
+    this.log.info(`[HyperlinkService] Hyperlinks Checked: ${request.Hyperlinks_Checked}`);
+    this.log.info(`[HyperlinkService] Total Hyperlinks: ${request.Total_Hyperlinks}`);
+    this.log.info(`[HyperlinkService] User: ${request.First_Name} ${request.Last_Name}`);
+    this.log.info(`[HyperlinkService] Timeout: ${timeoutMs}ms`);
+    this.log.info(`[HyperlinkService] Max Retries: ${maxRetries}`);
+
     // Sanitize the API URL to fix any encoding issues
     const sanitizedUrl = sanitizeUrl(settings.apiUrl);
 
     if (sanitizedUrl !== settings.apiUrl) {
-      this.log.info('URL sanitized - Fixed encoding issues');
+      this.log.info('[HyperlinkService] URL sanitized - Fixed encoding issues');
     }
+
+    this.log.info(`[HyperlinkService] API URL: ${sanitizedUrl}`);
 
     // Validate the URL before using it
     const validation = validatePowerAutomateUrl(sanitizedUrl);
     if (!validation.valid) {
       const errorMsg = `Invalid PowerAutomate URL: ${validation.issues.join(', ')}`;
-      this.log.error(errorMsg);
+      this.log.error('[HyperlinkService] URL Validation FAILED:', errorMsg);
       throw new Error(errorMsg);
     }
+    this.log.info('[HyperlinkService] URL Validation: PASSED');
 
     // Use main process net.request via IPC (matches C# HttpClient behavior on corporate networks)
     // This uses Chromium's networking stack which respects system proxy and certificates
     if (typeof window !== 'undefined' && window.electronAPI?.callPowerAutomateApi) {
-      this.log.debug('Using main process net.request for API call');
+      this.log.info('[HyperlinkService] Using IPC -> Main Process -> net.request');
+      this.log.info('───────────────────────────────────────────────────────────────');
 
       let lastError: Error | null = null;
 
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
           if (attempt > 0) {
-            await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-            this.log.info(`Retry attempt ${attempt + 1} of ${maxRetries}`);
+            const delay = Math.pow(2, attempt) * 1000;
+            this.log.info(`[HyperlinkService] Retry attempt ${attempt + 1} of ${maxRetries} (waiting ${delay}ms)`);
+            await new Promise((resolve) => setTimeout(resolve, delay));
           }
 
-          this.log.debug('Sending API request to:', sanitizedUrl.substring(0, 80) + '...');
+          this.log.info(`[HyperlinkService] Sending IPC request (attempt ${attempt + 1})...`);
+          const startTime = Date.now();
 
           const response = await window.electronAPI.callPowerAutomateApi(
             sanitizedUrl,
@@ -882,13 +915,23 @@ export class HyperlinkService {
             timeoutMs
           );
 
+          const duration = Date.now() - startTime;
+
           if (!response.success) {
-            this.log.error('API Error Response:', response.error);
+            this.log.error('[HyperlinkService] API call FAILED');
+            this.log.error(`[HyperlinkService] Error: ${response.error}`);
+            this.log.error(`[HyperlinkService] Duration: ${duration}ms`);
             throw new Error(response.error || `API returned status ${response.statusCode}`);
           }
 
           const data = response.data as { Results?: Array<{ Document_ID?: string; Content_ID?: string; Title?: string; Status?: string }> };
-          this.log.info('API Response received');
+
+          this.log.info('═══════════════════════════════════════════════════════════════');
+          this.log.info('[HyperlinkService] API Call SUCCESS');
+          this.log.info('═══════════════════════════════════════════════════════════════');
+          this.log.info(`[HyperlinkService] Status Code: ${response.statusCode}`);
+          this.log.info(`[HyperlinkService] Duration: ${duration}ms`);
+          this.log.info(`[HyperlinkService] Results: ${data?.Results?.length || 0} items`);
 
           const apiResponse: HyperlinkApiResponse = {
             success: Array.isArray(data?.Results),
@@ -898,94 +941,49 @@ export class HyperlinkService {
 
           if (data?.Results) {
             apiResponse.body = this.parseApiResults(data.Results);
+            this.log.info(`[HyperlinkService] Parsed ${data.Results.length} results into cache`);
           }
+
+          this.log.info('═══════════════════════════════════════════════════════════════');
 
           return apiResponse;
         } catch (error) {
           lastError = error as Error;
+          this.log.error(`[HyperlinkService] Attempt ${attempt + 1} failed: ${lastError.message}`);
           // Check if it's a timeout error
           if (error instanceof Error && error.message.includes('timeout')) {
+            this.log.error('[HyperlinkService] Timeout detected, not retrying');
             break;
           }
         }
       }
 
       if (lastError && lastError.message.includes('timeout')) {
+        this.log.error(`[HyperlinkService] Final error: API request timeout after ${timeoutMs}ms`);
         throw new Error(`API request timeout after ${timeoutMs}ms`);
       }
 
+      this.log.error(`[HyperlinkService] All ${maxRetries} attempts failed`);
       throw lastError || new Error('API request failed after retries');
     }
 
-    // Fallback to fetch for non-Electron environments
-    this.log.debug('Using fetch fallback for API call (non-Electron environment)');
+    // No Electron API available - provide detailed diagnostics
+    const windowExists = typeof window !== 'undefined';
+    const apiExists = windowExists && typeof window.electronAPI !== 'undefined';
+    const methodExists = apiExists && typeof window.electronAPI?.callPowerAutomateApi === 'function';
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    this.log.error('[HyperlinkService] ERROR: Electron API not available!');
+    this.log.error(`[HyperlinkService] Diagnostics: window=${windowExists}, electronAPI=${apiExists}, callPowerAutomateApi=${methodExists}`);
 
-    try {
-      let lastError: Error | null = null;
-
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-          if (attempt > 0) {
-            await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-            this.log.info(`Retry attempt ${attempt + 1} of ${maxRetries}`);
-          }
-
-          this.log.debug('Sending API request to:', sanitizedUrl.substring(0, 80) + '...');
-
-          const response = await fetch(sanitizedUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json; charset=utf-8',
-              'User-Agent': 'DocHub/1.0',
-              ...settings.headers,
-            },
-            body: JSON.stringify(request),
-            signal: controller.signal,
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => 'No error details');
-            this.log.error('API Error Response:', errorText);
-            throw new Error(`API returned status ${response.status}: ${errorText}`);
-          }
-
-          const data = await response.json();
-          this.log.info('API Response received');
-
-          const apiResponse: HyperlinkApiResponse = {
-            success: response.ok && Array.isArray(data.Results),
-            timestamp: new Date(),
-            statusCode: response.status,
-          };
-
-          if (data.Results) {
-            apiResponse.body = this.parseApiResults(data.Results);
-          }
-
-          clearTimeout(timeout);
-          return apiResponse;
-        } catch (error) {
-          lastError = error as Error;
-          if (error instanceof Error && error.name === 'AbortError') {
-            break;
-          }
-        }
-      }
-
-      clearTimeout(timeout);
-
-      if (lastError && lastError.name === 'AbortError') {
-        throw new Error(`API request timeout after ${timeoutMs}ms`);
-      }
-
-      throw lastError || new Error('API request failed after retries');
-    } catch (error) {
-      clearTimeout(timeout);
-      throw error;
+    if (!windowExists) {
+      this.log.error('[HyperlinkService] Running in non-browser context (SSR/Node.js)');
+    } else if (!apiExists) {
+      this.log.error('[HyperlinkService] Preload script may not have loaded - check BrowserWindow preload configuration');
+    } else if (!methodExists) {
+      this.log.error('[HyperlinkService] electronAPI exists but callPowerAutomateApi method is missing');
     }
+
+    throw new Error('Electron API not available - cannot make API call. Ensure the app is running in Electron.');
   }
 
   /**

@@ -31,11 +31,20 @@ export default defineConfig({
           build: {
             outDir: 'dist/electron',
             emptyOutDir: false,
+            minify: false, // Disable minification to debug electron import issues
             commonjsOptions: {
               include: [/node_modules/, /docxmlater/],
             },
             rollupOptions: {
-              external: ['electron', 'docxmlater'],
+              external: [
+                'electron',
+                'docxmlater',
+                'xlsx',
+                'better-sqlite3',
+                '@azure/msal-node',
+                'electron-updater',
+                'electron-log',
+              ],
               output: {
                 format: 'cjs', // Use CommonJS to support __dirname natively
               },
@@ -67,7 +76,15 @@ export default defineConfig({
               include: [/node_modules/, /docxmlater/],
             },
             rollupOptions: {
-              external: ['electron', 'docxmlater'],
+              external: [
+                'electron',
+                'docxmlater',
+                'xlsx',
+                'better-sqlite3',
+                '@azure/msal-node',
+                'electron-updater',
+                'electron-log',
+              ],
               output: {
                 format: 'cjs', // Use CommonJS to support __dirname natively
               },

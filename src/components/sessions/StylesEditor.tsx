@@ -25,6 +25,7 @@ interface StyleDefinition {
   preserveBold?: boolean; // Optional: true = preserve existing bold (ignore bold property)
   preserveItalic?: boolean; // Optional: true = preserve existing italic (ignore italic property)
   preserveUnderline?: boolean; // Optional: true = preserve existing underline (ignore underline property)
+  preserveCenterAlignment?: boolean; // Optional: true = preserve center alignment if paragraph is already centered
   alignment: 'left' | 'center' | 'right' | 'justify';
   spaceBefore: number;
   spaceAfter: number;
@@ -91,6 +92,7 @@ const defaultStyles: StyleDefinition[] = [
     preserveBold: true, // Preserve existing bold formatting (Requirement 5)
     preserveItalic: false, // Apply italic setting (not preserved)
     preserveUnderline: false, // Apply underline setting (not preserved)
+    preserveCenterAlignment: true, // Preserve center alignment if paragraph is already centered
     alignment: 'left',
     spaceBefore: 3,
     spaceAfter: 3,
@@ -134,17 +136,17 @@ const lineSpacingOptions = [
 
 // Default indentation levels based on documentation best practices
 // Using only 3 bullet types: closed bullet (•), open bullet (○), closed square (■)
-// Symbol indent: 0.5" base with 0.5" increments per level
+// Symbol indent: 0.25" base with 0.25" increments per level
 // Text indent: symbol indent + 0.25" hanging indent
 // NOTE: Levels are 0-based (0-8) per DOCX standard
 // NOTE: Using Unicode bullets instead of Wingdings private-use characters for reliable rendering
 // Default pattern: closed, open, closed, open, closed
 const defaultIndentationLevels: IndentationLevel[] = [
-  { level: 0, symbolIndent: 0.5, textIndent: 0.75, bulletChar: '•', numberedFormat: '1.' },
-  { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
-  { level: 2, symbolIndent: 1.5, textIndent: 1.75, bulletChar: '•', numberedFormat: 'i.' },
-  { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },
-  { level: 4, symbolIndent: 2.5, textIndent: 2.75, bulletChar: '•', numberedFormat: 'a)' },
+  { level: 0, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '•', numberedFormat: '1.' },
+  { level: 1, symbolIndent: 0.5, textIndent: 0.75, bulletChar: '○', numberedFormat: 'a.' },
+  { level: 2, symbolIndent: 0.75, textIndent: 1.0, bulletChar: '•', numberedFormat: 'i.' },
+  { level: 3, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: '1)' },
+  { level: 4, symbolIndent: 1.25, textIndent: 1.5, bulletChar: '•', numberedFormat: 'a)' },
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {
@@ -181,6 +183,8 @@ const convertToStyleDefinitions = (
       preserveBold: sessionStyle.preserveBold ?? defaultStyle.preserveBold,
       preserveItalic: sessionStyle.preserveItalic ?? defaultStyle.preserveItalic,
       preserveUnderline: sessionStyle.preserveUnderline ?? defaultStyle.preserveUnderline,
+      preserveCenterAlignment:
+        sessionStyle.preserveCenterAlignment ?? defaultStyle.preserveCenterAlignment,
       alignment: sessionStyle.alignment || defaultStyle.alignment,
       color: sessionStyle.color || defaultStyle.color,
       spaceBefore: sessionStyle.spaceBefore ?? defaultStyle.spaceBefore,
@@ -199,7 +203,8 @@ interface StylesEditorProps {
   onListBulletSettingsChange?: (settings: ListBulletSettings) => void;
   tableHeader2Shading?: string;
   tableOtherShading?: string;
-  onTableShadingChange?: (header2: string, other: string) => void;
+  imageBorderWidth?: number;
+  onTableShadingChange?: (header2: string, other: string, imageBorderWidth?: number) => void;
 }
 
 // PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
@@ -210,6 +215,7 @@ export const StylesEditor = memo(function StylesEditor({
   onListBulletSettingsChange,
   tableHeader2Shading,
   tableOtherShading,
+  imageBorderWidth,
   onTableShadingChange,
 }: StylesEditorProps) {
   // NOTE: convertToStyleDefinitions is now defined outside component for better performance
@@ -226,6 +232,9 @@ export const StylesEditor = memo(function StylesEditor({
   );
   const [localTableOtherShading, setLocalTableOtherShading] = useState<string>(
     tableOtherShading || '#DFDFDF'
+  );
+  const [localImageBorderWidth, setLocalImageBorderWidth] = useState<number>(
+    imageBorderWidth ?? 1.0
   );
 
   // Sync internal state when external props change
@@ -253,6 +262,12 @@ export const StylesEditor = memo(function StylesEditor({
       setLocalTableOtherShading(tableOtherShading);
     }
   }, [tableOtherShading]);
+
+  useEffect(() => {
+    if (imageBorderWidth !== undefined) {
+      setLocalImageBorderWidth(imageBorderWidth);
+    }
+  }, [imageBorderWidth]);
 
   const updateStyle = (styleId: string, updates: Partial<StyleDefinition>) => {
     const updatedStyles = styles.map((style) =>
@@ -517,6 +532,29 @@ export const StylesEditor = memo(function StylesEditor({
                       <Lock className="w-3 h-3" />
                       <span>Underline</span>
                     </button>
+                    {style.id === 'normal' && (
+                      <button
+                        onClick={() =>
+                          updateStyle(style.id, {
+                            preserveCenterAlignment: !(style.preserveCenterAlignment ?? true),
+                          })
+                        }
+                        className={cn(
+                          'flex items-center gap-1 px-2 py-1 rounded transition-all',
+                          (style.preserveCenterAlignment ?? true)
+                            ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                            : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                        )}
+                        title={
+                          (style.preserveCenterAlignment ?? true)
+                            ? 'Preserve center alignment if paragraph is centered'
+                            : 'Apply alignment setting to all paragraphs'
+                        }
+                      >
+                        <Lock className="w-3 h-3" />
+                        <span>Center</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -763,7 +801,7 @@ export const StylesEditor = memo(function StylesEditor({
               className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
               min="0.25"
               max="1.5"
-              step="0.125"
+              step="0.25"
             />
             <div className="flex justify-between text-xxs text-muted-foreground">
               <span>0.25"</span>
@@ -915,23 +953,31 @@ export const StylesEditor = memo(function StylesEditor({
   const renderTableShadingSettings = () => {
     const handleHeader2ShadingChange = (value: string) => {
       setLocalTableHeader2Shading(value);
-      onTableShadingChange?.(value, localTableOtherShading);
+      onTableShadingChange?.(value, localTableOtherShading, localImageBorderWidth);
     };
 
     const handleOtherShadingChange = (value: string) => {
       setLocalTableOtherShading(value);
-      onTableShadingChange?.(localTableHeader2Shading, value);
+      onTableShadingChange?.(localTableHeader2Shading, value, localImageBorderWidth);
+    };
+
+    const handleImageBorderWidthChange = (value: string) => {
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue) && numValue >= 0.5 && numValue <= 10) {
+        setLocalImageBorderWidth(numValue);
+        onTableShadingChange?.(localTableHeader2Shading, localTableOtherShading, numValue);
+      }
     };
 
     return (
       <div className="space-y-4 p-4 border border-border rounded-lg">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-base">Table Shading Colors</span>
+          <span className="font-semibold text-base">Table & Image Settings</span>
         </div>
         <p className="text-sm text-muted-foreground">
-          Configure default shading colors for table cells
+          Configure default shading colors for table cells and image border width
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="text-sm text-muted-foreground mb-2 block">
               Header 2 Table Shading
@@ -970,6 +1016,25 @@ export const StylesEditor = memo(function StylesEditor({
                 placeholder="#DFDFDF"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="text-sm text-muted-foreground mb-2 block">Image Border Width</label>
+            <div className="flex gap-2 items-center">
+              <input
+                type="number"
+                step="0.5"
+                min="0.5"
+                max="10"
+                value={localImageBorderWidth}
+                onChange={(e) => handleImageBorderWidthChange(e.target.value)}
+                className="w-24 px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+              />
+              <span className="text-sm text-muted-foreground">pt</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Border thickness for centered images (0.5 - 10pt)
+            </p>
           </div>
         </div>
       </div>

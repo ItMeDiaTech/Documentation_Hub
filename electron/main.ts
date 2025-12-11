@@ -5,7 +5,6 @@ import * as https from "https";
 import * as http from "http";
 import * as path from "path";
 import { dirname, join } from "path";
-import { fileURLToPath } from "url";
 import { WordDocumentProcessor } from "../src/services/document/WordDocumentProcessor";
 import type { SharePointConfig } from "../src/types/dictionary";
 import type { BatchProcessingResult, HyperlinkProcessingResult } from "../src/types/hyperlink";
@@ -19,9 +18,6 @@ import { getDictionaryService } from "./services/DictionaryService";
 import { getLocalDictionaryLookupService } from "./services/LocalDictionaryLookupService";
 import { getSharePointSyncService } from "./services/SharePointSyncService";
 import { zscalerConfig } from "./zscalerConfig";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 // ============================================================================
 // CRITICAL: SSL/TLS BYPASS FOR CORPORATE NETWORKS
@@ -315,7 +311,12 @@ async function configureSessionProxyAndNetworking(): Promise<void> {
         certificate.subjectName?.includes("Zscaler") ||
         zscalerConfig.isDetected();
 
-      if (verificationResult === 0) {
+      // IMPORTANT: Electron 39.x requires callback to receive a number
+      // verificationResult may not always be a valid number, so we must normalize it
+      // 0 = trust, -2 = ERR_CERT_AUTHORITY_INVALID (reject)
+      const normalizedResult = typeof verificationResult === 'number' ? verificationResult : -2;
+
+      if (normalizedResult === 0) {
         // Certificate is valid
         callback(0);
       } else if (isTrustedHost) {
@@ -327,9 +328,9 @@ async function configureSessionProxyAndNetworking(): Promise<void> {
         log.info(`[CertVerify] Trusting corporate proxy certificate for: ${hostname}`);
         callback(0);
       } else {
-        // Log and reject unknown certificates
+        // Log and reject unknown certificates - always pass a number to callback
         log.warn(`[CertVerify] Rejecting certificate for: ${hostname}, error: ${errorCode}`);
-        callback(verificationResult);
+        callback(-2); // ERR_CERT_AUTHORITY_INVALID
       }
     });
 
@@ -452,8 +453,8 @@ async function createWindow() {
     titleBarStyle: "hiddenInset",
     backgroundColor: "#0a0a0a",
     show: false, // ISSUE #6 FIX: Don't show window immediately - prevents black screen
+    icon: join(__dirname, "../build/icon.ico"),
     webPreferences: REQUIRED_SECURITY_SETTINGS,
-    // Icon will be set by electron-builder during packaging
   });
 
   Menu.setApplicationMenu(null);
@@ -754,9 +755,12 @@ app.whenReady().then(async () => {
     const updaterStartTime = Date.now();
 
     // Initialize updater (mainWindow is guaranteed to exist now)
-    if (!isDev) {
+    // FORCE_DEV_UPDATE_CONFIG=true allows testing updates in dev mode
+    const forceDevUpdates = process.env.FORCE_DEV_UPDATE_CONFIG === 'true';
+    if (!isDev || forceDevUpdates) {
       updaterHandler = new AutoUpdaterHandler();
       updaterHandler.checkOnStartup();
+      updaterHandler.startScheduledChecks(); // Check for updates every 4 hours
       log.info(`✓ Step 4 complete - Auto-updater initialized (${Date.now() - updaterStartTime}ms)`);
     } else {
       log.info("⊘ Step 4 skipped - Auto-updater disabled in development mode");
@@ -1045,8 +1049,8 @@ class HyperlinkIPCHandler {
       }
     });
 
-    // Call PowerAutomate API with MULTIPLE FALLBACK METHODS
-    // Tries: 1) Electron net.request, 2) Node.js https with SSL bypass, 3) Node.js http
+    // Call PowerAutomate API using Electron net.request (IPC-based approach)
+    // Uses Chromium's network stack which respects system proxy and certificates
     ipcMain.handle("hyperlink:call-api", async (_event, request: {
       apiUrl: string;
       payload: {
@@ -1061,334 +1065,224 @@ class HyperlinkIPCHandler {
     }) => {
       const timeoutMs = request.timeout || 30000;
       const jsonPayload = JSON.stringify(request.payload);
-
-      log.info(`[API Call] Attempting to call: ${request.apiUrl.substring(0, 80)}...`);
-      log.debug(`[API Call] Payload: ${jsonPayload.substring(0, 200)}...`);
+      const startTime = Date.now();
 
       // =========================================================================
-      // METHOD 1: Electron net.request (uses Chromium network stack)
-      // Best for corporate proxies as it uses system certificates
+      // COMPREHENSIVE LOGGING - REQUEST DETAILS
       // =========================================================================
-      const tryNetRequest = (): Promise<any> => {
-        return new Promise((resolve, reject) => {
-          log.info("[API Call] Method 1: Trying Electron net.request...");
+      log.info("═══════════════════════════════════════════════════════════════════");
+      log.info("[API Call] Starting Power Automate HTTP Request");
+      log.info("═══════════════════════════════════════════════════════════════════");
+      log.info(`[API Call] Timestamp: ${new Date().toISOString()}`);
+      log.info(`[API Call] URL: ${request.apiUrl}`);
+      log.info(`[API Call] Method: POST`);
+      log.info(`[API Call] Timeout: ${timeoutMs}ms`);
+      log.info(`[API Call] Headers:`);
+      log.info(`[API Call]   Content-Type: application/json; charset=utf-8`);
+      log.info(`[API Call]   User-Agent: DocHub/1.0`);
+      log.info(`[API Call]   Accept: application/json`);
+      log.info(`[API Call] Payload:`);
+      // Log payload with proper formatting
+      const payloadFormatted = JSON.stringify(request.payload, null, 2);
+      payloadFormatted.split('\n').forEach(line => {
+        log.info(`[API Call]   ${line}`);
+      });
+      log.info(`[API Call] Payload size: ${Buffer.byteLength(jsonPayload)} bytes`);
+      log.info("───────────────────────────────────────────────────────────────────");
 
-          const timeoutHandle = setTimeout(() => {
-            reject(new Error(`net.request timeout after ${timeoutMs}ms`));
-          }, timeoutMs);
+      return new Promise((resolve) => {
+        log.info("[API Call] Sending request via Electron net.request...");
 
-          try {
-            const netRequest = net.request({
-              method: "POST",
-              url: request.apiUrl,
-              session: session.defaultSession,
+        const timeoutHandle = setTimeout(() => {
+          const duration = Date.now() - startTime;
+          log.error("═══════════════════════════════════════════════════════════════════");
+          log.error("[API Call] REQUEST TIMEOUT");
+          log.error("═══════════════════════════════════════════════════════════════════");
+          log.error(`[API Call] Timeout after ${timeoutMs}ms`);
+          log.error(`[API Call] Duration: ${duration}ms`);
+          log.error("═══════════════════════════════════════════════════════════════════");
+          resolve({
+            success: false,
+            error: `Request timeout after ${timeoutMs}ms`,
+            duration,
+          });
+        }, timeoutMs);
+
+        try {
+          const netRequest = net.request({
+            method: "POST",
+            url: request.apiUrl,
+            session: session.defaultSession,
+          });
+
+          // Set headers
+          netRequest.setHeader("Content-Type", "application/json; charset=utf-8");
+          netRequest.setHeader("User-Agent", "DocHub/1.0");
+          netRequest.setHeader("Accept", "application/json");
+
+          let responseData = "";
+          let responseHeaders: Record<string, string | string[]> = {};
+
+          netRequest.on("response", (response) => {
+            log.info("[API Call] Response received, reading data...");
+            log.info(`[API Call] Status: ${response.statusCode} ${response.statusMessage}`);
+
+            // Capture response headers
+            responseHeaders = response.headers;
+            log.info(`[API Call] Response Headers:`);
+            Object.entries(response.headers).forEach(([key, value]) => {
+              log.info(`[API Call]   ${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
             });
 
-            netRequest.setHeader("Content-Type", "application/json; charset=utf-8");
-            netRequest.setHeader("User-Agent", "DocHub/1.0");
-            netRequest.setHeader("Accept", "application/json");
-
-            let responseData = "";
-
-            netRequest.on("response", (response) => {
-              response.on("data", (chunk) => {
-                responseData += chunk.toString();
-              });
-
-              response.on("end", () => {
-                clearTimeout(timeoutHandle);
-                if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
-                  try {
-                    const data = JSON.parse(responseData);
-                    log.info("[API Call] Method 1 SUCCESS");
-                    resolve({ success: true, statusCode: response.statusCode, data, method: "net.request" });
-                  } catch {
-                    reject(new Error("Failed to parse response JSON"));
-                  }
-                } else {
-                  reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
-                }
-              });
+            response.on("data", (chunk) => {
+              responseData += chunk.toString();
             });
 
-            netRequest.on("error", (error) => {
+            response.on("end", () => {
               clearTimeout(timeoutHandle);
-              reject(error);
-            });
+              const duration = Date.now() - startTime;
 
-            netRequest.write(jsonPayload);
-            netRequest.end();
-          } catch (error) {
+              log.info("───────────────────────────────────────────────────────────────────");
+              log.info(`[API Call] Response Body (raw, ${responseData.length} chars):`);
+              // Log response body with proper formatting
+              if (responseData.length > 0) {
+                try {
+                  const parsedResponse = JSON.parse(responseData);
+                  const responseFormatted = JSON.stringify(parsedResponse, null, 2);
+                  responseFormatted.split('\n').forEach(line => {
+                    log.info(`[API Call]   ${line}`);
+                  });
+                } catch {
+                  // If not JSON, log as-is (truncated if too long)
+                  const truncated = responseData.length > 1000 ? responseData.substring(0, 1000) + '...' : responseData;
+                  log.info(`[API Call]   ${truncated}`);
+                }
+              } else {
+                log.info(`[API Call]   (empty response body)`);
+              }
+
+              if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+                try {
+                  const data = JSON.parse(responseData);
+                  log.info("═══════════════════════════════════════════════════════════════════");
+                  log.info("[API Call] SUCCESS");
+                  log.info("═══════════════════════════════════════════════════════════════════");
+                  log.info(`[API Call] Status Code: ${response.statusCode}`);
+                  log.info(`[API Call] Duration: ${duration}ms`);
+                  if (data.Results) {
+                    log.info(`[API Call] Results count: ${data.Results.length}`);
+                  }
+                  log.info("═══════════════════════════════════════════════════════════════════");
+
+                  resolve({
+                    success: true,
+                    statusCode: response.statusCode,
+                    data,
+                    duration,
+                    method: "net.request",
+                  });
+                } catch (parseError) {
+                  log.error("═══════════════════════════════════════════════════════════════════");
+                  log.error("[API Call] JSON PARSE ERROR");
+                  log.error("═══════════════════════════════════════════════════════════════════");
+                  log.error(`[API Call] Failed to parse response as JSON`);
+                  log.error(`[API Call] Parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+                  log.error(`[API Call] Raw response: ${responseData.substring(0, 500)}`);
+                  log.error(`[API Call] Duration: ${duration}ms`);
+                  log.error("═══════════════════════════════════════════════════════════════════");
+
+                  resolve({
+                    success: false,
+                    error: "Failed to parse response JSON",
+                    rawResponse: responseData.substring(0, 500),
+                    duration,
+                  });
+                }
+              } else {
+                log.error("═══════════════════════════════════════════════════════════════════");
+                log.error("[API Call] HTTP ERROR");
+                log.error("═══════════════════════════════════════════════════════════════════");
+                log.error(`[API Call] Status Code: ${response.statusCode}`);
+                log.error(`[API Call] Status Message: ${response.statusMessage}`);
+                log.error(`[API Call] Response Body: ${responseData.substring(0, 500)}`);
+                log.error(`[API Call] Duration: ${duration}ms`);
+                log.error("═══════════════════════════════════════════════════════════════════");
+
+                resolve({
+                  success: false,
+                  error: `HTTP ${response.statusCode}: ${response.statusMessage}`,
+                  statusCode: response.statusCode,
+                  rawResponse: responseData.substring(0, 500),
+                  duration,
+                });
+              }
+            });
+          });
+
+          netRequest.on("error", (error) => {
             clearTimeout(timeoutHandle);
-            reject(error);
+            const duration = Date.now() - startTime;
+
+            log.error("═══════════════════════════════════════════════════════════════════");
+            log.error("[API Call] NETWORK ERROR");
+            log.error("═══════════════════════════════════════════════════════════════════");
+            log.error(`[API Call] Error Type: ${error.name || 'Unknown'}`);
+            log.error(`[API Call] Error Message: ${error.message}`);
+            if (error.stack) {
+              log.error(`[API Call] Stack Trace:`);
+              error.stack.split('\n').forEach(line => {
+                log.error(`[API Call]   ${line}`);
+              });
+            }
+            log.error(`[API Call] Duration: ${duration}ms`);
+            log.error("[API Call] Possible causes:");
+            log.error("[API Call]   - Network connectivity issues");
+            log.error("[API Call]   - Corporate proxy blocking the request");
+            log.error("[API Call]   - SSL/TLS certificate issues");
+            log.error("[API Call]   - DNS resolution failure");
+            log.error("[API Call]   - Firewall blocking outbound connections");
+            log.error("═══════════════════════════════════════════════════════════════════");
+
+            resolve({
+              success: false,
+              error: error.message,
+              errorType: error.name,
+              duration,
+            });
+          });
+
+          // Write payload and send request
+          log.info("[API Call] Writing payload and sending request...");
+          netRequest.write(jsonPayload);
+          netRequest.end();
+          log.info("[API Call] Request sent, waiting for response...");
+
+        } catch (error) {
+          clearTimeout(timeoutHandle);
+          const duration = Date.now() - startTime;
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorStack = error instanceof Error ? error.stack : undefined;
+
+          log.error("═══════════════════════════════════════════════════════════════════");
+          log.error("[API Call] EXCEPTION DURING REQUEST");
+          log.error("═══════════════════════════════════════════════════════════════════");
+          log.error(`[API Call] Error: ${errorMessage}`);
+          if (errorStack) {
+            log.error(`[API Call] Stack Trace:`);
+            errorStack.split('\n').forEach(line => {
+              log.error(`[API Call]   ${line}`);
+            });
           }
-        });
-      };
+          log.error(`[API Call] Duration: ${duration}ms`);
+          log.error("═══════════════════════════════════════════════════════════════════");
 
-      // =========================================================================
-      // METHOD 2: Node.js https with SSL bypass (rejectUnauthorized: false)
-      // Works when corporate proxy intercepts SSL
-      // =========================================================================
-      const tryNodeHttps = (): Promise<any> => {
-        return new Promise((resolve, reject) => {
-          log.info("[API Call] Method 2: Trying Node.js https with SSL bypass...");
-
-          try {
-            const urlObj = new URL(request.apiUrl);
-
-            const options: https.RequestOptions = {
-              hostname: urlObj.hostname,
-              port: urlObj.port || 443,
-              path: urlObj.pathname + urlObj.search,
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": "DocHub/1.0",
-                "Accept": "application/json",
-                "Content-Length": Buffer.byteLength(jsonPayload),
-              },
-              // CRITICAL: Bypass SSL certificate verification
-              rejectUnauthorized: false,
-              // Additional SSL bypass options
-              requestCert: false,
-              agent: new https.Agent({
-                rejectUnauthorized: false,
-                keepAlive: true,
-              }),
-              timeout: timeoutMs,
-            };
-
-            const req = https.request(options, (res) => {
-              let responseData = "";
-
-              res.on("data", (chunk) => {
-                responseData += chunk.toString();
-              });
-
-              res.on("end", () => {
-                if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                  try {
-                    const data = JSON.parse(responseData);
-                    log.info("[API Call] Method 2 SUCCESS");
-                    resolve({ success: true, statusCode: res.statusCode, data, method: "https-bypass" });
-                  } catch {
-                    reject(new Error("Failed to parse response JSON"));
-                  }
-                } else {
-                  reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
-                }
-              });
-            });
-
-            req.on("error", (error) => {
-              reject(error);
-            });
-
-            req.on("timeout", () => {
-              req.destroy();
-              reject(new Error(`https timeout after ${timeoutMs}ms`));
-            });
-
-            req.write(jsonPayload);
-            req.end();
-          } catch (error) {
-            reject(error);
-          }
-        });
-      };
-
-      // =========================================================================
-      // METHOD 3: Node.js https with custom agent and TLS options
-      // Even more aggressive SSL bypass
-      // =========================================================================
-      const tryNodeHttpsAggressive = (): Promise<any> => {
-        return new Promise((resolve, reject) => {
-          log.info("[API Call] Method 3: Trying aggressive https with all TLS bypass options...");
-
-          try {
-            const urlObj = new URL(request.apiUrl);
-
-            // Create agent with maximum SSL bypass settings
-            const agent = new https.Agent({
-              rejectUnauthorized: false,
-              checkServerIdentity: () => undefined, // Skip hostname verification
-              secureOptions: 0, // No security options
-              keepAlive: true,
-            });
-
-            const options: https.RequestOptions = {
-              hostname: urlObj.hostname,
-              port: urlObj.port || 443,
-              path: urlObj.pathname + urlObj.search,
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": "DocHub/1.0",
-                "Accept": "application/json",
-                "Content-Length": Buffer.byteLength(jsonPayload),
-              },
-              agent,
-              rejectUnauthorized: false,
-              timeout: timeoutMs,
-            };
-
-            const req = https.request(options, (res) => {
-              let responseData = "";
-
-              res.on("data", (chunk) => {
-                responseData += chunk.toString();
-              });
-
-              res.on("end", () => {
-                if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                  try {
-                    const data = JSON.parse(responseData);
-                    log.info("[API Call] Method 3 SUCCESS");
-                    resolve({ success: true, statusCode: res.statusCode, data, method: "https-aggressive" });
-                  } catch {
-                    reject(new Error("Failed to parse response JSON"));
-                  }
-                } else {
-                  reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
-                }
-              });
-            });
-
-            req.on("error", (error) => {
-              reject(error);
-            });
-
-            req.on("timeout", () => {
-              req.destroy();
-              reject(new Error(`https aggressive timeout after ${timeoutMs}ms`));
-            });
-
-            req.write(jsonPayload);
-            req.end();
-          } catch (error) {
-            reject(error);
-          }
-        });
-      };
-
-      // =========================================================================
-      // METHOD 4: Try HTTP (non-SSL) if URL can be converted
-      // Last resort for debugging - not secure
-      // =========================================================================
-      const tryHttp = (): Promise<any> => {
-        return new Promise((resolve, reject) => {
-          log.info("[API Call] Method 4: Trying HTTP (non-SSL fallback)...");
-
-          try {
-            // Convert https to http
-            const httpUrl = request.apiUrl.replace("https://", "http://");
-            const urlObj = new URL(httpUrl);
-
-            const options: http.RequestOptions = {
-              hostname: urlObj.hostname,
-              port: urlObj.port || 80,
-              path: urlObj.pathname + urlObj.search,
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": "DocHub/1.0",
-                "Accept": "application/json",
-                "Content-Length": Buffer.byteLength(jsonPayload),
-              },
-              timeout: timeoutMs,
-            };
-
-            const req = http.request(options, (res) => {
-              let responseData = "";
-
-              res.on("data", (chunk) => {
-                responseData += chunk.toString();
-              });
-
-              res.on("end", () => {
-                if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                  try {
-                    const data = JSON.parse(responseData);
-                    log.info("[API Call] Method 4 SUCCESS");
-                    resolve({ success: true, statusCode: res.statusCode, data, method: "http-fallback" });
-                  } catch {
-                    reject(new Error("Failed to parse response JSON"));
-                  }
-                } else {
-                  reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
-                }
-              });
-            });
-
-            req.on("error", (error) => {
-              reject(error);
-            });
-
-            req.on("timeout", () => {
-              req.destroy();
-              reject(new Error(`http timeout after ${timeoutMs}ms`));
-            });
-
-            req.write(jsonPayload);
-            req.end();
-          } catch (error) {
-            reject(error);
-          }
-        });
-      };
-
-      // =========================================================================
-      // EXECUTE METHODS WITH FALLBACK CHAIN
-      // =========================================================================
-      const errors: string[] = [];
-
-      // Try Method 1: Electron net.request
-      try {
-        const result = await tryNetRequest();
-        return result;
-      } catch (e1) {
-        const error1 = e1 instanceof Error ? e1.message : String(e1);
-        errors.push(`Method 1 (net.request): ${error1}`);
-        log.warn(`[API Call] Method 1 failed: ${error1}`);
-      }
-
-      // Try Method 2: Node.js https with SSL bypass
-      try {
-        const result = await tryNodeHttps();
-        return result;
-      } catch (e2) {
-        const error2 = e2 instanceof Error ? e2.message : String(e2);
-        errors.push(`Method 2 (https-bypass): ${error2}`);
-        log.warn(`[API Call] Method 2 failed: ${error2}`);
-      }
-
-      // Try Method 3: Aggressive SSL bypass
-      try {
-        const result = await tryNodeHttpsAggressive();
-        return result;
-      } catch (e3) {
-        const error3 = e3 instanceof Error ? e3.message : String(e3);
-        errors.push(`Method 3 (https-aggressive): ${error3}`);
-        log.warn(`[API Call] Method 3 failed: ${error3}`);
-      }
-
-      // Try Method 4: HTTP fallback (unlikely to work but worth trying)
-      try {
-        const result = await tryHttp();
-        return result;
-      } catch (e4) {
-        const error4 = e4 instanceof Error ? e4.message : String(e4);
-        errors.push(`Method 4 (http-fallback): ${error4}`);
-        log.warn(`[API Call] Method 4 failed: ${error4}`);
-      }
-
-      // All methods failed
-      log.error("[API Call] All 4 methods failed:", errors);
-      return {
-        success: false,
-        error: `All connection methods failed. Errors:\n${errors.join("\n")}`,
-        allErrors: errors,
-      };
+          resolve({
+            success: false,
+            error: errorMessage,
+            duration,
+          });
+        }
+      });
     });
 
     // Cancel ongoing operation
@@ -2371,6 +2265,11 @@ class AutoUpdaterHandler {
   // Check for updates on app start (if enabled in settings)
   public async checkOnStartup(): Promise<void> {
     await this.customUpdater.checkOnStartup();
+  }
+
+  // Start scheduled periodic update checks
+  public startScheduledChecks(intervalMs?: number): void {
+    this.customUpdater.startScheduledChecks(intervalMs);
   }
 }
 

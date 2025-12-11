@@ -49,6 +49,12 @@ export const defaultOptions: ProcessingOption[] = [
     enabled: true,
   },
   {
+    id: 'force-remove-heading1-toc',
+    label: 'Force Remove Heading 1 from TOC',
+    group: 'hyperlinks',
+    enabled: true,
+  },
+  {
     id: 'fix-internal-hyperlinks',
     label: 'theSource Hyperlinks',
     group: 'hyperlinks',

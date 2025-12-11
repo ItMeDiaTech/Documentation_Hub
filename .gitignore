@@ -46,6 +46,12 @@ HyperlinkService.cs
 allowedPackageJsonDependencies.txt
 Template_UI.code-workspace
 *.code-workspace
+DocHub_Error_Examples/
+Example1/
+*.docx
+tests/fixtures/
+tests/fixtures/Issue.docx
+tests/fixtures/Original.docx
 
 # Release automation (customize per developer)
 release.ps1
@@ -258,3 +264,26 @@ CLAUDE.md
 /.prettierignore
 /.prettierrc
 /release2
+# ============================================================================
+# REORGANIZED TEST AND ARCHIVE DIRECTORIES
+# ============================================================================
+
+# Test fixtures - ignore .docx files
+tests/fixtures/*.docx
+
+# Test analysis artifacts
+tests/temp-analysis/
+
+# Archived documentation and old development files
+docs/archive/
+/temp_errors
+/Example3
+/temp_original
+/Test_Shading
+/Errors
+/Original
+/scripts
+.gitignore
+.prettierignore
+.prettierrc
+*.zip

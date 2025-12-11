@@ -1,0 +1,14 @@
+# Development Update Server Configuration
+# Used for testing auto-updates locally without publishing to GitHub
+#
+# Setup:
+# 1. Build your app: npm run build
+# 2. Copy dist files to a local server directory
+# 3. Start local server: node scripts/local-update-server.js
+# 4. Bump version and rebuild
+# 5. Copy new dist files to server
+# 6. Run the older version to test updates
+
+provider: generic
+url: http://localhost:8080/updates/
+channel: latest
