@@ -2,6 +2,7 @@
   "name": "documentation-hub",
   "version": "4.0.13",
   "description": "A modern document processing and session management desktop application",
+  "author": "DiaTech",
   "main": "dist/electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -34,7 +35,6 @@
     "vite",
     "desktop"
   ],
-  "author": "",
   "license": "MIT",
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",
