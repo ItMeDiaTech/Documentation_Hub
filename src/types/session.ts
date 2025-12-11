@@ -131,6 +131,8 @@ export interface WordRevisionState {
   summary: ChangelogSummary | null;
   /** How revisions were handled during processing */
   handlingMode: RevisionHandlingMode;
+  /** Author name used for DocHub processing changes - used to distinguish DocHub vs pre-existing changes */
+  processingAuthor?: string;
   /** Result of revision handling */
   handlingResult?: {
     accepted: string[];
@@ -148,6 +150,7 @@ export interface Document {
   status: 'pending' | 'processing' | 'completed' | 'error';
   processedAt?: Date;
   errors?: string[];
+  errorType?: 'file_locked' | 'general';
   fileData?: ArrayBuffer; // Store file data for processing
   /** Pre-existing tracked changes that were in the document BEFORE DocHub processing */
   previousRevisions?: PreviousRevisionState;
@@ -251,6 +254,7 @@ export interface SessionStyle {
   preserveBold?: boolean; // Optional: true = preserve existing bold (ignore bold property)
   preserveItalic?: boolean; // Optional: true = preserve existing italic (ignore italic property)
   preserveUnderline?: boolean; // Optional: true = preserve existing underline (ignore underline property)
+  preserveCenterAlignment?: boolean; // Optional: true = preserve center alignment if paragraph is already centered
   alignment: 'left' | 'center' | 'right' | 'justify';
   color: string;
   spaceBefore: number;
@@ -311,6 +315,7 @@ export interface TableOfContentsSettings {
 export interface TableShadingSettings {
   header2Shading: string; // Hex color for Header 2 / 1x1 table cells (default: #BFBFBF)
   otherShading: string; // Hex color for other table cells (default: #DFDFDF)
+  imageBorderWidth?: number; // Border width in points for images (default: 1.0)
 }
 
 export interface ReplacementRule {
@@ -389,4 +394,15 @@ export interface SessionContextType {
   // Defaults management
   resetSessionToDefaults: (sessionId: string) => void;
   saveAsCustomDefaults: (sessionId: string) => void;
+}
+
+/**
+ * Queue item for sequential document processing
+ * Used by useDocumentQueue hook to process documents one at a time
+ */
+export interface QueueItem {
+  documentId: string;
+  sessionId: string;
+  addedAt: Date;
+  status: 'queued' | 'processing' | 'completed' | 'error';
 }

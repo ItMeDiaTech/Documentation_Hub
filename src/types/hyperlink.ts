@@ -103,6 +103,12 @@ export interface HyperlinkProcessingOptions {
      */
     updateTocHyperlinks?: boolean;
     /**
+     * Force remove Heading 1 from Table of Contents entries.
+     * When true (default), excludes Heading 1 (document title) from TOC.
+     * This ensures the document title doesn't appear as a TOC entry.
+     */
+    forceRemoveHeading1FromTOC?: boolean;
+    /**
      * Alias for updateTocHyperlinks for clearer intent in higher-level
      * processing options (e.g., Template_UI). Either flag being true
      * should trigger TOC population logic.

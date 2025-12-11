@@ -72,6 +72,32 @@ export function extractContentId(url: string): string | null {
 }
 
 /**
+ * Extract Content ID from any text string (file path, display text, etc.)
+ *
+ * This is used as a fallback when the URL is not available from getUrl(),
+ * such as with file-type hyperlinks where the URL is stored in the
+ * relationship target but getUrl() returns undefined.
+ *
+ * @param text - Text to search for Content_ID pattern
+ * @returns Content ID (e.g., "TSRC-ABC-123456") or null if not found
+ *
+ * @example
+ * extractContentIdFromText('C:\\Users\\user\\Downloads\\TSRC-PROD-015483')
+ * // Returns: "TSRC-PROD-015483"
+ *
+ * extractContentIdFromText('Document: TSRC-ABC-123456 (Final)')
+ * // Returns: "TSRC-ABC-123456"
+ *
+ * extractContentIdFromText('Reviewing SharePoint Errors (Seniors Only)')
+ * // Returns: null
+ */
+export function extractContentIdFromText(text: string): string | null {
+  if (!text) return null;
+  const match = text.match(URL_PATTERNS.CONTENT_ID);
+  return match ? match[0] : null;
+}
+
+/**
  * Extract Document ID from a URL
  *
  * @param url - URL to extract from

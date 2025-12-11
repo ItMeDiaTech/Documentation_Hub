@@ -8,6 +8,7 @@
 import {
   Bookmark,
   ChangelogGenerator,
+  ComplexField,
   Document,
   Hyperlink,
   Image,
@@ -23,7 +24,7 @@ import {
   type TableOfContents,
 } from "docxmlater";
 import type { RevisionHandlingMode } from "@/types/session";
-// Note: Run, Hyperlink, Image imported for type checking in isParagraphTrulyEmpty()
+// Note: Run, Hyperlink, ImageRun imported for type checking in isParagraphTrulyEmpty()
 import {
   DetailedHyperlinkInfo,
   HyperlinkProcessingOptions,
@@ -39,9 +40,33 @@ import { promises as fs } from "fs";
 import pLimit from "p-limit";
 import * as path from "path";
 import { hyperlinkService } from "../HyperlinkService";
+import type { HyperlinkApiResponse } from "@/types/hyperlink";
 import { DocXMLaterProcessor } from "./DocXMLaterProcessor";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
 import { DocumentSnapshotService } from "./DocumentSnapshotService";
+import { tableProcessor } from "./processors/TableProcessor";
+
+// ═══════════════════════════════════════════════════════════
+// Bullet Symbol to Font Mapping
+// Each bullet type requires a SPECIFIC font AND character for correct rendering
+// Symbol font uses legacy encoding (NOT Unicode), so we must map UI chars to font-specific chars
+// ═══════════════════════════════════════════════════════════
+const BULLET_CHAR_MAP: Record<string, { char: string; font: string }> = {
+  '●': { char: '\u00B7', font: 'Symbol' },      // UI closed bullet → Symbol middle dot (U+00B7)
+  '○': { char: 'o', font: 'Courier New' },      // UI open bullet → Courier New lowercase 'o'
+  '■': { char: 'n', font: 'Wingdings' },        // UI square → Wingdings 'n' (char code 110)
+  '•': { char: '\u00B7', font: 'Symbol' },      // Alternative closed bullet → Symbol middle dot
+};
+
+/**
+ * Get the correct font AND character for a bullet symbol
+ * Symbol/Wingdings fonts use legacy character encoding, not Unicode
+ * @param bulletChar The UI bullet character (e.g., ●, ○, ■)
+ * @returns Object with font-specific character and font name
+ */
+function getBulletMapping(bulletChar: string): { char: string; font: string } {
+  return BULLET_CHAR_MAP[bulletChar] || { char: '\u00B7', font: 'Symbol' };
+}
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -113,11 +138,13 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
     spacingBetweenItems: number;
   };
   bulletUniformity?: boolean; // bullet-uniformity: Standardize bullet characters
+  normalizeTableLists?: boolean; // normalize-table-lists: Convert typed list prefixes to proper Word lists
   tableUniformity?: boolean; // table-uniformity: Apply consistent table formatting
   tableShadingSettings?: {
     // NEW: Simplified table shading colors
     header2Shading: string; // Hex color for Header 2 / 1x1 table cells (default: #BFBFBF)
     otherShading: string; // Hex color for other table cells and If.../Then... patterns (default: #DFDFDF)
+    imageBorderWidth?: number; // Border width in points for images (default: 1.0)
   };
   smartTables?: boolean; // smart-tables: Smart table detection and formatting (NEW)
   tableOfContentsSettings?: {
@@ -236,6 +263,166 @@ export class WordDocumentProcessor {
   constructor() {
     this.docXMLater = new DocXMLaterProcessor();
     this.log.debug("Initialized with DocXMLater library");
+  }
+
+  /**
+   * Detect if running in main process (Node.js) vs renderer process (browser)
+   */
+  private isMainProcess(): boolean {
+    return typeof window === 'undefined';
+  }
+
+  /**
+   * Detect if an error is caused by a file being locked/in use by another process
+   * Returns true for EBUSY, EPERM, EACCES errors or common file-lock messages
+   */
+  private isFileLockError(error: unknown): boolean {
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      const code = (error as NodeJS.ErrnoException).code;
+
+      // Windows file lock error codes
+      if (code === 'EBUSY' || code === 'EPERM' || code === 'EACCES') {
+        return true;
+      }
+
+      // Check for common file-in-use error messages
+      if (message.includes('resource busy') ||
+          message.includes('file in use') ||
+          message.includes('being used by another process') ||
+          message.includes('locked')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Call PowerAutomate API - handles both main process and renderer contexts
+   *
+   * In the main process, we use Electron's net.request directly.
+   * In the renderer process, we use the HyperlinkService which goes through IPC.
+   */
+  private async callPowerAutomateApi(
+    hyperlinkInfos: DetailedHyperlinkInfo[],
+    apiSettings: { apiUrl: string; timeout?: number; retryAttempts?: number; retryDelay?: number },
+    userProfile?: { firstName: string; lastName: string; email: string }
+  ): Promise<HyperlinkApiResponse & { processedHyperlinks?: DetailedHyperlinkInfo[] }> {
+    // In renderer process, use HyperlinkService (goes through IPC)
+    if (!this.isMainProcess()) {
+      this.log.info('[WordDocProcessor] Using renderer process API (HyperlinkService -> IPC)');
+      return hyperlinkService.processHyperlinksWithApi(hyperlinkInfos, apiSettings, userProfile);
+    }
+
+    // In main process, call net.request directly
+    this.log.info('[WordDocProcessor] Using main process API (net.request)');
+
+    try {
+      // Dynamic import to avoid bundling Electron modules in renderer
+      const { callPowerAutomateApiWithRetry } = await import('../../../electron/services/PowerAutomateApiService');
+
+      // Extract lookup IDs from hyperlinks
+      const lookupIds: string[] = [];
+      const uniqueIds = new Set<string>();
+
+      for (const hyperlink of hyperlinkInfos) {
+        const ids = extractLookupIds(hyperlink.url);
+        if (ids) {
+          if (ids.contentId && !uniqueIds.has(ids.contentId)) {
+            lookupIds.push(ids.contentId);
+            uniqueIds.add(ids.contentId);
+          }
+          if (ids.documentId && !uniqueIds.has(ids.documentId)) {
+            lookupIds.push(ids.documentId);
+            uniqueIds.add(ids.documentId);
+          }
+        }
+      }
+
+      if (lookupIds.length === 0) {
+        // No IDs found is not a failure - it just means no hyperlinks need API processing
+        // Return success with empty results so other formatting operations can continue
+        this.log.warn('No Content_ID or Document_ID patterns found in hyperlinks - skipping API call');
+        return {
+          success: true,
+          timestamp: new Date(),
+          body: {
+            results: [],
+            errors: [],
+          },
+        };
+      }
+
+      // Calculate statistics
+      const totalHyperlinks = hyperlinkInfos.length;
+      const hyperlinksChecked = hyperlinkInfos.filter(h =>
+        /thesource\.cvshealth\.com/i.test(h.url)
+      ).length;
+
+      // Make the API call
+      const response = await callPowerAutomateApiWithRetry(
+        apiSettings.apiUrl,
+        {
+          Lookup_ID: lookupIds,
+          Hyperlinks_Checked: hyperlinksChecked,
+          Total_Hyperlinks: totalHyperlinks,
+          First_Name: userProfile?.firstName || '',
+          Last_Name: userProfile?.lastName || '',
+          Email: userProfile?.email || '',
+        },
+        {
+          timeout: apiSettings.timeout,
+          maxRetries: apiSettings.retryAttempts,
+          retryDelay: apiSettings.retryDelay,
+        }
+      );
+
+      if (!response.success) {
+        return {
+          success: false,
+          timestamp: new Date(),
+          error: response.error || 'API request failed',
+        };
+      }
+
+      // Parse results into HyperlinkApiResponse format
+      const results = response.data?.Results?.map(result => {
+        const rawStatus = result.Status?.trim() || 'Active';
+        const normalizedStatus =
+          rawStatus.toLowerCase() === 'deprecated' ? 'deprecated' as const :
+          rawStatus.toLowerCase() === 'expired' ? 'expired' as const :
+          rawStatus.toLowerCase() === 'moved' ? 'moved' as const :
+          rawStatus.toLowerCase() === 'not_found' ? 'not_found' as const :
+          'active' as const;
+
+        return {
+          url: '',
+          documentId: result.Document_ID?.trim() || '',
+          contentId: result.Content_ID?.trim() || '',
+          title: result.Title?.trim() || '',
+          status: normalizedStatus,
+          metadata: {},
+        };
+      }) || [];
+
+      return {
+        success: true,
+        timestamp: new Date(),
+        statusCode: response.statusCode,
+        body: {
+          results,
+          errors: [],
+        },
+        processedHyperlinks: hyperlinkInfos,
+      };
+    } catch (error) {
+      this.log.error('[WordDocProcessor] Main process API call failed:', error);
+      return {
+        success: false,
+        timestamp: new Date(),
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
   }
 
   /**
@@ -420,12 +607,13 @@ export class WordDocumentProcessor {
 
       // Enable track changes BEFORE any modifications
       // This makes all DocHub changes become Word tracked changes
-      // Build author name from user profile, defaulting to "Doc Hub" if blank
+      // Priority: 1) revisionAuthor option, 2) user profile name, 3) "Doc Hub" default
       const firstName = options.userProfile?.firstName?.trim() || '';
       const lastName = options.userProfile?.lastName?.trim() || '';
-      const authorName = firstName && lastName
+      const profileName = firstName && lastName
         ? `${firstName} ${lastName}`
-        : firstName || lastName || 'Doc Hub';
+        : firstName || lastName || '';
+      const authorName = options.revisionAuthor?.trim() || profileName || 'Doc Hub';
 
       doc.enableTrackChanges({
         author: authorName,
@@ -497,7 +685,7 @@ export class WordDocumentProcessor {
               isValid: true,
             }));
 
-            const apiResponse = await hyperlinkService.processHyperlinksWithApi(
+            const apiResponse = await this.callPowerAutomateApi(
               hyperlinkInfos,
               apiSettings,
               options.userProfile
@@ -635,6 +823,67 @@ export class WordDocumentProcessor {
                       modifications.push("Display text updated");
 
                       this.log.debug(`Updated text: "${hyperlinkInfo.displayText}" → "${newText}"`);
+
+                      // Clean up orphaned content ID runs that follow this hyperlink
+                      // Some documents have the content ID as a separate styled run (blue, underlined)
+                      // that looks like part of the hyperlink but isn't. After updating the hyperlink
+                      // text to include the content ID, we need to remove these orphaned fragments.
+                      if (apiResult.contentId) {
+                        const last6 = apiResult.contentId.slice(-6);
+                        const para = hyperlink.paragraph;
+                        const content = para.getContent();
+                        const hyperlinkIndex = content.findIndex((item: unknown) => item === hyperlink.hyperlink);
+
+                        if (hyperlinkIndex !== -1 && hyperlinkIndex < content.length - 1) {
+                          const itemsToRemove: unknown[] = [];
+                          let combinedText = '';
+
+                          // Look at up to 3 items after the hyperlink to handle various split patterns
+                          for (let i = 1; i <= 3 && hyperlinkIndex + i < content.length; i++) {
+                            const item = content[hyperlinkIndex + i];
+
+                            if (this.isRunItem(item)) {
+                              const itemText = (item as any).getText();
+                              combinedText += itemText;
+                              itemsToRemove.push(item);
+
+                              const trimmedText = combinedText.trim();
+
+                              // Patterns to match (content ID was just added to hyperlink, so these are orphans):
+                              // - Complete: " (017428)", "(017428)"
+                              // - Partial from split: ")", " )"
+                              // - Partial with digits: "428)", "8)"
+                              const fullContentIdPattern = new RegExp(`^\\s*\\(${last6}\\)\\s*$`);
+                              const partialEndPattern = /^\s*\d*\)\s*$/;
+
+                              // Check if combined text is an orphaned content ID pattern
+                              if (
+                                fullContentIdPattern.test(combinedText) || // Full: "(017428)"
+                                trimmedText === ')' || // Just closing paren
+                                trimmedText === `(${last6})` || // No space variant
+                                (partialEndPattern.test(combinedText) && trimmedText.length <= 7) // Partial end like "428)"
+                              ) {
+                                // Remove all collected orphaned runs
+                                for (const toRemove of itemsToRemove) {
+                                  para.replaceContent(toRemove, []);
+                                }
+                                this.log.debug(
+                                  `Removed ${itemsToRemove.length} orphaned content ID fragment(s): "${trimmedText}"`
+                                );
+                                break;
+                              }
+
+                              // If the text doesn't look like a content ID fragment, stop looking
+                              if (!/^[\s\d\(\)]+$/.test(combinedText)) {
+                                break;
+                              }
+                            } else {
+                              // Stop if we hit a non-Run item (Hyperlink, Revision, etc.)
+                              break;
+                            }
+                          }
+                        }
+                      }
 
                       // Track the change with status (expired/updated) and contentId
                       if (options.trackChanges) {
@@ -1183,8 +1432,10 @@ export class WordDocumentProcessor {
 
       if (options.centerAndBorderImages) {
         this.log.debug("=== CENTERING AND BORDERING IMAGES ===");
-        const imagesCentered = doc.borderAndCenterLargeImages(50, 2);
-        this.log.info(`Centered and bordered ${imagesCentered} images`);
+        // Centers and borders images where either dimension > 1 inch (96px at 96 DPI)
+        const borderWidth = options.tableShadingSettings?.imageBorderWidth ?? 1.0;
+        const imagesCentered = doc.borderAndCenterLargeImages(96, borderWidth);
+        this.log.info(`Centered and bordered ${imagesCentered} images with ${borderWidth}pt border`);
 
         // Track image processing
         if (imagesCentered > 0) {
@@ -1214,6 +1465,39 @@ export class WordDocumentProcessor {
       }
 
       // LISTS & TABLES GROUP
+      // First, normalize typed list prefixes to proper Word lists
+      // This converts manually typed prefixes like "1.", "a.", "•" to proper <w:numPr> formatting
+      if (options.normalizeTableLists) {
+        this.log.debug("=== NORMALIZING TYPED LIST PREFIXES IN TABLES ===");
+        const normReport = doc.normalizeTableLists();
+        if (normReport.normalized > 0) {
+          this.log.info(
+            `Normalized ${normReport.normalized} typed list items to proper Word lists (majority: ${normReport.appliedCategory})`
+          );
+          result.changes?.push({
+            type: 'structure',
+            category: 'list_fix',
+            description: 'Converted typed list prefixes to proper Word list formatting',
+            count: normReport.normalized,
+          });
+        }
+        if (normReport.errors.length > 0) {
+          this.log.warn(`List normalization had ${normReport.errors.length} errors:`, normReport.errors);
+        }
+      }
+
+      // Next, normalize list levels based on visual indentation (before applying uniformity)
+      // This handles documents where items have w:ilvl="0" but extra paragraph indentation
+      if (options.listBulletSettings?.enabled && options.listBulletSettings.indentationLevels) {
+        this.log.debug("=== NORMALIZING LIST LEVELS FROM VISUAL INDENTATION ===");
+        const levelsNormalized = await this.normalizeListLevelsFromIndentation(doc, {
+          indentationLevels: options.listBulletSettings.indentationLevels,
+        });
+        if (levelsNormalized > 0) {
+          this.log.info(`Normalized ${levelsNormalized} list item levels from visual indentation`);
+        }
+      }
+
       if (options.listBulletSettings?.enabled) {
         this.log.debug("=== APPLYING LIST INDENTATION UNIFORMITY ===");
         const listsFormatted = await this.applyListIndentationUniformity(
@@ -1267,25 +1551,10 @@ export class WordDocumentProcessor {
         // which internally calls addStructureBlankLines() with afterLists: true default
       }
 
-      // SKIP: Normalize all list indentation to standard values
-      // NOTE: doc.normalizeAllListIndentation() does not exist in docxmlater library
-      // The injectIndentationToNumbering() method below handles indentation directly
+      // Standardize numbering colors to fix green bullet issue
+      // NOTE: Indentation is now set via in-memory model in applyBulletUniformity()
+      // The old injectIndentationToNumbering() raw XML approach was ineffective (changes lost during save)
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
-        // Inject custom indentation into numbering.xml
-        if (options.listBulletSettings?.indentationLevels) {
-          this.log.debug("=== INJECTING CUSTOM INDENTATION ===");
-          const indentInjected = await this.injectIndentationToNumbering(
-            doc,
-            options.listBulletSettings.indentationLevels
-          );
-          if (indentInjected) {
-            this.log.info("Injected custom indentation values into numbering.xml");
-          } else {
-            this.log.warn("Failed to inject custom indentation - using document defaults");
-          }
-        }
-
-        // Standardize numbering colors to fix green bullet issue
         this.log.debug("=== STANDARDIZING NUMBERING COLORS ===");
         const colorFixed = await this.standardizeNumberingColors(doc);
         if (colorFixed) {
@@ -1299,6 +1568,12 @@ export class WordDocumentProcessor {
         this.log.info(
           `Applied standard formatting to ${tablesFormatted.tablesProcessed} tables (shading, borders, autofit, patterns)`
         );
+
+        // Center numeric cells (step numbers like "1", "2", "3")
+        const centeredCount = await tableProcessor.centerNumericCells(doc);
+        if (centeredCount > 0) {
+          this.log.info(`Centered ${centeredCount} numeric table cells`);
+        }
 
         // Track table formatting
         if (tablesFormatted.tablesProcessed > 0 || tablesFormatted.cellsRecolored > 0) {
@@ -1403,7 +1678,8 @@ export class WordDocumentProcessor {
       // ═══════════════════════════════════════════════════════════
       if (options.operations?.updateTocHyperlinks) {
         this.log.debug("=== BUILDING PROPER TOC (STYLES + FIELD + POPULATION) ===");
-        const tocResult = await this.buildProperTOC(doc);
+        const excludeHeading1 = options.operations?.forceRemoveHeading1FromTOC ?? true;
+        const tocResult = await this.buildProperTOC(doc, { excludeHeading1 });
         this.log.info(`✓ Built proper TOC with ${tocResult.count} styled hyperlink entries`);
 
         // Track Table of Contents creation with heading names
@@ -1526,6 +1802,7 @@ export class WordDocumentProcessor {
           entries: changelogEntries,
           summary: summary,
           handlingMode: options.revisionHandlingMode || "preserve_and_wrap",
+          processingAuthor: authorName, // Pass author for UI source detection
         };
       } catch (changelogError) {
         this.log.warn("Failed to extract changelog entries:", changelogError);
@@ -1548,30 +1825,23 @@ export class WordDocumentProcessor {
       if (autoAccept) {
         this.log.debug("=== ACCEPTING ALL REVISIONS ===");
         try {
-          // First, flush any pending changes so they're registered in RevisionManager
-          if (typeof (doc as any).flushPendingChanges === 'function') {
-            const flushed = (doc as any).flushPendingChanges();
-            this.log.debug(`Flushed ${flushed?.length || 0} pending changes before acceptance`);
-          }
+          // CRITICAL: Disable track changes FIRST to flush all pending changes to Revision objects.
+          // disableTrackChanges() internally calls flushPendingChanges() which converts
+          // pending tracked changes into Revision objects in the model.
+          // We MUST do this BEFORE acceptAllRevisions() to ensure ALL revisions are accepted.
+          doc.disableTrackChanges();
+          this.log.debug("Track changes disabled - pending changes flushed to Revision objects");
 
-          // Explicitly accept all revisions NOW (not deferred to save)
+          // NOW accept all revisions (including the ones just flushed by disableTrackChanges)
           // This handles all revision types: w:ins, w:del, w:pPrChange, w:rPrChange, etc.
-          let acceptedCount = 0;
-          const revisionManager = (doc as any).getRevisionManager?.();
-          if (revisionManager && typeof revisionManager.acceptAll === 'function') {
-            acceptedCount = revisionManager.acceptAll();
-            this.log.info(`Accepted ${acceptedCount} revisions via RevisionManager.acceptAll()`);
-          } else if (typeof (doc as any).acceptAllRevisions === 'function') {
-            acceptedCount = (doc as any).acceptAllRevisions();
-            this.log.info(`Accepted ${acceptedCount} revisions via Document.acceptAllRevisions()`);
+          if (typeof (doc as any).acceptAllRevisions === 'function') {
+            await (doc as any).acceptAllRevisions();
+            this.log.info("Accepted all revisions via Document.acceptAllRevisions()");
           } else {
             // Fallback: try setAcceptRevisionsBeforeSave if direct methods not available
-            this.log.warn("Direct acceptance methods not available, using setAcceptRevisionsBeforeSave fallback");
+            this.log.warn("Direct acceptance method not available, using setAcceptRevisionsBeforeSave fallback");
             doc.setAcceptRevisionsBeforeSave(true);
           }
-
-          // Disable track changes so no new revisions are created during save
-          doc.disableTrackChanges();
 
           // Count total expected revisions (pre-existing + DocHub)
           const preExistingCount = result.previousRevisions?.entries.length || 0;
@@ -1662,8 +1932,15 @@ export class WordDocumentProcessor {
 
       return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-      this.log.error("ERROR:", errorMessage);
+      // Detect file lock errors and show user-friendly message
+      let errorMessage: string;
+      if (this.isFileLockError(error)) {
+        errorMessage = "Please close the file and try again";
+        this.log.error("ERROR (file locked):", error instanceof Error ? error.message : String(error));
+      } else {
+        errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+        this.log.error("ERROR:", errorMessage);
+      }
 
       // Memory checkpoint: On error
       MemoryMonitor.logMemoryUsage("DocProcessor Error", `Error: ${errorMessage}`);
@@ -1769,6 +2046,22 @@ export class WordDocumentProcessor {
       default:
         return text.includes(pattern);
     }
+  }
+
+  /**
+   * Check if an item is a Run (not a Hyperlink or Revision)
+   * Uses duck-typing to identify Run objects by their method signatures.
+   * @param item - The paragraph content item to check
+   * @returns true if the item is a Run object
+   */
+  private isRunItem(item: unknown): boolean {
+    return (
+      item !== null &&
+      item !== undefined &&
+      typeof (item as any).getText === 'function' &&
+      typeof (item as any).getUrl !== 'function' && // Not a Hyperlink
+      typeof (item as any).getRevisionType !== 'function' // Not a Revision
+    );
   }
 
   /**
@@ -2209,6 +2502,7 @@ export class WordDocumentProcessor {
       }
 
       // Check if content contains hyperlinks or images (not empty!)
+      // IMPORTANT: Check ImageRun BEFORE Run since ImageRun extends Run
       for (const item of content) {
         if (item instanceof Hyperlink) {
           const hyperlinkText = item.getText() || "";
@@ -2216,8 +2510,8 @@ export class WordDocumentProcessor {
           this.log.debug(`  RESULT: NOT EMPTY (hyperlink)\n`);
           return false;
         }
-        if (item instanceof Image) {
-          this.log.debug(`  ✗ Paragraph contains image - NOT empty`);
+        if (item instanceof ImageRun) {
+          this.log.debug(`  ✗ Paragraph contains image (ImageRun) - NOT empty`);
           this.log.debug(`  RESULT: NOT EMPTY (image)\n`);
           return false;
         }
@@ -2548,6 +2842,7 @@ export class WordDocumentProcessor {
       preserveBold?: boolean;
       preserveItalic?: boolean;
       preserveUnderline?: boolean;
+      preserveCenterAlignment?: boolean;
       alignment: "left" | "center" | "right" | "justify";
       color: string;
       spaceBefore: number;
@@ -2563,6 +2858,7 @@ export class WordDocumentProcessor {
     const header2Style = styles.find((s) => s.id === "header2");
     const header3Style = styles.find((s) => s.id === "header3");
     const normalStyle = styles.find((s) => s.id === "normal");
+    const listParagraphStyle = styles.find((s) => s.id === "listParagraph");
 
     for (const para of paragraphs) {
       let styleToApply = null;
@@ -2577,9 +2873,14 @@ export class WordDocumentProcessor {
           styleToApply = header2Style;
         } else if (headingLevel === 3 && header3Style) {
           styleToApply = header3Style;
-        } else if (!headingLevel && para.getText().trim() && normalStyle) {
-          // Not a heading but has content - apply normal style
-          styleToApply = normalStyle;
+        } else if (!headingLevel && para.getText().trim()) {
+          // Not a heading but has content - check if list paragraph or normal
+          const currentStyle = para.getStyle() || (para.getFormatting()?.style) || '';
+          if ((currentStyle === "ListParagraph" || currentStyle === "List Paragraph") && listParagraphStyle) {
+            styleToApply = listParagraphStyle;
+          } else if (normalStyle) {
+            styleToApply = normalStyle;
+          }
         }
       } catch (error) {
         // Fallback to style-based matching when detectHeadingLevel is not available
@@ -2592,8 +2893,10 @@ export class WordDocumentProcessor {
         } else if ((currentStyle === "Heading3" || currentStyle === "Heading 3") && header3Style) {
           styleToApply = header3Style;
         } else if (currentStyle === "ListParagraph" || currentStyle === "List Paragraph") {
-          // List paragraphs get normal style formatting for text properties
-          if (normalStyle) {
+          // List paragraphs get listParagraph style if configured, otherwise fall back to normal
+          if (listParagraphStyle) {
+            styleToApply = listParagraphStyle;
+          } else if (normalStyle) {
             styleToApply = normalStyle;
           }
         } else if (normalStyle && para.getText()?.trim()) {
@@ -2611,7 +2914,21 @@ export class WordDocumentProcessor {
 
       if (styleToApply) {
         // Apply paragraph formatting
-        para.setAlignment(styleToApply.alignment);
+        // Check if we should preserve center alignment (only skip if preserveCenterAlignment is true AND paragraph is centered)
+        const formatting = para.getFormatting();
+
+        // Debug: Log alignment preservation check
+        if (formatting.alignment === 'center') {
+          this.log.debug(`[Alignment] Center-aligned paragraph found. Style: ${styleToApply.id}, ` +
+            `preserveCenterAlignment: ${styleToApply.preserveCenterAlignment}, ` +
+            `current alignment: ${formatting.alignment}, target alignment: ${styleToApply.alignment}`);
+        }
+
+        if (!(styleToApply.preserveCenterAlignment && formatting.alignment === 'center')) {
+          para.setAlignment(styleToApply.alignment);
+        } else {
+          this.log.debug(`[Alignment] Preserved center alignment for paragraph (style: ${styleToApply.id})`);
+        }
         para.setSpaceBefore(pointsToTwips(styleToApply.spaceBefore));
         para.setSpaceAfter(pointsToTwips(styleToApply.spaceAfter));
         if (styleToApply.lineSpacing) {
@@ -2672,6 +2989,7 @@ export class WordDocumentProcessor {
     tableShadingSettings?: {
       header2Shading: string;
       otherShading: string;
+      imageBorderWidth?: number;
     }
   ): any {
     const config: any = {};
@@ -3486,6 +3804,131 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Normalize list levels based on visual indentation
+   *
+   * Some documents have bullets where all items have w:ilvl="0" (level 0) but some have
+   * additional paragraph-level indentation (w:ind w:left) that makes them appear indented.
+   * This method detects such items and updates their w:ilvl to match the visual indentation.
+   *
+   * This must be called BEFORE applyBulletUniformity() so that when styles are applied,
+   * the paragraphs already have the correct levels.
+   *
+   * @param doc - The document to process
+   * @param settings - User's indentation level settings from UI
+   * @returns Number of paragraphs whose level was normalized
+   */
+  private async normalizeListLevelsFromIndentation(
+    doc: Document,
+    settings: {
+      indentationLevels: Array<{
+        level: number;
+        symbolIndent: number; // in inches
+        textIndent: number; // in inches
+      }>;
+    }
+  ): Promise<number> {
+    let normalized = 0;
+    const allParagraphs = doc.getAllParagraphs();
+
+    // Build threshold ranges from user settings (convert inches to twips)
+    const thresholds = this.buildIndentationThresholds(settings.indentationLevels);
+
+    this.log.debug("=== NORMALIZING LIST LEVELS FROM INDENTATION ===");
+    this.log.debug(`  Built ${thresholds.length} indentation thresholds:`);
+    thresholds.forEach((t) => {
+      this.log.debug(`    Level ${t.level}: ${t.minTwips} - ${t.maxTwips} twips`);
+    });
+
+    for (const para of allParagraphs) {
+      const numbering = para.getNumbering();
+      if (!numbering) continue;
+
+      // Get paragraph's visual indentation (in twips)
+      const formatting = para.getFormatting();
+      const leftTwips = formatting.indentation?.left || 0;
+
+      // Skip if no explicit paragraph indentation
+      if (leftTwips === 0) continue;
+
+      // Find the level that best matches this indentation
+      const inferredLevel = this.inferLevelFromIndentation(leftTwips, thresholds);
+
+      // If inferred level differs from current level, update it
+      if (inferredLevel !== numbering.level) {
+        this.log.debug(
+          `  Normalizing paragraph: left=${leftTwips} twips, ` +
+            `current level=${numbering.level}, inferred level=${inferredLevel}`
+        );
+        para.setNumbering(numbering.numId, inferredLevel);
+        normalized++;
+      }
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Build indentation thresholds from user's level settings
+   *
+   * Each level owns the range from midpoint between previous level to midpoint to next level.
+   * This ensures items with indentation "close to" a level get assigned to that level.
+   *
+   * @param levels - User's indentation levels from UI
+   * @returns Array of threshold ranges for each level
+   */
+  private buildIndentationThresholds(
+    levels: Array<{ symbolIndent: number }>
+  ): Array<{ level: number; minTwips: number; maxTwips: number }> {
+    const thresholds: Array<{ level: number; minTwips: number; maxTwips: number }> = [];
+
+    for (let i = 0; i < levels.length; i++) {
+      const currentTwips = Math.round(levels[i].symbolIndent * 1440);
+      const nextTwips =
+        i < levels.length - 1
+          ? Math.round(levels[i + 1].symbolIndent * 1440)
+          : currentTwips + 720; // Default 0.5" increment for extrapolation
+
+      // This level owns from midpoint with previous level to midpoint with next level
+      const midpointToNext = Math.round((currentTwips + nextTwips) / 2);
+      const prevTwips = i > 0 ? Math.round(levels[i - 1].symbolIndent * 1440) : 0;
+      const midpointFromPrev = i > 0 ? Math.round((prevTwips + currentTwips) / 2) : 0;
+
+      thresholds.push({
+        level: i,
+        minTwips: midpointFromPrev,
+        maxTwips: midpointToNext,
+      });
+    }
+
+    // Extend the last level's max to catch any higher indentation
+    if (thresholds.length > 0) {
+      thresholds[thresholds.length - 1].maxTwips = 999999;
+    }
+
+    return thresholds;
+  }
+
+  /**
+   * Infer the appropriate list level from paragraph indentation
+   *
+   * @param leftTwips - Paragraph's left indentation in twips
+   * @param thresholds - Level threshold ranges
+   * @returns The inferred level number (0-8)
+   */
+  private inferLevelFromIndentation(
+    leftTwips: number,
+    thresholds: Array<{ level: number; minTwips: number; maxTwips: number }>
+  ): number {
+    for (const threshold of thresholds) {
+      if (leftTwips >= threshold.minTwips && leftTwips < threshold.maxTwips) {
+        return threshold.level;
+      }
+    }
+    // Default to level 0 if no match (shouldn't happen with proper thresholds)
+    return 0;
+  }
+
+  /**
    * Apply bullet uniformity - Standardize bullet characters across all bullet lists
    * Uses UI configuration for bullet characters and indentation
    *
@@ -3528,27 +3971,57 @@ export class WordDocumentProcessor {
       `  User-configured bullets: ${bullets.map((b, i) => `Level ${i}="${b}" (U+${b.charCodeAt(0).toString(16).toUpperCase()})`).join(", ")}`
     );
 
+    // Find maximum level used in document bullet lists to ensure we create enough levels
+    // This prevents level clamping that loses original indentation structure
+    let maxLevel = 0;
+    const allParagraphs = doc.getAllParagraphs();
+    for (const para of allParagraphs) {
+      const numbering = para.getNumbering();
+      if (numbering && numbering.numId !== undefined && this.isBulletList(doc, numbering.numId)) {
+        maxLevel = Math.max(maxLevel, numbering.level || 0);
+      }
+    }
+    // Create at least 9 levels (Word's max) or enough to cover all existing levels
+    const totalLevelsNeeded = Math.max(settings.indentationLevels.length, maxLevel + 1, 9);
+    this.log.debug(`Max bullet level in document: ${maxLevel}, creating ${totalLevelsNeeded} levels`);
+
     // Create custom levels with font specified and UI indentation
-    // UI config already has incremented values per level, use them directly
-    const levels = settings.indentationLevels.map((levelConfig, index) => {
-      const bullet = bullets[index];
+    // Extend to cover all levels needed, extrapolating indentation for unconfigured levels
+    const levels: NumberingLevel[] = [];
+    const lastConfig = settings.indentationLevels[settings.indentationLevels.length - 1];
+
+    for (let index = 0; index < totalLevelsNeeded; index++) {
+      const configLevel = settings.indentationLevels[index];
+      const bullet = bullets[index] || bullets[0] || "\u2022";
+
+      // Use configured settings if available, otherwise extrapolate from last configured level
+      // Each additional level adds 0.25 inches of indentation
+      const symbolIndent = configLevel?.symbolIndent
+        ?? (lastConfig.symbolIndent + (index - settings.indentationLevels.length + 1) * 0.25);
+      const textIndent = configLevel?.textIndent
+        ?? (lastConfig.textIndent + (index - settings.indentationLevels.length + 1) * 0.25);
+
       this.log.debug(
-        `  Level ${index}: bulletChar="${bullet}" (U+${bullet.charCodeAt(0).toString(16).toUpperCase()}), symbolIndent=${levelConfig.symbolIndent}", textIndent=${levelConfig.textIndent}"`
+        `  Level ${index}: bulletChar="${bullet}" (U+${bullet.charCodeAt(0).toString(16).toUpperCase()}), ` +
+        `symbolIndent=${symbolIndent}", textIndent=${textIndent}"${configLevel ? "" : " (extrapolated)"}`
       );
-      // Use direct values from UI config (already incremented per level)
-      const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
-      const textTwips = Math.round(levelConfig.textIndent * 1440);
+
+      const symbolTwips = Math.round(symbolIndent * 1440);
+      const textTwips = Math.round(textIndent * 1440);
       const hangingTwips = textTwips - symbolTwips;
 
-      return new NumberingLevel({
+      // Get font-specific character and font for this bullet type
+      const mapping = getBulletMapping(bullet);
+
+      levels.push(new NumberingLevel({
         level: index,
         format: "bullet",
-        text: bullet, // Use user-configured bullet symbol
-        font: "Calibri", // CRITICAL: Calibri renders U+2022 as ● (not ■ like Arial)
+        text: mapping.char, // Font-specific character (e.g., · for Symbol, 'o' for Courier New)
+        font: mapping.font, // Correct font for this bullet type
         leftIndent: symbolTwips, // Bullet position (where bullet appears)
         hangingIndent: hangingTwips, // Text offset from bullet
-      });
-    });
+      }));
+    }
 
     // Create custom list with all UI-configured levels
     const numId = manager.createCustomList(levels, "UI Bullet List");
@@ -3583,20 +4056,32 @@ export class WordDocumentProcessor {
             // This ensures deep bullet levels don't show squares even if not explicitly configured
             const newSymbol = bullets[levelIndex] || bullets[0] || "\u2022";
 
-            // ✅ COMPLETE PROPERTY SETTING (Example 4 pattern)
-            // Set ALL 5 bullet formatting properties for complete control
-            level.setText(newSymbol); // Bullet symbol (e.g., ●, ▪, ➤)
-            level.setFont("Calibri"); // Font: Calibri renders U+2022 as ●, not ■
+            // Get font-specific character and font for this bullet type
+            const mapping = getBulletMapping(newSymbol);
+
+            // ✅ COMPLETE PROPERTY SETTING - Set ALL formatting properties
+            level.setText(mapping.char); // Font-specific character (· for Symbol, 'o' for Courier New)
+            level.setFont(mapping.font); // Correct font for this bullet type
             level.setFontSize(24); // Size: 12pt = 24 half-points
             level.setBold(true); // Bold: Improves visibility
             level.setColor("000000"); // Color: Black (#000000)
+
+            // ✅ SET INDENTATION from UI settings
+            const levelConfig = settings.indentationLevels[levelIndex];
+            if (levelConfig) {
+              const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
+              const textTwips = Math.round(levelConfig.textIndent * 1440);
+              const hangingTwips = textTwips - symbolTwips;
+              level.setLeftIndent(symbolTwips);
+              level.setHangingIndent(hangingTwips);
+            }
 
             isModified = true;
 
             this.log.debug(
               `  Updated abstractNum level ${levelIndex}: ` +
-                `symbol="${newSymbol}" (U+${newSymbol.charCodeAt(0).toString(16).toUpperCase()}), ` +
-                `font=Calibri, size=12pt, bold=true, color=#000000`
+                `char="${mapping.char}", font=${mapping.font}, ` +
+                `indent=${levelConfig?.symbolIndent || 'default'}", color=#000000`
             );
           }
         }
@@ -3616,36 +4101,18 @@ export class WordDocumentProcessor {
       // Continue with paragraph reassignment even if this fails
     }
 
-    // Apply to bullet list paragraphs only
-    let standardizedCount = 0;
-    const paragraphs = doc.getAllParagraphs();
-
-    for (const para of paragraphs) {
-      const numbering = para.getNumbering();
-      if (numbering && numbering.numId !== undefined) {
-        // Only apply to bullet lists (not numbered lists)
-        if (this.isBulletList(doc, numbering.numId)) {
-          const level = Math.min(numbering.level || 0, levels.length - 1);
-          para.setNumbering(numId, level);
-          standardizedCount++;
-        }
-      }
-    }
-
-    // ✅ REMOVED: Framework's standardizeBulletSymbols() call
-    // REASON: We now use Example 4's complete property setting pattern (lines 2945-2949)
-    // which directly sets ALL 5 properties (setText, setFont, setFontSize, setBold, setColor)
-    // for every bullet level in every abstractNum definition.
+    // ✅ FIX: Don't reassign paragraphs to new numId - this destroys document hierarchy
+    // The original document may use multiple numIds (all with ilvl=0) to create visual hierarchy.
+    // Consolidating to a single numId loses this hierarchy.
+    // Instead, we already updated ALL existing abstractNum definitions with UI styling (above),
+    // so paragraphs keep their original numIds and the UI styling is still applied.
     //
-    // The framework call was:
-    // 1. Redundant - we already set all properties manually
-    // 2. Conflicting - changed font from Calibri → Verdana (breaks ● rendering)
-    // 3. Unnecessary - Example 4 pattern provides complete control
-    //
-    // Note: Framework methods at lines 671-672 and 3271-3280 remain for conditional
-    // formatting when custom styles are already applied or for color-only updates.
+    // REMOVED: Paragraph reassignment loop that caused hierarchy loss
+    // - Original code reassigned ALL bullet paragraphs to the new "UI Bullet List" numId
+    // - This collapsed 16+ different numIds into 1, losing visual hierarchy
+    // - Now we preserve original numIds while still applying UI bullet symbols/fonts
 
-    return standardizedCount;
+    return existingListsUpdated;
   }
 
   /**
@@ -3684,22 +4151,48 @@ export class WordDocumentProcessor {
       this.parseNumberedFormat(level.numberedFormat || "1.")
     );
 
+    // Find maximum level used in document numbered lists to ensure we create enough levels
+    // This prevents level clamping that loses original indentation structure
+    let maxLevel = 0;
+    const allParagraphs = doc.getAllParagraphs();
+    for (const para of allParagraphs) {
+      const numbering = para.getNumbering();
+      if (numbering && numbering.numId !== undefined && this.isNumberedList(doc, numbering.numId)) {
+        maxLevel = Math.max(maxLevel, numbering.level || 0);
+      }
+    }
+    // Create at least 9 levels (Word's max) or enough to cover all existing levels
+    const totalLevelsNeeded = Math.max(settings.indentationLevels.length, maxLevel + 1, 9);
+    this.log.debug(`Max numbered level in document: ${maxLevel}, creating ${totalLevelsNeeded} levels`);
+
     // Create custom levels with UI indentation
-    // UI config already has incremented values per level, use them directly
-    const levels = settings.indentationLevels.map((levelConfig, index) => {
-      // Use direct values from UI config (already incremented per level)
-      const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
-      const textTwips = Math.round(levelConfig.textIndent * 1440);
+    // Extend to cover all levels needed, extrapolating indentation for unconfigured levels
+    const levels: NumberingLevel[] = [];
+    const lastConfig = settings.indentationLevels[settings.indentationLevels.length - 1];
+
+    for (let index = 0; index < totalLevelsNeeded; index++) {
+      const configLevel = settings.indentationLevels[index];
+
+      // Use configured settings if available, otherwise extrapolate from last configured level
+      // Each additional level adds 0.25 inches of indentation
+      const symbolIndent = configLevel?.symbolIndent
+        ?? (lastConfig.symbolIndent + (index - settings.indentationLevels.length + 1) * 0.25);
+      const textIndent = configLevel?.textIndent
+        ?? (lastConfig.textIndent + (index - settings.indentationLevels.length + 1) * 0.25);
+      const format = formats[index] || formats[formats.length - 1] || "decimal";
+
+      const symbolTwips = Math.round(symbolIndent * 1440);
+      const textTwips = Math.round(textIndent * 1440);
       const hangingTwips = textTwips - symbolTwips;
 
-      return new NumberingLevel({
+      levels.push(new NumberingLevel({
         level: index,
-        format: formats[index],
+        format: format,
         text: `%${index + 1}.`, // Standard template (e.g., %1., %2.)
         leftIndent: symbolTwips, // Number position (where number appears)
         hangingIndent: hangingTwips, // Text offset from number
-      });
-    });
+      }));
+    }
 
     // Create custom numbered list with all UI-configured levels
     const numId = manager.createCustomList(levels, "UI Numbered List");
@@ -3710,27 +4203,22 @@ export class WordDocumentProcessor {
 
     this.log.debug(`Created numbered list numId=${numId} with ${levels.length} levels`);
 
-    // Apply to numbered list paragraphs only
-    let standardizedCount = 0;
-    const paragraphs = doc.getAllParagraphs();
+    // ✅ FIX: Don't reassign paragraphs to new numId - this destroys document hierarchy
+    // The original document may use multiple numIds (all with ilvl=0) to create visual hierarchy.
+    // Consolidating to a single numId loses this hierarchy.
+    // Instead, use the framework method below to apply formatting to ALL existing numbered lists.
+    //
+    // REMOVED: Paragraph reassignment loop that caused hierarchy loss
+    // - Original code reassigned ALL numbered paragraphs to the new "UI Numbered List" numId
+    // - This collapsed multiple numIds into 1, losing visual hierarchy
+    // - Now we preserve original numIds while still applying UI formatting
 
-    for (const para of paragraphs) {
-      const numbering = para.getNumbering();
-      if (numbering && numbering.numId !== undefined) {
-        // Only apply to numbered lists (not bullet lists)
-        if (this.isNumberedList(doc, numbering.numId)) {
-          const level = Math.min(numbering.level || 0, levels.length - 1);
-          para.setNumbering(numId, level);
-          standardizedCount++;
-        }
-      }
-    }
-
-    // Use framework method to standardize numbered list formatting
-    // Applies Verdana 12pt bold black to ALL numbered lists in the document
+    // Use framework method to standardize numbered list formatting on ALL existing lists
+    // This applies UI settings (Verdana 12pt black) to existing abstractNum definitions
+    // NOTE: fontSize is in half-points, so 24 = 12pt
     const result = doc.standardizeNumberedListPrefixes({
       font: "Verdana",
-      fontSize: 12,
+      fontSize: 24, // 12pt = 24 half-points
       color: "000000",
       bold: false,
     });
@@ -3738,7 +4226,66 @@ export class WordDocumentProcessor {
       `Framework standardized ${result.listsUpdated} numbered lists, ${result.levelsModified} levels modified`
     );
 
-    return standardizedCount;
+    // NEW: Also convert numbering FORMATS (e.g., lowerLetter -> decimal) based on UI settings
+    // This ensures existing lists adopt the user's configured numbering format
+    let formatsConverted = 0;
+    try {
+      const manager = doc.getNumberingManager();
+      const abstractNums = manager.getAllAbstractNumberings();
+
+      for (const abstractNum of abstractNums) {
+        // Only process numbered lists (skip bullet lists)
+        const level0 = abstractNum.getLevel(0);
+        if (!level0 || level0.getFormat() === "bullet") continue;
+
+        // Update each level's format and indentation based on UI settings
+        for (let levelIndex = 0; levelIndex < 9; levelIndex++) {
+          const level = abstractNum.getLevel(levelIndex);
+          if (!level || level.getFormat() === "bullet") continue;
+
+          // Get the UI-configured settings for this level
+          const configLevel = settings.indentationLevels[levelIndex];
+
+          // Apply format conversion if configured
+          if (configLevel?.numberedFormat) {
+            const newFormat = this.parseNumberedFormat(configLevel.numberedFormat);
+            const currentFormat = level.getFormat();
+
+            // Only update if the format is different and it's a numbered format
+            if (currentFormat !== newFormat && currentFormat !== "bullet") {
+              level.setFormat(newFormat);
+              // Also update the text template to match the new format
+              level.setText(`%${levelIndex + 1}.`);
+              formatsConverted++;
+              this.log.debug(
+                `Converted level ${levelIndex} format: ${currentFormat} -> ${newFormat}`
+              );
+            }
+          }
+
+          // ✅ SET INDENTATION from UI settings (same as bullet lists)
+          if (configLevel) {
+            const symbolTwips = Math.round(configLevel.symbolIndent * 1440);
+            const textTwips = Math.round(configLevel.textIndent * 1440);
+            const hangingTwips = textTwips - symbolTwips;
+            level.setLeftIndent(symbolTwips);
+            level.setHangingIndent(hangingTwips);
+            this.log.debug(
+              `  Set numbered level ${levelIndex} indentation: left=${symbolTwips}twips, hanging=${hangingTwips}twips`
+            );
+          }
+        }
+      }
+
+      if (formatsConverted > 0) {
+        this.log.info(`Converted ${formatsConverted} numbering levels to UI-configured formats`);
+      }
+    } catch (error) {
+      this.log.warn("Failed to convert numbering formats:", error);
+      // Continue even if format conversion fails - formatting was already applied
+    }
+
+    return result.levelsModified + formatsConverted;
   }
 
   /**
@@ -3775,132 +4322,6 @@ export class WordDocumentProcessor {
     this.log.debug(`Recolored ${result.cellsRecolored} cells`);
 
     return result;
-  }
-
-  /**
-   * Inject indentation properties into numbering.xml for consistent list indentation
-   *
-   * This function addresses the issue where doc.normalizeAllListIndentation() overrides
-   * the custom indentation values set in NumberingLevel objects. By injecting indentation
-   * directly into the XML, we ensure the values persist regardless of normalization.
-   *
-   * Injects <w:pPr><w:ind w:left="X" w:hanging="Y"/></w:pPr> for each level.
-   *
-   * @param doc - Document to modify
-   * @param indentationLevels - Array of indentation configurations from UI
-   * @returns true if successful, false otherwise
-   */
-  private async injectIndentationToNumbering(
-    doc: Document,
-    indentationLevels: Array<{
-      level: number;
-      symbolIndent: number; // in inches
-      textIndent: number; // in inches
-      bulletChar?: string;
-      numberedFormat?: string;
-    }>
-  ): Promise<boolean> {
-    try {
-      // Access numbering.xml
-      const numberingPart = await doc.getPart("word/numbering.xml");
-      if (!numberingPart || typeof numberingPart.content !== "string") {
-        this.log.warn("Unable to access numbering.xml for indentation injection");
-        return false;
-      }
-
-      let xmlContent = numberingPart.content;
-      let modified = false;
-
-      // Process each indentation level
-      for (const levelConfig of indentationLevels) {
-        const levelIndex = levelConfig.level;
-
-        // Calculate indentation values in twips (1440 twips = 1 inch)
-        const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
-        const textTwips = Math.round(levelConfig.textIndent * 1440);
-        const hangingTwips = textTwips - symbolTwips;
-
-        // Create the indentation XML element
-        const indentXml = `<w:ind w:left="${textTwips}" w:hanging="${hangingTwips}"/>`;
-
-        // Find all <w:lvl> elements with this level index
-        const lvlRegex = new RegExp(
-          `<w:lvl w:ilvl="${levelIndex}"[^>]*>([\\s\\S]*?)<\\/w:lvl>`,
-          "g"
-        );
-
-        let match;
-        // Reset regex index for each iteration
-        lvlRegex.lastIndex = 0;
-
-        while ((match = lvlRegex.exec(numberingPart.content)) !== null) {
-          const levelContent = match[1];
-          const fullMatch = match[0];
-
-          // Check if w:pPr already exists in this level
-          if (levelContent.includes("<w:pPr>")) {
-            // Check if w:ind exists within w:pPr
-            if (levelContent.includes("<w:ind")) {
-              // Update existing w:ind
-              const updatedContent = levelContent.replace(/<w:ind[^>]*\/>/, indentXml);
-              xmlContent = xmlContent.replace(
-                fullMatch,
-                fullMatch.replace(levelContent, updatedContent)
-              );
-              modified = true;
-            } else {
-              // Insert w:ind into existing w:pPr (right after opening tag)
-              const updatedContent = levelContent.replace(
-                /<w:pPr>/,
-                `<w:pPr>\n              ${indentXml}`
-              );
-              xmlContent = xmlContent.replace(
-                fullMatch,
-                fullMatch.replace(levelContent, updatedContent)
-              );
-              modified = true;
-            }
-          } else {
-            // Insert new w:pPr in correct ECMA-376 position
-            // OOXML Compliance: w:pPr should be near end of w:lvl, before w:rPr per ECMA-376 Part 1, Section 17.9.7
-            const pPrXml = `
-            <w:pPr>
-              ${indentXml}
-            </w:pPr>`;
-
-            let updatedLevel;
-
-            // Check if w:rPr exists - insert before it if so (correct ECMA-376 order)
-            if (levelContent.includes("<w:rPr>")) {
-              updatedLevel = fullMatch.replace(/(<w:rPr>)/, `${pPrXml}\n            $1`);
-            } else {
-              // No w:rPr exists - insert before closing tag (also correct per ECMA-376)
-              updatedLevel = fullMatch.replace(/<\/w:lvl>/, `${pPrXml}\n          </w:lvl>`);
-            }
-
-            xmlContent = xmlContent.replace(fullMatch, updatedLevel);
-            modified = true;
-          }
-        }
-
-        this.log.debug(
-          `Injected indentation for level ${levelIndex}: left=${textTwips} twips, hanging=${hangingTwips} twips`
-        );
-      }
-
-      if (modified) {
-        // Save modified XML back to document
-        await doc.setPart("word/numbering.xml", xmlContent);
-        this.log.info("Successfully injected indentation properties into numbering.xml");
-        return true;
-      }
-
-      this.log.debug("No indentation modifications needed");
-      return false;
-    } catch (error) {
-      this.log.warn("Error injecting indentation to numbering:", error);
-      return false;
-    }
   }
 
   /**
@@ -3975,21 +4396,31 @@ export class WordDocumentProcessor {
    */
   private async standardizeNumberingColors(doc: Document): Promise<boolean> {
     try {
-      // Standardize all bullet lists - bullets should be bold
-      const bulletResult = doc.standardizeBulletSymbols({
-        color: "000000",
-        bold: true,
-      });
+      // REFACTORED: Don't use doc.standardizeBulletSymbols() as it overrides fonts
+      // Instead, directly iterate levels and set only color/bold (preserve fonts)
+      const manager = doc.getNumberingManager();
+      const abstractNums = manager.getAllAbstractNumberings();
+      let levelsModified = 0;
 
-      // Standardize all numbered lists - numbers should NOT be bold
-      const numberedResult = doc.standardizeNumberedListPrefixes({
-        color: "000000",
-        bold: false,
-      });
+      for (const abstractNum of abstractNums) {
+        for (let levelIndex = 0; levelIndex < 9; levelIndex++) {
+          const numLevel = abstractNum.getLevel(levelIndex);
+          if (!numLevel) continue;
 
-      if (bulletResult.listsUpdated > 0 || numberedResult.listsUpdated > 0) {
+          // Only set color and bold - DO NOT touch font (fonts are set per-bullet in applyBulletUniformity)
+          numLevel.setColor("000000");
+          if (numLevel.getFormat() === "bullet") {
+            numLevel.setBold(true); // Bullets should be bold
+          } else {
+            numLevel.setBold(false); // Numbers should NOT be bold
+          }
+          levelsModified++;
+        }
+      }
+
+      if (levelsModified > 0) {
         this.log.debug(
-          `Standardized numbering colors to black using framework methods: ${bulletResult.listsUpdated} bullet lists, ${numberedResult.listsUpdated} numbered lists`
+          `Standardized numbering colors to black: ${levelsModified} levels modified (fonts preserved)`
         );
         return true;
       }
@@ -3999,6 +4430,100 @@ export class WordDocumentProcessor {
       this.log.warn("Unable to standardize numbering colors:", error);
       return false;
     }
+  }
+
+  /**
+   * Recursively search XMLElement tree for w:shd element and extract val attribute
+   * This is needed because docxmlater doesn't expose pattern shading for table cells
+   *
+   * @param element - XMLElement object from cell.toXML()
+   * @returns The shading pattern value (e.g., "pct12", "solid") or undefined
+   */
+  private findShadingPatternInXML(element: unknown): string | undefined {
+    if (!element || typeof element !== "object") return undefined;
+
+    const el = element as {
+      name?: string;
+      attributes?: Record<string, string | number | boolean | undefined>;
+      children?: unknown[];
+    };
+
+    // Check if this element is w:shd
+    if (el.name === "w:shd" && el.attributes?.val) {
+      return String(el.attributes.val);
+    }
+
+    // Search children recursively
+    if (Array.isArray(el.children)) {
+      for (const child of el.children) {
+        if (typeof child === "object") {
+          const found = this.findShadingPatternInXML(child);
+          if (found) return found;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Detect if a cell has visual shading from any source
+   *
+   * Checks multiple sources to determine if a cell appears shaded:
+   * 1. Direct cell shading fill color
+   * 2. Pattern shading (w:shd val attribute like "pct50", "solid") via raw XML
+   * 3. Table style inheritance (cell shading from table style)
+   *
+   * @returns Object with hasShading boolean and optional fill color
+   */
+  private getResolvedCellShading(
+    cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number],
+    table: Table,
+    doc: Document
+  ): { hasShading: boolean; fill?: string } {
+    const formatting = cell.getFormatting();
+
+    // 1. Check direct cell shading fill
+    const directFill = formatting.shading?.fill?.toUpperCase();
+    if (directFill && directFill !== "AUTO" && directFill !== "FFFFFF") {
+      return { hasShading: true, fill: directFill };
+    }
+
+    // 2. Check pattern shading via raw XML (docxmlater doesn't expose pattern for cells)
+    // Pattern shading indicates visual shading even if fill is white/undefined
+    try {
+      const xmlElement = cell.toXML();
+      const pattern = this.findShadingPatternInXML(xmlElement);
+      if (pattern && pattern !== "clear") {
+        return { hasShading: true, fill: directFill };
+      }
+    } catch (error) {
+      this.log.debug(`Failed to access cell XML for pattern shading: ${error}`);
+    }
+
+    // 3. Check table style for inherited cell shading
+    const tableStyleId = table.getFormatting().style;
+    if (tableStyleId) {
+      try {
+        const stylesManager = doc.getStylesManager();
+        const chain = stylesManager.getInheritanceChain(tableStyleId);
+
+        for (const style of chain) {
+          const styleProps = style.getProperties();
+          // Check for table style cell formatting
+          const tableStyleProps = (styleProps as { tableStyle?: { cell?: { shading?: { fill?: string } } } }).tableStyle;
+          const inheritedFill = tableStyleProps?.cell?.shading?.fill;
+          if (inheritedFill && inheritedFill.toUpperCase() !== "AUTO" && inheritedFill.toUpperCase() !== "FFFFFF") {
+            return { hasShading: true, fill: inheritedFill.toUpperCase() };
+          }
+        }
+      } catch (error) {
+        this.log.debug(`Could not resolve table style inheritance: ${error}`);
+      }
+    }
+
+    // 4. No shading detected
+    return { hasShading: false };
   }
 
   /**
@@ -4079,26 +4604,20 @@ export class WordDocumentProcessor {
           for (const row of rows) {
             let cellIndex = 0;
             for (const cell of row.getCells()) {
-              // Check current cell shading
-              const currentShading = cell.getFormatting().shading?.fill?.toUpperCase();
-              const currentColor = currentShading;
-
-              // Only apply shading if cell has a color AND that color is not white
-              const isWhite = currentColor === "FFFFFF";
-              const hasNoColor = currentColor === undefined || currentColor === null || currentColor === "AUTO";
+              // Check cell shading using resolved shading detection
+              // This checks direct fill, pattern shading, and table style inheritance
+              const { hasShading, fill: originalColor } = this.getResolvedCellShading(cell, table, doc);
 
               // DEBUG: Log each cell's color evaluation
               this.log.debug(
                 `[Table ${formattedCount}] Row ${rowIndex}, Cell ${cellIndex}: ` +
-                `currentColor="${currentColor || "NONE"}", ` +
-                `isWhite=${isWhite}, hasNoColor=${hasNoColor}, ` +
-                `willShade=${!hasNoColor && !isWhite}`
+                `resolvedShading=${hasShading}, originalColor="${originalColor || "NONE"}"`
               );
 
-              if (!hasNoColor && !isWhite) {
-                // Apply shading: cell has a color and it's not white
+              if (hasShading) {
+                // Apply shading: cell has visual shading from any source
                 this.log.debug(
-                  `  → Shading cell (${rowIndex},${cellIndex}) with #${otherColor} (original color: ${currentColor})`
+                  `  → Shading cell (${rowIndex},${cellIndex}) with #${otherColor} (original: ${originalColor || "pattern/style"})`
                 );
                 cell.setShading({ fill: otherColor });
 
@@ -4110,23 +4629,15 @@ export class WordDocumentProcessor {
                 }
               } else {
                 this.log.debug(
-                  `  → Skipping cell (${rowIndex},${cellIndex}) - ${hasNoColor ? "no color" : "white"}`
+                  `  → Skipping cell (${rowIndex},${cellIndex}) - no visual shading detected`
                 );
               }
 
-              // Center paragraphs containing images OR in shaded cells (skip list paragraphs)
-              // Images should always be centered and have 2pt black borders
-              const isShaded = !hasNoColor && !isWhite;
+              // Center paragraphs in shaded cells (skip list paragraphs)
+              // NOTE: Image centering/borders handled separately by centerAndBorderImages option
               for (const para of cell.getParagraphs()) {
-                if (!para.getNumbering()) {
-                  // Check if paragraph contains an image (directly or inside revisions)
-                  const hasImage = this.paragraphContainsImage(para);
-                  if (hasImage) {
-                    para.setAlignment("center");
-                    this.applyBorderToImages(para, 2); // 2-point black border
-                  } else if (isShaded) {
-                    para.setAlignment("center");
-                  }
+                if (!para.getNumbering() && hasShading) {
+                  para.setAlignment("center");
                 }
               }
 
@@ -4325,23 +4836,22 @@ export class WordDocumentProcessor {
     const para = Paragraph.create();
     para.addHyperlink(hyperlink);
 
-    // Apply TopHyperlink style - this handles all formatting including guaranteed zero spacing
+    // Apply TopHyperlink style - provides base formatting
     para.setStyle("TopHyperlink");
 
     // Mark as preserved to protect from paragraph removal operations
     para.setPreserved(true);
 
-    // FIX Issue 3: Removed redundant setAlignment('right') call
-    // The TopHyperlink style already defines right alignment in paragraphFormatting
-    // Adding it again at paragraph level creates a direct formatting override that
-    // causes the alignment to be set to 'left' in the output XML
-    // Style-based alignment is sufficient and prevents the override bug
-
-    // No need for manual formatting - style handles:
-    // - Right alignment (from style definition)
-    // - Space before: 60 twips (3pt)
-    // - Space after: 0 twips (GUARANTEED ZERO)
-    // - Line spacing: 240 twips exact (12pt)
+    // CRITICAL FIX (Round 5): Apply EXPLICIT paragraph-level formatting to GUARANTEE the result
+    // Style-only approach has proven unreliable (attempted 20+ times) due to:
+    // - Word's complex formatting inheritance rules
+    // - Style application timing issues
+    // - Direct formatting precedence over styles
+    // By applying both style AND explicit formatting, we ensure the result is correct.
+    para.setAlignment("right");
+    para.setSpaceBefore(60);     // 3pt = 60 twips
+    para.setSpaceAfter(0);       // 0pt
+    para.setLineSpacing(240, "exact");  // 12pt exact
 
     return para;
   }
@@ -4369,73 +4879,76 @@ export class WordDocumentProcessor {
 
     for (const para of paragraphsToCheck) {
       const content = para.getContent();
+      let foundTopHyperlink = false;
 
-      // Check each content item for hyperlinks
+      // Check each content item for hyperlinks - handles 3 cases:
+      // 1. Direct Hyperlink instances
+      // 2. Hyperlinks inside Revision elements (w:ins, w:del)
+      // 3. HYPERLINK field codes (ComplexField)
       for (const item of content) {
+        // Case 1: Direct Hyperlink instances
         if (item instanceof Hyperlink) {
-          const text = sanitizeHyperlinkText(item.getText()).toLowerCase();
-
-          // Check if this is a "Top of" hyperlink
-          if (
-            text.includes("top of") &&
-            (text.includes("document") || text === "top of the document")
-          ) {
-            let needsUpdate = false;
-
-            // Check 1: Text needs updating (missing "the")
-            if (text === "top of document") {
-              item.setText("Top of the Document");
-              needsUpdate = true;
-              this.log.debug(
-                'Updated hyperlink text from "Top of Document" to "Top of the Document"'
-              );
-            }
-
-            // Check 2: Bookmark target (get current target and compare)
-            const currentTarget = (item as any).anchor || (item as any).target;
-            if (currentTarget && currentTarget !== "_top") {
-              // Update to use _top bookmark
-              // Note: Hyperlink class may not expose setAnchor, so we recreate it
-              this.log.debug(`Hyperlink uses bookmark "${currentTarget}", should be "_top"`);
-              needsUpdate = true;
-            }
-
-            // Check 3: Formatting (we'll recreate the hyperlink with correct formatting)
-            if (needsUpdate) {
-              // Recreate hyperlink with correct settings
-              const correctedLink = Hyperlink.createInternal("_top", "Top of the Document", {
-                font: "Verdana",
-                size: 12,
-                color: "0000FF",
-                underline: "single",
-              });
-
-              // Update the hyperlink text
-              // Note: Could use doc.replaceParagraphAt(index, newPara) for full paragraph replacement if needed
-              item.setText("Top of the Document");
-              fixedCount++;
-
-              this.log.debug("Fixed Top of Document hyperlink (text, formatting, bookmark)");
-            }
-
-            // Check 4: Apply TopHyperlink style for guaranteed correct formatting
-            // This replaces manual formatting and ensures zero spacing after
-            const currentStyle = para.getStyle();
-            if (currentStyle !== "TopHyperlink") {
-              para.setStyle("TopHyperlink");
-              // Explicitly set right alignment AFTER style to ensure it's applied after spacing
-              para.setAlignment("right");
-              this.log.debug(
-                "Applied TopHyperlink style and explicit right alignment (spacing before alignment)"
-              );
-            }
-
-            // Fix spacing on pre-existing hyperlinks (may not have correct spacing)
-            // Force 0pt spacing after regardless of original formatting
-            para.setSpaceAfter(0);
-            this.log.debug("Set space after to 0pt for Top of Document hyperlink");
+          if (this.isTopOfDocumentHyperlink(item.getText())) {
+            this.applyTopHyperlinkFormatting(item);
+            foundTopHyperlink = true;
+            this.log.debug("Applied formatting to direct Hyperlink");
           }
         }
+        // Case 2: Hyperlinks inside Revision elements (w:ins tracked changes)
+        else if (item instanceof Revision) {
+          const revisionContent = item.getContent();
+          for (const revContent of revisionContent) {
+            if (revContent instanceof Hyperlink) {
+              if (this.isTopOfDocumentHyperlink(revContent.getText())) {
+                this.applyTopHyperlinkFormatting(revContent);
+                foundTopHyperlink = true;
+                this.log.debug("Applied formatting to Hyperlink inside Revision");
+              }
+            }
+          }
+        }
+        // Case 3: HYPERLINK field codes (ComplexField)
+        else if (item instanceof ComplexField) {
+          if (item.isHyperlinkField()) {
+            const parsedHyperlink = item.getParsedHyperlink();
+            // Check if it's a _top hyperlink by anchor
+            if (parsedHyperlink?.anchor === "_top") {
+              const resultText = item.getResult() || "";
+              if (this.isTopOfDocumentHyperlink(resultText)) {
+                // Apply formatting to the field result
+                item.setResultFormatting({
+                  font: "Verdana",
+                  size: 12,
+                  color: "0000FF",
+                  underline: "single",
+                });
+                foundTopHyperlink = true;
+                this.log.debug("Applied formatting to HYPERLINK field code");
+              }
+            }
+          }
+        }
+      }
+
+      // Apply paragraph formatting if we found a Top hyperlink
+      if (foundTopHyperlink) {
+        // CRITICAL: Clear direct formatting BEFORE applying style
+        // Without this, existing direct formatting (e.g., w:jc val="left") overrides the style
+        para.clearDirectFormatting();
+
+        // Now apply the style - provides base formatting
+        para.setStyle("TopHyperlink");
+
+        // CRITICAL FIX (Round 5): Apply EXPLICIT paragraph-level formatting to GUARANTEE the result
+        // Style-only approach has proven unreliable (attempted 20+ times).
+        // By applying both style AND explicit formatting, we ensure the result is correct.
+        para.setAlignment("right");
+        para.setSpaceBefore(60);     // 3pt = 60 twips
+        para.setSpaceAfter(0);       // 0pt
+        para.setLineSpacing(240, "exact");  // 12pt exact
+
+        fixedCount++;
+        this.log.debug("Cleared direct formatting, applied TopHyperlink style, and explicit formatting");
       }
     }
 
@@ -4444,6 +4957,36 @@ export class WordDocumentProcessor {
     }
 
     return fixedCount;
+  }
+
+  /**
+   * Check if text indicates a "Top of the Document" hyperlink
+   */
+  private isTopOfDocumentHyperlink(text: string): boolean {
+    const cleanText = sanitizeHyperlinkText(text).toLowerCase();
+    return cleanText.includes("top of") &&
+           (cleanText.includes("document") || cleanText === "top of the document");
+  }
+
+  /**
+   * Apply standard formatting to a Top of Document hyperlink
+   */
+  private applyTopHyperlinkFormatting(hyperlink: Hyperlink): void {
+    // Use replace: true to clear any existing characterStyle reference (e.g., "Hyperlink")
+    // This ensures the explicit formatting takes precedence in Word
+    hyperlink.setFormatting({
+      font: "Verdana",
+      size: 12,
+      color: "0000FF",
+      underline: "single",
+    }, { replace: true });
+
+    // Ensure text is "Top of the Document" (with "the")
+    const currentText = sanitizeHyperlinkText(hyperlink.getText());
+    if (currentText.toLowerCase() !== "top of the document") {
+      hyperlink.setText("Top of the Document");
+      this.log.debug('Updated hyperlink text to "Top of the Document"');
+    }
   }
 
   /**
@@ -4568,19 +5111,35 @@ export class WordDocumentProcessor {
         }
 
         // Check if there's already a "Top of" hyperlink paragraph before this table
+        // Look back up to 5 elements to account for blank paragraphs between link and table
         let shouldInsert = true;
 
-        if (tablePosition > 0) {
-          const previousElement = bodyElements[tablePosition - 1];
+        for (let lookback = 1; lookback <= 5 && tablePosition - lookback >= 0; lookback++) {
+          const prevElement = bodyElements[tablePosition - lookback];
 
-          if (previousElement instanceof Paragraph) {
-            const content = previousElement.getContent();
+          if (prevElement instanceof Paragraph) {
+            const content = prevElement.getContent();
 
             const hasTopLink = content.some((item: any) => {
+              // Check Hyperlink objects
               if (item instanceof Hyperlink) {
                 const text = sanitizeHyperlinkText(item.getText()).toLowerCase();
                 // Check for any "top of" hyperlink (regardless of exact text)
                 if (text.includes("top of")) {
+                  return true;
+                }
+              }
+              // Also check ComplexField hyperlinks (fallback for any field codes not converted)
+              if (item instanceof ComplexField && item.isHyperlinkField()) {
+                const text = (item.getResult() || "").toLowerCase();
+                if (text.includes("top of")) {
+                  return true;
+                }
+              }
+              // Also check for raw text containing "Top of the Document"
+              if (item instanceof Run) {
+                const runText = item.getText().toLowerCase();
+                if (runText.includes("top of the document")) {
                   return true;
                 }
               }
@@ -4591,9 +5150,20 @@ export class WordDocumentProcessor {
               // SAFE: Skip existing hyperlinks (never modify existing document objects)
               // Modifying existing objects with setText() corrupts DocXMLater's internal state
               // See CORRUPTION_FIX.md for detailed explanation of this principle
-              this.log.debug(`Hyperlink already exists before table ${tableIndex}, skipping`);
+              this.log.debug(`Hyperlink already exists at position ${tablePosition - lookback} before table ${tableIndex}, skipping`);
               shouldInsert = false;
+              break;
             }
+
+            // Stop looking back if we hit content (non-empty, non-hyperlink paragraph)
+            const paraText = prevElement.getText().trim();
+            if (paraText && !content.some((c: any) => c instanceof Hyperlink)) {
+              // Hit content paragraph - stop looking back
+              break;
+            }
+          } else {
+            // Hit a table or other non-paragraph element - stop looking back
+            break;
           }
         }
 
@@ -4691,9 +5261,11 @@ export class WordDocumentProcessor {
 
     this.log.debug("Adding/updating document warning at end of document");
 
-    // Step 1: Search for existing warning in last 5 paragraphs (case-insensitive)
+    // Step 1: Search for existing warning in last 15 paragraphs (case-insensitive)
+    // Extended from 5 to 15 to handle documents with Related Documents sections,
+    // hyperlinks, and other content between the disclaimer and document end
     const paragraphs = doc.getAllParagraphs();
-    const searchStartIndex = Math.max(0, paragraphs.length - 5);
+    const searchStartIndex = Math.max(0, paragraphs.length - 15);
     let existingWarningIndices: number[] = [];
 
     for (let i = paragraphs.length - 1; i >= searchStartIndex; i--) {
@@ -4725,8 +5297,17 @@ export class WordDocumentProcessor {
     for (let i = refreshedParagraphs.length - 1; i >= checkStartIndex; i--) {
       const content = refreshedParagraphs[i].getContent();
       for (const item of content) {
+        // Check Hyperlink objects
         if (item instanceof Hyperlink) {
           const text = sanitizeHyperlinkText(item.getText()).toLowerCase();
+          if (text.includes("top of")) {
+            hasTopHyperlinkNearEnd = true;
+            break;
+          }
+        }
+        // Also check ComplexField hyperlinks (fallback for any field codes not converted)
+        if (item instanceof ComplexField && item.isHyperlinkField()) {
+          const text = (item.getResult() || "").toLowerCase();
           if (text.includes("top of")) {
             hasTopHyperlinkNearEnd = true;
             break;
@@ -5098,10 +5679,17 @@ export class WordDocumentProcessor {
    * Result: Real TOC field + immediate manual population with persistent blue color
    *
    * @param doc - Document to process
+   * @param options - Optional TOC build options
+   * @param options.excludeHeading1 - Whether to exclude Heading 1 from TOC (default: true)
    * @returns Object with count of TOC entries created and list of heading names included
    */
-  public async buildProperTOC(doc: Document): Promise<{ count: number; headings: string[] }> {
+  public async buildProperTOC(
+    doc: Document,
+    options: { excludeHeading1?: boolean } = {}
+  ): Promise<{ count: number; headings: string[] }> {
+    const { excludeHeading1 = true } = options;
     this.log.debug("=== BUILDING PROPER TOC ===");
+    this.log.debug(`excludeHeading1: ${excludeHeading1}`);
 
     // Step 1: Ensure all headings have bookmarks
     await this.ensureHeadingBookmarks(doc);
@@ -5109,6 +5697,18 @@ export class WordDocumentProcessor {
 
     // Step 2: Parse TOC levels or auto-detect from document
     let levelsToInclude = await this.parseTOCLevels(doc);
+
+    // Apply excludeHeading1 filter if levels were parsed
+    if (excludeHeading1 && levelsToInclude.length > 0) {
+      const originalLevels = [...levelsToInclude];
+      levelsToInclude = levelsToInclude.filter((level) => level !== 1);
+      if (originalLevels.length !== levelsToInclude.length) {
+        this.log.debug(
+          `Excluded Heading 1 from TOC levels (was: ${originalLevels.join(", ")} → now: ${levelsToInclude.join(", ")})`
+        );
+      }
+    }
+
     if (levelsToInclude.length === 0) {
       // Auto-detect: get all unique heading levels from document
       const allParagraphs = doc.getAllParagraphs();
@@ -5127,6 +5727,12 @@ export class WordDocumentProcessor {
 
       levelsToInclude = Array.from(uniqueLevels).sort((a, b) => a - b);
       this.log.debug(`Auto-detected heading levels: ${levelsToInclude.join(", ")}`);
+
+      // Also apply excludeHeading1 filter after auto-detection
+      if (excludeHeading1 && levelsToInclude.includes(1)) {
+        levelsToInclude = levelsToInclude.filter((level) => level !== 1);
+        this.log.debug(`Excluded Heading 1 after auto-detection: ${levelsToInclude.join(", ")}`);
+      }
     }
 
     // Step 3: Apply custom TOC1-TOC9 styles
@@ -5176,6 +5782,26 @@ export class WordDocumentProcessor {
       const allHeadings: HeadingInfo[] = [];
       const allParagraphs = doc.getAllParagraphs(); // Searches body AND tables
 
+      // SAFEGUARD: Capture first Heading1 before any modifications
+      // This protects against accidental removal during TOC processing
+      let firstHeading1: Paragraph | null = null;
+      let firstHeading1Text = '';
+      let firstHeading1BodyIndex = -1;
+      const bodyElements = doc.getBodyElements();
+      for (let i = 0; i < bodyElements.length; i++) {
+        const element = bodyElements[i];
+        if (element instanceof Paragraph) {
+          const style = element.getStyle();
+          if (style === 'Heading1' || style === 'Heading 1') {
+            firstHeading1 = element;
+            firstHeading1Text = element.getText().trim();
+            firstHeading1BodyIndex = i;
+            this.log.debug(`Protected Heading1 at index ${i}: "${firstHeading1Text.substring(0, 50)}..."`);
+            break;
+          }
+        }
+      }
+
       this.log.debug(`Scanning ${allParagraphs.length} paragraphs for headings...`);
 
       for (const para of allParagraphs) {
@@ -5221,7 +5847,7 @@ export class WordDocumentProcessor {
       const tocElements = doc.getTableOfContentsElements();
 
       // Also detect manually-created TOC entries (paragraphs with TOC1-TOC9 styles)
-      const bodyElements = doc.getBodyElements();
+      // Note: bodyElements was already captured above for Heading1 protection
       const manualTocParagraphs: Paragraph[] = [];
       let manualTocStartIndex = -1;
 
@@ -5246,6 +5872,55 @@ export class WordDocumentProcessor {
         this.log.info(
           `Found ${manualTocParagraphs.length} manually-created TOC entries at index ${manualTocStartIndex}`
         );
+      }
+
+      // Also detect non-SDT TOC fields (ComplexField with TOC instruction in a regular paragraph)
+      // These are TOCs that weren't wrapped in an SDT element
+      let nonSdtTocStartIndex = -1;
+      let nonSdtTocEndIndex = -1;
+
+      for (let i = 0; i < bodyElements.length; i++) {
+        const element = bodyElements[i];
+        if (element instanceof Paragraph) {
+          const content = element.getContent();
+          for (const item of content) {
+            if (item instanceof ComplexField) {
+              const instruction = item.getInstruction();
+              if (instruction && instruction.trim().toUpperCase().startsWith('TOC')) {
+                nonSdtTocStartIndex = i;
+                this.log.info(`Found non-SDT TOC field at body element index ${i}`);
+                break;
+              }
+            }
+          }
+          if (nonSdtTocStartIndex !== -1) break;
+        }
+      }
+
+      // If found non-SDT TOC, find where it ends (look for consecutive hyperlink paragraphs that are part of TOC)
+      if (nonSdtTocStartIndex !== -1) {
+        nonSdtTocEndIndex = nonSdtTocStartIndex;
+        for (let i = nonSdtTocStartIndex + 1; i < bodyElements.length; i++) {
+          const element = bodyElements[i];
+          if (element instanceof Paragraph) {
+            const content = element.getContent();
+            // Check if this paragraph is part of TOC (has hyperlinks pointing to TOC bookmarks)
+            const hasHyperlink = content.some(item => item instanceof Hyperlink);
+            const text = element.getText().trim();
+            const isEmpty = text === '';
+
+            // TOC entries typically have hyperlinks or are empty spacer paragraphs
+            // Stop when we hit a non-empty paragraph without hyperlinks
+            if (hasHyperlink || isEmpty) {
+              nonSdtTocEndIndex = i;
+            } else {
+              break; // End of TOC entries - hit content paragraph
+            }
+          } else {
+            break; // Hit a table or other element - end of TOC
+          }
+        }
+        this.log.info(`Non-SDT TOC spans body elements ${nonSdtTocStartIndex} to ${nonSdtTocEndIndex}`);
       }
 
       this.log.info(`Found ${tocElements.length} TOC field element(s) in document`);
@@ -5318,8 +5993,9 @@ export class WordDocumentProcessor {
       // STEP 6: REMOVE EXISTING TOC (FIELD OR MANUAL)
       // ============================================
       let insertPosition = 0;
+      let tocRemoved = false;
 
-      // Remove existing TOC field elements
+      // Remove existing TOC field elements (SDT-wrapped)
       if (tocElements.length > 0) {
         for (const tocElement of tocElements) {
           const tocIndex = bodyElements.indexOf(tocElement);
@@ -5327,38 +6003,77 @@ export class WordDocumentProcessor {
             doc.removeTocAt(tocIndex);
             this.log.debug(`Removed original TOC field at index ${tocIndex}`);
             insertPosition = tocIndex;
+            tocRemoved = true;
             break; // Only process first TOC
           }
         }
       }
-      // Remove manually-created TOC paragraphs (from previous runs)
-      else if (manualTocParagraphs.length > 0) {
+
+      // Remove manually-created TOC paragraphs (paragraphs with TOC1-TOC9 styles)
+      // This can happen ALONGSIDE non-SDT TOC field content, so NOT using else if
+      if (manualTocParagraphs.length > 0) {
         // Remove in reverse order to maintain indices
         for (let i = manualTocParagraphs.length - 1; i >= 0; i--) {
+          // PROTECTION: Never remove the Heading1 paragraph
+          if (manualTocParagraphs[i] === firstHeading1) {
+            this.log.warn(`Skipping removal of Heading1 from manual TOC paragraphs`);
+            continue;
+          }
           const success = doc.removeParagraph(manualTocParagraphs[i]);
           if (success) {
             this.log.debug(`Removed manual TOC entry ${i + 1}/${manualTocParagraphs.length}`);
           }
         }
-        insertPosition = manualTocStartIndex;
+        if (!tocRemoved) {
+          insertPosition = manualTocStartIndex;
+        }
         this.log.info(`Removed ${manualTocParagraphs.length} existing manual TOC entries`);
+        tocRemoved = true;
       }
-      // No existing TOC - insert after first Heading 1
-      else {
-        // Find the first Heading 1 paragraph and insert TOC after it
-        const paragraphs = doc.getAllParagraphs();
-        let firstHeading1Index = -1;
-        for (let i = 0; i < paragraphs.length; i++) {
-          const style = paragraphs[i]?.getStyle();
-          if (style === "Heading1" || style === "Heading 1") {
-            firstHeading1Index = i;
-            break;
-          }
+
+      // Remove non-SDT TOC field and its hyperlink entries
+      // This can happen ALONGSIDE manual TOC paragraphs, so NOT using else if
+      if (nonSdtTocStartIndex !== -1) {
+        // Calculate removal range but protect the Heading1
+        let effectiveStartIndex = nonSdtTocStartIndex;
+
+        // PROTECTION: Never remove paragraphs at or before the Heading1 index
+        if (firstHeading1BodyIndex >= 0 && nonSdtTocStartIndex <= firstHeading1BodyIndex) {
+          effectiveStartIndex = firstHeading1BodyIndex + 1;
+          this.log.warn(`Adjusting non-SDT TOC removal to protect Heading1 at index ${firstHeading1BodyIndex}`);
         }
 
-        if (firstHeading1Index >= 0) {
+        if (effectiveStartIndex <= nonSdtTocEndIndex) {
+          const elementsToRemove = nonSdtTocEndIndex - effectiveStartIndex + 1;
+
+          // Remove from end to start to preserve indices
+          for (let i = nonSdtTocEndIndex; i >= effectiveStartIndex; i--) {
+            const element = bodyElements[i];
+            if (element instanceof Paragraph) {
+              // PROTECTION: Never remove the Heading1 paragraph
+              if (element === firstHeading1) {
+                this.log.warn(`Skipping removal of Heading1 paragraph at index ${i}`);
+                continue;
+              }
+              const success = doc.removeParagraph(element);
+              if (success) {
+                this.log.debug(`Removed non-SDT TOC element at index ${i}`);
+              }
+            }
+          }
+          if (!tocRemoved) {
+            insertPosition = effectiveStartIndex;
+          }
+          this.log.info(`Removed non-SDT TOC (${elementsToRemove} elements) starting at index ${effectiveStartIndex}`);
+          tocRemoved = true;
+        }
+      }
+
+      // No existing TOC found - insert after first Heading 1
+      if (!tocRemoved) {
+        if (firstHeading1BodyIndex >= 0) {
           // Insert after the first Heading 1
-          insertPosition = firstHeading1Index + 1;
+          insertPosition = firstHeading1BodyIndex + 1;
           this.log.info(`No existing TOC found - creating new TOC after first Heading 1 at position ${insertPosition}`);
         } else {
           // No Heading 1 found - insert at document start as fallback
@@ -5374,6 +6089,51 @@ export class WordDocumentProcessor {
 
       totalEntriesCreated = tocParagraphs.length;
       this.log.info(`Inserted ${tocParagraphs.length} TOC entries at position ${insertPosition}`);
+
+      // Add blank line after TOC entries
+      // Note: addStructureBlankLines() runs BEFORE buildProperTOC(), so we must add the blank line here
+      if (tocParagraphs.length > 0) {
+        const blankPara = new Paragraph();
+        doc.insertParagraphAt(insertPosition + tocParagraphs.length, blankPara);
+        this.log.debug(`Added blank line after TOC at position ${insertPosition + tocParagraphs.length}`);
+      }
+
+      // ============================================
+      // STEP 7: VERIFY HEADING1 IS STILL PRESENT
+      // ============================================
+      // This is a safety check to detect if Heading1 was accidentally lost
+      if (firstHeading1) {
+        const newBodyElements = doc.getBodyElements();
+        let heading1Found = false;
+        let heading1NewIndex = -1;
+
+        for (let i = 0; i < newBodyElements.length; i++) {
+          const element = newBodyElements[i];
+          if (element instanceof Paragraph) {
+            const style = element.getStyle();
+            if (style === 'Heading1' || style === 'Heading 1') {
+              heading1Found = true;
+              heading1NewIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (!heading1Found) {
+          this.log.error(`CRITICAL: Heading1 was lost during TOC processing! Original: "${firstHeading1Text}"`);
+          // Attempt recovery by re-inserting the Heading1 at position 0
+          try {
+            doc.insertParagraphAt(0, firstHeading1);
+            this.log.warn(`Recovered Heading1 by re-inserting at position 0`);
+          } catch (recoveryError) {
+            this.log.error(`Failed to recover Heading1: ${recoveryError instanceof Error ? recoveryError.message : 'Unknown error'}`);
+          }
+        } else if (heading1NewIndex !== 0) {
+          this.log.warn(`Heading1 is at index ${heading1NewIndex} instead of 0 (this may be expected if document structure was modified)`);
+        } else {
+          this.log.debug(`Heading1 preserved at index 0: "${firstHeading1Text.substring(0, 30)}..."`);
+        }
+      }
 
       return { count: totalEntriesCreated, headings: includedHeadings };
     } catch (error) {

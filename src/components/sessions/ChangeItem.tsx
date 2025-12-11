@@ -20,6 +20,9 @@ export function ChangeItem({ change }: ChangeItemProps) {
   const hasPropertyChange = change.propertyChange && change.propertyChange.property;
   const hasGroupedProperties = change.groupedProperties && change.groupedProperties.length > 0;
 
+  // Detect if this is a combined "Updated" change (has both before and after)
+  const isUpdatedChange = hasDiff || change.description?.toLowerCase().startsWith('updated');
+
   return (
     <div className="group p-3 bg-muted/30 rounded-md hover:bg-muted/50 transition-colors">
       {/* Header Row */}
@@ -40,10 +43,10 @@ export function ChangeItem({ change }: ChangeItemProps) {
               )}
             </p>
 
-            {/* Affected Text - Show what text was changed */}
-            {change.affectedText && !change.hyperlinkChange && (
+            {/* Affected Text - Show context of what was changed (5-8 words) */}
+            {change.affectedText && !change.hyperlinkChange && !isUpdatedChange && (
               <p className="text-xs text-muted-foreground mt-1" title={change.affectedText}>
-                Text: "{truncateText(change.affectedText, 50)}"
+                Text: "{getContextWords(change.affectedText)}"
               </p>
             )}
 
@@ -85,19 +88,19 @@ export function ChangeItem({ change }: ChangeItemProps) {
       ) : hasContent ? (
         <div className="mt-2 pl-7">
           {hasDiff ? (
-            <DiffView before={change.before!} after={change.after!} />
+            <UpdatedDiffView before={change.before!} after={change.after!} />
           ) : change.before ? (
             <div className="text-xs">
               <span className="text-muted-foreground">Removed: </span>
               <span className="text-red-600 dark:text-red-400 line-through">
-                {truncateText(change.before, 100)}
+                "{getContextWords(change.before)}"
               </span>
             </div>
           ) : change.after ? (
             <div className="text-xs">
               <span className="text-muted-foreground">Added: </span>
               <span className="text-green-600 dark:text-green-400">
-                {truncateText(change.after, 100)}
+                "{getContextWords(change.after)}"
               </span>
             </div>
           ) : null}
@@ -184,24 +187,30 @@ function SourceBadge({ source }: SourceBadgeProps) {
   );
 }
 
-interface DiffViewProps {
+interface UpdatedDiffViewProps {
   before: string;
   after: string;
 }
 
-function DiffView({ before, after }: DiffViewProps) {
+/**
+ * Shows "Updated" change with before/after in a clean format
+ */
+function UpdatedDiffView({ before, after }: UpdatedDiffViewProps) {
+  const beforeContext = getContextWords(before);
+  const afterContext = getContextWords(after);
+
   return (
-    <div className="space-y-1 text-xs font-mono">
+    <div className="space-y-1.5 text-xs">
       <div className="flex items-start gap-2">
-        <span className="shrink-0 w-1 h-full bg-red-500 rounded-full" />
-        <span className="text-red-600 dark:text-red-400 line-through break-all">
-          {truncateText(before, 80)}
+        <span className="text-muted-foreground shrink-0">From:</span>
+        <span className="text-red-600 dark:text-red-400 line-through break-words">
+          "{beforeContext}"
         </span>
       </div>
       <div className="flex items-start gap-2">
-        <span className="shrink-0 w-1 h-full bg-green-500 rounded-full" />
-        <span className="text-green-600 dark:text-green-400 break-all">
-          {truncateText(after, 80)}
+        <span className="text-muted-foreground shrink-0">To:</span>
+        <span className="text-green-600 dark:text-green-400 break-words">
+          "{afterContext}"
         </span>
       </div>
     </div>
@@ -327,6 +336,30 @@ function formatDate(date: Date | string): string {
 function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength) + '...';
+}
+
+/**
+ * Gets a context snippet (5-8 words) from text for display
+ * Provides meaningful context without overwhelming the UI
+ */
+function getContextWords(text: string): string {
+  if (!text) return '';
+
+  // Clean up whitespace
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+
+  // Split into words
+  const words = cleaned.split(' ').filter((w) => w.length > 0);
+  if (words.length === 0) return '';
+
+  // If 8 words or less, return as-is
+  if (words.length <= 8) {
+    return cleaned;
+  }
+
+  // Take first 6 words and add ellipsis
+  return words.slice(0, 6).join(' ') + '...';
 }
 
 function truncateUrl(url: string, maxLength: number = 60): string {

@@ -89,6 +89,7 @@ function mapTableShadingSettings(
   return {
     header2Shading: normalizeColor(settings.header2Shading),
     otherShading: normalizeColor(settings.otherShading),
+    imageBorderWidth: settings.imageBorderWidth ?? 1.0,
   };
 }
 
@@ -118,6 +119,7 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
   if (enabled.has('remove-paragraph-lines')) flags.removeParagraphLines = true;
   if (enabled.has('remove-headers-footers')) flags.removeHeadersFooters = true;
   if (enabled.has('add-document-warning')) flags.addDocumentWarning = true;
+  if (enabled.has('center-border-images')) flags.centerAndBorderImages = true;
 
   // ═══════════════════════════════════════════════════════════
   // Lists & Tables Group
@@ -147,6 +149,7 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
   const operations: any = {};
   if (enabled.has('update-top-hyperlinks')) operations.updateTopHyperlinks = true;
   if (enabled.has('update-toc-hyperlinks')) operations.updateTocHyperlinks = true;
+  if (enabled.has('force-remove-heading1-toc')) operations.forceRemoveHeading1FromTOC = true;
   if (enabled.has('fix-internal-hyperlinks')) operations.fixInternalHyperlinks = true;
   if (enabled.has('fix-content-ids')) operations.fixContentIds = true;
   if (enabled.has('replace-outdated-titles')) operations.replaceOutdatedTitles = true;

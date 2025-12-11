@@ -23,19 +23,50 @@ export class CustomUpdater {
   private useZipFallback = false;
   private updateInfo: UpdateInfo | null = null;
   private isDev: boolean;
+  private forceUpdatesInDev: boolean; // Allow testing updates in dev mode
   private maxConcurrentConnections = 2; // Limit concurrent connections
   private activeRequests = new Set<Electron.ClientRequest>();
 
   constructor(mainWindow: Electron.BrowserWindow | null) {
     this.mainWindow = mainWindow;
     this.isDev = !app.isPackaged;
+    this.forceUpdatesInDev = process.env.FORCE_DEV_UPDATE_CONFIG === 'true';
+    this.configureDevUpdateServer();
     this.setupAutoUpdater();
+  }
+
+  /** Returns true if updates should be skipped (dev mode without force flag) */
+  private shouldSkipUpdates(): boolean {
+    return this.isDev && !this.forceUpdatesInDev;
+  }
+
+  /**
+   * Configure dev update server for local testing
+   * Set FORCE_DEV_UPDATE_CONFIG=true env var to test against local server
+   */
+  private configureDevUpdateServer(): void {
+    const forceDevConfig = process.env.FORCE_DEV_UPDATE_CONFIG === 'true';
+
+    if (forceDevConfig || (this.isDev && process.env.TEST_UPDATES === 'true')) {
+      // When running from dist/electron/, go up two levels to project root
+      const devConfigPath = path.join(__dirname, '..', '..', 'dev-app-update.yml');
+
+      if (fs.existsSync(devConfigPath)) {
+        log.info('Using dev update config for local testing:', devConfigPath);
+        autoUpdater.forceDevUpdateConfig = true;
+        autoUpdater.updateConfigPath = devConfigPath;
+      } else {
+        log.warn('Dev update config not found at:', devConfigPath);
+      }
+    }
   }
 
   private setupAutoUpdater(): void {
     // Configure standard auto-updater
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoRunAppAfterInstall = true;       // Auto-restart after silent install
+    autoUpdater.disableDifferentialDownload = false; // Ensure delta/blockmap updates enabled
 
     // Configure to be more flexible with TLS issues
     // Note: This still validates checksums, so security is maintained
@@ -186,7 +217,7 @@ export class CustomUpdater {
    * Check for updates with automatic fallback
    */
   public async checkForUpdates(): Promise<any> {
-    if (this.isDev) {
+    if (this.shouldSkipUpdates()) {
       return {
         success: false,
         message: 'Updates are not available in development mode',
@@ -892,8 +923,11 @@ export class CustomUpdater {
 
   /**
    * Install update and restart
+   * Uses silent install with auto-restart for seamless user experience
    */
   public quitAndInstall(): void {
+    log.info('Installing update and restarting...');
+
     // Check if we have a fallback installer
     const fallbackPath = (global as any).fallbackInstallerPath;
 
@@ -911,8 +945,14 @@ export class CustomUpdater {
         });
       });
     } else {
-      // Use standard auto-updater
-      autoUpdater.quitAndInstall(false, true);
+      // Remove listeners that might prevent quit
+      app.removeAllListeners('window-all-closed');
+
+      // Use standard auto-updater with silent install
+      // quitAndInstall(isSilent, isForceRunAfter)
+      // isSilent=true: No installer UI shown
+      // isForceRunAfter=true: App restarts after silent install
+      autoUpdater.quitAndInstall(true, true);
     }
   }
 
@@ -920,7 +960,7 @@ export class CustomUpdater {
    * Check for updates on startup
    */
   public async checkOnStartup(): Promise<void> {
-    if (this.isDev) {
+    if (this.shouldSkipUpdates()) {
       log.info('Skipping update check in development mode');
       return;
     }
@@ -942,6 +982,28 @@ export class CustomUpdater {
   public resetFallbackMode(): void {
     this.useZipFallback = false;
     (global as any).fallbackInstallerPath = undefined;
+  }
+
+  /**
+   * Start scheduled periodic update checks
+   * @param intervalMs Interval between checks in milliseconds (default: 4 hours)
+   */
+  public startScheduledChecks(intervalMs: number = 4 * 60 * 60 * 1000): void {
+    if (this.shouldSkipUpdates()) {
+      log.info('Skipping scheduled update checks in development mode');
+      return;
+    }
+
+    log.info(`Starting scheduled update checks every ${intervalMs / (60 * 60 * 1000)} hours`);
+
+    setInterval(async () => {
+      try {
+        log.info('Running scheduled update check...');
+        await this.checkForUpdates();
+      } catch (error) {
+        log.error('Scheduled update check failed:', error);
+      }
+    }, intervalMs);
   }
 
   /**

@@ -14,6 +14,7 @@ import {
   TableUniformitySettings,
 } from '@/types/session';
 import { DocumentSnapshotService } from '@/services/document/DocumentSnapshotService';
+import { requireElectronAPI } from '@/utils/electronGuard';
 import {
   deleteSession as deleteSessionFromDB,
   ensureDBSizeLimit,
@@ -164,6 +165,7 @@ const DEFAULT_SESSION_STYLES: SessionStyle[] = [
     preserveBold: true,
     preserveItalic: false,
     preserveUnderline: false,
+    preserveCenterAlignment: true,
     alignment: 'left',
     spaceBefore: 3,
     spaceAfter: 3,
@@ -207,6 +209,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
     'validate-document-styles',
     'update-top-hyperlinks',
     'update-toc-hyperlinks',
+    'force-remove-heading1-toc',
     'fix-internal-hyperlinks',
     'fix-content-ids',
     'center-border-images',
@@ -217,6 +220,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
     'validate-header2-tables',
     'list-indentation',
     'bullet-uniformity',
+    'normalize-table-lists',
     'smart-tables',
   ],
 };
@@ -227,6 +231,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
 const DEFAULT_TABLE_SHADING_SETTINGS: TableShadingSettings = {
   header2Shading: '#BFBFBF',
   otherShading: '#DFDFDF',
+  imageBorderWidth: 1.0,
 };
 
 /**
@@ -966,6 +971,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (sessionId: string, documentId: string): Promise<void> => {
       const session = sessions.find((s) => s.id === sessionId);
       const document = session?.documents.find((d) => d.id === documentId);
+      const processingStartTime = Date.now();
+
+      // =========================================================================
+      // COMPREHENSIVE LOGGING - DOCUMENT PROCESSING START
+      // =========================================================================
+      log.info('═══════════════════════════════════════════════════════════════════════');
+      log.info('[SessionContext] DOCUMENT PROCESSING STARTED');
+      log.info('═══════════════════════════════════════════════════════════════════════');
+      log.info(`[SessionContext] Timestamp: ${new Date().toISOString()}`);
+      log.info(`[SessionContext] Session ID: ${sessionId}`);
+      log.info(`[SessionContext] Document ID: ${documentId}`);
+      log.info(`[SessionContext] Document Name: ${document?.name || 'Unknown'}`);
+      log.info(`[SessionContext] Document Path: ${document?.path || 'No path'}`);
 
       // DEBUG: Log document processing start
       debugLog.debug('Processing document - starting', {
@@ -976,7 +994,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       });
 
       if (!session || !document || !document.path) {
-        log.error('Session, document, or document path not found');
+        log.error('[SessionContext] ERROR: Session, document, or document path not found');
+        log.error(`[SessionContext] Session exists: ${!!session}`);
+        log.error(`[SessionContext] Document exists: ${!!document}`);
+        log.error(`[SessionContext] Document path exists: ${!!document?.path}`);
         return;
       }
 
@@ -1002,7 +1023,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             ? {
                 ...s,
                 documents: s.documents.map((d) =>
-                  d.id === documentId ? { ...d, status: 'processing' as const } : d
+                  d.id === documentId ? { ...d, status: 'processing' as const, errors: undefined, errorType: undefined } : d
                 ),
                 lastModified: new Date(),
               }
@@ -1172,13 +1193,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
           // Content Structure Options
           assignStyles?: boolean;
-          centerImages?: boolean;
+          centerAndBorderImages?: boolean;
           removeHeadersFooters?: boolean;
           addDocumentWarning?: boolean;
 
           // Lists & Tables Options
           listBulletSettings?: ListBulletSettings;
           bulletUniformity?: boolean;
+          normalizeTableLists?: boolean;
           tableUniformity?: boolean;
           smartTables?: boolean;
           tableShadingSettings?: {
@@ -1287,7 +1309,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           // These operations are now always applied when processing documents
           // UI checkboxes have been removed as these are essential formatting operations
           assignStyles: true, // Always apply custom styles from Styles tab
-          centerImages: true, // Always center images in processed documents
+          centerAndBorderImages: true, // Always center and border large images (>1" either dimension)
           removeHeadersFooters:
             sessionToProcess.processingOptions?.enabledOperations?.includes('remove-headers-footers'),
           addDocumentWarning:
@@ -1306,6 +1328,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             : undefined,
           bulletUniformity:
             sessionToProcess.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
+          normalizeTableLists:
+            sessionToProcess.processingOptions?.enabledOperations?.includes('normalize-table-lists'),
           tableUniformity: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
           smartTables: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
           tableShadingSettings: sessionToProcess.tableShadingSettings
@@ -1320,7 +1344,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
           // Word Tracked Changes Handling
           revisionHandlingMode: sessionToProcess.processingOptions?.revisionHandlingMode || 'accept_all',
-          revisionAuthor: sessionToProcess.processingOptions?.revisionAuthor || 'DocHub',
+          revisionAuthor: sessionToProcess.processingOptions?.revisionAuthor,
           autoAcceptRevisions: sessionToProcess.processingOptions?.autoAcceptRevisions ?? false, // Default: false
 
           // DocHub Change Tracking (for Document Changes UI)
@@ -1405,11 +1429,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         try {
           log.info(`[SessionContext] Capturing pre-processing snapshot for ${document.name}`);
 
+          // Ensure Electron API is available for file operations
+          const electronAPI = requireElectronAPI('snapshot capture');
+
           // Read original file into buffer
-          const fileBuffer = await window.electronAPI.readFileAsBuffer(document.path);
+          const fileBuffer = await electronAPI.readFileAsBuffer(document.path);
 
           // Extract original text content before processing
-          const textResult = await window.electronAPI.extractDocumentText(document.path);
+          const textResult = await electronAPI.extractDocumentText(document.path);
           const originalText = textResult.success && textResult.textContent ? textResult.textContent : [];
 
           // Store snapshot in IndexedDB (renderer process)
@@ -1426,9 +1453,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           // Continue with processing even if snapshot fails
         }
 
+        // =========================================================================
+        // LOGGING - IPC CALL TO MAIN PROCESS
+        // =========================================================================
+        log.info('───────────────────────────────────────────────────────────────────────');
+        log.info('[SessionContext] Sending document to main process for processing');
+        log.info(`[SessionContext] API Endpoint: ${processingOptions.apiEndpoint ? 'Configured' : 'NOT CONFIGURED'}`);
+        log.info(`[SessionContext] Operations enabled: ${sessionToProcess.processingOptions?.enabledOperations?.join(', ') || 'None'}`);
+        log.info(`[SessionContext] IPC Timeout: ${IPC_TIMEOUT_MS}ms`);
+        log.info('───────────────────────────────────────────────────────────────────────');
+
         // Process the document using Electron IPC with timeout protection
+        const processingAPI = requireElectronAPI('document processing');
         const rawResult = await withTimeout(
-          window.electronAPI.processHyperlinkDocument(document.path, processingOptions),
+          processingAPI.processHyperlinkDocument(document.path, processingOptions),
           IPC_TIMEOUT_MS,
           'Document processing'
         );
@@ -1478,6 +1516,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           status: result.success ? ('completed' as const) : ('error' as const),
                           processedAt: new Date(),
                           errors: result.errorMessages,
+                          errorType: !result.success && result.errorMessages?.some(
+                            (msg) => msg.toLowerCase().includes('close the file')
+                          ) ? 'file_locked' : (!result.success ? 'general' : undefined),
                           // Store pre-existing revisions (from before DocHub processing)
                           previousRevisions: result.previousRevisions,
                           // Store Word revisions state from DocHub processing
@@ -1522,24 +1563,48 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             ),
           });
 
+          const totalDuration = Date.now() - processingStartTime;
+
           // Enhanced success logging for user visibility
-          log.info('═══════════════════════════════════════════════════════════');
-          log.info('✅ DOCUMENT PROCESSING COMPLETE');
-          log.info('═══════════════════════════════════════════════════════════');
-          log.info(`📄 Document: ${document.name}`);
-          log.info(`📁 Location: ${document.path}`);
-          log.info(`🔗 Hyperlinks Processed: ${result.totalHyperlinks}`);
-          log.info(`✏️  Hyperlinks Modified: ${result.modifiedHyperlinks}`);
+          log.info('═══════════════════════════════════════════════════════════════════════');
+          log.info('[SessionContext] DOCUMENT PROCESSING COMPLETE - SUCCESS');
+          log.info('═══════════════════════════════════════════════════════════════════════');
+          log.info(`[SessionContext] Document: ${document.name}`);
+          log.info(`[SessionContext] Location: ${document.path}`);
+          log.info(`[SessionContext] Hyperlinks Processed: ${result.totalHyperlinks}`);
+          log.info(`[SessionContext] Hyperlinks Modified: ${result.modifiedHyperlinks}`);
+          log.info(`[SessionContext] Content IDs Appended: ${result.appendedContentIds || 0}`);
+          log.info(`[SessionContext] Processor Duration: ${result.duration}ms`);
+          log.info(`[SessionContext] Total Duration: ${totalDuration}ms`);
           log.info(
-            `Time Saved: ${Math.round((result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) / SECONDS_PER_MINUTE)} seconds`
+            `[SessionContext] Time Saved: ${Math.round((result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) / SECONDS_PER_MINUTE)} seconds`
           );
-          log.info('');
-          log.info('💡 Next Steps:');
-          log.info('   • Click the green "Open Document" button to view in Word');
-          log.info('   • Or click "Open Location" to view in File Explorer');
-          log.info('═══════════════════════════════════════════════════════════');
+          log.info('═══════════════════════════════════════════════════════════════════════');
+        } else {
+          const totalDuration = Date.now() - processingStartTime;
+          log.error('═══════════════════════════════════════════════════════════════════════');
+          log.error('[SessionContext] DOCUMENT PROCESSING COMPLETE - FAILED');
+          log.error('═══════════════════════════════════════════════════════════════════════');
+          log.error(`[SessionContext] Document: ${document.name}`);
+          log.error(`[SessionContext] Errors: ${result.errorMessages?.join(', ') || 'Unknown error'}`);
+          log.error(`[SessionContext] Duration: ${totalDuration}ms`);
+          log.error('═══════════════════════════════════════════════════════════════════════');
         }
       } catch (error) {
+        const totalDuration = Date.now() - processingStartTime;
+        log.error('═══════════════════════════════════════════════════════════════════════');
+        log.error('[SessionContext] DOCUMENT PROCESSING EXCEPTION');
+        log.error('═══════════════════════════════════════════════════════════════════════');
+        log.error(`[SessionContext] Document: ${document.name}`);
+        log.error(`[SessionContext] Error: ${error instanceof Error ? error.message : String(error)}`);
+        if (error instanceof Error && error.stack) {
+          log.error(`[SessionContext] Stack Trace:`);
+          error.stack.split('\n').forEach(line => {
+            log.error(`[SessionContext]   ${line}`);
+          });
+        }
+        log.error(`[SessionContext] Duration: ${totalDuration}ms`);
+        log.error('═══════════════════════════════════════════════════════════════════════');
         log.error('Error processing document:', error);
 
         // Update document status to error
@@ -1554,6 +1619,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           ...d,
                           status: 'error' as const,
                           errors: [error instanceof Error ? error.message : 'Processing failed'],
+                          errorType: (error instanceof Error && error.message.toLowerCase().includes('close the file'))
+                            ? 'file_locked'
+                            : 'general',
                         }
                       : d
                   ),
@@ -1623,7 +1691,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     try {
       // Call Electron IPC to restore from backup
-      await window.electronAPI.restoreFromBackup(backupPath, document.path);
+      const restoreAPI = requireElectronAPI('backup restore');
+      await restoreAPI.restoreFromBackup(backupPath, document.path);
 
       // Clear all tracked changes and reset processing status
       setSessions((prev) =>

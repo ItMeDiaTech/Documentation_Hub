@@ -33,7 +33,7 @@ function createICOFromPNG(pngPath, icoPath, sizes = [16, 32, 48, 256]) {
           pixels[i + 3] = imageData.data[i + 3]; // A
         }
 
-        iconData.push({ size, data: pixels });
+        iconData.push({ size, data: pixels, imageData });
       }
 
       // ICO header
@@ -57,8 +57,9 @@ function createICOFromPNG(pngPath, icoPath, sizes = [16, 32, 48, 256]) {
         dir.writeUInt16LE(1, 4); // Color planes
         dir.writeUInt16LE(32, 6); // Bits per pixel
 
-        // BMP data size = header(40) + pixels + mask
-        const bmpSize = 40 + icon.data.length + Math.ceil(icon.size * icon.size / 8);
+        // BMP data size = header(40) + pixels + mask (DWORD-aligned rows)
+        const maskRowSize = Math.ceil(Math.ceil(icon.size / 8) / 4) * 4;
+        const bmpSize = 40 + icon.data.length + (maskRowSize * icon.size);
         dir.writeUInt32LE(bmpSize, 8);
         dir.writeUInt32LE(offset, 12);
 
@@ -74,8 +75,28 @@ function createICOFromPNG(pngPath, icoPath, sizes = [16, 32, 48, 256]) {
         bmpHeader.writeUInt32LE(0, 16); // Compression
         bmpHeader.writeUInt32LE(icon.data.length, 20); // Image size
 
-        // AND mask (all transparent = 0)
-        const mask = Buffer.alloc(Math.ceil(icon.size * icon.size / 8), 0);
+        // Generate AND mask from alpha channel
+        // ICO AND mask: 1 = transparent, 0 = opaque
+        // Rows must be DWORD (4-byte) aligned
+        const rowSize = Math.ceil(icon.size / 8);
+        const alignedRowSize = Math.ceil(rowSize / 4) * 4;
+        const mask = Buffer.alloc(alignedRowSize * icon.size, 0);
+
+        // BMP stores rows bottom-up, so we need to flip vertically
+        for (let y = 0; y < icon.size; y++) {
+          const srcRow = icon.size - 1 - y; // Flip vertically for BMP format
+          for (let x = 0; x < icon.size; x++) {
+            const pixelIndex = (srcRow * icon.size + x) * 4;
+            const alpha = icon.imageData.data[pixelIndex + 3];
+
+            // If pixel is transparent (alpha < 128), set mask bit to 1
+            if (alpha < 128) {
+              const byteIndex = y * alignedRowSize + Math.floor(x / 8);
+              const bitIndex = 7 - (x % 8); // MSB first within each byte
+              mask[byteIndex] |= (1 << bitIndex);
+            }
+          }
+        }
 
         images.push(Buffer.concat([bmpHeader, icon.data, mask]));
         offset += bmpSize;
@@ -119,7 +140,7 @@ async function resizePNG(sourcePath, targetPath, targetSize) {
 // Main execution
 async function generateIcons() {
   console.log('='.repeat(60));
-  console.log('Generating application icons from DocHub_Image.png');
+  console.log('Generating application icons from icon_1024x1024.png');
   console.log('='.repeat(60));
 
   try {
@@ -127,7 +148,7 @@ async function generateIcons() {
     const isInBuildDir = __dirname.endsWith('build');
     const rootDir = isInBuildDir ? path.join(__dirname, '..') : __dirname;
     const buildDir = path.join(rootDir, 'build');
-    const sourcePath = path.join(rootDir, 'DocHub_Image.png');
+    const sourcePath = path.join(buildDir, 'icon_1024x1024.png');
 
     // Verify source file exists
     if (!fs.existsSync(sourcePath)) {
@@ -148,7 +169,7 @@ async function generateIcons() {
     // Copy original as base icon.png (electron-builder will use this)
     const baseIconPath = path.join(buildDir, 'icon.png');
     fs.copyFileSync(sourcePath, baseIconPath);
-    console.log(`✓ Copied source to icon.png: 960x960`);
+    console.log(`+ Copied source to icon.png: 1024x1024`);
 
     // Generate standard sizes
     await resizePNG(sourcePath, path.join(buildDir, '512x512.png'), 512);
@@ -162,13 +183,13 @@ async function generateIcons() {
     console.log('✅ Icons generated successfully!');
     console.log('='.repeat(60));
     console.log('\nGenerated files:');
-    console.log('  • icon.png (960x960) - Base icon for electron-builder');
-    console.log('  • 512x512.png - Linux icon');
-    console.log('  • 256x256.png - Linux icon');
-    console.log('  • icon.ico - Windows application icon');
+    console.log('  - icon.png (1024x1024) - Base icon for electron-builder');
+    console.log('  - 512x512.png - Linux icon');
+    console.log('  - 256x256.png - Linux icon');
+    console.log('  - icon.ico - Windows application icon');
     console.log('\nElectron-builder will auto-generate:');
-    console.log('  • .icns for macOS from icon.png');
-    console.log('  • Additional Windows sizes if needed');
+    console.log('  - .icns for macOS from icon.png');
+    console.log('  - Additional Windows sizes if needed');
     console.log('');
   } catch (error) {
     console.error('\n❌ Error generating icons:', error.message);

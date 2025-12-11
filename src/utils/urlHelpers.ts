@@ -123,15 +123,6 @@ export function validatePowerAutomateUrl(url: string): {
       warnings.push('Missing "sig" parameter (signature). May be required for authentication.');
     }
 
-    // Check if URL looks like an Azure Logic Apps endpoint
-    if (
-      !urlObj.hostname.includes('logic.azure.com') &&
-      !urlObj.hostname.includes('azure-api.net')
-    ) {
-      warnings.push(
-        'URL does not appear to be an Azure Logic Apps endpoint. Expected domain: *.logic.azure.com'
-      );
-    }
   } catch (e) {
     issues.push(`Invalid URL format: ${e instanceof Error ? e.message : 'Unknown error'}`);
   }

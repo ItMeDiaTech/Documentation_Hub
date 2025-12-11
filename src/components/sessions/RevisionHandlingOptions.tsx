@@ -69,7 +69,7 @@ export function RevisionHandlingOptions({
         </div>
 
         <div className="flex-1 min-w-0">
-          <span className="font-medium text-sm">Auto-accept revisions</span>
+          <span className="font-medium text-sm">Auto-Accept Tracked Changes</span>
           <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
             Creates a clean document without visible tracked changes.
             Changes are still recorded in DocHub for review.

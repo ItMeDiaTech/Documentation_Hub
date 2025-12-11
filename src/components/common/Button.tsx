@@ -69,6 +69,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           onSuccess?.();
         }, 2000);
         return () => clearTimeout(timer);
+      } else {
+        setIsSuccess(false);
       }
     }, [showSuccess, onSuccess]);
 
