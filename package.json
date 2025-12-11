@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "4.0.7",
+  "version": "4.0.8",
   "description": "A modern document processing and session management desktop application",
   "main": "dist/electron/main.js",
   "scripts": {
@@ -138,7 +138,6 @@
     "icon": "build/icon.png",
     "win": {
       "target": [
-        "nsis",
         "msi"
       ],
       "publish": [
@@ -148,24 +147,15 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "Documentation-Hub-Setup-${version}.${ext}",
+      "artifactName": "Documentation-Hub-${version}.${ext}",
       "signAndEditExecutable": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "perMachine": false,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "deleteAppDataOnUninstall": false,
-      "artifactName": "Documentation-Hub-Setup-${version}.exe"
     },
     "msi": {
       "oneClick": false,
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "Documentation-Hub-${version}.msi"
+      "runAfterFinish": true
     },
     "mac": {
       "target": [
