@@ -5750,6 +5750,31 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Find all paragraphs that contain exactly 18pt font text
+   * Used as fallback when no Heading 1 style is found in the document
+   *
+   * @param doc - Document to search
+   * @returns Array of paragraphs containing at least one 18pt run
+   */
+  private find18ptParagraphs(doc: Document): Paragraph[] {
+    const result: Paragraph[] = [];
+    const allParagraphs = doc.getAllParagraphs();
+
+    for (const para of allParagraphs) {
+      const runs = para.getRuns();
+      for (const run of runs) {
+        const formatting = run.getFormatting();
+        if (formatting.size === 18) {
+          // Exactly 18pt
+          result.push(para);
+          break; // Found 18pt in this paragraph, move to next
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
    * Manually populate Table of Contents with bookmarks and internal hyperlinks
    *
    * This comprehensive implementation:
@@ -5799,6 +5824,38 @@ export class WordDocumentProcessor {
             this.log.debug(`Protected Heading1 at index ${i}: "${firstHeading1Text.substring(0, 50)}..."`);
             break;
           }
+        }
+      }
+
+      // FALLBACK: If no Heading 1 found, look for 18pt font paragraphs and convert ALL of them
+      if (!firstHeading1) {
+        this.log.debug('No Heading 1 found - searching for 18pt font paragraphs');
+        const paragraphs18pt = this.find18ptParagraphs(doc);
+
+        if (paragraphs18pt.length > 0) {
+          // Apply Heading 1 style to ALL 18pt paragraphs
+          for (const para of paragraphs18pt) {
+            para.setStyle('Heading1');
+            this.log.info(
+              `Applied Heading 1 style to 18pt paragraph: "${para.getText().trim().substring(0, 50)}..."`
+            );
+          }
+
+          // Use the first one for TOC placement
+          firstHeading1 = paragraphs18pt[0];
+          firstHeading1Text = firstHeading1.getText().trim();
+
+          // Find the body index of the first 18pt paragraph
+          for (let i = 0; i < bodyElements.length; i++) {
+            if (bodyElements[i] === firstHeading1) {
+              firstHeading1BodyIndex = i;
+              break;
+            }
+          }
+
+          this.log.info(`Converted ${paragraphs18pt.length} 18pt paragraph(s) to Heading 1`);
+        } else {
+          this.log.info('No Heading 1 or 18pt font found - TOC insertion will be skipped');
         }
       }
 
@@ -6076,9 +6133,9 @@ export class WordDocumentProcessor {
           insertPosition = firstHeading1BodyIndex + 1;
           this.log.info(`No existing TOC found - creating new TOC after first Heading 1 at position ${insertPosition}`);
         } else {
-          // No Heading 1 found - insert at document start as fallback
-          insertPosition = 0;
-          this.log.info("No existing TOC or Heading 1 found - creating new TOC at document start");
+          // No Heading 1 found (and no 18pt font was converted) - SKIP TOC insertion
+          this.log.warn('No Heading 1 or 18pt font found - skipping TOC creation');
+          return { count: 0, headings: [] };
         }
       }
 
