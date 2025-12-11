@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "4.0.13",
+  "version": "4.1.1",
   "description": "A modern document processing and session management desktop application",
   "author": "DiaTech",
   "main": "dist/electron/main.js",
@@ -12,7 +12,7 @@
     "electron": "electron .",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "dist": "npm run build && npm run build:electron",
-    "release": "npm run build && npx electron-builder --publish always",
+    "release": "npm run build && npx electron-builder --publish always -c.publish.releaseType=release",
     "update-server": "node scripts/local-update-server.js",
     "test:update": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5173 && node -e \\\"require('child_process').spawn(require('electron'), ['.'], {stdio:'inherit', env:{...process.env, FORCE_DEV_UPDATE_CONFIG:'true'}})\\\"\"",
     "lint": "eslint . --ext .ts,.tsx",
