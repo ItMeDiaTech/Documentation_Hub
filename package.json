@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "4.0.10",
+  "version": "4.0.12",
   "description": "A modern document processing and session management desktop application",
   "main": "dist/electron/main.js",
   "scripts": {
@@ -142,6 +142,12 @@
       "dist/**/*",
       "node_modules/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/app-update.yml",
+        "to": "app-update.yml"
+      }
     ],
     "icon": "build/icon.png",
     "win": {
