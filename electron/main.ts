@@ -42,6 +42,27 @@ log.info("========================================");
 log.info("Configuring memory and heap size...");
 MemoryConfig.configureApp();
 
+// ============================================================================
+// Single Instance Lock - Prevent Multiple App Instances (Production Only)
+// ============================================================================
+// Skip in development - vite-plugin-electron needs to restart Electron on changes
+if (!isDev) {
+  const gotTheLock = app.requestSingleInstanceLock();
+
+  if (!gotTheLock) {
+    log.info("Another instance is already running. Quitting this instance...");
+    app.quit();
+    process.exit(0);
+  }
+
+  app.on("second-instance", (_event, _commandLine, _workingDirectory) => {
+    log.info("Second instance detected - focusing existing window");
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
 
 // ============================================================================
 // Session Configuration

@@ -9,7 +9,7 @@
  * - Table shading color configuration
  */
 
-import { Document, Table, Paragraph } from "docxmlater";
+import { Document, Table, Paragraph, ImageRun, Image } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("TableProcessor");
@@ -20,6 +20,9 @@ const log = logger.namespace("TableProcessor");
 export interface TableShadingSettings {
   header2Shading: string; // Hex color for Header 2 / 1x1 table cells
   otherShading: string; // Hex color for other table cells
+  preserveBold?: boolean; // If true, preserve original bold formatting in table cells
+  heading2FontFamily?: string; // Font family for Heading 2 / 1x1 table cells
+  heading2FontSize?: number; // Font size in points for Heading 2 / 1x1 table cells
 }
 
 /**
@@ -49,6 +52,9 @@ export class TableProcessor {
    * Recursively search XMLElement tree for w:shd element and extract val attribute
    * This is needed because docxmlater doesn't expose pattern shading for table cells
    *
+   * IMPORTANT: Stops recursion at nested tables (w:tbl) to avoid detecting shading
+   * from nested table cells as the parent cell's shading.
+   *
    * @param element - XMLElement object from cell.toXML()
    * @returns The shading pattern value (e.g., "pct12", "solid") or undefined
    */
@@ -61,12 +67,18 @@ export class TableProcessor {
       children?: unknown[];
     };
 
+    // STOP recursion at nested tables - don't look inside them
+    // This prevents detecting shading from nested table cells as the parent cell's shading
+    if (el.name === "w:tbl") {
+      return undefined;
+    }
+
     // Check if this element is w:shd
     if (el.name === "w:shd" && el.attributes?.val) {
       return String(el.attributes.val);
     }
 
-    // Search children recursively
+    // Search children recursively (but won't enter nested tables now)
     if (Array.isArray(el.children)) {
       for (const child of el.children) {
         if (typeof child === "object") {
@@ -92,50 +104,48 @@ export class TableProcessor {
   private getResolvedCellShading(
     cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number],
     table: Table,
-    doc: Document
+    doc: Document,
+    debugContext?: { tableIndex?: number; rowIndex?: number; cellIndex?: number }
   ): { hasShading: boolean; fill?: string } {
     const formatting = cell.getFormatting();
 
     // 1. Check direct cell shading fill
     const directFill = formatting.shading?.fill?.toUpperCase();
+
+    // DEBUG: Log shading detection details
+    if (debugContext) {
+      log.debug(
+        `[Table ${debugContext.tableIndex}] Cell (${debugContext.rowIndex},${debugContext.cellIndex}): ` +
+        `shading.fill="${formatting.shading?.fill || 'undefined'}", ` +
+        `shading.pattern="${formatting.shading?.pattern || 'undefined'}", ` +
+        `directFill="${directFill || 'undefined'}"`
+      );
+    }
+
     if (directFill && directFill !== "AUTO" && directFill !== "FFFFFF") {
+      if (debugContext) {
+        log.debug(`  → hasShading=TRUE (fill: ${directFill})`);
+      }
       return { hasShading: true, fill: directFill };
     }
 
-    // 2. Check pattern shading via raw XML (docxmlater doesn't expose pattern for cells)
-    // Pattern shading indicates visual shading even if fill is white/undefined
-    try {
-      const xmlElement = cell.toXML();
-      const pattern = this.findShadingPatternInXML(xmlElement);
-      if (pattern && pattern !== "clear") {
-        return { hasShading: true, fill: directFill };
-      }
-    } catch (error) {
-      log.debug(`Failed to access cell XML for pattern shading: ${error}`);
-    }
+    // 2. Pattern shading detection REMOVED
+    // The previous pattern shading check was detecting table style conditional patterns
+    // (pct12 for banded rows, etc.) as visual shading, causing uniformity to be applied
+    // to cells that had no direct user-applied shading.
+    // Now only explicit fill colors trigger uniformity processing.
 
-    // 3. Check table style for inherited cell shading
-    const tableStyleId = table.getFormatting().style;
-    if (tableStyleId) {
-      try {
-        const stylesManager = doc.getStylesManager();
-        const chain = stylesManager.getInheritanceChain(tableStyleId);
-
-        for (const style of chain) {
-          const styleProps = style.getProperties();
-          // Check for table style cell formatting
-          const tableStyleProps = (styleProps as { tableStyle?: { cell?: { shading?: { fill?: string } } } }).tableStyle;
-          const inheritedFill = tableStyleProps?.cell?.shading?.fill;
-          if (inheritedFill && inheritedFill.toUpperCase() !== "AUTO" && inheritedFill.toUpperCase() !== "FFFFFF") {
-            return { hasShading: true, fill: inheritedFill.toUpperCase() };
-          }
-        }
-      } catch (error) {
-        log.debug(`Could not resolve table style inheritance: ${error}`);
-      }
-    }
+    // 3. Table style inheritance check REMOVED
+    // Previously this checked table style for inherited cell shading, but now that
+    // docxmlater properly parses table styles (w:tblStyle), ALL cells with any
+    // table style conditional shading (banded rows, firstCol, etc.) were being detected.
+    // This caused applyTableUniformity() to center and bold ALL cells incorrectly.
+    // Now we only detect cells with DIRECT shading, preserving original table styling.
 
     // 4. No shading detected
+    if (debugContext) {
+      log.debug(`  → hasShading=FALSE`);
+    }
     return { hasShading: false };
   }
 
@@ -152,80 +162,133 @@ export class TableProcessor {
 
     const header2Shading = shadingSettings?.header2Shading || "BFBFBF";
     const otherShading = shadingSettings?.otherShading || "DFDFDF";
+    const preserveBold = shadingSettings?.preserveBold ?? true; // Default to preserve
 
     log.info(`Processing ${tables.length} tables for uniformity`);
     log.debug(`Shading colors: Header2=${header2Shading}, Other=${otherShading}`);
+    log.info(`[DEBUG] preserveBold=${preserveBold} (from shadingSettings?.preserveBold=${shadingSettings?.preserveBold})`);
 
+    let tableIndex = 0;
     for (const table of tables) {
       try {
         const rows = table.getRows();
         const rowCount = rows.length;
 
-        if (rowCount === 0) continue;
+        if (rowCount === 0) {
+          tableIndex++;
+          continue;
+        }
 
         // Detect if this is a 1x1 table
         const is1x1Table = rowCount === 1 && rows[0].getCells().length === 1;
 
+        log.debug(`[Table ${tableIndex}] Type: ${is1x1Table ? "1x1" : `${rowCount}x${rows[0].getCells().length}`}`);
+
         if (is1x1Table) {
-          // Apply Header2 shading to 1x1 tables
+          // Apply shading to 1x1 tables if they have existing shading OR Heading 2 style
           const singleCell = rows[0].getCells()[0];
           if (singleCell) {
-            singleCell.setShading({ fill: header2Shading });
-            cellsRecolored++;
+            const { hasShading } = this.getResolvedCellShading(singleCell, table, doc, { tableIndex, rowIndex: 0, cellIndex: 0 });
 
-            // Also format text in the cell
+            // Also check if any paragraph has Heading 2 style
+            const hasHeading2Style = singleCell.getParagraphs().some(para => {
+              const style = para.getStyle();
+              return style === "Heading2" || style === "Heading 2";
+            });
+
+            // Apply shading if EITHER has existing shading OR has Heading 2 style
+            if (hasShading || hasHeading2Style) {
+              singleCell.setShading({ fill: header2Shading });
+              cellsRecolored++;
+            }
+
+            // Format text in 1x1 tables using Heading 2 style configuration
+            const h2FontFamily = shadingSettings?.heading2FontFamily ?? "Verdana";
+            const h2FontSize = shadingSettings?.heading2FontSize ?? 14; // 14pt default for Heading 2
             for (const para of singleCell.getParagraphs()) {
               for (const run of para.getRuns()) {
-                run.setFont("Verdana");
-                run.setSize(12);
+                run.setFont(h2FontFamily);
+                run.setSize(h2FontSize);
               }
             }
           }
         } else {
-          // Apply other shading to regular table cells
+          // Handle multi-cell tables
+          // - First row (header): ALWAYS shade with "Other Table Shading" + bold + center
+          // - Data rows WITH existing shading: Apply "Other Table Shading" + bold + center
+          // - Data rows WITHOUT shading: Preserve original formatting (don't change bold)
+          let rowIndex = 0;
           for (const row of rows) {
-            for (const cell of row.getCells()) {
-              // Check if cell has visual shading using resolved detection
-              // This checks direct fill, pattern shading, and table style inheritance
-              const { hasShading } = this.getResolvedCellShading(cell, table, doc);
+            const isFirstRow = rowIndex === 0;
+            let cellIndex = 0;
 
-              if (hasShading) {
-                // Only recolor cells that already have visual shading
-                // This preserves intentionally unstyled cells
+            for (const cell of row.getCells()) {
+              // Check if cell has visual shading using resolved detection (direct fill only)
+              const { hasShading } = this.getResolvedCellShading(cell, table, doc, { tableIndex, rowIndex, cellIndex });
+
+              if (isFirstRow) {
+                // HEADER ROW: Always shade with "Other Table Shading" and bold
+                log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=${!preserveBold}`);
                 cell.setShading({ fill: otherShading });
                 cellsRecolored++;
 
-                // Format cell text - center and bold all shaded cells
                 for (const para of cell.getParagraphs()) {
-                  // Center and bold all shaded cells
-                  para.setAlignment('center');
-
                   for (const run of para.getRuns()) {
                     run.setFont("Verdana");
                     run.setSize(12);
-                    run.setBold(true);
+                    if (!preserveBold) {
+                      run.setBold(true);
+                    }
+                  }
+                  // Center header text (skip list items)
+                  if (!para.getNumbering()) {
+                    para.setAlignment("center");
+                  }
+                }
+              } else if (hasShading) {
+                // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
+                log.debug(`[Table ${tableIndex}] DATA cell WITH shading (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=${!preserveBold}`);
+                cell.setShading({ fill: otherShading });
+                cellsRecolored++;
+
+                for (const para of cell.getParagraphs()) {
+                  for (const run of para.getRuns()) {
+                    run.setFont("Verdana");
+                    run.setSize(12);
+                    if (!preserveBold) {
+                      run.setBold(true);
+                    }
+                  }
+                  // Center shaded cell text (skip list items)
+                  if (!para.getNumbering()) {
+                    para.setAlignment("center");
                   }
                 }
               } else {
-                // Cells without shading - just format text
+                // DATA ROW WITHOUT SHADING: Preserve original formatting
+                // Don't change bold - preserve original bold state
+                log.debug(`[Table ${tableIndex}] DATA cell WITHOUT shading (${rowIndex},${cellIndex}): Preserving formatting (no shading, no bold change)`);
                 for (const para of cell.getParagraphs()) {
                   // Skip list items
                   if (!para.getNumbering()) {
-                    // Check for images
+                    // Check for images - ImageRun extends Run and contains the actual image
                     const content = para.getContent();
                     const hasImage = content.some(
-                      (item) => item.constructor.name === "Image"
+                      (item) => item instanceof ImageRun || item instanceof Image
                     );
                     if (!hasImage) {
                       for (const run of para.getRuns()) {
                         run.setFont("Verdana");
                         run.setSize(12);
+                        // Note: NOT setting bold here - preserves original
                       }
                     }
                   }
                 }
               }
+              cellIndex++;
             }
+            rowIndex++;
           }
         }
 
@@ -233,6 +296,7 @@ export class TableProcessor {
       } catch (error) {
         log.warn(`Failed to process table: ${error}`);
       }
+      tableIndex++;
     }
 
     log.info(
@@ -495,6 +559,190 @@ export class TableProcessor {
     }
 
     return false;
+  }
+
+  /**
+   * Remove specified row heights from all tables, allowing rows to auto-size based on content.
+   * This fixes inconsistent row appearance when some rows have specified heights.
+   *
+   * @param doc - The document to process
+   * @returns Number of rows with heights removed
+   */
+  async removeSpecifiedRowHeights(doc: Document): Promise<number> {
+    const tables = doc.getTables();
+    let rowsFixed = 0;
+
+    for (const table of tables) {
+      try {
+        for (const row of table.getRows()) {
+          const formatting = row.getFormatting();
+          // Remove specified height - let row auto-size
+          if (formatting.height !== undefined) {
+            // Direct property access since there's no clearHeight() method
+            (row as any).formatting.height = undefined;
+            (row as any).formatting.heightRule = undefined;
+            rowsFixed++;
+          }
+        }
+      } catch (error) {
+        log.warn(`Failed to remove row height: ${error}`);
+      }
+    }
+
+    if (rowsFixed > 0) {
+      log.info(`Removed specified heights from ${rowsFixed} table rows`);
+    }
+
+    return rowsFixed;
+  }
+
+  /**
+   * Standardize cell margins and enable text wrapping on all table cells.
+   * Sets 0" top/bottom margins, 0.08" left/right margins, and enables text wrapping.
+   *
+   * @param doc - The document to process
+   * @returns Number of cells with margins standardized
+   */
+  async standardizeCellMargins(doc: Document): Promise<number> {
+    const MARGIN_LEFT_RIGHT = 115; // 0.08 inches in twips (1440 * 0.08)
+    const MARGIN_TOP_BOTTOM = 0; // 0 inches
+
+    const tables = doc.getTables();
+    let cellsFixed = 0;
+
+    for (const table of tables) {
+      try {
+        for (const row of table.getRows()) {
+          for (const cell of row.getCells()) {
+            // Set standard margins: 0" top/bottom, 0.08" left/right
+            cell.setMargins({
+              top: MARGIN_TOP_BOTTOM,
+              bottom: MARGIN_TOP_BOTTOM,
+              left: MARGIN_LEFT_RIGHT,
+              right: MARGIN_LEFT_RIGHT,
+            });
+            // Enable text wrapping (noWrap=false)
+            cell.setNoWrap(false);
+            cellsFixed++;
+          }
+        }
+      } catch (error) {
+        log.warn(`Failed to standardize cell margins: ${error}`);
+      }
+    }
+
+    if (cellsFixed > 0) {
+      log.info(`Standardized margins for ${cellsFixed} table cells`);
+    }
+
+    return cellsFixed;
+  }
+
+  /**
+   * Detect tables with "Step" column and set column width to 1 inch.
+   *
+   * A "Step" column is detected when:
+   * - First column header text equals "Step" (case-insensitive, trimmed)
+   * - Cells below contain numeric content (step numbers)
+   *
+   * @param doc - The document to process
+   * @returns Number of tables with Step columns adjusted
+   */
+  async applyStepColumnWidth(doc: Document): Promise<number> {
+    const STEP_COLUMN_WIDTH = 1440; // 1 inch in twips
+    const tables = doc.getTables();
+    let adjustedCount = 0;
+
+    for (const table of tables) {
+      try {
+        const rows = table.getRows();
+        if (rows.length < 2) continue; // Need header + at least one data row
+
+        // Get first cell of first row (header)
+        const headerCell = table.getCell(0, 0);
+        if (!headerCell) continue;
+
+        const headerText = headerCell.getText().trim().toLowerCase();
+
+        // Check if header is "Step"
+        if (headerText !== "step") continue;
+
+        // Verify cells below contain numbers
+        let hasNumericContent = false;
+        for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+          const cell = table.getCell(rowIndex, 0);
+          if (!cell) continue;
+
+          const cellText = cell.getText().trim();
+          // Check if cell contains a number (possibly with period, e.g., "1." or "1")
+          if (/^\d+\.?$/.test(cellText)) {
+            hasNumericContent = true;
+            break;
+          }
+        }
+
+        if (!hasNumericContent) continue;
+
+        // Set first column width to 1 inch
+        table.setColumnWidth(0, STEP_COLUMN_WIDTH);
+        adjustedCount++;
+
+        log.debug(`Set Step column width to 1 inch for table`);
+      } catch (error) {
+        log.warn(`Failed to apply Step column width: ${error}`);
+      }
+    }
+
+    if (adjustedCount > 0) {
+      log.info(`Adjusted ${adjustedCount} Step column widths to 1 inch`);
+    }
+
+    return adjustedCount;
+  }
+
+  /**
+   * Ensure all paragraphs in 1x1 tables have Heading 2 style.
+   * This should be called after style application to enforce 1x1 table content as headers.
+   *
+   * @param doc - The document to process
+   * @returns Number of paragraphs updated to Heading 2 style
+   */
+  async ensureHeading2StyleIn1x1Tables(doc: Document): Promise<number> {
+    const tables = doc.getTables();
+    let paragraphsUpdated = 0;
+
+    for (const table of tables) {
+      try {
+        const rows = table.getRows();
+
+        // Only process 1x1 tables
+        if (rows.length !== 1 || rows[0].getCells().length !== 1) {
+          continue;
+        }
+
+        const cell = rows[0].getCells()[0];
+        const paragraphs = cell.getParagraphs();
+
+        for (const para of paragraphs) {
+          const currentStyle = para.getStyle();
+
+          // Set to Heading 2 if not already
+          if (currentStyle !== "Heading2" && currentStyle !== "Heading 2") {
+            para.setStyle("Heading2");
+            paragraphsUpdated++;
+            log.debug(`Set 1x1 table paragraph to Heading 2 style`);
+          }
+        }
+      } catch (error) {
+        log.warn(`Failed to set Heading 2 style in 1x1 table: ${error}`);
+      }
+    }
+
+    if (paragraphsUpdated > 0) {
+      log.info(`Set ${paragraphsUpdated} paragraphs in 1x1 tables to Heading 2 style`);
+    }
+
+    return paragraphsUpdated;
   }
 }
 
