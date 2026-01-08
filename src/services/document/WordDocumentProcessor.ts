@@ -13,6 +13,7 @@ import {
   Hyperlink,
   Image,
   ImageRun,
+  normalizeOrphanListLevelsInTable,
   NumberingLevel,
   Paragraph,
   pointsToTwips,
@@ -22,6 +23,7 @@ import {
   Style,
   Table,
   type TableOfContents,
+  WORD_NATIVE_BULLETS,
 } from "docxmlater";
 import type { RevisionHandlingMode } from "@/types/session";
 // Note: Run, Hyperlink, ImageRun imported for type checking in isParagraphTrulyEmpty()
@@ -31,7 +33,7 @@ import {
   HyperlinkProcessingResult,
   HyperlinkType,
 } from "@/types/hyperlink";
-import type { ChangeEntry, ChangelogSummary, DocumentChange, PreviousRevisionState, WordRevisionState } from "@/types/session";
+import type { ChangeEntry, ChangelogSummary, DocumentChange, PreviousRevisionState, SessionStyle, WordRevisionState } from "@/types/session";
 import { MemoryMonitor } from "@/utils/MemoryMonitor";
 import { logger, startTimer, debugModes, isDebugEnabled } from "@/utils/logger";
 import { sanitizeHyperlinkText } from "@/utils/textSanitizer";
@@ -48,24 +50,23 @@ import { tableProcessor } from "./processors/TableProcessor";
 
 // ═══════════════════════════════════════════════════════════
 // Bullet Symbol to Font Mapping
-// Each bullet type requires a SPECIFIC font AND character for correct rendering
-// Symbol font uses legacy encoding (NOT Unicode), so we must map UI chars to font-specific chars
+// Uses Word-native bullet encoding from docxmlater for maximum compatibility
+// Each bullet type uses a SPECIFIC font AND PUA character for correct rendering
 // ═══════════════════════════════════════════════════════════
 const BULLET_CHAR_MAP: Record<string, { char: string; font: string }> = {
-  '●': { char: '\u00B7', font: 'Symbol' },      // UI closed bullet → Symbol middle dot (U+00B7)
-  '○': { char: 'o', font: 'Courier New' },      // UI open bullet → Courier New lowercase 'o'
-  '■': { char: 'n', font: 'Wingdings' },        // UI square → Wingdings 'n' (char code 110)
-  '•': { char: '\u00B7', font: 'Symbol' },      // Alternative closed bullet → Symbol middle dot
+  '●': WORD_NATIVE_BULLETS.FILLED_BULLET,  // Filled bullet: Symbol font U+F0B7
+  '○': WORD_NATIVE_BULLETS.OPEN_CIRCLE,    // Open circle: Courier New U+006F
+  '■': WORD_NATIVE_BULLETS.FILLED_SQUARE,  // Filled square: Wingdings U+F0A7
 };
 
 /**
  * Get the correct font AND character for a bullet symbol
- * Symbol/Wingdings fonts use legacy character encoding, not Unicode
+ * Uses Word-native encoding from docxmlater for maximum compatibility
  * @param bulletChar The UI bullet character (e.g., ●, ○, ■)
  * @returns Object with font-specific character and font name
  */
 function getBulletMapping(bulletChar: string): { char: string; font: string } {
-  return BULLET_CHAR_MAP[bulletChar] || { char: '\u00B7', font: 'Symbol' };
+  return BULLET_CHAR_MAP[bulletChar] || WORD_NATIVE_BULLETS.FILLED_BULLET;
 }
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
@@ -86,6 +87,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   removeParagraphLines?: boolean; // remove-paragraph-lines: Remove consecutive empty paragraphs
   preserveBlankLinesAfterHeader2Tables?: boolean; // preserve-header2-blank-lines: Preserve blank lines after Header 2 tables (v1.16.0)
   preserveBlankLinesAfterAllTables?: boolean; // preserve-all-table-blank-lines: Add blank lines after ALL tables regardless of size (user request)
+  preserveUserBlankStructures?: boolean; // preserve-user-blank-structures: Preserve single blank lines, only remove consecutive duplicates (2+)
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
   standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
   standardizeListPrefixFormatting?: boolean; // standardize-list-prefix-formatting: Apply consistent Verdana 12pt black formatting to all list symbols/numbers
@@ -1165,6 +1167,17 @@ export class WordDocumentProcessor {
       // CONTENT STRUCTURE GROUP
       // NOTE: Style application moved BEFORE paragraph removal (v1.16.0)
       // This ensures Header 2 table styles exist when preservation logic runs
+
+      // IMPORTANT: Set Heading 2 style on 1x1 tables BEFORE style application
+      // This ensures they get proper formatting (font, size, bold) from the Heading 2 style config
+      if (options.smartTables || options.tableUniformity) {
+        this.log.debug("=== SETTING HEADING 2 STYLE ON 1X1 TABLES (PRE-STYLE APPLICATION) ===");
+        const heading2Updated = await tableProcessor.ensureHeading2StyleIn1x1Tables(doc);
+        if (heading2Updated > 0) {
+          this.log.info(`Set Heading 2 style on ${heading2Updated} paragraphs in 1x1 tables (before style application)`);
+        }
+      }
+
       if (options.assignStyles && options.styles && options.styles.length > 0) {
         this.log.debug(
           "=== ASSIGNING STYLES (USING DOCXMLATER applyStyles) ==="
@@ -1337,7 +1350,8 @@ export class WordDocumentProcessor {
         );
         const paragraphsRemoved = await this.removeExtraParagraphLines(
           doc,
-          options.preserveBlankLinesAfterHeader2Tables ?? true
+          options.preserveBlankLinesAfterHeader2Tables ?? true,
+          options.preserveUserBlankStructures ?? false
         );
         this.log.debug(
           `  DEBUG: After removal - total paragraphs: ${doc.getAllParagraphs().length}`
@@ -1366,10 +1380,15 @@ export class WordDocumentProcessor {
         this.log.info("  Available styles:", options.styles.map((s: any) => s.id).join(", "));
       }
 
+      // Skip validateDocumentStyles if assignStyles already ran
+      // assignStyles uses applyStyles() with preserveWhiteFont and preserveCenterAlignment flags
+      // validateDocumentStyles uses applyStylesFromObjects() which does NOT pass these flags
+      // Running both causes the second call to overwrite preserved formatting
       if (
         options.operations?.validateDocumentStyles &&
         options.styles &&
-        options.styles.length > 0
+        options.styles.length > 0 &&
+        !options.assignStyles  // Skip if applyStyles already ran with preservation flags
       ) {
         this.log.debug("=== VALIDATING DOCUMENT STYLES ===");
         const results = await this.validateDocumentStyles(doc, options.styles);
@@ -1384,6 +1403,8 @@ export class WordDocumentProcessor {
             count: results.applied,
           });
         }
+      } else if (options.operations?.validateDocumentStyles && options.assignStyles) {
+        this.log.debug("Skipping validateDocumentStyles - already processed by applyStyles with preservation flags");
       } else if (options.operations?.validateDocumentStyles) {
         this.log.warn(
           "⚠️ validateDocumentStyles is ENABLED but no styles provided! Please configure styles in the Styles tab."
@@ -1498,6 +1519,20 @@ export class WordDocumentProcessor {
         }
       }
 
+      // Normalize orphan Level 1+ bullets in table cells
+      // If a cell's first bullet is Level 1+ with no preceding Level 0, shift all bullets down
+      if (options.listBulletSettings?.enabled || options.bulletUniformity) {
+        this.log.debug("=== NORMALIZING ORPHAN LIST LEVELS IN TABLE CELLS ===");
+        const tables = doc.getTables();
+        let orphanLevelsFixed = 0;
+        for (const table of tables) {
+          orphanLevelsFixed += normalizeOrphanListLevelsInTable(table);
+        }
+        if (orphanLevelsFixed > 0) {
+          this.log.info(`Normalized ${orphanLevelsFixed} orphan list levels in table cells`);
+        }
+      }
+
       if (options.listBulletSettings?.enabled) {
         this.log.debug("=== APPLYING LIST INDENTATION UNIFORMITY ===");
         const listsFormatted = await this.applyListIndentationUniformity(
@@ -1564,6 +1599,7 @@ export class WordDocumentProcessor {
 
       if (options.tableUniformity) {
         this.log.debug("=== APPLYING TABLE UNIFORMITY (DOCXMLATER 1.7.0) ===");
+        this.log.info(`[DEBUG] tableUniformity=true, smartTables=${options.smartTables} (BOTH will run if both true!)`);
         const tablesFormatted = await this.applyTableUniformity(doc, options);
         this.log.info(
           `Applied standard formatting to ${tablesFormatted.tablesProcessed} tables (shading, borders, autofit, patterns)`
@@ -1574,6 +1610,27 @@ export class WordDocumentProcessor {
         if (centeredCount > 0) {
           this.log.info(`Centered ${centeredCount} numeric table cells`);
         }
+
+        // Apply Step column width adjustment (tables with "Step" header get 1 inch width)
+        const stepColumnsAdjusted = await tableProcessor.applyStepColumnWidth(doc);
+        if (stepColumnsAdjusted > 0) {
+          this.log.info(`Adjusted ${stepColumnsAdjusted} Step column widths to 1 inch`);
+        }
+
+        // Remove specified row heights - allow rows to auto-size based on content
+        const rowHeightsRemoved = await tableProcessor.removeSpecifiedRowHeights(doc);
+        if (rowHeightsRemoved > 0) {
+          this.log.info(`Removed specified heights from ${rowHeightsRemoved} table rows`);
+        }
+
+        // Standardize cell margins (0" top/bottom, 0.08" left/right) and enable text wrapping
+        const cellMarginsFixed = await tableProcessor.standardizeCellMargins(doc);
+        if (cellMarginsFixed > 0) {
+          this.log.info(`Standardized margins for ${cellMarginsFixed} table cells`);
+        }
+
+        // NOTE: ensureHeading2StyleIn1x1Tables() is now called BEFORE style application
+        // (see line ~1175) so 1x1 table paragraphs get proper Heading 2 formatting
 
         // Track table formatting
         if (tablesFormatted.tablesProcessed > 0 || tablesFormatted.cellsRecolored > 0) {
@@ -1603,6 +1660,61 @@ export class WordDocumentProcessor {
             count: smartFormatted,
           });
         }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // HIDDEN TEXT STYLE APPLICATION
+      // Apply Hidden Text style to runs with #FFFFFF color
+      // Runs AFTER table processing to restore any FFFFFF runs overwritten
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== APPLYING HIDDEN TEXT STYLE ===");
+      const normalStyle = options.styles?.find((s: SessionStyle) => s.id === 'normal');
+      const hiddenTextCount = this.applyHiddenTextStyle(doc, normalStyle);
+      if (hiddenTextCount > 0) {
+        result.changes?.push({
+          type: 'style',
+          category: 'style_application',
+          description: 'Applied Hidden Text style to white font runs',
+          count: hiddenTextCount,
+        });
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // TABLE BORDER NORMALIZATION
+      // Ensure all tables have uniform thin borders (size 4, single, black)
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== NORMALIZING TABLE BORDERS ===");
+      const bordersNormalized = doc.normalizeTableBorders({
+        style: 'single',
+        size: 4,
+        color: '000000',
+      });
+      if (bordersNormalized > 0) {
+        this.log.info(`Normalized borders on ${bordersNormalized} tables`);
+        result.changes?.push({
+          type: 'table',
+          category: 'structure',
+          description: 'Normalized table borders to thin uniform style',
+          count: bordersNormalized,
+        });
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // TEXT REPLACEMENT: "Parent SOP:" → "Parent Document:"
+      // Replace bolded "Parent SOP:" with "Parent Document:" preserving formatting
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== REPLACING 'PARENT SOP:' TEXT ===");
+      const parentSopReplaced = doc.replaceFormattedText('Parent SOP:', 'Parent Document:', {
+        matchBold: true,
+      });
+      if (parentSopReplaced > 0) {
+        this.log.info(`Replaced ${parentSopReplaced} instances of "Parent SOP:" with "Parent Document:"`);
+        result.changes?.push({
+          type: 'text',
+          category: 'structure',
+          description: 'Replaced "Parent SOP:" with "Parent Document:"',
+          count: parentSopReplaced,
+        });
       }
 
       // HYPERLINK GROUP (additional operations)
@@ -2281,6 +2393,7 @@ export class WordDocumentProcessor {
       // Find hyperlinks in this paragraph that need URL updates
       // We need to iterate over a copy since we may modify content during iteration
       for (const item of [...content]) {
+        // Case 1: Direct Hyperlink instances
         if (item instanceof Hyperlink) {
           const oldUrl = item.getUrl();
 
@@ -2344,6 +2457,45 @@ export class WordDocumentProcessor {
                 error,
                 paragraphIndex: paraIndex,
               });
+            }
+          }
+        }
+        // Case 2: Hyperlinks inside Revision elements (w:ins, w:del tracked changes)
+        // These hyperlinks are already wrapped in a revision, so just update URL directly
+        else if (item instanceof Revision) {
+          const revisionContent = item.getContent();
+          for (const revContent of revisionContent) {
+            if (revContent instanceof Hyperlink) {
+              const oldUrl = revContent.getUrl();
+
+              if (oldUrl && urlMap.has(oldUrl)) {
+                const newUrl = urlMap.get(oldUrl)!;
+
+                // Skip if URLs are identical (no-op update)
+                if (oldUrl === newUrl) {
+                  this.log.debug(`Skipping no-op update inside Revision: ${oldUrl}`);
+                  continue;
+                }
+
+                try {
+                  // Update URL directly - hyperlink is already inside a Revision
+                  // so we don't need to create additional tracked changes
+                  revContent.setUrl(newUrl);
+                  updatedCount++;
+                  this.log.debug(`Updated hyperlink URL inside Revision: ${oldUrl} -> ${newUrl}`);
+                } catch (error) {
+                  this.log.error(
+                    `Failed to update URL inside Revision at paragraph ${paraIndex}: ${oldUrl} -> ${newUrl}`,
+                    error
+                  );
+                  failedUrls.push({
+                    oldUrl,
+                    newUrl,
+                    error,
+                    paragraphIndex: paraIndex,
+                  });
+                }
+              }
             }
           }
         }
@@ -2425,7 +2577,7 @@ export class WordDocumentProcessor {
 
   /**
    * Remove extra whitespace - Collapse multiple spaces to single space
-   * Processes all text runs in the document
+   * Processes all text runs in the document, including cross-run double spaces
    */
   private async removeExtraWhitespace(doc: Document): Promise<number> {
     let cleanedCount = 0;
@@ -2433,12 +2585,33 @@ export class WordDocumentProcessor {
 
     for (const para of paragraphs) {
       const runs = para.getRuns();
-      for (const run of runs) {
+
+      for (let i = 0; i < runs.length; i++) {
+        const run = runs[i];
         const text = run.getText();
         if (!text) continue;
 
-        // Collapse multiple spaces/tabs/newlines to single space
-        const cleaned = text.replace(/\s+/g, " ");
+        // Step 1: Collapse multiple spaces/tabs/newlines within the run
+        let cleaned = text.replace(/\s+/g, " ");
+
+        // Step 2: Trim trailing space if next run starts with space (cross-run double space)
+        if (i < runs.length - 1) {
+          const nextRun = runs[i + 1];
+          const nextText = nextRun?.getText() || "";
+          if (cleaned.endsWith(" ") && nextText.startsWith(" ")) {
+            cleaned = cleaned.trimEnd();
+          }
+        }
+
+        // Step 3: Trim leading space if previous run ends with space (cross-run double space)
+        if (i > 0) {
+          const prevRun = runs[i - 1];
+          const prevText = prevRun?.getText() || "";
+          if (cleaned.startsWith(" ") && prevText.endsWith(" ")) {
+            cleaned = cleaned.trimStart();
+          }
+        }
+
         if (cleaned !== text) {
           run.setText(cleaned);
           cleanedCount++;
@@ -2556,6 +2729,39 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Mark single blank paragraphs as preserved to prevent their removal.
+   * Only marks blanks that are NOT followed by another blank (i.e., not consecutive).
+   * This allows consecutive duplicate blanks to be removed while keeping intentional single blanks.
+   *
+   * @param doc - The document to process
+   * @returns Number of paragraphs marked as preserved
+   */
+  private markSingleBlanksAsPreserved(doc: Document): number {
+    let markedCount = 0;
+    const paragraphs = doc.getAllParagraphs();
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      const para = paragraphs[i];
+      const nextPara = paragraphs[i + 1];
+
+      // Check if this paragraph is blank (no text/images)
+      const isBlank = !para.getText()?.trim() && para.getRuns().length === 0;
+      if (!isBlank) continue;
+
+      // Check if next paragraph is also blank
+      const nextIsBlank = nextPara && !nextPara.getText()?.trim() && nextPara.getRuns().length === 0;
+
+      // If this is a SINGLE blank (not consecutive), mark as preserved
+      if (!nextIsBlank && !para.isPreserved()) {
+        para.setPreserved(true);
+        markedCount++;
+      }
+    }
+
+    return markedCount;
+  }
+
+  /**
    * Remove extra paragraph lines using DocXMLater's built-in method
    *
    * REFACTORED: Replaced 240+ line custom implementation with framework's
@@ -2568,27 +2774,100 @@ export class WordDocumentProcessor {
    *
    * @param doc - The document to process
    * @param preserveBlankLinesAfterHeader2Tables - Whether to add structure blank lines
+   * @param preserveUserBlankStructures - Whether to preserve single blank lines (only remove consecutive duplicates)
    * @returns Number of paragraphs removed
    */
   private async removeExtraParagraphLines(
     doc: Document,
-    preserveBlankLinesAfterHeader2Tables: boolean = true
+    preserveBlankLinesAfterHeader2Tables: boolean = true,
+    preserveUserBlankStructures: boolean = false
   ): Promise<number> {
     this.log.debug("=== REMOVING EXTRA BLANK PARAGRAPHS (FRAMEWORK METHOD) ===");
     this.log.debug("  addStructureBlankLines option: true (always enabled for lists)");
+    this.log.debug(`  preserveUserBlankStructures: ${preserveUserBlankStructures}`);
+
+    // If preserveUserBlankStructures is enabled, mark single blanks as preserved first
+    // This ensures only consecutive duplicate blanks (2+) are removed
+    if (preserveUserBlankStructures) {
+      const markedCount = this.markSingleBlanksAsPreserved(doc);
+      this.log.debug(`  Marked ${markedCount} single blank paragraphs as preserved`);
+    }
 
     // Use DocXMLater's built-in removeExtraBlankParagraphs() method
     // Always enable addStructureBlankLines to ensure blank lines after lists
     // The framework method internally calls addStructureBlankLines() with afterLists: true default
     const result = doc.removeExtraBlankParagraphs({
       addStructureBlankLines: true,
+      stopBoldColonAfterHeading: "Related Documents",
     });
 
     this.log.info(
       `✓ Framework method completed: ${result.removed} blank paragraphs removed, ${result.added} structure lines added`
     );
 
-    return result.removed;
+    // Post-processing: Remove trailing blank paragraphs from table cells
+    // This fixes the issue where blank lines appear after images in table cells
+    const trailingBlanksRemoved = this.removeTrailingBlanksFromTableCells(doc);
+    if (trailingBlanksRemoved > 0) {
+      this.log.info(`  Removed ${trailingBlanksRemoved} trailing blank paragraphs from table cells`);
+    }
+
+    return result.removed + trailingBlanksRemoved;
+  }
+
+  /**
+   * Remove trailing blank paragraphs from table cells.
+   * This fixes the issue where blank lines appear after images in table cells
+   * when the image is the last element in the cell.
+   *
+   * @param doc - The document to process
+   * @returns Number of blank paragraphs removed from table cells
+   */
+  private removeTrailingBlanksFromTableCells(doc: Document): number {
+    let removedCount = 0;
+
+    for (const table of doc.getTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          const paras = cell.getParagraphs();
+
+          // Remove trailing blank paragraphs (keep at least one paragraph)
+          while (paras.length > 1) {
+            const lastPara = paras[paras.length - 1];
+            const paraText = lastPara.getText()?.trim() || "";
+            const runs = lastPara.getRuns();
+
+            // Check if paragraph is blank (no text, no runs with content)
+            const isBlank =
+              !paraText &&
+              runs.every((run) => !run.getText()?.trim());
+
+            // Also check for images - don't remove paragraphs containing images
+            // ImageRun extends Run and contains the actual image, Image is the underlying element
+            const content = lastPara.getContent();
+            const hasImage = content.some(
+              (item) => item instanceof ImageRun || item instanceof Image
+            );
+
+            if (isBlank && !hasImage && !lastPara.isPreserved()) {
+              try {
+                cell.removeParagraph(paras.length - 1);
+                removedCount++;
+                // Update paras reference after removal
+                paras.pop();
+              } catch (error) {
+                this.log.warn(`Failed to remove trailing blank from cell: ${error}`);
+                break;
+              }
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    return removedCount;
   }
 
   /**
@@ -2616,8 +2895,16 @@ export class WordDocumentProcessor {
   /**
    * Standardize hyperlink formatting - Remove bold/italic and reset to standard style
    *
-   * Uses docxmlater's resetToStandardFormatting() method to ensure all hyperlinks
-   * have consistent formatting: Calibri 11pt, blue (#0563C1), underlined, no bold/italic.
+   * Ensures all hyperlinks have consistent formatting:
+   * - Font: Verdana 12pt
+   * - Color: Blue (#0000FF)
+   * - Underline: Single
+   * - Bold/Italic: false
+   *
+   * This method handles ALL hyperlinks including:
+   * - Case 1: Direct Hyperlink instances in paragraphs
+   * - Case 2: Hyperlinks inside Revision elements (w:ins, w:del tracked changes)
+   * - Case 3: HYPERLINK field codes (ComplexField)
    *
    * This prevents hyperlinks from inheriting unwanted formatting from surrounding text
    * or from being manually bolded/italicized by users.
@@ -2630,46 +2917,166 @@ export class WordDocumentProcessor {
     let standardizedCount = 0;
 
     try {
-      // Extract all hyperlinks using DocXMLaterProcessor
-      const hyperlinks = await this.docXMLater.extractHyperlinks(doc);
+      // Process all paragraphs in the document to find ALL hyperlinks
+      // This includes hyperlinks inside revision elements (tracked changes)
+      const paragraphs = doc.getAllParagraphs();
 
-      this.log.debug(`Found ${hyperlinks.length} hyperlinks to standardize`);
+      this.log.debug(`Scanning ${paragraphs.length} paragraphs for hyperlinks to standardize`);
 
-      // Reset each hyperlink to standard formatting
-      for (const { hyperlink, url, text } of hyperlinks) {
-        try {
-          // Apply custom formatting to hyperlinks:
-          // - Font: Verdana 12pt
-          // - Color: Blue (#0000FF)
-          // - Underline: Single
-          // - Bold: false
-          // - Italic: false
-          hyperlink.setFormatting({
-            font: "Verdana",
-            size: 12, // 12pt (docxmlater converts to 24 half-points internally)
-            color: "0000FF", // Blue (hex without #)
-            underline: "single",
-            bold: false,
-            italic: false,
-          });
-          standardizedCount++;
+      for (const para of paragraphs) {
+        const content = para.getContent();
 
-          this.log.debug(`Standardized hyperlink: "${text}" (${url})`);
-        } catch (error) {
-          this.log.warn(`Failed to standardize hyperlink "${text}": ${error}`);
-          // Continue processing other hyperlinks even if one fails
+        for (const item of content) {
+          try {
+            // Case 1: Direct Hyperlink instances
+            if (item instanceof Hyperlink) {
+              this.applyStandardHyperlinkFormatting(item);
+              standardizedCount++;
+              this.log.debug(`Standardized direct hyperlink: "${sanitizeHyperlinkText(item.getText())}"`);
+            }
+            // Case 2: Hyperlinks inside Revision elements (w:ins tracked changes)
+            else if (item instanceof Revision) {
+              const revisionContent = item.getContent();
+              for (const revContent of revisionContent) {
+                if (revContent instanceof Hyperlink) {
+                  this.applyStandardHyperlinkFormatting(revContent);
+                  standardizedCount++;
+                  this.log.debug(`Standardized hyperlink inside Revision: "${sanitizeHyperlinkText(revContent.getText())}"`);
+                }
+              }
+            }
+            // Case 3: HYPERLINK field codes (ComplexField)
+            else if (item instanceof ComplexField) {
+              if (item.isHyperlinkField()) {
+                // Apply formatting to the field result (not the parsed hyperlink which is just metadata)
+                item.setResultFormatting({
+                  font: "Verdana",
+                  size: 12,
+                  color: "0000FF",
+                  underline: "single",
+                  bold: false,
+                  italic: false,
+                });
+                standardizedCount++;
+                this.log.debug(`Standardized ComplexField hyperlink`);
+              }
+            }
+          } catch (error) {
+            this.log.warn(`Failed to standardize hyperlink: ${error}`);
+            // Continue processing other hyperlinks even if one fails
+          }
         }
       }
 
-      this.log.info(
-        `Successfully standardized ${standardizedCount} of ${hyperlinks.length} hyperlinks`
-      );
+      this.log.info(`Successfully standardized ${standardizedCount} hyperlinks`);
     } catch (error) {
       this.log.error(`Error standardizing hyperlink formatting: ${error}`);
       throw error;
     }
 
     return standardizedCount;
+  }
+
+  /**
+   * Apply standard formatting to a hyperlink
+   *
+   * Standard format: Verdana 12pt, Blue (#0000FF), Underlined, no bold/italic
+   * Uses replace: true to clear any existing characterStyle reference
+   *
+   * @param hyperlink - The hyperlink to format
+   */
+  private applyStandardHyperlinkFormatting(hyperlink: Hyperlink): void {
+    hyperlink.setFormatting({
+      font: "Verdana",
+      size: 12, // 12pt (docxmlater converts to 24 half-points internally)
+      color: "0000FF", // Blue (hex without #)
+      underline: "single",
+      bold: false,
+      italic: false,
+    }, { replace: true });
+  }
+
+  /**
+   * Apply Hidden Text style to runs with #FFFFFF color
+   *
+   * Scans document for white text runs and applies Hidden Text formatting
+   * to ensure the text remains hidden (white on white background).
+   *
+   * This method runs AFTER table processing to restore any FFFFFF runs
+   * that were overwritten by table formatting operations.
+   *
+   * Style properties:
+   * - Font: Verdana
+   * - Size: 12pt
+   * - Color: #FFFFFF (white)
+   * - Line spacing: Inherited from Normal style
+   *
+   * @param doc - Document to process
+   * @param normalStyle - Normal style configuration (for line spacing inheritance)
+   * @returns Number of hidden text runs styled
+   */
+  private applyHiddenTextStyle(
+    doc: Document,
+    normalStyle?: SessionStyle
+  ): number {
+    let hiddenTextCount = 0;
+
+    // Get line spacing from Normal style (default to 1.0 if not provided)
+    const lineSpacing = normalStyle?.lineSpacing ?? 1.0;
+
+    // Create HiddenText character style
+    const hiddenStyle = Style.create({
+      styleId: "HiddenText",
+      name: "Hidden Text",
+      type: "character",
+      basedOn: "DefaultParagraphFont",
+      runFormatting: {
+        font: "Verdana",
+        size: 12,
+        color: "FFFFFF", // No # prefix for docxmlater
+        bold: false,
+        italic: false,
+      },
+    });
+
+    // Add style to document
+    doc.addStyle(hiddenStyle);
+    this.log.debug("Added HiddenText style to document");
+
+    // Scan all paragraphs for white text runs
+    const paragraphs = doc.getAllParagraphs();
+
+    for (const para of paragraphs) {
+      // Track if this paragraph has hidden text
+      let paraHasHiddenText = false;
+
+      const runs = para.getRuns();
+      for (const run of runs) {
+        const currentColor = run.getFormatting().color?.toUpperCase();
+
+        if (currentColor === "FFFFFF") {
+          // Apply HiddenText formatting directly to preserve white color
+          run.setFont("Verdana");
+          run.setSize(12);
+          run.setColor("FFFFFF");
+
+          hiddenTextCount++;
+          paraHasHiddenText = true;
+
+          this.log.debug(
+            `Applied HiddenText style to run: "${run.getText().substring(0, 30)}..."`
+          );
+        }
+      }
+
+      // If paragraph has hidden text, ensure line spacing matches Normal
+      if (paraHasHiddenText) {
+        para.setLineSpacing(pointsToTwips(lineSpacing * 12));
+      }
+    }
+
+    this.log.info(`Applied Hidden Text style to ${hiddenTextCount} runs`);
+    return hiddenTextCount;
   }
 
   /**
@@ -2914,21 +3321,27 @@ export class WordDocumentProcessor {
 
       if (styleToApply) {
         // Apply paragraph formatting
-        // Check if we should preserve center alignment (only skip if preserveCenterAlignment is true AND paragraph is centered)
         const formatting = para.getFormatting();
 
-        // Debug: Log alignment preservation check
-        if (formatting.alignment === 'center') {
-          this.log.debug(`[Alignment] Center-aligned paragraph found. Style: ${styleToApply.id}, ` +
-            `preserveCenterAlignment: ${styleToApply.preserveCenterAlignment}, ` +
-            `current alignment: ${formatting.alignment}, target alignment: ${styleToApply.alignment}`);
-        }
+        // Check if paragraph has an explicit Word style (e.g., "Normal", "Heading1", "ListParagraph")
+        // Paragraphs without an explicit style should have their existing formatting preserved
+        const explicitStyle = para.getStyle();
+        const hasNoExplicitStyle = !explicitStyle || explicitStyle === 'undefined' || explicitStyle === '';
 
-        if (!(styleToApply.preserveCenterAlignment && formatting.alignment === 'center')) {
+        // Preserve center alignment if:
+        // 1. The style has preserveCenterAlignment=true AND paragraph is centered, OR
+        // 2. The paragraph has no explicit style AND is already centered
+        const shouldPreserveAlignment =
+          (styleToApply.preserveCenterAlignment && formatting.alignment === 'center') ||
+          (hasNoExplicitStyle && formatting.alignment === 'center');
+
+        if (!shouldPreserveAlignment) {
           para.setAlignment(styleToApply.alignment);
         } else {
-          this.log.debug(`[Alignment] Preserved center alignment for paragraph (style: ${styleToApply.id})`);
+          this.log.debug(`[Alignment] Preserved center alignment for paragraph ` +
+            `(style: ${styleToApply.id}, explicitStyle: ${explicitStyle || 'none'})`);
         }
+
         para.setSpaceBefore(pointsToTwips(styleToApply.spaceBefore));
         para.setSpaceAfter(pointsToTwips(styleToApply.spaceAfter));
         if (styleToApply.lineSpacing) {
@@ -2941,17 +3354,32 @@ export class WordDocumentProcessor {
         for (const run of runs) {
           run.setFont(styleToApply.fontFamily);
           run.setSize(styleToApply.fontSize);
-          // Dual toggle formatting: only call setter if preserve flag is not true
-          if (!styleToApply.preserveBold) {
+
+          // Preserve bold if:
+          // 1. The style has preserveBold=true, OR
+          // 2. The paragraph has no explicit style AND run is already bold
+          // Use DIRECT formatting only (not getEffectiveBold) to avoid preserving table conditional formatting
+          // This matches docxmlater's applyStyles() behavior which only preserves explicitly set bold
+          const runBold = run.getFormatting().bold;
+          const shouldPreserveBold =
+            styleToApply.preserveBold ||
+            (hasNoExplicitStyle && runBold);
+
+          if (!shouldPreserveBold) {
             run.setBold(styleToApply.bold);
           }
+
           if (!styleToApply.preserveItalic) {
             run.setItalic(styleToApply.italic);
           }
           if (!styleToApply.preserveUnderline) {
             run.setUnderline(styleToApply.underline ? "single" : false);
           }
-          run.setColor(styleToApply.color.replace("#", ""));
+          // Preserve white font - don't change color if run is white (FFFFFF)
+          const currentColor = run.getFormatting().color?.toUpperCase();
+          if (currentColor !== 'FFFFFF') {
+            run.setColor(styleToApply.color.replace("#", ""));
+          }
         }
 
         appliedCount++;
@@ -2975,6 +3403,7 @@ export class WordDocumentProcessor {
       preserveBold?: boolean;
       preserveItalic?: boolean;
       preserveUnderline?: boolean;
+      preserveCenterAlignment?: boolean;
       alignment: "left" | "center" | "right" | "justify";
       color: string;
       spaceBefore: number;
@@ -2992,7 +3421,9 @@ export class WordDocumentProcessor {
       imageBorderWidth?: number;
     }
   ): any {
-    const config: any = {};
+    const config: any = {
+      preserveWhiteFont: true,
+    };
 
     for (const style of styles) {
       const runFormatting: any = {
@@ -3053,7 +3484,11 @@ export class WordDocumentProcessor {
           config.heading3 = { run: runFormatting, paragraph: paragraphFormatting };
           break;
         case "normal":
-          config.normal = { run: runFormatting, paragraph: paragraphFormatting };
+          config.normal = {
+            run: runFormatting,
+            paragraph: paragraphFormatting,
+            preserveCenterAlignment: style.preserveCenterAlignment ?? false,
+          };
           break;
         case "listParagraph":
           config.listParagraph = { run: runFormatting, paragraph: paragraphFormatting };
@@ -3339,10 +3774,14 @@ export class WordDocumentProcessor {
               const runs = para.getRuns();
 
               // Validate and fix paragraph formatting
-              if (formatting.alignment !== header2Style.alignment) {
+              // Preserve center alignment if paragraph is already centered
+              const preserveCenter = formatting.alignment === 'center';
+              if (formatting.alignment !== header2Style.alignment && !preserveCenter) {
                 para.setAlignment(header2Style.alignment);
                 cellNeedsUpdate = true;
                 this.log.debug(`Fixed Header 2 alignment to ${header2Style.alignment}`);
+              } else if (preserveCenter && formatting.alignment !== header2Style.alignment) {
+                this.log.debug(`Preserved center alignment for Header 2 paragraph`);
               }
 
               const spacing = formatting.spacing || {};
@@ -3396,7 +3835,9 @@ export class WordDocumentProcessor {
                 }
 
                 const expectedColor = header2Style.color.replace("#", "");
-                if (runFormatting.color !== expectedColor) {
+                // Preserve white font - don't change color if run is white (FFFFFF)
+                const isWhiteFont = runFormatting.color?.toUpperCase() === 'FFFFFF';
+                if (!isWhiteFont && runFormatting.color !== expectedColor) {
                   run.setColor(expectedColor);
                   runNeedsUpdate = true;
                 }
@@ -4302,23 +4743,58 @@ export class WordDocumentProcessor {
     options: WordProcessingOptions
   ): Promise<{
     tablesProcessed: number;
-    headerRowsFormatted: number;
+    bordersApplied: number;
     cellsRecolored: number;
   }> {
     // Get shading colors for tables from session settings (strip # prefix for OOXML format)
     const header2Color = options.tableShadingSettings?.header2Shading?.replace("#", "") || "BFBFBF";
     const otherColor = options.tableShadingSettings?.otherShading?.replace("#", "") || "DFDFDF";
 
+    // Get preserveBold from Normal style (table cells use Normal style formatting)
+    // Use DIRECT formatting check only (not getEffectiveBold) to avoid table style inheritance issues
+    const normalStyle = options.styles?.find((s: { id: string }) => s.id === 'normal');
+    const preserveBold = normalStyle?.preserveBold ?? true; // Default to preserve if not specified
+
+    this.log.info(`[DEBUG] applyTableUniformity: preserveBold=${preserveBold} (normalStyle?.preserveBold=${normalStyle?.preserveBold})`);
+    this.log.debug(`[DEBUG] options.styles: ${JSON.stringify(options.styles?.map(s => ({ id: s.id, preserveBold: s.preserveBold })) || 'undefined')}`);
+
+    // Get Heading 2 style configuration for 1x1 tables
+    const heading2Style = options.styles?.find((s: { id: string }) => s.id === 'header2');
+    const heading2FontFamily = heading2Style?.fontFamily ?? "Verdana";
+    const heading2FontSize = heading2Style?.fontSize ?? 14; // 14pt default for Heading 2
+
     this.log.debug(
-      `Applying standard table formatting with colors: #${header2Color} (1x1), #${otherColor} (multi-cell)`
+      `Applying standard table formatting with colors: #${header2Color} (1x1), #${otherColor} (multi-cell), preserveBold=${preserveBold}, heading2Font=${heading2FontFamily} ${heading2FontSize}pt`
     );
 
-    // Apply standard table formatting using docxmlater 1.8.0 helper
-    // Pass both colors: first for 1x1 tables, second for multi-cell tables
-    const result = doc.applyStandardTableFormatting(header2Color, otherColor);
+    // Use TableProcessor's applyTableUniformity which respects getResolvedCellShading()
+    // This only applies shading to cells that ALREADY have direct shading, not inherited from table styles
+    const result = await tableProcessor.applyTableUniformity(doc, {
+      header2Shading: header2Color,
+      otherShading: otherColor,
+      preserveBold: preserveBold,
+      heading2FontFamily: heading2FontFamily,
+      heading2FontSize: heading2FontSize,
+    });
 
-    this.log.debug(`Applied standard formatting to ${result.tablesProcessed} tables`);
-    this.log.debug(`Formatted ${result.headerRowsFormatted} header rows`);
+    // Update table style definitions in styles.xml to match the user's configured shading
+    // This ensures cells using table styles (like GridTable4-Accent3) get consistent shading
+    // Common table style shading colors that need to be updated:
+    const shadingUpdates = [
+      { old: "A5A5A5", new: header2Color }, // Header/accent cells
+      { old: "C0C0C0", new: header2Color }, // Header cells
+      { old: "D9D9D9", new: otherColor },   // Data cells
+      { old: "E7E6E6", new: otherColor },   // Light data cells
+    ];
+    let styleUpdates = 0;
+    for (const update of shadingUpdates) {
+      styleUpdates += doc.updateTableStyleShading(update.old, update.new);
+    }
+    if (styleUpdates > 0) {
+      this.log.debug(`Updated ${styleUpdates} shading definitions in styles.xml`);
+    }
+
+    this.log.debug(`Applied table uniformity to ${result.tablesProcessed} tables`);
     this.log.debug(`Recolored ${result.cellsRecolored} cells`);
 
     return result;
@@ -4433,8 +4909,14 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Recursively search XMLElement tree for w:shd element and extract val attribute
+   * Search for CELL-LEVEL shading pattern in XMLElement tree
    * This is needed because docxmlater doesn't expose pattern shading for table cells
+   *
+   * IMPORTANT: Only detects shading in w:tcPr (cell properties).
+   * Stops recursion at:
+   * - w:tbl (nested tables)
+   * - w:pPr (paragraph properties - paragraph shading is not cell shading)
+   * - w:rPr (run properties - text highlighting is not cell shading)
    *
    * @param element - XMLElement object from cell.toXML()
    * @returns The shading pattern value (e.g., "pct12", "solid") or undefined
@@ -4448,12 +4930,30 @@ export class WordDocumentProcessor {
       children?: unknown[];
     };
 
-    // Check if this element is w:shd
+    // STOP recursion at nested tables - don't look inside them
+    // This prevents detecting shading from nested table cells as the parent cell's shading
+    if (el.name === "w:tbl") {
+      return undefined;
+    }
+
+    // STOP recursion at paragraph properties - don't check w:pPr > w:shd
+    // Paragraph shading is not the same as cell shading
+    if (el.name === "w:pPr") {
+      return undefined;
+    }
+
+    // STOP recursion at run properties - don't check w:rPr > w:shd
+    // Run shading/highlighting is not the same as cell shading
+    if (el.name === "w:rPr") {
+      return undefined;
+    }
+
+    // Check if this element is w:shd (only cell-level w:tcPr > w:shd at this point)
     if (el.name === "w:shd" && el.attributes?.val) {
       return String(el.attributes.val);
     }
 
-    // Search children recursively
+    // Search children recursively (but won't enter nested tables now)
     if (Array.isArray(el.children)) {
       for (const child of el.children) {
         if (typeof child === "object") {
@@ -4489,38 +4989,17 @@ export class WordDocumentProcessor {
       return { hasShading: true, fill: directFill };
     }
 
-    // 2. Check pattern shading via raw XML (docxmlater doesn't expose pattern for cells)
-    // Pattern shading indicates visual shading even if fill is white/undefined
-    try {
-      const xmlElement = cell.toXML();
-      const pattern = this.findShadingPatternInXML(xmlElement);
-      if (pattern && pattern !== "clear") {
-        return { hasShading: true, fill: directFill };
-      }
-    } catch (error) {
-      this.log.debug(`Failed to access cell XML for pattern shading: ${error}`);
-    }
+    // 2. Pattern shading detection REMOVED
+    // The pattern shading check was detecting table style conditional patterns
+    // (pct12 for banded rows, etc.) as visual shading, causing uniformity to be applied
+    // to cells that had no direct user-applied shading.
 
-    // 3. Check table style for inherited cell shading
-    const tableStyleId = table.getFormatting().style;
-    if (tableStyleId) {
-      try {
-        const stylesManager = doc.getStylesManager();
-        const chain = stylesManager.getInheritanceChain(tableStyleId);
-
-        for (const style of chain) {
-          const styleProps = style.getProperties();
-          // Check for table style cell formatting
-          const tableStyleProps = (styleProps as { tableStyle?: { cell?: { shading?: { fill?: string } } } }).tableStyle;
-          const inheritedFill = tableStyleProps?.cell?.shading?.fill;
-          if (inheritedFill && inheritedFill.toUpperCase() !== "AUTO" && inheritedFill.toUpperCase() !== "FFFFFF") {
-            return { hasShading: true, fill: inheritedFill.toUpperCase() };
-          }
-        }
-      } catch (error) {
-        this.log.debug(`Could not resolve table style inheritance: ${error}`);
-      }
-    }
+    // 3. Table style inheritance check REMOVED
+    // Previously this checked table style for inherited cell shading, but now that
+    // docxmlater properly parses table styles (w:tblStyle), ALL cells with any
+    // table style conditional shading (banded rows, firstCol, etc.) were being detected.
+    // This caused applySmartTableFormatting() to shade ALL cells incorrectly.
+    // Now we only detect cells with DIRECT shading, preserving original table styling.
 
     // 4. No shading detected
     return { hasShading: false };
@@ -4547,6 +5026,18 @@ export class WordDocumentProcessor {
       options.tableShadingSettings?.header2Shading?.replace("#", "").toUpperCase() || "BFBFBF";
     const otherColor =
       options.tableShadingSettings?.otherShading?.replace("#", "").toUpperCase() || "DFDFDF";
+
+    // Get preserveBold from Normal style (table cells use Normal style formatting)
+    const normalStyle = options.styles?.find((s: { id: string }) => s.id === "normal");
+    const preserveBold = normalStyle?.preserveBold ?? true;
+
+    this.log.info(`[DEBUG] applySmartTableFormatting: preserveBold=${preserveBold} (normalStyle?.preserveBold=${normalStyle?.preserveBold})`);
+    this.log.debug(`[DEBUG] options.styles: ${JSON.stringify(options.styles?.map(s => ({ id: s.id, preserveBold: s.preserveBold })) || 'undefined')}`);
+
+    // Get Heading 2 style configuration for 1x1 tables
+    const heading2Style = options.styles?.find((s: { id: string }) => s.id === "header2");
+    const heading2FontFamily = heading2Style?.fontFamily ?? "Verdana";
+    const heading2FontSize = heading2Style?.fontSize ?? 14; // 14pt default for Heading 2
 
     // Log fallback usage if colors weren't provided
     if (!options.tableShadingSettings?.header2Shading) {
@@ -4582,67 +5073,110 @@ export class WordDocumentProcessor {
         table.setLayout("auto");
 
         if (is1x1Table) {
-          // Handle 1x1 tables - apply Header 2 shading color
+          // Handle 1x1 tables - apply Header 2 shading color only if cell has existing shading OR Heading 2 style
           const singleCell = table.getRow(0)?.getCell(0);
           if (singleCell) {
-            singleCell.setShading({ fill: header2Color });
-            singleCell.setMargins(cellMargins);
+            const { hasShading } = this.getResolvedCellShading(singleCell, table, doc);
 
-            // Set all text in the cell to bold
-            for (const para of singleCell.getParagraphs()) {
-              for (const run of para.getRuns()) {
-                run.setBold(true);
+            // Also check if any paragraph has Heading 2 style
+            const hasHeading2Style = singleCell.getParagraphs().some((para) => {
+              const style = para.getStyle();
+              return style === "Heading2" || style === "Heading 2";
+            });
+
+            // Only apply shading if cell has existing shading OR Heading 2 style
+            if (hasShading || hasHeading2Style) {
+              singleCell.setShading({ fill: header2Color });
+
+              // Apply Heading 2 font/size and bold formatting
+              for (const para of singleCell.getParagraphs()) {
+                for (const run of para.getRuns()) {
+                  run.setFont(heading2FontFamily);
+                  run.setSize(heading2FontSize);
+                  if (!preserveBold) {
+                    run.setBold(true);
+                  }
+                }
               }
+
+              this.log.debug(`Applied Header 2 formatting (#${header2Color}, ${heading2FontFamily} ${heading2FontSize}pt) to 1x1 table`);
+            } else {
+              this.log.debug(
+                `Skipped shading for 1x1 table - no existing shading and no Heading 2 style`
+              );
             }
 
-            this.log.debug(`Applied Header 2 shading (#${header2Color}) to 1x1 table`);
+            // Always apply cell margins
+            singleCell.setMargins(cellMargins);
           }
         } else {
-          // Handle multi-cell tables - apply other table shading color (skip white cells and cells with no color)
+          // Handle multi-cell tables
+          // - First row (header): ALWAYS shade with "Other Table Shading" + bold + center
+          // - Data rows WITH existing shading: Apply "Other Table Shading" + bold + center
+          // - Data rows WITHOUT shading: Preserve original formatting (don't change bold)
           const rows = table.getRows();
           let rowIndex = 0;
           for (const row of rows) {
+            const isFirstRow = rowIndex === 0;
             let cellIndex = 0;
+
             for (const cell of row.getCells()) {
-              // Check cell shading using resolved shading detection
-              // This checks direct fill, pattern shading, and table style inheritance
+              // Check cell shading using resolved shading detection (direct fill only)
               const { hasShading, fill: originalColor } = this.getResolvedCellShading(cell, table, doc);
 
               // DEBUG: Log each cell's color evaluation
               this.log.debug(
                 `[Table ${formattedCount}] Row ${rowIndex}, Cell ${cellIndex}: ` +
-                `resolvedShading=${hasShading}, originalColor="${originalColor || "NONE"}"`
+                `isFirstRow=${isFirstRow}, resolvedShading=${hasShading}, originalColor="${originalColor || "NONE"}"`
               );
 
-              if (hasShading) {
-                // Apply shading: cell has visual shading from any source
+              if (isFirstRow) {
+                // HEADER ROW: Always shade with "Other Table Shading" and bold
                 this.log.debug(
-                  `  → Shading cell (${rowIndex},${cellIndex}) with #${otherColor} (original: ${originalColor || "pattern/style"})`
+                  `  → Shading HEADER cell (${rowIndex},${cellIndex}) with #${otherColor}`
                 );
                 cell.setShading({ fill: otherColor });
 
-                // Set all text in the cell to bold
+                // Set all text in the header to bold (unless preserveBold is enabled)
                 for (const para of cell.getParagraphs()) {
-                  for (const run of para.getRuns()) {
-                    run.setBold(true);
+                  if (!preserveBold) {
+                    for (const run of para.getRuns()) {
+                      run.setBold(true);
+                    }
+                  }
+                  // Center header text (skip list paragraphs)
+                  if (!para.getNumbering()) {
+                    para.setAlignment("center");
+                  }
+                }
+              } else if (hasShading) {
+                // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
+                this.log.debug(
+                  `  → Shading DATA cell (${rowIndex},${cellIndex}) with #${otherColor} (original: ${originalColor || "pattern/style"})`
+                );
+                cell.setShading({ fill: otherColor });
+
+                // Set all text in shaded data cells to bold (unless preserveBold is enabled)
+                for (const para of cell.getParagraphs()) {
+                  if (!preserveBold) {
+                    for (const run of para.getRuns()) {
+                      run.setBold(true);
+                    }
+                  }
+                  // Center text in shaded cells (skip list paragraphs)
+                  if (!para.getNumbering()) {
+                    para.setAlignment("center");
                   }
                 }
               } else {
+                // DATA ROW WITHOUT SHADING: Preserve original formatting
+                // Don't change bold - let the Normal style's preserveBold handle it
                 this.log.debug(
-                  `  → Skipping cell (${rowIndex},${cellIndex}) - no visual shading detected`
+                  `  → Preserving cell (${rowIndex},${cellIndex}) - no shading, keeping original formatting`
                 );
               }
 
-              // Center paragraphs in shaded cells (skip list paragraphs)
-              // NOTE: Image centering/borders handled separately by centerAndBorderImages option
-              for (const para of cell.getParagraphs()) {
-                if (!para.getNumbering() && hasShading) {
-                  para.setAlignment("center");
-                }
-              }
-
               cell.setMargins(cellMargins);
-
               cellIndex++;
             }
             rowIndex++;
@@ -5261,20 +5795,32 @@ export class WordDocumentProcessor {
 
     this.log.debug("Adding/updating document warning at end of document");
 
-    // Step 1: Search for existing warning in last 15 paragraphs (case-insensitive)
-    // Extended from 5 to 15 to handle documents with Related Documents sections,
+    // Step 1: Search for existing warning in last 20 paragraphs (case-insensitive)
+    // Extended from 15 to 20 to handle documents with Related Documents sections,
     // hyperlinks, and other content between the disclaimer and document end
     const paragraphs = doc.getAllParagraphs();
-    const searchStartIndex = Math.max(0, paragraphs.length - 15);
+    const searchStartIndex = Math.max(0, paragraphs.length - 20);
     let existingWarningIndices: number[] = [];
+
+    // Enhanced warning detection patterns - catches malformed/partial warnings
+    const warningPatterns = [
+      "electronic data",
+      "not to be reproduced",
+      "paper copy",
+      "informational only",
+      "prior written approval",
+      "official version",
+      "disclosed to others",
+    ];
 
     for (let i = paragraphs.length - 1; i >= searchStartIndex; i--) {
       const text = this.getParagraphText(paragraphs[i]).toLowerCase();
 
-      // Case-insensitive search for either warning text
-      if (text.includes("electronic data") || text.includes("not to be reproduced")) {
+      // Case-insensitive search for any warning pattern
+      const matchesWarning = warningPatterns.some((pattern) => text.includes(pattern));
+      if (matchesWarning) {
         existingWarningIndices.push(i);
-        this.log.debug(`Found existing warning paragraph at index ${i}`);
+        this.log.debug(`Found existing warning paragraph at index ${i}: "${text.substring(0, 50)}..."`);
       }
     }
 
@@ -5474,7 +6020,9 @@ export class WordDocumentProcessor {
           const text = para.getText().replace(/[^\w]/g, "").substring(0, 30);
           const bookmarkName = `_Toc_${level}_${this.shortHash(text + Date.now())}`;
           const bookmark = new Bookmark({ name: bookmarkName });
-          para.addBookmark(bookmark);
+          // Register bookmark to get unique ID - fixes duplicate ID corruption issue
+          const registered = doc.getBookmarkManager().register(bookmark);
+          para.addBookmark(registered);
 
           this.log.debug(
             `Created bookmark "${bookmarkName}" for Heading${level}: "${para.getText()}"`

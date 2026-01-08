@@ -117,13 +117,8 @@ export class ListProcessor {
 
       log.debug(`Found ${matches.length} list levels to process`);
 
-      // Standard formatting: Verdana 12pt black
-      const standardRPr = `<w:rPr>
-              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
-              <w:color w:val="000000"/>
-              <w:sz w:val="24"/>
-              <w:szCs w:val="24"/>
-            </w:rPr>`;
+      // Special bullet fonts that should be preserved (used for special characters like open/closed circles)
+      const specialBulletFonts = ["Webdings", "Wingdings", "Symbol", "Wingdings 2", "Wingdings 3", "Courier New"];
 
       // Process matches in reverse order
       for (let i = matches.length - 1; i >= 0; i--) {
@@ -141,9 +136,15 @@ export class ListProcessor {
           const hasBold = levelContent.includes("<w:b/>") || levelContent.includes("<w:b ");
           const hasBoldCs = levelContent.includes("<w:bCs/>") || levelContent.includes("<w:bCs ");
 
-          // Build standardized rPr
+          // Check if this level uses a special bullet font that should be preserved
+          const currentFontMatch = levelContent.match(/<w:rFonts[^>]*w:ascii="([^"]+)"/);
+          const currentFont = currentFontMatch ? currentFontMatch[1] : null;
+          const preserveFont = currentFont && specialBulletFonts.includes(currentFont);
+
+          // Build font XML - preserve special bullet fonts, otherwise use Verdana
+          const fontToUse = preserveFont ? currentFont : "Verdana";
           let rPrXml = `<w:rPr>
-              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>`;
+              <w:rFonts w:hint="default" w:ascii="${fontToUse}" w:hAnsi="${fontToUse}" w:cs="${fontToUse}"/>`;
 
           if (hasBold) rPrXml += `\n              <w:b/>`;
           if (hasBoldCs) rPrXml += `\n              <w:bCs/>`;
@@ -160,9 +161,19 @@ export class ListProcessor {
           modified = true;
           standardizedCount++;
 
-          log.debug(`Standardized list level ${levelIndex}: Verdana 12pt black`);
+          if (preserveFont) {
+            log.debug(`Standardized list level ${levelIndex}: preserved ${currentFont} font, 12pt black`);
+          } else {
+            log.debug(`Standardized list level ${levelIndex}: Verdana 12pt black`);
+          }
         } else {
-          // No rPr found - insert one
+          // No rPr found - insert one with standard Verdana (no bullet font to preserve)
+          const standardRPr = `<w:rPr>
+              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
+              <w:color w:val="000000"/>
+              <w:sz w:val="24"/>
+              <w:szCs w:val="24"/>
+            </w:rPr>`;
           const updatedLevel = fullMatch.replace("</w:lvl>", `${standardRPr}\n          </w:lvl>`);
           xmlContent = xmlContent.replace(fullMatch, updatedLevel);
           modified = true;

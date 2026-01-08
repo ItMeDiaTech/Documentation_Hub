@@ -135,12 +135,11 @@ const lineSpacingOptions = [
 ];
 
 // Default indentation levels based on documentation best practices
-// Using only 3 bullet types: closed bullet (•), open bullet (○), closed square (■)
+// Using closed bullet (•) for all levels for consistency
 // Symbol indent: 0.25" base with 0.25" increments per level
 // Text indent: symbol indent + 0.25" hanging indent
 // NOTE: Levels are 0-based (0-8) per DOCX standard
 // NOTE: Using Unicode bullets instead of Wingdings private-use characters for reliable rendering
-// Default pattern: closed, open, closed, open, closed
 const defaultIndentationLevels: IndentationLevel[] = [
   { level: 0, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '•', numberedFormat: '1.' },
   { level: 1, symbolIndent: 0.5, textIndent: 0.75, bulletChar: '○', numberedFormat: 'a.' },

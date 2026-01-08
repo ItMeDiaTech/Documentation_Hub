@@ -211,7 +211,11 @@ export class StyleProcessor {
         run.setUnderline(style.underline ? "single" : false);
       }
 
-      run.setColor(style.color.replace("#", ""));
+      // Preserve white font - don't change color if run is white (FFFFFF)
+      const currentColor = run.getFormatting().color?.toUpperCase();
+      if (currentColor !== 'FFFFFF') {
+        run.setColor(style.color.replace("#", ""));
+      }
     }
   }
 
@@ -250,7 +254,9 @@ export class StyleProcessor {
     styles: SessionStyle[],
     tableShadingSettings?: TableShadingSettings
   ): Record<string, unknown> {
-    const config: Record<string, unknown> = {};
+    const config: Record<string, unknown> = {
+      preserveWhiteFont: true, // Always preserve white font (FFFFFF) during style application
+    };
 
     for (const style of styles) {
       // Use 'run' property name as expected by docxmlater applyStyles
@@ -307,7 +313,10 @@ export class StyleProcessor {
           config.heading3 = styleConfig;
           break;
         case "normal":
-          config.normal = styleConfig;
+          config.normal = {
+            ...styleConfig,
+            preserveCenterAlignment: true, // Preserve center alignment for captions, etc.
+          };
           break;
       }
     }

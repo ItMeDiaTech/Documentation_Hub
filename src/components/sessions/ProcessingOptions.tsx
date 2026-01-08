@@ -73,9 +73,15 @@ export const defaultOptions: ProcessingOption[] = [
   { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'structure', enabled: true },
   {
     id: 'remove-paragraph-lines',
-    label: 'Remove Extra Blank Lines / Rows',
+    label: 'Remove Extra Blank Lines',
     group: 'structure',
     enabled: true,
+  },
+  {
+    id: 'preserve-user-blank-structures',
+    label: 'Preserve Previous User Set Blank Lines',
+    group: 'structure',
+    enabled: false,
   },
   {
     id: 'remove-headers-footers',

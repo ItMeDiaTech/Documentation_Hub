@@ -88,7 +88,7 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
       bulletChar: '•',
       numberedFormat: '1.',
     },
-    { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
+    { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '•', numberedFormat: 'a.' },
     {
       level: 2,
       symbolIndent: 1.5,
@@ -96,7 +96,7 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
       bulletChar: '•',
       numberedFormat: 'i.',
     },
-    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },
+    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
     {
       level: 4,
       symbolIndent: 2.5,
@@ -1187,6 +1187,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           removeWhitespace?: boolean;
           removeParagraphLines?: boolean;
           preserveBlankLinesAfterHeader2Tables?: boolean;
+          preserveUserBlankStructures?: boolean;
           removeItalics?: boolean;
           standardizeHyperlinkFormatting?: boolean;
           standardizeListPrefixFormatting?: boolean;
@@ -1267,6 +1268,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     preserveBold: style.preserveBold,
                     preserveItalic: style.preserveItalic,
                     preserveUnderline: style.preserveUnderline,
+                    preserveCenterAlignment: style.preserveCenterAlignment,
                     alignment: style.alignment,
                     color: style.color,
                     spaceBefore: style.spaceBefore ?? 0,
@@ -1294,6 +1296,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           // This ensures we don't accidentally remove spacing after Header 2 tables (docxmlater v1.16.0)
           preserveBlankLinesAfterHeader2Tables:
             sessionToProcess.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
+          preserveUserBlankStructures:
+            sessionToProcess.processingOptions?.enabledOperations?.includes('preserve-user-blank-structures'),
           removeItalics: sessionToProcess.processingOptions?.enabledOperations?.includes('remove-italics'),
 
           // ALWAYS ENABLED: Standardize hyperlink formatting (remove bold/italic from all hyperlinks)

@@ -316,6 +316,9 @@ export interface TableShadingSettings {
   header2Shading: string; // Hex color for Header 2 / 1x1 table cells (default: #BFBFBF)
   otherShading: string; // Hex color for other table cells (default: #DFDFDF)
   imageBorderWidth?: number; // Border width in points for images (default: 1.0)
+  preserveBold?: boolean; // If true, preserve original bold formatting in table cells (default: use Normal style's preserveBold)
+  heading2FontFamily?: string; // Font family for Heading 2 / 1x1 table cells (default: from Heading 2 style config)
+  heading2FontSize?: number; // Font size in points for Heading 2 / 1x1 table cells (default: from Heading 2 style config)
 }
 
 export interface ReplacementRule {

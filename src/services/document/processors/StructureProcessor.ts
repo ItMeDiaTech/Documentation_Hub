@@ -85,7 +85,7 @@ export class StructureProcessor {
   }
 
   /**
-   * Remove extra whitespace from text runs
+   * Remove extra whitespace from text runs, including cross-run double spaces
    */
   async removeExtraWhitespace(doc: Document): Promise<number> {
     let cleanedCount = 0;
@@ -93,12 +93,33 @@ export class StructureProcessor {
 
     for (const para of paragraphs) {
       const runs = para.getRuns();
-      for (const run of runs) {
+
+      for (let i = 0; i < runs.length; i++) {
+        const run = runs[i];
         const text = run.getText();
         if (!text) continue;
 
-        // Collapse multiple spaces/tabs/newlines to single space
-        const cleaned = text.replace(/\s+/g, " ");
+        // Step 1: Collapse multiple spaces/tabs/newlines within the run
+        let cleaned = text.replace(/\s+/g, " ");
+
+        // Step 2: Trim trailing space if next run starts with space (cross-run double space)
+        if (i < runs.length - 1) {
+          const nextRun = runs[i + 1];
+          const nextText = nextRun?.getText() || "";
+          if (cleaned.endsWith(" ") && nextText.startsWith(" ")) {
+            cleaned = cleaned.trimEnd();
+          }
+        }
+
+        // Step 3: Trim leading space if previous run ends with space (cross-run double space)
+        if (i > 0) {
+          const prevRun = runs[i - 1];
+          const prevText = prevRun?.getText() || "";
+          if (cleaned.startsWith(" ") && prevText.endsWith(" ")) {
+            cleaned = cleaned.trimStart();
+          }
+        }
+
         if (cleaned !== text) {
           run.setText(cleaned);
           cleanedCount++;

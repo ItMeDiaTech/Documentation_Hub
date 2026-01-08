@@ -536,60 +536,85 @@ export class DocXMLaterProcessor {
       // Track hyperlink index within this paragraph
       let hyperlinkIndexInParagraph = 0;
 
-      // Check each content item for hyperlinks
-      for (const item of content) {
-        // Check if the item is a Hyperlink instance
-        // We use duck-typing here since we can't import the Hyperlink type without formatter removing it
-        if (item && typeof (item as any).getUrl === 'function') {
-          // This is a hyperlink - extract its data
-          let url = (item as any).getUrl?.();
+      // Helper function to extract URL from a hyperlink item
+      const extractUrlFromHyperlink = (hyperlinkItem: any): string | undefined => {
+        let url = hyperlinkItem.getUrl?.();
 
-          // If getUrl() returns undefined, try fallback methods to retrieve the URL
-          // This handles file-type hyperlinks where getUrl() may return undefined
-          // even though the URL is stored in the relationship target
-          if (!url) {
-            // Try accessing the relationship via the hyperlink's internal state
-            const relationshipId = (item as any).getRelationshipId?.() || (item as any).relationshipId;
-            if (relationshipId) {
-              // Try to get the relationship from the document
-              const relationship = (doc as any).getRelationship?.(relationshipId);
-              if (relationship) {
-                url = relationship.getTarget?.() || relationship.target;
-                if (url) {
-                  log.debug('Retrieved URL from relationship fallback', {
-                    relationshipId,
-                    url: url.substring(0, 100),
-                  });
-                }
-              }
-            }
-
-            // Final fallback: check if hyperlink has a target attribute directly
-            if (!url) {
-              url = (item as any).target || (item as any).href || (item as any)._url;
+        // If getUrl() returns undefined, try fallback methods to retrieve the URL
+        // This handles file-type hyperlinks where getUrl() may return undefined
+        // even though the URL is stored in the relationship target
+        if (!url) {
+          // Try accessing the relationship via the hyperlink's internal state
+          const relationshipId = hyperlinkItem.getRelationshipId?.() || hyperlinkItem.relationshipId;
+          if (relationshipId) {
+            // Try to get the relationship from the document
+            const relationship = (doc as any).getRelationship?.(relationshipId);
+            if (relationship) {
+              url = relationship.getTarget?.() || relationship.target;
               if (url) {
-                log.debug('Retrieved URL from direct property fallback', {
+                log.debug('Retrieved URL from relationship fallback', {
+                  relationshipId,
                   url: url.substring(0, 100),
                 });
               }
             }
           }
 
-          const rawText = (item as any).getText?.() || '';
+          // Final fallback: check if hyperlink has a target attribute directly
+          if (!url) {
+            url = hyperlinkItem.target || hyperlinkItem.href || hyperlinkItem._url;
+            if (url) {
+              log.debug('Retrieved URL from direct property fallback', {
+                url: url.substring(0, 100),
+              });
+            }
+          }
+        }
 
-          // Sanitize the text to prevent XML issues
-          const sanitizedText = sanitizeHyperlinkText(rawText);
+        return url;
+      };
 
-          hyperlinks.push({
-            hyperlink: item,
-            paragraph: para,
-            paragraphIndex: i,
-            hyperlinkIndexInParagraph,
-            url: url,
-            text: sanitizedText,
-          });
+      // Helper function to add a hyperlink to the results
+      const addHyperlink = (hyperlinkItem: any, isInsideRevision: boolean = false) => {
+        const url = extractUrlFromHyperlink(hyperlinkItem);
+        const rawText = hyperlinkItem.getText?.() || '';
+        const sanitizedText = sanitizeHyperlinkText(rawText);
 
-          hyperlinkIndexInParagraph++;
+        hyperlinks.push({
+          hyperlink: hyperlinkItem,
+          paragraph: para,
+          paragraphIndex: i,
+          hyperlinkIndexInParagraph,
+          url: url,
+          text: sanitizedText,
+        });
+
+        hyperlinkIndexInParagraph++;
+
+        if (isInsideRevision) {
+          log.debug('Found hyperlink inside revision element', { text: sanitizedText.substring(0, 50) });
+        }
+      };
+
+      // Check each content item for hyperlinks
+      for (const item of content) {
+        // Case 1: Direct Hyperlink instances
+        // We use duck-typing here since we can't import the Hyperlink type without formatter removing it
+        if (item && typeof (item as any).getUrl === 'function') {
+          addHyperlink(item, false);
+        }
+        // Case 2: Hyperlinks inside Revision elements (w:ins, w:del tracked changes)
+        // Revision elements have a getContent() method that returns their nested content
+        else if (item && typeof (item as any).getContent === 'function') {
+          const revisionContent = (item as any).getContent();
+          if (Array.isArray(revisionContent)) {
+            for (const innerItem of revisionContent) {
+              // Check if the inner item is a Hyperlink
+              if (innerItem && typeof innerItem.getUrl === 'function') {
+                addHyperlink(innerItem, true);
+              }
+            }
+          }
         }
       }
     }
