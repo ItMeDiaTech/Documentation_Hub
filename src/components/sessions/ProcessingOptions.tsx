@@ -22,6 +22,7 @@ export interface ProcessingOption {
 export const defaultOptions: ProcessingOption[] = [
   // Text Formatting Fixes Group
   { id: 'remove-italics', label: 'Remove All Italics', group: 'text', enabled: true },
+  { id: 'normalize-dashes', label: 'Normalize Dashes to Hyphens', group: 'text', enabled: true },
   {
     id: 'replace-outdated-titles',
     label: 'Update Outdated Hyperlink Titles',
@@ -193,8 +194,12 @@ export function ProcessingOptions({
         </div>
         <button
           onClick={toggleAll}
+          role="switch"
+          aria-checked={masterToggle}
+          aria-label="Toggle all processing options"
           className={cn(
             'relative w-12 h-6 rounded-full transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             masterToggle ? 'bg-primary' : 'bg-muted'
           )}
         >
@@ -215,11 +220,16 @@ export function ProcessingOptions({
 
           return (
             <div key={group} className="space-y-3">
-              <div
-                className="flex items-center gap-2 cursor-pointer"
+              <button
+                type="button"
+                className="flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
                 onClick={() => toggleGroup(group)}
+                role="checkbox"
+                aria-checked={allEnabled ? true : someEnabled ? 'mixed' : false}
+                aria-label={`Toggle ${groupLabels[group as ProcessingGroup]}`}
               >
                 <div
+                  aria-hidden="true"
                   className={cn(
                     'w-6 h-6 rounded border-2 flex items-center justify-center transition-all',
                     allEnabled
@@ -233,10 +243,10 @@ export function ProcessingOptions({
                     <Check className="w-4 h-4 text-primary-foreground checkbox-checkmark" />
                   )}
                 </div>
-                <h4 className="font-semibold text-base">
+                <span className="font-semibold text-base">
                   {groupLabels[group as ProcessingGroup]}
-                </h4>
-              </div>
+                </span>
+              </button>
 
               <div className="pl-6 space-y-2">
                 {groupOptions.map((option) => (

@@ -21,21 +21,24 @@ export interface ApiConnections {
 export interface UpdateSettings {
   autoUpdateOnLaunch: boolean;
   checkForPreReleases: boolean;
+  // SharePoint update source (alternative to GitHub)
+  useSharePointSource: boolean;
+  sharePointFolderUrl: string;
 }
 
 /**
  * Local Dictionary Settings for SharePoint Dictionary integration
  * When enabled, hyperlink lookups use local SQLite database instead of API
+ *
+ * Uses interactive browser authentication (like the Updates feature)
+ * to download and parse an Excel file containing Document_ID, Content_ID, Title, Status
  */
 export interface LocalDictionarySettings {
   enabled: boolean;
-  sharePointSiteUrl: string;
-  documentLibraryPath: string;
-  tenantId: string;
-  clientId: string;
-  syncIntervalHours: number;
-  lastSyncTime: string | null;
-  lastSyncSuccess: boolean;
+  sharePointFileUrl: string;      // Direct URL to .xlsx file on SharePoint
+  lastRetrievalTime: string | null;
+  lastRetrievalSuccess: boolean;
+  totalEntries: number;
 }
 
 /**
@@ -81,16 +84,15 @@ export const defaultUserSettings: UserSettings = {
   updateSettings: {
     autoUpdateOnLaunch: true,
     checkForPreReleases: false,
+    useSharePointSource: false,
+    sharePointFolderUrl: '',
   },
   localDictionary: {
     enabled: false,
-    sharePointSiteUrl: '',
-    documentLibraryPath: '',
-    tenantId: '',
-    clientId: '',
-    syncIntervalHours: 6,
-    lastSyncTime: null,
-    lastSyncSuccess: false,
+    sharePointFileUrl: '',
+    lastRetrievalTime: null,
+    lastRetrievalSuccess: false,
+    totalEntries: 0,
   },
   backupSettings: {
     enabled: true,

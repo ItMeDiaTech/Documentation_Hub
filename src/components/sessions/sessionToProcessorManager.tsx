@@ -111,6 +111,7 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
   // Text Formatting Group
   // ═══════════════════════════════════════════════════════════
   if (enabled.has('remove-italics')) flags.removeItalics = true;
+  if (enabled.has('normalize-dashes')) flags.normalizeDashes = true;
   if (enabled.has('remove-whitespace')) flags.removeWhitespace = true;
 
   // ═══════════════════════════════════════════════════════════
@@ -191,7 +192,8 @@ export function sessionToProcessorOptions(session: Session): WordProcessingOptio
   // Map styles with ALL properties (prevents transposition)
   if (session.styles && session.styles.length > 0) {
     options.styles = mapSessionStylesToProcessor(session.styles);
-    options.assignStyles = true;
+    // Only apply styles if the 'validate-document-styles' option is checked
+    options.assignStyles = enabledOps.includes('validate-document-styles');
   }
 
   // Map list settings (direct copy - interfaces are compatible)

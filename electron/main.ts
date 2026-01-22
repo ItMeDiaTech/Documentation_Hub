@@ -1188,25 +1188,31 @@ ipcMain.handle(
       const { Document } = await import("docxmlater");
       const doc = await Document.load(filePath);
 
-      // Extract paragraph text
-      const paragraphs = doc.getAllParagraphs();
-      const textContent = paragraphs.map((para: any) => {
+      try {
+        // Extract paragraph text
+        const paragraphs = doc.getAllParagraphs();
+        const textContent = paragraphs.map((para: any) => {
+          try {
+            return para.getText() || "";
+          } catch {
+            return "";
+          }
+        });
+
+        log.info(`[Document] Extracted text from ${filePath}: ${textContent.length} paragraphs`);
+
+        return {
+          success: true,
+          textContent,
+        };
+      } finally {
+        // Always dispose document to free memory
         try {
-          return para.getText() || "";
+          doc.dispose();
         } catch {
-          return "";
+          // Ignore disposal errors
         }
-      });
-
-      // Dispose document to free memory
-      doc.dispose();
-
-      log.info(`[Document] Extracted text from ${filePath}: ${textContent.length} paragraphs`);
-
-      return {
-        success: true,
-        textContent,
-      };
+      }
     } catch (error) {
       log.error("[Document] Error extracting text:", error);
       const message = error instanceof Error ? error.message : String(error);
@@ -1662,6 +1668,92 @@ class AutoUpdaterHandler {
     // Install update and restart
     ipcMain.handle("install-update", () => {
       this.customUpdater.quitAndInstall();
+    });
+
+    // SharePoint Update Source IPC Handlers
+    ipcMain.handle("update:set-provider", async (_event, config: { type: 'github' | 'sharepoint'; sharePointUrl?: string }) => {
+      return await this.customUpdater.setProvider(config);
+    });
+
+    ipcMain.handle("update:test-sharepoint-connection", async (_event, url: string) => {
+      return await this.customUpdater.testSharePointConnection(url);
+    });
+
+    ipcMain.handle("update:sharepoint-login", async () => {
+      return await this.customUpdater.sharePointLogin();
+    });
+
+    ipcMain.handle("update:sharepoint-logout", async () => {
+      await this.customUpdater.sharePointLogout();
+    });
+
+    // Dictionary: Interactive SharePoint retrieval using browser authentication
+    ipcMain.handle(
+      "dictionary:retrieve-from-sharepoint",
+      async (...[, { fileUrl }]: [Electron.IpcMainInvokeEvent, { fileUrl: string }]) => {
+        try {
+          log.info("[Dictionary] Starting interactive SharePoint retrieval", { fileUrl });
+
+          // Step 1: Download file using interactive auth
+          const downloadResult = await this.customUpdater.downloadSharePointFile(fileUrl);
+          if (!downloadResult.success || !downloadResult.data) {
+            return {
+              success: false,
+              error: downloadResult.error || "Failed to download file",
+              entriesImported: 0,
+            };
+          }
+
+          // Step 2: Parse Excel file
+          const syncService = getSharePointSyncService();
+          const entries = syncService.parseExcelFile(downloadResult.data);
+
+          // Step 3: Import to SQLite database
+          const dictionaryService = getDictionaryService();
+          await dictionaryService.importEntries(entries, (progress) => {
+            // Send progress updates to renderer
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("dictionary:sync-progress", {
+                phase: "importing",
+                progress: progress.percentage,
+                message: `Importing ${progress.current} of ${progress.total} entries`,
+                entriesProcessed: progress.current,
+                totalEntries: progress.total,
+              });
+            }
+          });
+
+          // Step 4: Update sync status
+          dictionaryService.updateSyncStatus({
+            lastSyncTime: new Date().toISOString(),
+            lastSyncSuccess: true,
+          });
+
+          log.info("[Dictionary] Interactive retrieval completed", {
+            entriesImported: entries.length,
+          });
+
+          return {
+            success: true,
+            entriesImported: entries.length,
+          };
+        } catch (error) {
+          log.error("[Dictionary] Interactive retrieval failed:", error);
+          const message =
+            error instanceof Error ? error.message : "Failed to retrieve dictionary";
+          return { success: false, error: message, entriesImported: 0 };
+        }
+      }
+    );
+
+    // Dictionary: SharePoint login (reuses update auth)
+    ipcMain.handle("dictionary:sharepoint-login", async () => {
+      return await this.customUpdater.sharePointLogin();
+    });
+
+    // Dictionary: Check SharePoint authentication status
+    ipcMain.handle("dictionary:is-sharepoint-authenticated", () => {
+      return { authenticated: this.customUpdater.isSharePointAuthenticated() };
     });
   }
 

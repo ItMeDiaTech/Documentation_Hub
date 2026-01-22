@@ -155,6 +155,13 @@ const electronAPI = {
       ipcRenderer.invoke('dictionary:batch-lookup', lookupIds),
     getStatus: (): Promise<{ success: boolean; status?: DictionarySyncStatus; error?: string }> =>
       ipcRenderer.invoke('dictionary:get-status'),
+    // Interactive SharePoint retrieval (using browser login)
+    retrieveFromSharePoint: (fileUrl: string): Promise<{ success: boolean; entriesImported?: number; error?: string }> =>
+      ipcRenderer.invoke('dictionary:retrieve-from-sharepoint', { fileUrl }),
+    sharePointLogin: (): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('dictionary:sharepoint-login'),
+    isSharePointAuthenticated: (): Promise<{ authenticated: boolean }> =>
+      ipcRenderer.invoke('dictionary:is-sharepoint-authenticated'),
     onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => {
       const subscription = (_event: IpcRendererEvent, progress: SyncProgressUpdate) => callback(progress);
       ipcRenderer.on('dictionary:sync-progress', subscription);
@@ -172,6 +179,14 @@ const electronAPI = {
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
   getCurrentVersion: () => ipcRenderer.invoke('get-app-version'),
+
+  // SharePoint update source
+  setUpdateProvider: (config: { type: 'github' | 'sharepoint'; sharePointUrl?: string }) =>
+    ipcRenderer.invoke('update:set-provider', config),
+  testSharePointConnection: (url: string) =>
+    ipcRenderer.invoke('update:test-sharepoint-connection', url),
+  sharePointLogin: () => ipcRenderer.invoke('update:sharepoint-login'),
+  sharePointLogout: () => ipcRenderer.invoke('update:sharepoint-logout'),
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => {
