@@ -132,24 +132,17 @@ export class ListProcessor {
         if (rPrMatches.length > 0) {
           let updatedContent = levelContent;
 
-          // Check for existing bold
-          const hasBold = levelContent.includes("<w:b/>") || levelContent.includes("<w:b ");
-          const hasBoldCs = levelContent.includes("<w:bCs/>") || levelContent.includes("<w:bCs ");
-
           // Check if this level uses a special bullet font that should be preserved
           const currentFontMatch = levelContent.match(/<w:rFonts[^>]*w:ascii="([^"]+)"/);
           const currentFont = currentFontMatch ? currentFontMatch[1] : null;
           const preserveFont = currentFont && specialBulletFonts.includes(currentFont);
 
           // Build font XML - preserve special bullet fonts, otherwise use Verdana
+          // Bold is explicitly removed from bullet point symbols
           const fontToUse = preserveFont ? currentFont : "Verdana";
-          let rPrXml = `<w:rPr>
-              <w:rFonts w:hint="default" w:ascii="${fontToUse}" w:hAnsi="${fontToUse}" w:cs="${fontToUse}"/>`;
-
-          if (hasBold) rPrXml += `\n              <w:b/>`;
-          if (hasBoldCs) rPrXml += `\n              <w:bCs/>`;
-
-          rPrXml += `\n              <w:color w:val="000000"/>
+          const rPrXml = `<w:rPr>
+              <w:rFonts w:hint="default" w:ascii="${fontToUse}" w:hAnsi="${fontToUse}" w:cs="${fontToUse}"/>
+              <w:color w:val="000000"/>
               <w:sz w:val="24"/>
               <w:szCs w:val="24"/>
             </w:rPr>`;

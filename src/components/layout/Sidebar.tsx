@@ -116,14 +116,15 @@ export const Sidebar = memo(function Sidebar() {
           item.indented && collapsed && 'ml-0'
         )}
       >
-        <div
+        <button
+          type="button"
           onClick={() => handleNavClick(item.path)}
           className={cn(
             'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200',
             'hover:bg-accent hover:text-accent-foreground',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             isActive && 'bg-primary text-primary-foreground hover:bg-primary/90',
-            collapsed && 'justify-center',
-            'cursor-pointer'
+            collapsed && 'justify-center'
           )}
         >
           <div className="flex items-center gap-3 flex-1 pointer-events-none">
@@ -168,7 +169,7 @@ export const Sidebar = memo(function Sidebar() {
           {item.badge && collapsed && (
             <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
           )}
-        </div>
+        </button>
       </div>
     );
   };

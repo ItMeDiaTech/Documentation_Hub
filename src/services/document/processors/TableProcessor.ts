@@ -9,7 +9,7 @@
  * - Table shading color configuration
  */
 
-import { Document, Table, Paragraph, ImageRun, Image } from "docxmlater";
+import { Document, Table, Paragraph, ImageRun, Image, pointsToTwips } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("TableProcessor");
@@ -23,6 +23,14 @@ export interface TableShadingSettings {
   preserveBold?: boolean; // If true, preserve original bold formatting in table cells
   heading2FontFamily?: string; // Font family for Heading 2 / 1x1 table cells
   heading2FontSize?: number; // Font size in points for Heading 2 / 1x1 table cells
+  // Normal style properties for shaded cells and first row cells
+  normalFontFamily?: string; // Font family (default "Verdana")
+  normalFontSize?: number; // Font size in points (default 12)
+  normalAlignment?: "left" | "center" | "right" | "justify"; // Alignment (default "center")
+  preserveCenterAlignment?: boolean; // If true, preserve existing center alignment
+  normalSpaceBefore?: number; // Space before in points (default 3)
+  normalSpaceAfter?: number; // Space after in points (default 3)
+  normalLineSpacing?: number; // Line spacing multiplier (default 1.0)
 }
 
 /**
@@ -45,8 +53,34 @@ export interface Header2TableValidationResult {
 /**
  * Table processing service
  */
+/**
+ * Internal interface for row formatting access
+ * Used as a workaround since DocXMLater doesn't expose a clearHeight() method
+ */
+interface RowFormattingInternal {
+  height?: number;
+  heightRule?: string;
+}
+
 export class TableProcessor {
   private readonly DEBUG = process.env.NODE_ENV !== "production";
+
+  /**
+   * Clear the height settings from a table row.
+   *
+   * WORKAROUND: DocXMLater's TableRow class doesn't expose a clearHeight() method,
+   * so we access the internal formatting property directly. This should be replaced
+   * with an official API method when one becomes available.
+   *
+   * @param row - The table row to clear height from
+   */
+  private clearRowHeight(row: ReturnType<Table["getRows"]>[number]): void {
+    const rowWithFormatting = row as unknown as { formatting: RowFormattingInternal };
+    if (rowWithFormatting.formatting) {
+      rowWithFormatting.formatting.height = undefined;
+      rowWithFormatting.formatting.heightRule = undefined;
+    }
+  }
 
   /**
    * Recursively search XMLElement tree for w:shd element and extract val attribute
@@ -164,6 +198,12 @@ export class TableProcessor {
     const otherShading = shadingSettings?.otherShading || "DFDFDF";
     const preserveBold = shadingSettings?.preserveBold ?? true; // Default to preserve
 
+    // Normal style properties for shaded cells and first row cells
+    // Note: Bold and center alignment are ALWAYS applied to shaded/first row cells (hardcoded)
+    // Only font family, font size, and spacing are configurable from Normal style
+    const normalFontFamily = shadingSettings?.normalFontFamily ?? "Verdana";
+    const normalFontSize = shadingSettings?.normalFontSize ?? 12;
+
     log.info(`Processing ${tables.length} tables for uniformity`);
     log.debug(`Shading colors: Header2=${header2Shading}, Other=${otherShading}`);
     log.info(`[DEBUG] preserveBold=${preserveBold} (from shadingSettings?.preserveBold=${shadingSettings?.preserveBold})`);
@@ -227,41 +267,65 @@ export class TableProcessor {
               const { hasShading } = this.getResolvedCellShading(cell, table, doc, { tableIndex, rowIndex, cellIndex });
 
               if (isFirstRow) {
-                // HEADER ROW: Always shade with "Other Table Shading" and bold
-                log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=${!preserveBold}`);
+                // HEADER ROW: Always shade with "Other Table Shading" + bold + center
+                log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true, center=true`);
                 cell.setShading({ fill: otherShading });
                 cellsRecolored++;
 
                 for (const para of cell.getParagraphs()) {
+                  const isListItem = !!para.getNumbering();
                   for (const run of para.getRuns()) {
-                    run.setFont("Verdana");
-                    run.setSize(12);
-                    if (!preserveBold) {
+                    run.setFont(normalFontFamily);
+                    run.setSize(normalFontSize);
+                    // Don't force bold on list items - respect preserveBold setting
+                    if (!isListItem) {
                       run.setBold(true);
                     }
                   }
-                  // Center header text (skip list items)
-                  if (!para.getNumbering()) {
+                  // Apply alignment (skip list items) - ALWAYS center for header row cells
+                  if (!isListItem) {
                     para.setAlignment("center");
+                  }
+                  // Apply Normal style spacing from user settings
+                  if (shadingSettings?.normalSpaceBefore !== undefined) {
+                    para.setSpaceBefore(pointsToTwips(shadingSettings.normalSpaceBefore));
+                  }
+                  if (shadingSettings?.normalSpaceAfter !== undefined) {
+                    para.setSpaceAfter(pointsToTwips(shadingSettings.normalSpaceAfter));
+                  }
+                  if (shadingSettings?.normalLineSpacing !== undefined) {
+                    para.setLineSpacing(pointsToTwips(shadingSettings.normalLineSpacing * 12));
                   }
                 }
               } else if (hasShading) {
                 // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
-                log.debug(`[Table ${tableIndex}] DATA cell WITH shading (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=${!preserveBold}`);
+                log.debug(`[Table ${tableIndex}] DATA cell WITH shading (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true`);
                 cell.setShading({ fill: otherShading });
                 cellsRecolored++;
 
                 for (const para of cell.getParagraphs()) {
+                  const isListItem = !!para.getNumbering();
                   for (const run of para.getRuns()) {
-                    run.setFont("Verdana");
-                    run.setSize(12);
-                    if (!preserveBold) {
+                    run.setFont(normalFontFamily);
+                    run.setSize(normalFontSize);
+                    // Don't force bold on list items - respect preserveBold setting
+                    if (!isListItem) {
                       run.setBold(true);
                     }
                   }
-                  // Center shaded cell text (skip list items)
-                  if (!para.getNumbering()) {
+                  // Apply alignment (skip list items) - ALWAYS center for shaded cells
+                  if (!isListItem) {
                     para.setAlignment("center");
+                  }
+                  // Apply Normal style spacing from user settings
+                  if (shadingSettings?.normalSpaceBefore !== undefined) {
+                    para.setSpaceBefore(pointsToTwips(shadingSettings.normalSpaceBefore));
+                  }
+                  if (shadingSettings?.normalSpaceAfter !== undefined) {
+                    para.setSpaceAfter(pointsToTwips(shadingSettings.normalSpaceAfter));
+                  }
+                  if (shadingSettings?.normalLineSpacing !== undefined) {
+                    para.setLineSpacing(pointsToTwips(shadingSettings.normalLineSpacing * 12));
                   }
                 }
               } else {
@@ -278,8 +342,8 @@ export class TableProcessor {
                     );
                     if (!hasImage) {
                       for (const run of para.getRuns()) {
-                        run.setFont("Verdana");
-                        run.setSize(12);
+                        run.setFont(normalFontFamily);
+                        run.setSize(normalFontSize);
                         // Note: NOT setting bold here - preserves original
                       }
                     }
@@ -578,9 +642,7 @@ export class TableProcessor {
           const formatting = row.getFormatting();
           // Remove specified height - let row auto-size
           if (formatting.height !== undefined) {
-            // Direct property access since there's no clearHeight() method
-            (row as any).formatting.height = undefined;
-            (row as any).formatting.heightRule = undefined;
+            this.clearRowHeight(row);
             rowsFixed++;
           }
         }

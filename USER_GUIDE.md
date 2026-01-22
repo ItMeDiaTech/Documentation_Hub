@@ -19,6 +19,7 @@ Welcome to **Documentation Hub**, your professional desktop application for proc
 13. [Settings & Customization](#settings--customization)
 14. [Keyboard Shortcuts](#keyboard-shortcuts)
 15. [Tips & Best Practices](#tips--best-practices)
+16. [How Settings Link to Document Processing](#how-settings-link-to-document-processing)
 
 ---
 
@@ -1089,5 +1090,84 @@ Happy document processing!
 
 ---
 
-_Last Updated: November 2025_
-_Documentation Hub Version: 1.0.40+_
+## How Settings Link to Document Processing
+
+Understanding how your UI settings flow to the document processing pipeline helps you achieve consistent, predictable results.
+
+### Style Settings → Document Formatting
+
+The paragraph styles you configure in the **Styles Editor** tab directly control how your documents are formatted:
+
+| Style Setting | Affects |
+|---------------|---------|
+| **Normal** style | Body text, table cell content, non-heading paragraphs |
+| **Heading 1-6** styles | Heading paragraphs matching each level |
+| Font family/size | Applied to matching paragraphs and table cells |
+| Bold/Italic/Underline | Applied to runs within matching paragraphs |
+| Alignment | Paragraph alignment (left, center, right, justify) |
+| Spacing Before/After | Space above and below paragraphs |
+| Line Spacing | Space between lines within paragraphs |
+
+**Preserve Options**: The "Lock Bold", "Lock Italic", "Lock Underline", and "Lock Center" buttons in the Styles Editor prevent the processor from overriding existing formatting in your documents. For example, if "Lock Center" is enabled for Normal style, centered text stays centered instead of being changed to the Normal style's alignment.
+
+### Table Shading Settings → Table Formatting
+
+The **Table & Image Settings** section controls how tables are formatted:
+
+| Setting | Effect |
+|---------|--------|
+| **Header2 Shading Color** | Background color for cells in tables under Heading 2 sections |
+| **Other Shading Color** | Background color for shaded cells in other tables |
+| **Image Border Width** | Border thickness (in points) applied around large images |
+
+**Important Table Behavior**:
+- Tables larger than 1x1: Shaded cells are always bold and centered, regardless of style settings
+- Table cell text formatting: Inherits font family/size from the **Normal** paragraph style
+- Table cell spacing: Uses spacing settings from the **Normal** paragraph style
+- Header rows (first row): Always bold and centered for emphasis
+
+### List Bullet Settings → List Formatting
+
+The **List Bullets** section controls numbered and bulleted list formatting:
+
+| Setting | Effect |
+|---------|--------|
+| **Enable List Formatting** | Master toggle for list processing |
+| **Indentation Levels (1-5)** | Symbol indent, text indent, and bullet character per level |
+| **Spacing Between Items** | Vertical space between list items |
+
+### Processing Options Flow
+
+When you click "Process Document", the options flow through this pipeline:
+
+```
+Session Settings (UI)
+       ↓
+SessionContext (state management)
+       ↓
+IPC Call to Main Process
+       ↓
+WordDocumentProcessor
+       ↓
+Individual Processors:
+├── StyleProcessor (paragraph styles)
+├── TableProcessor (table formatting)
+├── ListProcessor (list bullets)
+└── StructureProcessor (TOC, headers)
+       ↓
+DocXMLater Document API
+       ↓
+Processed .docx File
+```
+
+### Tips for Consistent Results
+
+1. **Configure Normal style first** - Many other elements inherit from Normal style
+2. **Test with one document** - Verify settings before batch processing
+3. **Use Lock options sparingly** - Only enable when you need to preserve specific formatting
+4. **Review Tracked Changes** - Check the Tracked Changes tab to see exactly what changed
+
+---
+
+_Last Updated: January 2026_
+_Documentation Hub Version: 5.0.4_
