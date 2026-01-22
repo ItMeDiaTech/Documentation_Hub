@@ -22,8 +22,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
         className={cn(
           'rounded-lg',
           variants[variant],
-          interactive &&
-            'cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
+          interactive && 'cursor-pointer transition-shadow duration-200 hover:shadow-md',
           className
         )}
         whileHover={interactive ? { scale: 1.02 } : undefined}

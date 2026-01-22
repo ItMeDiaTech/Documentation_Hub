@@ -41,7 +41,7 @@ interface StyleDefinition {
 const defaultStyles: StyleDefinition[] = [
   {
     id: 'header1',
-    name: 'Header 1',
+    name: 'Heading 1',
     fontSize: 18,
     fontFamily: 'Verdana',
     bold: true,
@@ -55,7 +55,7 @@ const defaultStyles: StyleDefinition[] = [
   },
   {
     id: 'header2',
-    name: 'Header 2',
+    name: 'Heading 2',
     fontSize: 14,
     fontFamily: 'Verdana',
     bold: true,
@@ -69,7 +69,7 @@ const defaultStyles: StyleDefinition[] = [
   },
   {
     id: 'header3',
-    name: 'Header 3',
+    name: 'Heading 3',
     fontSize: 12,
     fontFamily: 'Verdana',
     bold: true,

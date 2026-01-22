@@ -20,7 +20,7 @@ describe('StructureProcessor', () => {
 
     mockDoc = {
       getAllParagraphs: jest.fn().mockReturnValue([]),
-      removeExtraBlankParagraphs: jest.fn().mockReturnValue({ removed: 0, added: 0, total: 0 }),
+      removeExtraBlankParagraphs: jest.fn().mockReturnValue({ removed: 0, added: 0, total: 0, preserved: 0 }),
       ensureBlankLinesAfter1x1Tables: jest.fn().mockReturnValue({
         tablesProcessed: 0,
         blankLinesAdded: 0,
@@ -33,7 +33,7 @@ describe('StructureProcessor', () => {
 
   describe('removeExtraBlankParagraphs', () => {
     it('should call document method with default options', async () => {
-      mockDoc.removeExtraBlankParagraphs.mockReturnValue({ removed: 5, added: 2, total: 7 });
+      mockDoc.removeExtraBlankParagraphs.mockReturnValue({ removed: 5, added: 2, total: 7, preserved: 0 });
 
       const result = await processor.removeExtraBlankParagraphs(mockDoc);
 

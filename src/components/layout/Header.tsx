@@ -101,12 +101,13 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
                 <button
                   onClick={() => index < breadcrumbs.length - 1 && navigate(crumb.path)}
                   className={cn(
-                    'text-base font-semibold transition-colors',
+                    'text-base font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm',
                     index === breadcrumbs.length - 1
-                      ? 'text-foreground cursor-default'
+                      ? 'text-foreground cursor-default pointer-events-none'
                       : 'text-muted-foreground hover:text-foreground cursor-pointer'
                   )}
                   disabled={index === breadcrumbs.length - 1}
+                  aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}
                 >
                   {crumb.label}
                 </button>

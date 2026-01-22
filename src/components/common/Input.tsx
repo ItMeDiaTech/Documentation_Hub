@@ -1,4 +1,4 @@
-import { forwardRef, useState } from 'react';
+import { forwardRef, useId, useState } from 'react';
 import { cn } from '@/utils/cn';
 import { Eye, EyeOff, Search, X } from 'lucide-react';
 
@@ -13,17 +13,19 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
   (
-    { className, type = 'text', label, error, helperText, leftIcon, rightIcon, onClear, ...props },
+    { className, type = 'text', label, error, helperText, leftIcon, rightIcon, onClear, id, ...props },
     ref
   ) => {
     const [showPassword, setShowPassword] = useState(false);
+    const generatedId = useId();
+    const inputId = id || generatedId;
     const isPassword = type === 'password';
     const isSearch = type === 'search';
 
     return (
       <div className="w-full">
         {label && (
-          <label className="block text-sm font-medium text-foreground mb-1.5">
+          <label htmlFor={inputId} className="block text-sm font-medium text-foreground mb-1.5">
             {label}
             {props.required && <span className="text-destructive ml-1">*</span>}
           </label>
@@ -41,6 +43,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           )}
 
           <input
+            id={inputId}
             type={isPassword && showPassword ? 'text' : type}
             className={cn(
               'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm',

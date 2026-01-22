@@ -7,6 +7,7 @@ import {
   CardTitle,
 } from "@/components/common/Card";
 import { Toaster } from "@/components/common/Toast";
+import { ErrorDetailsDialog } from "@/components/common/ErrorDetailsDialog";
 import { ChangeViewer } from "@/components/sessions/ChangeViewer";
 import {
   ProcessingOptions,
@@ -25,6 +26,7 @@ import logger from "@/utils/logger";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
+  Archive,
   Check,
   CheckCircle,
   Clock,
@@ -70,6 +72,7 @@ export function CurrentSession() {
   const [isDragging, setIsDragging] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
+  const [errorDialogDoc, setErrorDialogDoc] = useState<Document | null>(null);
 
   // Refs for preventing race conditions
   const isSelectingFiles = useRef(false);
@@ -688,9 +691,13 @@ export function CurrentSession() {
 
                         {doc.status === "error" && (
                           <>
-                            <span className="text-xs text-red-500 font-medium">
+                            <button
+                              onClick={() => setErrorDialogDoc(doc)}
+                              className="text-xs text-red-500 font-medium hover:text-red-600 hover:underline cursor-pointer"
+                              title="Click to view error details"
+                            >
                               {doc.errorType === 'file_locked' ? "Close File Before Processing" : "Error"}
-                            </span>
+                            </button>
                             {doc.errorType === 'file_locked' && (
                               <Button
                                 size="xs"
@@ -726,6 +733,32 @@ export function CurrentSession() {
                             title="Open document in Word"
                           >
                             <FileText className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          </button>
+                        )}
+
+                        {/* Open Backup button - only show for completed documents with backup */}
+                        {doc.status === "completed" && doc.processingResult?.backupPath && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await window.electronAPI.openDocument(doc.processingResult!.backupPath!);
+                                toast({
+                                  title: "Opening backup in Word",
+                                  variant: "default",
+                                });
+                              } catch (err) {
+                                logger.error("Failed to open backup:", err);
+                                toast({
+                                  title: "Cannot open backup file",
+                                  description: err instanceof Error ? err.message : undefined,
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-yellow-50 dark:hover:bg-yellow-950"
+                            title="Open backup file"
+                          >
+                            <Archive className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
                           </button>
                         )}
 
@@ -942,6 +975,16 @@ export function CurrentSession() {
           <TabContainer tabs={tabs} defaultTab="session" headerActions={headerActions} />
         </Card>
       </div>
+
+      {/* Error Details Dialog */}
+      <ErrorDetailsDialog
+        open={errorDialogDoc !== null}
+        onOpenChange={(open) => !open && setErrorDialogDoc(null)}
+        documentName={errorDialogDoc?.name ?? ""}
+        errors={errorDialogDoc?.errors ?? []}
+        errorType={errorDialogDoc?.errorType}
+        processedAt={errorDialogDoc?.processedAt}
+      />
     </div>
   );
 }
