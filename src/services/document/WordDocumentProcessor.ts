@@ -6675,6 +6675,29 @@ export class WordDocumentProcessor {
     const results = doc.rebuildTOCs();
     this.log.debug(`✓ Step 3: rebuildTOCs() returned ${results.length} TOC(s)`);
 
+    // Step 4: Format TOC styles using docxmlater 9.1.0's formatTOCStyles()
+    // Apply consistent formatting: Verdana 12pt, blue, underlined
+    const tocLevels = excludeHeading1 ? [2, 3, 4, 5, 6, 7, 8, 9] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const formatResult = doc.formatTOCStyles({
+      run: {
+        font: "Verdana",
+        size: 12,
+        color: "0000FF",
+        underline: true,
+      },
+      paragraph: {
+        alignment: "left",
+        spacing: {
+          before: 0,
+          after: 0,
+          line: 240,
+          lineRule: "auto",
+        },
+      },
+      levels: tocLevels,
+    });
+    this.log.debug(`✓ Step 4: formatTOCStyles() formatted levels: [${formatResult.formatted.join(", ")}]`);
+
     // Extract heading counts from results
     let totalCount = 0;
     const headings: string[] = [];

@@ -139,7 +139,9 @@ async function createWindow() {
     titleBarStyle: "hiddenInset",
     backgroundColor: "#0a0a0a",
     show: false, // ISSUE #6 FIX: Don't show window immediately - prevents black screen
-    icon: join(__dirname, "../build/icon.ico"),
+    icon: app.isPackaged
+      ? join(process.resourcesPath, "icon.ico")
+      : join(__dirname, "../build/icon.ico"),
     webPreferences: REQUIRED_SECURITY_SETTINGS,
   });
 
