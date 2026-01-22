@@ -15,12 +15,14 @@ import {
   Archive,
   Check,
   CheckCircle2,
+  Cloud,
   Database,
   Download,
   Globe,
   HardDrive,
   Lightbulb,
   Link2,
+  LogOut,
   Moon,
   Palette,
   RefreshCw,
@@ -29,7 +31,8 @@ import {
   Send,
   Sun,
   Type,
-  User
+  User,
+  Wifi
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -94,6 +97,11 @@ export function Settings() {
   const [updateVersion, setUpdateVersion] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
+
+  // SharePoint update source states
+  const [sharePointLoginStatus, setSharePointLoginStatus] = useState<'logged-out' | 'logging-in' | 'logged-in'>('logged-out');
+  const [testingSharePointConnection, setTestingSharePointConnection] = useState(false);
+  const [sharePointConnectionResult, setSharePointConnectionResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const {
     settings,
@@ -340,6 +348,18 @@ export function Settings() {
       dateFormat: dateFormatForm,
     });
 
+    // Configure update provider based on SharePoint settings
+    if (typeof window.electronAPI !== 'undefined') {
+      if (updateSettingsForm.useSharePointSource && updateSettingsForm.sharePointFolderUrl) {
+        await window.electronAPI.setUpdateProvider({
+          type: 'sharepoint',
+          sharePointUrl: updateSettingsForm.sharePointFolderUrl,
+        });
+      } else {
+        await window.electronAPI.setUpdateProvider({ type: 'github' });
+      }
+    }
+
     // Save to localStorage
     const success = await saveSettings();
     if (success) {
@@ -385,27 +405,55 @@ export function Settings() {
     window.electronAPI?.installUpdate();
   };
 
+  // SharePoint update source handlers
+  const handleSharePointLogin = async () => {
+    setSharePointLoginStatus('logging-in');
+    try {
+      const result = await window.electronAPI?.sharePointLogin();
+      setSharePointLoginStatus(result?.success ? 'logged-in' : 'logged-out');
+      if (!result?.success && result?.error) {
+        setSharePointConnectionResult({ success: false, message: result.error });
+      }
+    } catch {
+      setSharePointLoginStatus('logged-out');
+      setSharePointConnectionResult({ success: false, message: 'Login failed' });
+    }
+  };
+
+  const handleSharePointLogout = async () => {
+    await window.electronAPI?.sharePointLogout();
+    setSharePointLoginStatus('logged-out');
+    setSharePointConnectionResult(null);
+  };
+
+  const handleTestSharePointConnection = async () => {
+    if (!updateSettingsForm.sharePointFolderUrl) return;
+    setTestingSharePointConnection(true);
+    setSharePointConnectionResult(null);
+    try {
+      const result = await window.electronAPI?.testSharePointConnection(updateSettingsForm.sharePointFolderUrl);
+      setSharePointConnectionResult(result || { success: false, message: 'Test failed' });
+    } catch {
+      setSharePointConnectionResult({ success: false, message: 'Connection test failed' });
+    } finally {
+      setTestingSharePointConnection(false);
+    }
+  };
+
+  const validateSharePointUrl = (url: string): boolean => {
+    if (!url) return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'https:' && parsed.hostname.endsWith('.sharepoint.com');
+    } catch {
+      return false;
+    }
+  };
+
   // Dictionary handlers
   const handleSaveDictionarySettings = async () => {
-    // Save to context
+    // Save to context (just the form state - no scheduler logic needed)
     updateLocalDictionary(localDictionaryForm);
-
-    // Configure the sync service with new settings
-    if (typeof window.electronAPI !== 'undefined') {
-      await window.electronAPI.dictionary.configureSync({
-        siteUrl: localDictionaryForm.sharePointSiteUrl,
-        documentLibraryPath: localDictionaryForm.documentLibraryPath,
-        tenantId: localDictionaryForm.tenantId,
-        clientId: localDictionaryForm.clientId,
-      });
-
-      // Start/stop scheduler based on enabled state
-      if (localDictionaryForm.enabled) {
-        await window.electronAPI.dictionary.startScheduler(localDictionaryForm.syncIntervalHours);
-      } else {
-        await window.electronAPI.dictionary.stopScheduler();
-      }
-    }
 
     setSaveSuccess(true);
     if (saveSuccessTimeoutRef.current) {
@@ -417,46 +465,63 @@ export function Settings() {
     }, 2000);
   };
 
-  const handleSaveClientSecret = async () => {
-    if (!clientSecretInput.trim()) return;
-
-    if (typeof window.electronAPI !== 'undefined') {
-      const result = await window.electronAPI.dictionary.setCredentials(clientSecretInput);
-      if (result.success) {
-        setCredentialsSaved(true);
-        setShowClientSecretDialog(false);
-        setClientSecretInput('');
-        setTimeout(() => setCredentialsSaved(false), 2000);
-      }
-    }
-  };
-
-  const handleSyncDictionary = async () => {
+  // Interactive dictionary retrieval from SharePoint using browser login
+  const handleRetrieveDictionary = async () => {
     if (typeof window.electronAPI === 'undefined') return;
+    if (!localDictionaryForm.sharePointFileUrl.trim()) return;
 
     setSyncingDictionary(true);
+    setDictionaryStatus((prev) => prev ? { ...prev, syncError: null, syncInProgress: true } : null);
+
     try {
-      // Initialize first if needed
+      // Initialize database first if needed
       await window.electronAPI.dictionary.initialize();
 
-      // Configure with current settings
-      await window.electronAPI.dictionary.configureSync({
-        siteUrl: localDictionaryForm.sharePointSiteUrl,
-        documentLibraryPath: localDictionaryForm.documentLibraryPath,
-        tenantId: localDictionaryForm.tenantId,
-        clientId: localDictionaryForm.clientId,
-      });
+      // Retrieve dictionary using interactive SharePoint auth
+      const result = await window.electronAPI.dictionary.retrieveFromSharePoint(
+        localDictionaryForm.sharePointFileUrl
+      );
 
-      // Trigger sync
-      const result = await window.electronAPI.dictionary.sync();
-      if (!result.success) {
+      if (result.success) {
+        // Update form with retrieval info
+        const now = new Date().toISOString();
+        setLocalDictionaryForm((prev) => ({
+          ...prev,
+          lastRetrievalTime: now,
+          lastRetrievalSuccess: true,
+          totalEntries: result.entriesImported || 0,
+        }));
+        // Also save to context
+        updateLocalDictionary({
+          ...localDictionaryForm,
+          lastRetrievalTime: now,
+          lastRetrievalSuccess: true,
+          totalEntries: result.entriesImported || 0,
+        });
         setDictionaryStatus((prev) =>
-          prev ? { ...prev, syncError: result.error || 'Sync failed', syncInProgress: false } : null
+          prev ? {
+            ...prev,
+            lastSyncTime: now,
+            lastSyncSuccess: true,
+            totalEntries: result.entriesImported || 0,
+            syncInProgress: false,
+            syncError: null,
+          } : null
+        );
+      } else {
+        setDictionaryStatus((prev) =>
+          prev ? {
+            ...prev,
+            syncError: result.error || 'Retrieval failed',
+            syncInProgress: false,
+            lastSyncSuccess: false,
+          } : null
         );
       }
-    } catch (_error) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Retrieval failed';
       setDictionaryStatus((prev) =>
-        prev ? { ...prev, syncError: 'Sync failed', syncInProgress: false } : null
+        prev ? { ...prev, syncError: message, syncInProgress: false } : null
       );
     } finally {
       setSyncingDictionary(false);
@@ -1688,6 +1753,148 @@ export function Settings() {
                   </div>
                 </div>
 
+                {/* SharePoint Update Source */}
+                <div className="border border-border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <label htmlFor="use-sharepoint" className="text-sm font-medium flex items-center gap-2">
+                        <Cloud className="w-4 h-4" />
+                        Use SharePoint for Updates
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Download updates from a SharePoint folder instead of GitHub
+                      </p>
+                    </div>
+                    <button
+                      id="use-sharepoint"
+                      role="switch"
+                      aria-checked={updateSettingsForm.useSharePointSource}
+                      onClick={() =>
+                        setUpdateSettingsForm({
+                          ...updateSettingsForm,
+                          useSharePointSource: !updateSettingsForm.useSharePointSource,
+                        })
+                      }
+                      className={cn(
+                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        updateSettingsForm.useSharePointSource
+                          ? 'bg-primary border-primary toggle-checked'
+                          : 'bg-input border-border'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                          updateSettingsForm.useSharePointSource ? 'translate-x-6' : 'translate-x-1'
+                        )}
+                      />
+                    </button>
+                  </div>
+
+                  {updateSettingsForm.useSharePointSource && (
+                    <div className="space-y-4 pt-2 border-t border-border">
+                      {/* SharePoint Folder URL */}
+                      <div>
+                        <label htmlFor="sp-url" className="block text-sm font-medium mb-2">
+                          SharePoint Folder URL
+                        </label>
+                        <input
+                          id="sp-url"
+                          type="url"
+                          value={updateSettingsForm.sharePointFolderUrl || ''}
+                          onChange={(e) =>
+                            setUpdateSettingsForm({
+                              ...updateSettingsForm,
+                              sharePointFolderUrl: e.target.value,
+                            })
+                          }
+                          placeholder="https://company.sharepoint.com/sites/IT/Shared Documents/Updates"
+                          className={cn(
+                            'w-full px-3 py-2 rounded-md border bg-background focus:outline-none focus:ring-1',
+                            updateSettingsForm.sharePointFolderUrl && !validateSharePointUrl(updateSettingsForm.sharePointFolderUrl)
+                              ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                              : 'border-input focus:border-primary focus:ring-primary/20'
+                          )}
+                        />
+                        {updateSettingsForm.sharePointFolderUrl && !validateSharePointUrl(updateSettingsForm.sharePointFolderUrl) && (
+                          <p className="text-xs text-red-500 mt-1">
+                            Invalid URL. Must be https://*.sharepoint.com/sites/...
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Folder must contain: latest.yml and the MSI installer file
+                        </p>
+                      </div>
+
+                      {/* Microsoft Login */}
+                      <div className="flex items-center gap-3">
+                        {sharePointLoginStatus !== 'logged-in' ? (
+                          <Button
+                            variant="outline"
+                            onClick={handleSharePointLogin}
+                            disabled={sharePointLoginStatus === 'logging-in'}
+                            icon={<User className="w-4 h-4" />}
+                          >
+                            {sharePointLoginStatus === 'logging-in' ? 'Signing In...' : 'Sign In to Microsoft'}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            onClick={handleSharePointLogout}
+                            icon={<LogOut className="w-4 h-4" />}
+                          >
+                            Sign Out
+                          </Button>
+                        )}
+
+                        {sharePointLoginStatus === 'logged-in' && (
+                          <span className="text-xs text-green-500 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Authenticated
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Test Connection */}
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={handleTestSharePointConnection}
+                          disabled={
+                            testingSharePointConnection ||
+                            !updateSettingsForm.sharePointFolderUrl ||
+                            sharePointLoginStatus !== 'logged-in'
+                          }
+                          icon={<Wifi className="w-4 h-4" />}
+                        >
+                          {testingSharePointConnection ? 'Testing...' : 'Test Connection'}
+                        </Button>
+
+                        {sharePointConnectionResult && (
+                          <span
+                            className={cn(
+                              'text-xs flex items-center gap-1',
+                              sharePointConnectionResult.success ? 'text-green-500' : 'text-red-500'
+                            )}
+                          >
+                            {sharePointConnectionResult.success ? (
+                              <CheckCircle2 className="w-3 h-3" />
+                            ) : (
+                              <AlertCircle className="w-3 h-3" />
+                            )}
+                            {sharePointConnectionResult.message}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Info */}
+                      <p className="text-xs text-muted-foreground bg-muted/20 p-2 rounded">
+                        GitHub remains the default update source. SharePoint is only used when enabled with a valid URL
+                        and you&apos;re signed in. If SharePoint fails, the app will automatically fall back to GitHub.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex justify-end">
                   <Button
                     onClick={handleSaveSettings}
@@ -2094,7 +2301,7 @@ Submitted: ${new Date().toLocaleString()}
                         Enable Local Dictionary
                       </label>
                       <p className="text-xs text-muted-foreground">
-                        When enabled, hyperlink lookups will use the local SQLite database instead of the API
+                        When enabled, hyperlink lookups will use the local database first, falling back to the API if not found
                       </p>
                     </div>
                     <button
@@ -2124,235 +2331,76 @@ Submitted: ${new Date().toLocaleString()}
                   </div>
                 </div>
 
-                {/* SharePoint Configuration */}
+                {/* SharePoint File URL */}
                 <div className="space-y-4">
-                  <h3 className="font-medium">SharePoint Configuration</h3>
+                  <h3 className="font-medium">SharePoint Dictionary File</h3>
 
                   <div>
-                    <label htmlFor="sharepoint-url" className="block text-sm font-medium mb-2">
-                      SharePoint Site URL
+                    <label htmlFor="sharepoint-file-url" className="block text-sm font-medium mb-2">
+                      SharePoint File URL
                     </label>
                     <input
-                      id="sharepoint-url"
+                      id="sharepoint-file-url"
                       type="url"
-                      value={localDictionaryForm.sharePointSiteUrl}
+                      value={localDictionaryForm.sharePointFileUrl}
                       onChange={(e) =>
                         setLocalDictionaryForm({
                           ...localDictionaryForm,
-                          sharePointSiteUrl: e.target.value,
+                          sharePointFileUrl: e.target.value,
                         })
                       }
-                      placeholder="https://your-company.sharepoint.com/sites/your-site"
+                      placeholder="https://company.sharepoint.com/sites/IT/Shared Documents/Dictionary.xlsx"
                       className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      The SharePoint site URL where your dictionary file is located
-                    </p>
-                  </div>
-
-                  <div>
-                    <label htmlFor="document-path" className="block text-sm font-medium mb-2">
-                      Document Library Path
-                    </label>
-                    <input
-                      id="document-path"
-                      type="text"
-                      value={localDictionaryForm.documentLibraryPath}
-                      onChange={(e) =>
-                        setLocalDictionaryForm({
-                          ...localDictionaryForm,
-                          documentLibraryPath: e.target.value,
-                        })
-                      }
-                      placeholder="/Shared Documents/Dictionary.xlsx"
-                      className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Path to Dictionary.xlsx within the SharePoint document library
+                      Direct URL to the .xlsx dictionary file on SharePoint (Daily_Inventory sheet, Dictionary_Table table)
                     </p>
                   </div>
                 </div>
 
-                {/* Azure AD Configuration */}
-                <div className="space-y-4">
-                  <h3 className="font-medium">Azure AD Authentication</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Configure app-only authentication using Azure AD application credentials
-                  </p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="tenant-id" className="block text-sm font-medium mb-2">
-                        Tenant ID
-                      </label>
-                      <input
-                        id="tenant-id"
-                        type="text"
-                        value={localDictionaryForm.tenantId}
-                        onChange={(e) =>
-                          setLocalDictionaryForm({
-                            ...localDictionaryForm,
-                            tenantId: e.target.value,
-                          })
-                        }
-                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 font-mono text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="client-id" className="block text-sm font-medium mb-2">
-                        Client ID
-                      </label>
-                      <input
-                        id="client-id"
-                        type="text"
-                        value={localDictionaryForm.clientId}
-                        onChange={(e) =>
-                          setLocalDictionaryForm({
-                            ...localDictionaryForm,
-                            clientId: e.target.value,
-                          })
-                        }
-                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 font-mono text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Client Secret</label>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowClientSecretDialog(true)}
-                        className="flex-1"
-                      >
-                        {credentialsSaved ? 'Secret Saved' : 'Set Client Secret'}
-                      </Button>
-                      {credentialsSaved && (
-                        <div className="flex items-center text-green-600 text-sm">
-                          <CheckCircle2 className="w-4 h-4 mr-1" />
-                          Configured
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Client secret is stored securely and never saved to settings
-                    </p>
-                  </div>
-
-                  {/* Client Secret Dialog */}
-                  {showClientSecretDialog && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                      <div className="bg-background rounded-lg p-6 w-full max-w-md border border-border shadow-xl">
-                        <h3 className="text-lg font-semibold mb-4">Enter Client Secret</h3>
-                        <input
-                          type="password"
-                          value={clientSecretInput}
-                          onChange={(e) => setClientSecretInput(e.target.value)}
-                          placeholder="Enter your Azure AD client secret"
-                          className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 font-mono text-sm mb-4"
-                          autoFocus
-                        />
-                        <div className="flex gap-2 justify-end">
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setShowClientSecretDialog(false);
-                              setClientSecretInput('');
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button onClick={handleSaveClientSecret} disabled={!clientSecretInput.trim()}>
-                            Save
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Sync Settings */}
-                <div className="space-y-4">
-                  <h3 className="font-medium">Sync Settings</h3>
-
-                  <div>
-                    <label htmlFor="sync-interval" className="block text-sm font-medium mb-2">
-                      Sync Interval
-                    </label>
-                    <select
-                      id="sync-interval"
-                      value={localDictionaryForm.syncIntervalHours}
-                      onChange={(e) =>
-                        setLocalDictionaryForm({
-                          ...localDictionaryForm,
-                          syncIntervalHours: Number(e.target.value),
-                        })
-                      }
-                      className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
-                    >
-                      <option value={1}>Every 1 hour</option>
-                      <option value={6}>Every 6 hours</option>
-                      <option value={12}>Every 12 hours</option>
-                      <option value={24}>Every 24 hours</option>
-                    </select>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      How often to check for dictionary updates from SharePoint
-                    </p>
-                  </div>
-                </div>
-
-                {/* Sync Status */}
+                {/* Retrieval Status */}
                 <div className="p-4 bg-muted/20 rounded-lg border border-border space-y-3">
-                  <h3 className="font-medium">Sync Status</h3>
+                  <h3 className="font-medium">Dictionary Status</h3>
 
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-muted-foreground">Total Entries:</span>
                       <span className="ml-2 font-medium">
-                        {dictionaryStatus?.totalEntries?.toLocaleString() || '0'}
+                        {localDictionaryForm.totalEntries?.toLocaleString() || dictionaryStatus?.totalEntries?.toLocaleString() || '0'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Last Sync:</span>
+                      <span className="text-muted-foreground">Last Retrieved:</span>
                       <span className="ml-2 font-medium">
-                        {dictionaryStatus?.lastSyncTime
-                          ? new Date(dictionaryStatus.lastSyncTime).toLocaleString()
-                          : 'Never'}
+                        {localDictionaryForm.lastRetrievalTime
+                          ? new Date(localDictionaryForm.lastRetrievalTime).toLocaleString()
+                          : dictionaryStatus?.lastSyncTime
+                            ? new Date(dictionaryStatus.lastSyncTime).toLocaleString()
+                            : 'Never'}
                       </span>
                     </div>
-                    <div>
+                    <div className="col-span-2">
                       <span className="text-muted-foreground">Status:</span>
                       <span
                         className={cn(
                           'ml-2 font-medium',
-                          dictionaryStatus?.lastSyncSuccess ? 'text-green-600' : 'text-muted-foreground'
+                          (localDictionaryForm.lastRetrievalSuccess || dictionaryStatus?.lastSyncSuccess) ? 'text-green-600' : 'text-muted-foreground'
                         )}
                       >
                         {dictionaryStatus?.syncInProgress
-                          ? 'Syncing...'
-                          : dictionaryStatus?.lastSyncSuccess
-                            ? 'Synced'
-                            : 'Not synced'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Next Sync:</span>
-                      <span className="ml-2 font-medium">
-                        {dictionaryStatus?.nextScheduledSync
-                          ? new Date(dictionaryStatus.nextScheduledSync).toLocaleString()
-                          : 'Not scheduled'}
+                          ? 'Retrieving...'
+                          : (localDictionaryForm.lastRetrievalSuccess || dictionaryStatus?.lastSyncSuccess)
+                            ? 'Ready'
+                            : 'Not retrieved'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Progress bar during sync */}
+                  {/* Progress bar during retrieval */}
                   {dictionaryStatus?.syncInProgress && (
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Syncing dictionary...</span>
+                        <span>Retrieving dictionary...</span>
                         <span>{Math.round(dictionaryStatus.syncProgress || 0)}%</span>
                       </div>
                       <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
@@ -2378,13 +2426,16 @@ Submitted: ${new Date().toLocaleString()}
 
                   <Button
                     variant="outline"
-                    onClick={handleSyncDictionary}
-                    disabled={syncingDictionary || !localDictionaryForm.sharePointSiteUrl}
+                    onClick={handleRetrieveDictionary}
+                    disabled={syncingDictionary || !localDictionaryForm.sharePointFileUrl?.trim()}
                     icon={<RefreshCw className={cn('w-4 h-4', syncingDictionary && 'animate-spin')} />}
                     className="w-full"
                   >
-                    {syncingDictionary ? 'Syncing...' : 'Sync Now'}
+                    {syncingDictionary ? 'Retrieving...' : 'Retrieve Dictionary'}
                   </Button>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Opens browser for Microsoft sign-in, then downloads and imports the dictionary
+                  </p>
                 </div>
 
                 {/* Info Card */}
@@ -2396,10 +2447,10 @@ Submitted: ${new Date().toLocaleString()}
                     <div className="flex-1">
                       <h4 className="font-medium mb-1">About Local Dictionary</h4>
                       <p className="text-sm text-muted-foreground">
-                        The local dictionary downloads your SharePoint Dictionary.xlsx file and stores it
-                        in a high-performance SQLite database for instant lookups. This provides faster
-                        performance than API calls and works offline. The dictionary syncs automatically
-                        based on your interval settings, only downloading when changes are detected.
+                        The local dictionary downloads your SharePoint dictionary file and stores it
+                        in a high-performance SQLite database for instant lookups. When enabled,
+                        hyperlink lookups check the local database first. If an ID is not found locally,
+                        the system automatically falls back to the API for that lookup.
                       </p>
                     </div>
                   </div>

@@ -318,6 +318,9 @@ export class SharePointSyncService {
 
   /**
    * Parse Excel file and extract dictionary entries
+   *
+   * Looks for the "Daily_Inventory" sheet and optionally the "Dictionary_Table" table.
+   * Extracts Document_ID, Content_ID, Title, and Status columns.
    */
   parseExcelFile(buffer: Buffer): DictionaryEntry[] {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -330,13 +333,39 @@ export class SharePointSyncService {
       throw new Error(`Sheet "${sheetName}" not found in workbook`);
     }
 
-    // Convert to JSON with header row
-    const rawData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+    // Try to find the Dictionary_Table range
+    // Excel tables are stored in workbook metadata
+    let tableRange: string | undefined;
+    const tableName = 'Dictionary_Table';
+
+    // Check for named ranges (tables appear as defined names)
+    if (workbook.Workbook?.Names) {
+      const tableNameEntry = workbook.Workbook.Names.find(
+        (n: { Name: string; Ref?: string }) =>
+          n.Name === tableName || n.Name === `${sheetName}!${tableName}`
+      );
+      if (tableNameEntry?.Ref) {
+        // Extract the range from the reference (e.g., "Daily_Inventory!$A$1:$D$1000")
+        const refMatch = tableNameEntry.Ref.match(/\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)/);
+        if (refMatch) {
+          tableRange = `${refMatch[1]}${refMatch[2]}:${refMatch[3]}${refMatch[4]}`;
+          log.info(`Found table "${tableName}" with range: ${tableRange}`);
+        }
+      }
+    }
+
+    // Convert to JSON with header row, using table range if found
+    const parseOptions: XLSX.Sheet2JSONOpts = {
       raw: false,
       defval: '',
-    });
+    };
+    if (tableRange) {
+      parseOptions.range = tableRange;
+    }
 
-    // Map to DictionaryEntry format
+    const rawData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, parseOptions);
+
+    // Map to DictionaryEntry format - only extract required columns
     const entries: DictionaryEntry[] = rawData.map((row) => ({
       Document_ID: String(row['Document_ID'] || ''),
       Content_ID: String(row['Content_ID'] || ''),
@@ -358,6 +387,7 @@ export class SharePointSyncService {
     log.info('Parsed Excel file', {
       totalRows: rawData.length,
       validEntries: validEntries.length,
+      usedTableRange: tableRange || 'full sheet',
     });
 
     return validEntries;

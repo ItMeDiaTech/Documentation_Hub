@@ -69,6 +69,25 @@ export interface UpdateStatusInfo {
   message: string;
 }
 
+/**
+ * SharePoint update source configuration
+ */
+export interface UpdateProviderConfig {
+  type: 'github' | 'sharepoint';
+  sharePointUrl?: string;
+}
+
+export interface SharePointConnectionTestResult {
+  success: boolean;
+  message: string;
+  authenticated?: boolean;
+}
+
+export interface SharePointLoginResult {
+  success: boolean;
+  error?: string;
+}
+
 export interface UpdateManualDownloadInfo {
   message: string;
   downloadUrl: string;
@@ -123,6 +142,10 @@ export interface DictionaryAPI {
   lookup: (lookupId: string) => Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }>;
   batchLookup: (lookupIds: string[]) => Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }>;
   getStatus: () => Promise<{ success: boolean; status?: DictionarySyncStatus; error?: string }>;
+  // Interactive SharePoint retrieval (using browser login)
+  retrieveFromSharePoint: (fileUrl: string) => Promise<{ success: boolean; entriesImported?: number; error?: string }>;
+  sharePointLogin: () => Promise<{ success: boolean; error?: string }>;
+  isSharePointAuthenticated: () => Promise<{ authenticated: boolean }>;
   onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => () => void;
   onSyncComplete: (callback: (result: DictionarySyncResponse) => void) => () => void;
 }
@@ -218,6 +241,12 @@ export interface ElectronAPI {
   downloadUpdate: () => Promise<void>;
   installUpdate: () => Promise<void>;
   getCurrentVersion: () => Promise<string>;
+
+  // SharePoint update source
+  setUpdateProvider: (config: UpdateProviderConfig) => Promise<{ success: boolean; error?: string }>;
+  testSharePointConnection: (url: string) => Promise<SharePointConnectionTestResult>;
+  sharePointLogin: () => Promise<SharePointLoginResult>;
+  sharePointLogout: () => Promise<void>;
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => () => void;

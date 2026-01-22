@@ -145,6 +145,10 @@ export type ElectronAPI = {
     lookup: (lookupId: string) => Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }>;
     batchLookup: (lookupIds: string[]) => Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }>;
     getStatus: () => Promise<{ success: boolean; status?: DictionarySyncStatus; error?: string }>;
+    // Interactive SharePoint retrieval (using browser login)
+    retrieveFromSharePoint: (fileUrl: string) => Promise<{ success: boolean; entriesImported?: number; error?: string }>;
+    sharePointLogin: () => Promise<{ success: boolean; error?: string }>;
+    isSharePointAuthenticated: () => Promise<{ authenticated: boolean }>;
     onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => () => void;
     onSyncComplete: (callback: (result: DictionarySyncResponse) => void) => () => void;
   };
@@ -154,6 +158,12 @@ export type ElectronAPI = {
   downloadUpdate: () => Promise<void>;
   installUpdate: () => Promise<void>;
   getCurrentVersion: () => Promise<string>;
+
+  // SharePoint update source
+  setUpdateProvider: (config: { type: 'github' | 'sharepoint'; sharePointUrl?: string }) => Promise<{ success: boolean; error?: string }>;
+  testSharePointConnection: (url: string) => Promise<{ success: boolean; message: string; authenticated?: boolean }>;
+  sharePointLogin: () => Promise<{ success: boolean; error?: string }>;
+  sharePointLogout: () => Promise<void>;
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => () => void;

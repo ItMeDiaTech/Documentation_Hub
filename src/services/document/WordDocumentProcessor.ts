@@ -13,6 +13,9 @@ import {
   Hyperlink,
   Image,
   ImageRun,
+  isHyperlink,
+  isRevision,
+  isRun,
   normalizeOrphanListLevelsInTable,
   NumberingLevel,
   Paragraph,
@@ -25,6 +28,7 @@ import {
   type TableOfContents,
   WORD_NATIVE_BULLETS,
 } from "docxmlater";
+import type { ParagraphContent } from "docxmlater";
 import type { RevisionHandlingMode } from "@/types/session";
 // Note: Run, Hyperlink, ImageRun imported for type checking in isParagraphTrulyEmpty()
 import {
@@ -89,6 +93,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   preserveBlankLinesAfterAllTables?: boolean; // preserve-all-table-blank-lines: Add blank lines after ALL tables regardless of size (user request)
   preserveUserBlankStructures?: boolean; // preserve-user-blank-structures: Preserve single blank lines, only remove consecutive duplicates (2+)
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
+  normalizeDashes?: boolean; // normalize-dashes: Replace en-dashes (U+2013) with hyphens (U+002D)
   standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
   standardizeListPrefixFormatting?: boolean; // standardize-list-prefix-formatting: Apply consistent Verdana 12pt black formatting to all list symbols/numbers
 
@@ -112,6 +117,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
     preserveBold?: boolean;
     preserveItalic?: boolean;
     preserveUnderline?: boolean;
+    preserveCenterAlignment?: boolean;
     alignment: "left" | "center" | "right" | "justify";
     color: string;
     spaceBefore: number;
@@ -215,6 +221,15 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
       noSpaceBetweenSame?: boolean;
     };
   };
+
+  // ═══════════════════════════════════════════════════════════
+  // Local Dictionary Settings (NEW - January 2025)
+  // ═══════════════════════════════════════════════════════════
+  /** Local dictionary settings for offline hyperlink lookup */
+  localDictionary?: {
+    enabled: boolean;
+    totalEntries: number;
+  };
 }
 
 export interface WordProcessingResult extends HyperlinkProcessingResult {
@@ -308,7 +323,8 @@ export class WordDocumentProcessor {
   private async callPowerAutomateApi(
     hyperlinkInfos: DetailedHyperlinkInfo[],
     apiSettings: { apiUrl: string; timeout?: number; retryAttempts?: number; retryDelay?: number },
-    userProfile?: { firstName: string; lastName: string; email: string }
+    userProfile?: { firstName: string; lastName: string; email: string },
+    localDictionarySettings?: { enabled: boolean; totalEntries: number }
   ): Promise<HyperlinkApiResponse & { processedHyperlinks?: DetailedHyperlinkInfo[] }> {
     // In renderer process, use HyperlinkService (goes through IPC)
     if (!this.isMainProcess()) {
@@ -355,17 +371,91 @@ export class WordDocumentProcessor {
         };
       }
 
+      // ═══════════════════════════════════════════════════════════
+      // LOCAL DICTIONARY LOOKUP (if enabled and has entries)
+      // ═══════════════════════════════════════════════════════════
+      let localResults: Array<{
+        url: string;
+        documentId: string;
+        contentId: string;
+        title: string;
+        status: 'active' | 'deprecated' | 'expired' | 'moved' | 'not_found';
+        metadata: Record<string, unknown>;
+      }> = [];
+      let idsNotFoundLocally: string[] = [...lookupIds];
+
+      if (localDictionarySettings?.enabled && localDictionarySettings.totalEntries > 0) {
+        this.log.info(`[WordDocProcessor] Local dictionary enabled with ${localDictionarySettings.totalEntries} entries - checking local first`);
+
+        try {
+          // Dynamic import of local dictionary lookup service
+          const { getLocalDictionaryLookupService } = await import('../../../electron/services/LocalDictionaryLookupService');
+          const lookupService = getLocalDictionaryLookupService();
+
+          // Batch lookup against local dictionary
+          const localLookupResults = lookupService.batchLookup(lookupIds);
+
+          // Process local results
+          const foundLocallySet = new Set<string>();
+          for (const result of localLookupResults) {
+            if (result.Status !== 'Not_Found') {
+              const normalizedStatus =
+                result.Status.toLowerCase() === 'deprecated' ? 'deprecated' as const :
+                result.Status.toLowerCase() === 'expired' ? 'expired' as const :
+                result.Status.toLowerCase() === 'moved' ? 'moved' as const :
+                result.Status.toLowerCase() === 'not_found' ? 'not_found' as const :
+                'active' as const;
+
+              localResults.push({
+                url: '',
+                documentId: result.Document_ID || '',
+                contentId: result.Content_ID || '',
+                title: result.Title || '',
+                status: normalizedStatus,
+                metadata: {},
+              });
+
+              // Mark IDs as found
+              if (result.Document_ID) foundLocallySet.add(result.Document_ID);
+              if (result.Content_ID) foundLocallySet.add(result.Content_ID);
+            }
+          }
+
+          // Filter out IDs that were found locally
+          idsNotFoundLocally = lookupIds.filter(id => !foundLocallySet.has(id));
+
+          this.log.info(`[WordDocProcessor] Local dictionary: found ${localResults.length} entries, ${idsNotFoundLocally.length} IDs need API lookup`);
+        } catch (localError) {
+          this.log.warn('[WordDocProcessor] Local dictionary lookup failed, falling back to API:', localError);
+          idsNotFoundLocally = [...lookupIds];
+        }
+      }
+
+      // If all IDs were found locally, return early
+      if (idsNotFoundLocally.length === 0 && localResults.length > 0) {
+        this.log.info('[WordDocProcessor] All lookups satisfied by local dictionary - skipping API call');
+        return {
+          success: true,
+          timestamp: new Date(),
+          body: {
+            results: localResults,
+            errors: [],
+          },
+          processedHyperlinks: hyperlinkInfos,
+        };
+      }
+
       // Calculate statistics
       const totalHyperlinks = hyperlinkInfos.length;
       const hyperlinksChecked = hyperlinkInfos.filter(h =>
         /thesource\.cvshealth\.com/i.test(h.url)
       ).length;
 
-      // Make the API call
+      // Make the API call (for IDs not found locally)
       const response = await callPowerAutomateApiWithRetry(
         apiSettings.apiUrl,
         {
-          Lookup_ID: lookupIds,
+          Lookup_ID: idsNotFoundLocally.length > 0 ? idsNotFoundLocally : lookupIds,
           Hyperlinks_Checked: hyperlinksChecked,
           Total_Hyperlinks: totalHyperlinks,
           First_Name: userProfile?.firstName || '',
@@ -380,6 +470,19 @@ export class WordDocumentProcessor {
       );
 
       if (!response.success) {
+        // If we have local results, return those even if API failed
+        if (localResults.length > 0) {
+          this.log.warn('[WordDocProcessor] API call failed but returning local dictionary results');
+          return {
+            success: true,
+            timestamp: new Date(),
+            body: {
+              results: localResults,
+              errors: [response.error || 'API request failed (local results returned)'],
+            },
+            processedHyperlinks: hyperlinkInfos,
+          };
+        }
         return {
           success: false,
           timestamp: new Date(),
@@ -387,8 +490,8 @@ export class WordDocumentProcessor {
         };
       }
 
-      // Parse results into HyperlinkApiResponse format
-      const results = response.data?.Results?.map(result => {
+      // Parse API results into HyperlinkApiResponse format
+      const apiResults = response.data?.Results?.map(result => {
         const rawStatus = result.Status?.trim() || 'Active';
         const normalizedStatus =
           rawStatus.toLowerCase() === 'deprecated' ? 'deprecated' as const :
@@ -407,12 +510,15 @@ export class WordDocumentProcessor {
         };
       }) || [];
 
+      // Merge local results with API results
+      const mergedResults = [...localResults, ...apiResults];
+
       return {
         success: true,
         timestamp: new Date(),
         statusCode: response.statusCode,
         body: {
-          results,
+          results: mergedResults,
           errors: [],
         },
         processedHyperlinks: hyperlinkInfos,
@@ -562,14 +668,13 @@ export class WordDocumentProcessor {
             const content = paragraph.getContent();
             let hIndex = 0;
             content.forEach((element) => {
-              // Check if element is a Hyperlink by checking for getUrl method
-              if (element && typeof (element as any).getUrl === 'function') {
-                const hyperlink = element as any;
+              // Use type guard for proper type checking
+              if (isHyperlink(element)) {
                 hyperlinks.push({
                   paragraphIndex: pIndex,
                   hyperlinkIndex: hIndex++,
-                  url: hyperlink.getUrl() || '',
-                  text: hyperlink.getText?.() || '',
+                  url: element.getUrl() || '',
+                  text: element.getText() || '',
                 });
               }
             });
@@ -690,7 +795,8 @@ export class WordDocumentProcessor {
             const apiResponse = await this.callPowerAutomateApi(
               hyperlinkInfos,
               apiSettings,
-              options.userProfile
+              options.userProfile,
+              options.localDictionary
             );
 
             this.log.info(`API Response success: ${apiResponse.success}`);
@@ -837,7 +943,7 @@ export class WordDocumentProcessor {
                         const hyperlinkIndex = content.findIndex((item: unknown) => item === hyperlink.hyperlink);
 
                         if (hyperlinkIndex !== -1 && hyperlinkIndex < content.length - 1) {
-                          const itemsToRemove: unknown[] = [];
+                          const itemsToRemove: Run[] = [];
                           let combinedText = '';
 
                           // Look at up to 3 items after the hyperlink to handle various split patterns
@@ -845,7 +951,7 @@ export class WordDocumentProcessor {
                             const item = content[hyperlinkIndex + i];
 
                             if (this.isRunItem(item)) {
-                              const itemText = (item as any).getText();
+                              const itemText = item.getText();
                               combinedText += itemText;
                               itemsToRemove.push(item);
 
@@ -1128,6 +1234,22 @@ export class WordDocumentProcessor {
             category: 'structure',
             description: 'Removed italic formatting from text',
             count: italicsRemoved,
+          });
+        }
+      }
+
+      if (options.normalizeDashes) {
+        this.log.debug("=== NORMALIZING EN-DASHES TO HYPHENS ===");
+        const dashesNormalized = await this.normalizeEnDashesToHyphens(doc);
+        this.log.info(`Normalized en-dashes in ${dashesNormalized} runs`);
+
+        // Track dash normalization
+        if (dashesNormalized > 0) {
+          result.changes?.push({
+            type: 'text',
+            category: 'structure',
+            description: 'Normalized en-dashes to hyphens',
+            count: dashesNormalized,
           });
         }
       }
@@ -1987,13 +2109,28 @@ export class WordDocumentProcessor {
       // 2. Correct file ordering in ZIP archive
       // 3. All OOXML relationships and structure
       //
-      // NEW in v2.5.0: If setAutoPopulateTOCs(true) was called,
-      // save() automatically populates TOC fields with heading hyperlinks
-      //
       // Previous approach of toBuffer() → validate → resave caused
       // corruption due to double ZIP creation breaking file ordering.
       // ═══════════════════════════════════════════════════════════
       this.log.debug("=== SAVING DOCUMENT ===");
+
+      // ═══════════════════════════════════════════════════════════
+      // PRESERVE TOC FIELD STRUCTURE
+      // DocXMLater loses complex field structures (<w:fldChar>) during load.
+      // Always rebuild TOCs to restore proper field structure before save.
+      // This ensures the TOC field codes are preserved and Word's "Update Field"
+      // option remains available, regardless of TOC Processing Options.
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== REBUILDING TOC FIELD STRUCTURE ===");
+      try {
+        const tocResults = doc.rebuildTOCs();
+        if (tocResults.length > 0) {
+          this.log.info(`Rebuilt ${tocResults.length} TOC(s) to preserve field structure`);
+        }
+      } catch (error) {
+        this.log.debug("No TOC to rebuild or rebuild failed:", error);
+      }
+
       await doc.save(filePath);
       this.log.info("Document saved successfully");
 
@@ -2162,18 +2299,12 @@ export class WordDocumentProcessor {
 
   /**
    * Check if an item is a Run (not a Hyperlink or Revision)
-   * Uses duck-typing to identify Run objects by their method signatures.
+   * Uses docxmlater's type guard for proper type checking.
    * @param item - The paragraph content item to check
    * @returns true if the item is a Run object
    */
-  private isRunItem(item: unknown): boolean {
-    return (
-      item !== null &&
-      item !== undefined &&
-      typeof (item as any).getText === 'function' &&
-      typeof (item as any).getUrl !== 'function' && // Not a Hyperlink
-      typeof (item as any).getRevisionType !== 'function' // Not a Revision
-    );
+  private isRunItem(item: ParagraphContent): item is Run {
+    return isRun(item);
   }
 
   /**
@@ -2584,6 +2715,19 @@ export class WordDocumentProcessor {
     const paragraphs = doc.getAllParagraphs();
 
     for (const para of paragraphs) {
+      // Skip TOC paragraphs - they contain field instructions that must not be modified
+      // TOC styles: TOC1, TOC2, TOC3, etc. (but NOT TOCHeading which is a title)
+      const style = para.getStyle() || "";
+      if (style.startsWith("TOC") && style !== "TOCHeading") {
+        continue;
+      }
+
+      // Skip paragraphs with complex field content (instructionText runs)
+      // This prevents corrupting TOC field instructions, cross-references, etc.
+      if (this.hasComplexFieldContent(para)) {
+        continue;
+      }
+
       const runs = para.getRuns();
 
       for (let i = 0; i < runs.length; i++) {
@@ -2620,6 +2764,38 @@ export class WordDocumentProcessor {
     }
 
     return cleanedCount;
+  }
+
+  /**
+   * Check if paragraph contains complex field content (TOC, cross-references, etc.)
+   * These should not be processed to avoid corrupting field structure.
+   *
+   * Complex fields in OOXML use:
+   * - w:fldChar elements with fldCharType="begin|separate|end"
+   * - w:instrText elements containing the field instruction (e.g., "TOC \o 1-3")
+   *
+   * If we call setText() on runs containing these, the field structure is destroyed
+   * and field instructions appear as visible text in Word.
+   */
+  private hasComplexFieldContent(para: Paragraph): boolean {
+    try {
+      for (const run of para.getRuns()) {
+        const content = run.getContent();
+        // Check for instructionText (TOC field instructions, HYPERLINK fields, etc.)
+        // or fieldChar markers (begin/separate/end)
+        if (
+          content.some(
+            (c: { type: string }) =>
+              c.type === "instructionText" || c.type === "fieldChar"
+          )
+        ) {
+          return true;
+        }
+      }
+      return false;
+    } catch {
+      return false; // Safe default - don't skip if we can't check
+    }
   }
 
   /**
@@ -2739,22 +2915,91 @@ export class WordDocumentProcessor {
   private markSingleBlanksAsPreserved(doc: Document): number {
     let markedCount = 0;
     const paragraphs = doc.getAllParagraphs();
+    let blankCount = 0;
+
+    this.log.debug(`markSingleBlanksAsPreserved: Processing ${paragraphs.length} paragraphs`);
 
     for (let i = 0; i < paragraphs.length; i++) {
       const para = paragraphs[i];
       const nextPara = paragraphs[i + 1];
 
-      // Check if this paragraph is blank (no text/images)
-      const isBlank = !para.getText()?.trim() && para.getRuns().length === 0;
+      // Check if this paragraph is blank (no text content in paragraph or runs)
+      const runs = para.getRuns();
+      const isBlank = !para.getText()?.trim() && runs.every((run) => !run.getText()?.trim());
       if (!isBlank) continue;
 
+      blankCount++;
+
       // Check if next paragraph is also blank
-      const nextIsBlank = nextPara && !nextPara.getText()?.trim() && nextPara.getRuns().length === 0;
+      const nextRuns = nextPara?.getRuns() || [];
+      const nextIsBlank = nextPara &&
+        !nextPara.getText()?.trim() &&
+        nextRuns.every((run) => !run.getText()?.trim());
+
+      this.log.debug(`  Blank #${blankCount} at index ${i}: nextIsBlank=${nextIsBlank}, alreadyPreserved=${para.isPreserved()}`);
 
       // If this is a SINGLE blank (not consecutive), mark as preserved
       if (!nextIsBlank && !para.isPreserved()) {
         para.setPreserved(true);
         markedCount++;
+        this.log.debug(`    → MARKED as preserved (single blank or last in consecutive series)`);
+      }
+    }
+
+    this.log.debug(`markSingleBlanksAsPreserved: Found ${blankCount} blanks, marked ${markedCount} as preserved`);
+    return markedCount;
+  }
+
+  /**
+   * Mark paragraphs containing complex field content as preserved.
+   *
+   * This MUST be called BEFORE removeExtraBlankParagraphs() to prevent
+   * corruption of TOC and other complex field structures.
+   *
+   * The issue: TOC fields contain paragraphs with only <w:fldChar w:fldCharType="end"/>
+   * which appear "blank" but are critical to the field structure. Without marking
+   * these as preserved, removeExtraBlankParagraphs() removes them, causing:
+   * - TOC field instructions to appear as visible text
+   * - "Update Field" option to disappear from the TOC
+   *
+   * @param doc - Document to process
+   * @returns Number of paragraphs marked as preserved
+   */
+  private markFieldParagraphsAsPreserved(doc: Document): number {
+    let markedCount = 0;
+    const paragraphs = doc.getAllParagraphs();
+
+    for (const para of paragraphs) {
+      // Skip if already preserved
+      if (para.isPreserved()) continue;
+
+      // Check for field content in runs
+      try {
+        const runs = para.getRuns();
+        for (const run of runs) {
+          const content = run.getContent();
+          const hasFieldContent = content.some(
+            (c: { type: string }) =>
+              c.type === 'fieldChar' || c.type === 'instructionText'
+          );
+          if (hasFieldContent) {
+            para.setPreserved(true);
+            markedCount++;
+            break;
+          }
+        }
+      } catch {
+        // If we can't check runs, skip this paragraph
+      }
+
+      // Also preserve TOC-styled paragraphs (TOC1, TOC2, etc.)
+      // These are the actual TOC entries that should never be removed
+      if (!para.isPreserved()) {
+        const style = para.getStyle() || '';
+        if (style.startsWith('TOC') && style !== 'TOCHeading') {
+          para.setPreserved(true);
+          markedCount++;
+        }
       }
     }
 
@@ -2783,26 +3028,34 @@ export class WordDocumentProcessor {
     preserveUserBlankStructures: boolean = false
   ): Promise<number> {
     this.log.debug("=== REMOVING EXTRA BLANK PARAGRAPHS (FRAMEWORK METHOD) ===");
-    this.log.debug("  addStructureBlankLines option: true (always enabled for lists)");
+    // addStructureBlankLines is enabled because this function only runs when "Remove Extra Blank Lines" is enabled
+    this.log.debug("  addStructureBlankLines: true (linked to Remove Extra Blank Lines option)");
     this.log.debug(`  preserveUserBlankStructures: ${preserveUserBlankStructures}`);
 
-    // If preserveUserBlankStructures is enabled, mark single blanks as preserved first
-    // This ensures only consecutive duplicate blanks (2+) are removed
-    if (preserveUserBlankStructures) {
-      const markedCount = this.markSingleBlanksAsPreserved(doc);
-      this.log.debug(`  Marked ${markedCount} single blank paragraphs as preserved`);
+    // ═══════════════════════════════════════════════════════════════════════
+    // CRITICAL: Mark field paragraphs as preserved BEFORE removing blank paragraphs
+    // Paragraphs containing field characters (fldChar) or instruction text (instrText)
+    // must be preserved to maintain TOC and other complex field structures.
+    // Without this, the paragraph containing <w:fldChar w:fldCharType="end"/> gets
+    // removed, corrupting the TOC field structure.
+    // ═══════════════════════════════════════════════════════════════════════
+    const fieldParasMarked = this.markFieldParagraphsAsPreserved(doc);
+    if (fieldParasMarked > 0) {
+      this.log.debug(`  Marked ${fieldParasMarked} field paragraphs as preserved (TOC protection)`);
     }
 
     // Use DocXMLater's built-in removeExtraBlankParagraphs() method
-    // Always enable addStructureBlankLines to ensure blank lines after lists
-    // The framework method internally calls addStructureBlankLines() with afterLists: true default
+    // addStructureBlankLines: true - adds blank lines after lists (enabled because Remove Extra Blank Lines is on)
+    // preserveSingleBlanks: preserves single blank lines when user wants to keep their blank line structure
     const result = doc.removeExtraBlankParagraphs({
       addStructureBlankLines: true,
       stopBoldColonAfterHeading: "Related Documents",
+      preserveSingleBlanks: preserveUserBlankStructures,
     });
 
     this.log.info(
-      `✓ Framework method completed: ${result.removed} blank paragraphs removed, ${result.added} structure lines added`
+      `✓ Framework method completed: ${result.removed} blank paragraphs removed, ` +
+      `${result.added} structure lines added, ${result.preserved || 0} single blanks preserved`
     );
 
     // Post-processing: Remove trailing blank paragraphs from table cells
@@ -2890,6 +3143,52 @@ export class WordDocumentProcessor {
     }
 
     return removedCount;
+  }
+
+  /**
+   * Normalize en-dashes to regular hyphens
+   *
+   * Replaces typographic en-dashes (U+2013, –) with standard ASCII hyphens (U+002D, -)
+   * in all document text runs.
+   *
+   * Skips TOC paragraphs and complex field content to prevent corruption.
+   *
+   * @param doc - Document to process
+   * @returns Number of runs modified
+   */
+  private async normalizeEnDashesToHyphens(doc: Document): Promise<number> {
+    const { normalizeEnDashesToHyphens } = await import('@/utils/textSanitizer');
+    let normalizedCount = 0;
+    const paragraphs = doc.getAllParagraphs();
+
+    for (const para of paragraphs) {
+      // Skip TOC paragraphs - they contain field instructions that must not be modified
+      const style = para.getStyle() || "";
+      if (style.startsWith("TOC") && style !== "TOCHeading") {
+        continue;
+      }
+
+      // Skip paragraphs with complex field content (instructionText runs)
+      if (this.hasComplexFieldContent(para)) {
+        continue;
+      }
+
+      const runs = para.getRuns();
+
+      for (const run of runs) {
+        const text = run.getText();
+        if (!text) continue;
+
+        const normalized = normalizeEnDashesToHyphens(text);
+
+        if (normalized !== text) {
+          run.setText(normalized);
+          normalizedCount++;
+        }
+      }
+    }
+
+    return normalizedCount;
   }
 
   /**
@@ -3140,25 +3439,11 @@ export class WordDocumentProcessor {
           // Replace ALL w:rPr instances in this level with standardized formatting
           let updatedContent = levelContent;
 
-          // Check if any rPr has bold
-          const hasBold = levelContent.includes("<w:b/>") || levelContent.includes("<w:b ");
-          const hasBoldCs = levelContent.includes("<w:bCs/>") || levelContent.includes("<w:bCs ");
-
-          // Build standardized rPr
+          // Build standardized rPr (bold explicitly removed from bullet points)
           // OOXML Compliance: w:hint attribute added, w:color before w:sz per ECMA-376
-          let rPrXml = `<w:rPr>
-              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>`;
-
-          // Preserve bold if it was there
-          if (hasBold) {
-            rPrXml += `\n              <w:b/>`;
-          }
-          if (hasBoldCs) {
-            rPrXml += `\n              <w:bCs/>`;
-          }
-
-          // OOXML Compliance: w:color must appear before w:sz per ECMA-376 Part 1, Section 17.3.2
-          rPrXml += `\n              <w:color w:val="000000"/>
+          const rPrXml = `<w:rPr>
+              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
+              <w:color w:val="000000"/>
               <w:sz w:val="24"/>
               <w:szCs w:val="24"/>
             </w:rPr>`;
@@ -3173,7 +3458,7 @@ export class WordDocumentProcessor {
           standardizedCount++;
 
           this.log.debug(
-            `Standardized ${rPrMatches.length} w:rPr in list level ${levelIndex}: Verdana 12pt black${hasBold ? " (bold preserved)" : ""}`
+            `Standardized ${rPrMatches.length} w:rPr in list level ${levelIndex}: Verdana 12pt black`
           );
         } else {
           // No w:rPr found - insert one before closing tag
@@ -3268,56 +3553,66 @@ export class WordDocumentProcessor {
     const listParagraphStyle = styles.find((s) => s.id === "listParagraph");
 
     for (const para of paragraphs) {
+      // Skip paragraphs with complex field content (TOC fields, cross-references, etc.)
+      // Processing these paragraphs corrupts the field structure and causes TOC instructions
+      // to appear as visible text in Word
+      if (this.hasComplexFieldContent(para)) {
+        continue;
+      }
+
+      // Skip TOC-styled paragraphs (TOC1, TOC2, etc.)
+      // These are table of contents entries that should not have styles reapplied
+      const paraStyle = para.getStyle() || '';
+      if (paraStyle.startsWith('TOC') && paraStyle !== 'TOCHeading') {
+        continue;
+      }
+
       let styleToApply = null;
 
-      // Use new detectHeadingLevel() helper for smart detection
-      try {
-        const headingLevel = await (para as any).detectHeadingLevel?.();
+      // PRIORITY 1: Check paragraph's existing Word style FIRST
+      // This preserves Heading 1, Heading 2, etc. styles that already exist in the document
+      const currentStyle = paraStyle || (para.getFormatting()?.style) || '';
 
-        if (headingLevel === 1 && header1Style) {
-          styleToApply = header1Style;
-        } else if (headingLevel === 2 && header2Style) {
-          styleToApply = header2Style;
-        } else if (headingLevel === 3 && header3Style) {
-          styleToApply = header3Style;
-        } else if (!headingLevel && para.getText().trim()) {
-          // Not a heading but has content - check if list paragraph or normal
-          const currentStyle = para.getStyle() || (para.getFormatting()?.style) || '';
-          if ((currentStyle === "ListParagraph" || currentStyle === "List Paragraph") && listParagraphStyle) {
-            styleToApply = listParagraphStyle;
+      if ((currentStyle === "Heading1" || currentStyle === "Heading 1") && header1Style) {
+        // Preserve Heading 1 - apply user's Heading 1 formatting
+        styleToApply = header1Style;
+      } else if ((currentStyle === "Heading2" || currentStyle === "Heading 2") && header2Style) {
+        // Preserve Heading 2 - apply user's Heading 2 formatting
+        styleToApply = header2Style;
+      } else if ((currentStyle === "Heading3" || currentStyle === "Heading 3") && header3Style) {
+        // Preserve Heading 3 - apply user's Heading 3 formatting
+        styleToApply = header3Style;
+      } else if ((currentStyle === "ListParagraph" || currentStyle === "List Paragraph") && listParagraphStyle) {
+        // Preserve List Paragraph - apply user's List Paragraph formatting
+        styleToApply = listParagraphStyle;
+      } else if (currentStyle === "Normal" && normalStyle && para.getText()?.trim()) {
+        // Only apply Normal formatting to paragraphs explicitly set to Normal
+        styleToApply = normalStyle;
+      } else if ((!currentStyle || currentStyle === "") && para.getText()?.trim()) {
+        // PRIORITY 2: For paragraphs without any style, use detectHeadingLevel as fallback
+        // then apply Normal if not a heading
+        try {
+          const headingLevel = await (para as any).detectHeadingLevel?.();
+
+          if (headingLevel === 1 && header1Style) {
+            styleToApply = header1Style;
+          } else if (headingLevel === 2 && header2Style) {
+            styleToApply = header2Style;
+          } else if (headingLevel === 3 && header3Style) {
+            styleToApply = header3Style;
           } else if (normalStyle) {
+            // No heading detected, no style - apply Normal
             styleToApply = normalStyle;
           }
-        }
-      } catch (error) {
-        // Fallback to style-based matching when detectHeadingLevel is not available
-        const currentStyle = para.getStyle() || (para.getFormatting()?.style) || '';
-
-        if ((currentStyle === "Heading1" || currentStyle === "Heading 1") && header1Style) {
-          styleToApply = header1Style;
-        } else if ((currentStyle === "Heading2" || currentStyle === "Heading 2") && header2Style) {
-          styleToApply = header2Style;
-        } else if ((currentStyle === "Heading3" || currentStyle === "Heading 3") && header3Style) {
-          styleToApply = header3Style;
-        } else if (currentStyle === "ListParagraph" || currentStyle === "List Paragraph") {
-          // List paragraphs get listParagraph style if configured, otherwise fall back to normal
-          if (listParagraphStyle) {
-            styleToApply = listParagraphStyle;
-          } else if (normalStyle) {
-            styleToApply = normalStyle;
-          }
-        } else if (normalStyle && para.getText()?.trim()) {
-          // KEY FIX: Any paragraph with content that doesn't match a specific style
-          // gets Normal style applied. This catches:
-          // - Unstyled table cell paragraphs (style === "" or null)
-          // - Paragraphs explicitly set to "Normal"
-          // - Any other unknown style types
-          // Skip TOC paragraphs which have special formatting
-          if (!currentStyle?.startsWith?.('TOC')) {
+        } catch {
+          // detectHeadingLevel not available - apply Normal to unstyled paragraphs
+          if (normalStyle) {
             styleToApply = normalStyle;
           }
         }
       }
+      // IMPORTANT: Do NOT apply any style to paragraphs with unknown styles (e.g., TOC1, TOC2, etc.)
+      // This preserves special styles that shouldn't be overwritten
 
       if (styleToApply) {
         // Apply paragraph formatting
@@ -3352,15 +3647,37 @@ export class WordDocumentProcessor {
         // This ensures runs inside w:ins, w:moveTo, etc. also get formatting applied
         const runs = this.getAllRunsFromParagraph(para);
         for (const run of runs) {
-          run.setFont(styleToApply.fontFamily);
-          run.setSize(styleToApply.fontSize);
+          // Skip hyperlink-styled runs to preserve their formatting (blue color, underline)
+          // Without this, hyperlinks become black text and lose clickability in Word
+          if (run.isHyperlinkStyled()) {
+            continue;
+          }
+
+          const runFormatting = run.getFormatting();
+
+          // Preserve font size if paragraph has no explicit style AND run has direct size set
+          // This handles title paragraphs with direct formatting (e.g., 18pt bold) that shouldn't be overwritten
+          const runSize = runFormatting.size;
+          const shouldPreserveSize = hasNoExplicitStyle && runSize !== undefined;
+
+          if (!shouldPreserveSize) {
+            run.setSize(styleToApply.fontSize);
+          }
+
+          // Preserve font if paragraph has no explicit style AND run has direct font set
+          const runFont = runFormatting.font;
+          const shouldPreserveFont = hasNoExplicitStyle && runFont !== undefined;
+
+          if (!shouldPreserveFont) {
+            run.setFont(styleToApply.fontFamily);
+          }
 
           // Preserve bold if:
           // 1. The style has preserveBold=true, OR
           // 2. The paragraph has no explicit style AND run is already bold
           // Use DIRECT formatting only (not getEffectiveBold) to avoid preserving table conditional formatting
           // This matches docxmlater's applyStyles() behavior which only preserves explicitly set bold
-          const runBold = run.getFormatting().bold;
+          const runBold = runFormatting.bold;
           const shouldPreserveBold =
             styleToApply.preserveBold ||
             (hasNoExplicitStyle && runBold);
@@ -3376,7 +3693,7 @@ export class WordDocumentProcessor {
             run.setUnderline(styleToApply.underline ? "single" : false);
           }
           // Preserve white font - don't change color if run is white (FFFFFF)
-          const currentColor = run.getFormatting().color?.toUpperCase();
+          const currentColor = runFormatting.color?.toUpperCase();
           if (currentColor !== 'FFFFFF') {
             run.setColor(styleToApply.color.replace("#", ""));
           }
@@ -3558,6 +3875,65 @@ export class WordDocumentProcessor {
       preserveBlankLinesAfterHeader2Tables: options.preserveBlankLinesAfterHeader2Tables,
     });
 
+    // ═══════════════════════════════════════════════════════════
+    // STEP 1: Update style definitions in styles.xml
+    // This ensures Word's style gallery shows the updated formatting
+    // ═══════════════════════════════════════════════════════════
+    this.log.debug("=== UPDATING STYLE DEFINITIONS IN STYLES.XML ===");
+    const styleIdMap: Record<string, string> = {
+      'header1': 'Heading1',
+      'header2': 'Heading2',
+      'header3': 'Heading3',
+      'normal': 'Normal',
+      'listParagraph': 'ListParagraph',
+    };
+
+    for (const sessionStyle of styles) {
+      const wordStyleId = styleIdMap[sessionStyle.id];
+      if (!wordStyleId) {
+        this.log.debug(`Skipping unknown style ID: ${sessionStyle.id}`);
+        continue;
+      }
+
+      try {
+        // Determine outline level for TOC support (Heading 1 = 0, Heading 2 = 1, Heading 3 = 2)
+        const outlineLevel = wordStyleId === 'Heading1' ? 0
+          : wordStyleId === 'Heading2' ? 1
+          : wordStyleId === 'Heading3' ? 2
+          : undefined;
+
+        const styleObj = Style.create({
+          styleId: wordStyleId,
+          name: sessionStyle.name,
+          type: 'paragraph',
+          runFormatting: {
+            font: sessionStyle.fontFamily,
+            size: sessionStyle.fontSize,
+            bold: sessionStyle.bold,
+            italic: sessionStyle.italic,
+            underline: sessionStyle.underline ? 'single' : false,
+            color: sessionStyle.color.replace('#', ''),
+          },
+          paragraphFormatting: {
+            alignment: sessionStyle.alignment,
+            spacing: {
+              before: pointsToTwips(sessionStyle.spaceBefore),
+              after: pointsToTwips(sessionStyle.spaceAfter),
+              line: sessionStyle.lineSpacing ? pointsToTwips(sessionStyle.lineSpacing * 12) : 240,
+              lineRule: 'auto',
+            },
+            outlineLevel, // Required for TOC functionality
+          },
+        });
+
+        doc.addStyle(styleObj);
+        this.log.info(`✓ Updated style definition: ${wordStyleId} (${sessionStyle.fontFamily} ${sessionStyle.fontSize}pt)`);
+      } catch (error) {
+        this.log.warn(`Failed to update style definition for ${wordStyleId}:`, error);
+        // Continue with other styles
+      }
+    }
+
     // Feature detection: Check if framework method exists
     let frameworkResults = null;
     if (typeof (doc as any).applyStyles === "function") {
@@ -3670,6 +4046,15 @@ export class WordDocumentProcessor {
       // Add noSpaceBetweenSame if set (contextual spacing)
       if (sessionStyle.noSpaceBetweenSame) {
         paragraphFormatting.contextualSpacing = true;
+      }
+
+      // Add outline level for TOC support (Heading 1 = 0, Heading 2 = 1, Heading 3 = 2)
+      if (docStyleId === 'Heading1') {
+        paragraphFormatting.outlineLevel = 0;
+      } else if (docStyleId === 'Heading2') {
+        paragraphFormatting.outlineLevel = 1;
+      } else if (docStyleId === 'Heading3') {
+        paragraphFormatting.outlineLevel = 2;
       }
 
       // Create Style object using DocXMLater API
@@ -4131,6 +4516,17 @@ export class WordDocumentProcessor {
     const paragraphs = doc.getAllParagraphs();
 
     for (const para of paragraphs) {
+      // Skip TOC paragraphs - they contain field instructions that must not be modified
+      const style = para.getStyle() || "";
+      if (style.startsWith("TOC") && style !== "TOCHeading") {
+        continue;
+      }
+
+      // Skip paragraphs with complex field content (instructionText runs)
+      if (this.hasComplexFieldContent(para)) {
+        continue;
+      }
+
       const runs = para.getRuns();
       for (const run of runs) {
         let text = run.getText();
@@ -4504,7 +4900,7 @@ export class WordDocumentProcessor {
             level.setText(mapping.char); // Font-specific character (· for Symbol, 'o' for Courier New)
             level.setFont(mapping.font); // Correct font for this bullet type
             level.setFontSize(24); // Size: 12pt = 24 half-points
-            level.setBold(true); // Bold: Improves visibility
+            // Bold is NOT set here - bullets should not be bold (handled by standardizeListPrefixFormatting)
             level.setColor("000000"); // Color: Black (#000000)
 
             // ✅ SET INDENTATION from UI settings
@@ -4755,8 +5151,20 @@ export class WordDocumentProcessor {
     const normalStyle = options.styles?.find((s: { id: string }) => s.id === 'normal');
     const preserveBold = normalStyle?.preserveBold ?? true; // Default to preserve if not specified
 
+    // Get Normal style font and alignment values for shaded cells and first row cells
+    const normalFontFamily = normalStyle?.fontFamily ?? "Verdana";
+    const normalFontSize = normalStyle?.fontSize ?? 12;
+    const normalAlignment = normalStyle?.alignment ?? "center"; // Default center for table cells
+    const preserveCenterAlignment = normalStyle?.preserveCenterAlignment ?? false;
+
+    // Get Normal style spacing values for shaded cells and first row cells
+    const normalSpaceBefore = normalStyle?.spaceBefore ?? 3;  // Default 3pt
+    const normalSpaceAfter = normalStyle?.spaceAfter ?? 3;    // Default 3pt
+    const normalLineSpacing = normalStyle?.lineSpacing ?? 1.0; // Default single spacing
+
     this.log.info(`[DEBUG] applyTableUniformity: preserveBold=${preserveBold} (normalStyle?.preserveBold=${normalStyle?.preserveBold})`);
     this.log.debug(`[DEBUG] options.styles: ${JSON.stringify(options.styles?.map(s => ({ id: s.id, preserveBold: s.preserveBold })) || 'undefined')}`);
+    this.log.debug(`[DEBUG] Normal style spacing: before=${normalSpaceBefore}pt, after=${normalSpaceAfter}pt, line=${normalLineSpacing}`);
 
     // Get Heading 2 style configuration for 1x1 tables
     const heading2Style = options.styles?.find((s: { id: string }) => s.id === 'header2');
@@ -4775,6 +5183,15 @@ export class WordDocumentProcessor {
       preserveBold: preserveBold,
       heading2FontFamily: heading2FontFamily,
       heading2FontSize: heading2FontSize,
+      // Pass Normal style font and alignment for shaded cells and first row cells
+      normalFontFamily: normalFontFamily,
+      normalFontSize: normalFontSize,
+      normalAlignment: normalAlignment,
+      preserveCenterAlignment: preserveCenterAlignment,
+      // Pass Normal style spacing for shaded cells and first row cells
+      normalSpaceBefore: normalSpaceBefore,
+      normalSpaceAfter: normalSpaceAfter,
+      normalLineSpacing: normalLineSpacing,
     });
 
     // Update table style definitions in styles.xml to match the user's configured shading
@@ -4883,13 +5300,8 @@ export class WordDocumentProcessor {
           const numLevel = abstractNum.getLevel(levelIndex);
           if (!numLevel) continue;
 
-          // Only set color and bold - DO NOT touch font (fonts are set per-bullet in applyBulletUniformity)
+          // Only set color - DO NOT touch font or bold (bold is handled by standardizeListPrefixFormatting)
           numLevel.setColor("000000");
-          if (numLevel.getFormat() === "bullet") {
-            numLevel.setBold(true); // Bullets should be bold
-          } else {
-            numLevel.setBold(false); // Numbers should NOT be bold
-          }
           levelsModified++;
         }
       }
@@ -5795,42 +6207,47 @@ export class WordDocumentProcessor {
 
     this.log.debug("Adding/updating document warning at end of document");
 
-    // Step 1: Search for existing warning in last 20 paragraphs (case-insensitive)
-    // Extended from 15 to 20 to handle documents with Related Documents sections,
-    // hyperlinks, and other content between the disclaimer and document end
+    // Step 1: Search ENTIRE document for existing disclaimers (case-insensitive)
+    // Full document scan ensures we find disclaimers regardless of position,
+    // even if they appear before "Related Documents" sections or other content
     const paragraphs = doc.getAllParagraphs();
-    const searchStartIndex = Math.max(0, paragraphs.length - 20);
     let existingWarningIndices: number[] = [];
 
-    // Enhanced warning detection patterns - catches malformed/partial warnings
-    const warningPatterns = [
+    // Use precise matching for the two disclaimer lines
+    const disclaimerLine1Pattern = "not to be reproduced or disclosed to others without prior written approval";
+    const disclaimerLine2Pattern = "electronic data = official version - paper copy = informational only";
+
+    // Also keep broader patterns for catching malformed/partial disclaimers
+    const additionalPatterns = [
       "electronic data",
       "not to be reproduced",
-      "paper copy",
-      "informational only",
+      "paper copy = informational only",
       "prior written approval",
-      "official version",
-      "disclosed to others",
     ];
 
-    for (let i = paragraphs.length - 1; i >= searchStartIndex; i--) {
+    for (let i = 0; i < paragraphs.length; i++) {
       const text = this.getParagraphText(paragraphs[i]).toLowerCase();
 
-      // Case-insensitive search for any warning pattern
-      const matchesWarning = warningPatterns.some((pattern) => text.includes(pattern));
-      if (matchesWarning) {
+      // Check for exact disclaimer lines first
+      const matchesLine1 = text.includes(disclaimerLine1Pattern);
+      const matchesLine2 = text.includes(disclaimerLine2Pattern);
+      // Also check broader patterns for partial matches
+      const matchesAdditional = additionalPatterns.some((pattern) => text.includes(pattern));
+
+      if (matchesLine1 || matchesLine2 || matchesAdditional) {
         existingWarningIndices.push(i);
-        this.log.debug(`Found existing warning paragraph at index ${i}: "${text.substring(0, 50)}..."`);
+        this.log.debug(`Found existing disclaimer paragraph at index ${i}: "${text.substring(0, 50)}..."`);
       }
     }
 
-    // Step 2: Remove existing warning paragraphs if found
+    // Step 2: Remove existing disclaimer paragraphs if found
     if (existingWarningIndices.length > 0) {
+      this.log.debug(`Found ${existingWarningIndices.length} existing disclaimer paragraph(s) to remove`);
       // Remove in reverse order to maintain indices
       existingWarningIndices.sort((a, b) => b - a);
       for (const index of existingWarningIndices) {
         doc.removeParagraph(paragraphs[index]);
-        this.log.debug(`Removed existing warning paragraph at index ${index}`);
+        this.log.debug(`Removed existing disclaimer paragraph at index ${index}`);
       }
     }
 
@@ -6236,65 +6653,100 @@ export class WordDocumentProcessor {
     options: { excludeHeading1?: boolean } = {}
   ): Promise<{ count: number; headings: string[] }> {
     const { excludeHeading1 = true } = options;
-    this.log.debug("=== BUILDING PROPER TOC ===");
+    this.log.debug("=== BUILDING PROPER TOC (using rebuildTOCs) ===");
     this.log.debug(`excludeHeading1: ${excludeHeading1}`);
 
     // Step 1: Ensure all headings have bookmarks
     await this.ensureHeadingBookmarks(doc);
     this.log.debug("✓ Step 1: Ensured heading bookmarks");
 
-    // Step 2: Parse TOC levels or auto-detect from document
-    let levelsToInclude = await this.parseTOCLevels(doc);
-
-    // Apply excludeHeading1 filter if levels were parsed
-    if (excludeHeading1 && levelsToInclude.length > 0) {
-      const originalLevels = [...levelsToInclude];
-      levelsToInclude = levelsToInclude.filter((level) => level !== 1);
-      if (originalLevels.length !== levelsToInclude.length) {
-        this.log.debug(
-          `Excluded Heading 1 from TOC levels (was: ${originalLevels.join(", ")} → now: ${levelsToInclude.join(", ")})`
-        );
-      }
+    // Step 2: If excludeHeading1, modify the TOC field instruction
+    if (excludeHeading1) {
+      this.modifyTOCFieldInstructionToExcludeHeading1(doc);
+      this.log.debug("✓ Step 2: Modified TOC field instruction to exclude Heading 1");
     }
 
-    if (levelsToInclude.length === 0) {
-      // Auto-detect: get all unique heading levels from document
-      const allParagraphs = doc.getAllParagraphs();
-      const uniqueLevels = new Set<number>();
+    // Step 3: Use docxmlater's rebuildTOCs() which preserves field structure
+    // This generates TOC entries with:
+    // - SDT wrapper with docPartGallery="Table of Contents"
+    // - Field structure: fldChar begin → instrText → fldChar separate → entries → fldChar end
+    // - Hyperlinked entries between separator and end
+    // This allows Word's "Update Field" right-click option to work
+    const results = doc.rebuildTOCs();
+    this.log.debug(`✓ Step 3: rebuildTOCs() returned ${results.length} TOC(s)`);
 
-      for (const para of allParagraphs) {
-        const style = para.getStyle();
-        const match = style?.match(/^Heading\s*(\d+)$/i);
-        if (match && match[1]) {
-          const level = parseInt(match[1], 10);
-          if (!isNaN(level) && level >= 1 && level <= 9) {
-            uniqueLevels.add(level);
-          }
+    // Extract heading counts from results
+    let totalCount = 0;
+    const headings: string[] = [];
+
+    for (const [instruction, counts] of results) {
+      const entryCount = counts.reduce((sum, c) => sum + c, 0);
+      totalCount += entryCount;
+      this.log.debug(`TOC "${instruction.substring(0, 30)}...": ${entryCount} entries`);
+    }
+
+    // Get heading names from document for reporting
+    const allParagraphs = doc.getAllParagraphs();
+    for (const para of allParagraphs) {
+      const style = para.getStyle();
+      const match = style?.match(/^Heading\s*(\d+)$/i);
+      if (match && match[1]) {
+        const level = parseInt(match[1], 10);
+        // Apply excludeHeading1 filter for reporting
+        if (!excludeHeading1 || level !== 1) {
+          headings.push(para.getText().trim());
         }
       }
+    }
 
-      levelsToInclude = Array.from(uniqueLevels).sort((a, b) => a - b);
-      this.log.debug(`Auto-detected heading levels: ${levelsToInclude.join(", ")}`);
+    this.log.info(
+      `✓ Built proper TOC with ${totalCount} entries (field structure preserved, Update Field enabled)`
+    );
+    return { count: totalCount, headings };
+  }
 
-      // Also apply excludeHeading1 filter after auto-detection
-      if (excludeHeading1 && levelsToInclude.includes(1)) {
-        levelsToInclude = levelsToInclude.filter((level) => level !== 1);
-        this.log.debug(`Excluded Heading 1 after auto-detection: ${levelsToInclude.join(", ")}`);
+  /**
+   * Modifies the TOC field instruction in document.xml to exclude Heading 1
+   * Changes \o "1-N" to \o "2-N" so rebuildTOCs() excludes Heading 1
+   *
+   * @param doc - Document to modify
+   * @private
+   */
+  private modifyTOCFieldInstructionToExcludeHeading1(doc: Document): void {
+    const zipHandler = doc.getZipHandler();
+    const docXml = zipHandler.getFileAsString("word/document.xml");
+    if (!docXml) {
+      this.log.warn("Could not read document.xml to modify TOC field instruction");
+      return;
+    }
+
+    // Match TOC field instruction with \o "1-N" pattern
+    // Also handle HTML entity &quot; for quoted values
+    const patterns = [
+      // Standard quotes: \o "1-3" -> \o "2-3"
+      /(<w:instrText[^>]*>.*?TOC.*?\\o\s*")1(-\d+)(")/g,
+      // HTML entities: \o &quot;1-3&quot; -> \o &quot;2-3&quot;
+      /(<w:instrText[^>]*>.*?TOC.*?\\o\s*&quot;)1(-\d+)(&quot;)/g,
+    ];
+
+    let modifiedXml = docXml;
+    let modified = false;
+
+    for (const pattern of patterns) {
+      const newXml = modifiedXml.replace(pattern, "$12$2$3");
+      if (newXml !== modifiedXml) {
+        modifiedXml = newXml;
+        modified = true;
+        this.log.debug("Modified TOC field instruction: changed 1-N to 2-N");
       }
     }
 
-    // Step 3: Apply custom TOC1-TOC9 styles
-    this.applyTOCStyles(doc, levelsToInclude);
-    this.log.debug("✓ Step 3: Applied TOC styles");
-
-    // Step 4: Populate TOC manually with styled entries (pass levels to avoid re-parsing)
-    const tocResult = await this.manuallyPopulateTOC(doc, levelsToInclude);
-    this.log.debug(`✓ Step 4: Created ${tocResult.count} TOC entries`);
-
-    this.log.info(
-      `✓ Built proper TOC with ${tocResult.count} entries (real field + styled hyperlinks)`
-    );
-    return tocResult;
+    if (modified) {
+      zipHandler.updateFile("word/document.xml", modifiedXml);
+      this.log.info("Updated document.xml with modified TOC field instruction (excluded Heading 1)");
+    } else {
+      this.log.debug("No TOC field instruction modification needed (no 1-N pattern found)");
+    }
   }
 
   /**

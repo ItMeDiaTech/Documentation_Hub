@@ -114,7 +114,7 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
 const DEFAULT_SESSION_STYLES: SessionStyle[] = [
   {
     id: 'header1',
-    name: 'Header 1',
+    name: 'Heading 1',
     fontSize: 18,
     fontFamily: 'Verdana',
     bold: true,
@@ -128,7 +128,7 @@ const DEFAULT_SESSION_STYLES: SessionStyle[] = [
   },
   {
     id: 'header2',
-    name: 'Header 2',
+    name: 'Heading 2',
     fontSize: 14,
     fontFamily: 'Verdana',
     bold: true,
@@ -142,7 +142,7 @@ const DEFAULT_SESSION_STYLES: SessionStyle[] = [
   },
   {
     id: 'header3',
-    name: 'Header 3',
+    name: 'Heading 3',
     fontSize: 12,
     fontFamily: 'Verdana',
     bold: true,
@@ -205,6 +205,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
   autoAcceptRevisions: false,
   enabledOperations: [
     'remove-italics',
+    'normalize-dashes',
     'replace-outdated-titles',
     'validate-document-styles',
     'update-top-hyperlinks',
@@ -1217,6 +1218,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           revisionHandlingMode?: RevisionHandlingMode;
           revisionAuthor?: string;
           autoAcceptRevisions?: boolean;
+
+          // Local Dictionary Settings
+          localDictionary?: {
+            enabled: boolean;
+            totalEntries: number;
+          };
         } = {
           apiEndpoint: settings.apiConnections.powerAutomateUrl || '',
           userProfile, // Pass profile data to backend for API request
@@ -1336,12 +1343,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionToProcess.processingOptions?.enabledOperations?.includes('normalize-table-lists'),
           tableUniformity: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
           smartTables: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
-          tableShadingSettings: sessionToProcess.tableShadingSettings
-            ? {
-                header2Shading: sessionToProcess.tableShadingSettings.header2Shading,
-                otherShading: sessionToProcess.tableShadingSettings.otherShading,
-              }
-            : undefined,
+          // Table shading settings with values derived from paragraph styles
+          // This ensures table cell formatting inherits from the existing UI controls
+          tableShadingSettings: (() => {
+            // Find relevant paragraph styles to derive table-specific settings
+            const normalStyle = sessionToProcess.styles?.find((s: any) => s.id === 'normal');
+            const heading2Style = sessionToProcess.styles?.find((s: any) => s.id === 'header2');
+
+            return sessionToProcess.tableShadingSettings
+              ? {
+                  // Settings from TableShadingSettings UI
+                  header2Shading: sessionToProcess.tableShadingSettings.header2Shading,
+                  otherShading: sessionToProcess.tableShadingSettings.otherShading,
+                  imageBorderWidth: sessionToProcess.tableShadingSettings.imageBorderWidth ?? 1.0,
+                  // Derived from Heading 2 paragraph style
+                  heading2FontFamily: heading2Style?.fontFamily || 'Verdana',
+                  heading2FontSize: heading2Style?.fontSize || 14,
+                  // Derived from Normal paragraph style
+                  normalAlignment: normalStyle?.alignment || 'left',
+                  normalFontFamily: normalStyle?.fontFamily || 'Verdana',
+                  normalFontSize: normalStyle?.fontSize || 12,
+                  normalSpaceBefore: normalStyle?.spaceBefore ?? 3,
+                  normalSpaceAfter: normalStyle?.spaceAfter ?? 3,
+                  normalLineSpacing: normalStyle?.lineSpacing ?? 1.0,
+                  preserveBold: normalStyle?.preserveBold ?? true,
+                  preserveCenterAlignment: normalStyle?.preserveCenterAlignment ?? true,
+                }
+              : undefined;
+          })(),
 
           // Table of Contents Settings - Simplified to enabled flag only
           tableOfContentsSettings: sessionToProcess.tableOfContentsSettings,
@@ -1356,6 +1385,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
           // Legacy (deprecated, kept for backwards compatibility)
           tableUniformitySettings: sessionToProcess.tableUniformitySettings,
+
+          // Local Dictionary Settings (for offline hyperlink lookup)
+          localDictionary: settings.localDictionary?.enabled
+            ? {
+                enabled: true,
+                totalEntries: settings.localDictionary.totalEntries || 0,
+              }
+            : undefined,
         };
 
         // DEBUG: Log final operations object being passed to processor
@@ -1499,6 +1536,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           processedHyperlinks: number;
           modifiedHyperlinks: number;
           appendedContentIds?: number;
+          backupPath?: string;
           duration: number;
           errorMessages?: string[];
           changes?: import('@/types/session').DocumentChange[];
@@ -1532,6 +1570,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                             hyperlinksModified: result.modifiedHyperlinks,
                             contentIdsAppended:
                               result.appendedContentIds || result.processedHyperlinks,
+                            backupPath: result.backupPath,
                             duration: result.duration,
                             // Use the enhanced changes array from processor with full context
                             changes: result.changes || [],
