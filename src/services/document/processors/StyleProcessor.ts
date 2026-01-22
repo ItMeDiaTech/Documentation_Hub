@@ -9,7 +9,7 @@
  * - Style definition management
  */
 
-import { Document, Paragraph, Run, Style, pointsToTwips } from "docxmlater";
+import { Document, Paragraph, Run, Style, pointsToTwips, isRevision } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("StyleProcessor");
@@ -87,6 +87,7 @@ export class StyleProcessor {
     const header2Style = styles.find((s) => s.id === "header2");
     const header3Style = styles.find((s) => s.id === "header3");
     const normalStyle = styles.find((s) => s.id === "normal");
+    const listParagraphStyle = styles.find((s) => s.id === "listParagraph");
 
     // Use docxmlater's applyStyles if available
     if (typeof (doc as any).applyStyles === "function") {
@@ -140,12 +141,17 @@ export class StyleProcessor {
           styleType = "heading3";
         }
       } else if (currentStyle === "ListParagraph" || currentStyle === "List Paragraph") {
-        if (normalStyle) {
+        if (listParagraphStyle) {
+          styleToApply = listParagraphStyle;
+          styleType = "listParagraph";
+        } else if (normalStyle) {
+          // Fallback to Normal if List Paragraph style not defined
           styleToApply = normalStyle;
           styleType = "listParagraph";
         }
       } else if (!currentStyle || currentStyle === "Normal") {
-        if (normalStyle && para.getText()?.trim()) {
+        // Apply Normal style to ALL paragraphs (including empty/blank lines)
+        if (normalStyle) {
           styleToApply = normalStyle;
           styleType = "normal";
         }
@@ -198,6 +204,12 @@ export class StyleProcessor {
     // Apply text formatting to all runs
     const runs = para.getRuns();
     for (const run of runs) {
+      // Skip hyperlink-styled runs to preserve their formatting (blue color, underline)
+      // Without this, hyperlinks become black text and lose clickability in Word
+      if (run.isHyperlinkStyled()) {
+        continue;
+      }
+
       run.setFont(style.fontFamily);
       run.setSize(style.fontSize);
 
@@ -276,9 +288,9 @@ export class StyleProcessor {
       const paragraph: Record<string, unknown> = {
         alignment: style.alignment,
         spacing: {
-          before: style.spaceBefore,
-          after: style.spaceAfter,
-          line: style.lineSpacing ? style.lineSpacing * 20 : undefined, // Convert to twips if provided
+          before: pointsToTwips(style.spaceBefore),
+          after: pointsToTwips(style.spaceAfter),
+          line: style.lineSpacing ? pointsToTwips(style.lineSpacing * 12) : undefined,
         },
       };
 
@@ -318,6 +330,9 @@ export class StyleProcessor {
             preserveCenterAlignment: true, // Preserve center alignment for captions, etc.
           };
           break;
+        case "listParagraph":
+          config.listParagraph = styleConfig;
+          break;
       }
     }
 
@@ -338,11 +353,9 @@ export class StyleProcessor {
       // Try to get runs from revisions if available
       const content = para.getContent();
       for (const item of content) {
-        if ((item as any).getRuns) {
-          const revisionRuns = (item as any).getRuns();
-          if (Array.isArray(revisionRuns)) {
-            runs.push(...revisionRuns);
-          }
+        if (isRevision(item)) {
+          const revisionRuns = item.getRuns();
+          runs.push(...revisionRuns);
         }
       }
     } catch (error) {
