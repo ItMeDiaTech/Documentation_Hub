@@ -206,7 +206,7 @@ export class StyleProcessor {
     for (const run of runs) {
       // Skip hyperlink-styled runs to preserve their formatting (blue color, underline)
       // Without this, hyperlinks become black text and lose clickability in Word
-      if (run.isHyperlinkStyled()) {
+      if (typeof run.isHyperlinkStyled === 'function' && run.isHyperlinkStyled()) {
         continue;
       }
 
