@@ -8,6 +8,7 @@
 import {
   Bookmark,
   ChangelogGenerator,
+  CleanupHelper,
   ComplexField,
   Document,
   Hyperlink,
@@ -2098,6 +2099,30 @@ export class WordDocumentProcessor {
         const preExistingCount = result.previousRevisions?.entries.length || 0;
         const docHubCount = result.wordRevisions?.entries.length || 0;
         this.log.info(`Auto-accept disabled - ${preExistingCount + docHubCount} tracked changes will be visible in Word (${preExistingCount} pre-existing + ${docHubCount} DocHub)`);
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // DOCUMENT CLEANUP - Using CleanupHelper from docxmlater 9.2.0
+      //
+      // Performs essential cleanup operations before save:
+      // - Defragment hyperlinks (fix fragmented links from Google Docs)
+      // - Remove unused numbering definitions
+      // - Clean up orphaned relationships
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== DOCUMENT CLEANUP ===");
+      try {
+        const cleanup = new CleanupHelper(doc);
+        const cleanupReport = cleanup.run({
+          defragmentHyperlinks: true,
+          cleanupNumbering: true,
+          cleanupRelationships: true,
+        });
+        if (cleanupReport.hyperlinksDefragmented > 0 || cleanupReport.numberingRemoved > 0 || cleanupReport.relationshipsRemoved > 0) {
+          this.log.info(`Cleanup: ${cleanupReport.hyperlinksDefragmented} hyperlinks defragmented, ${cleanupReport.numberingRemoved} unused numbering removed, ${cleanupReport.relationshipsRemoved} orphaned relationships removed`);
+        }
+      } catch (cleanupError) {
+        this.log.debug("Cleanup completed with warnings:", cleanupError);
+        // Non-fatal - continue with save
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -7312,13 +7337,11 @@ export class WordDocumentProcessor {
         // Get runs from inside revision elements (w:ins, w:moveTo, w:del, etc.)
         const revRuns = item.getRuns();
         allRuns.push(...revRuns);
-      } else if (item instanceof Hyperlink) {
-        // Get run from hyperlink
-        const hyperlinkRun = item.getRun();
-        if (hyperlinkRun) {
-          allRuns.push(hyperlinkRun);
-        }
       }
+      // NOTE: Hyperlink runs are intentionally NOT included here.
+      // Hyperlinks are formatted separately by standardizeHyperlinkFormatting() to ensure
+      // they retain their blue color (#0000FF) and underline. Including them here would
+      // cause the style application loop to overwrite their blue color with the Normal style color.
       // Fields, Shapes, TextBoxes don't contain directly accessible runs for this purpose
     }
 

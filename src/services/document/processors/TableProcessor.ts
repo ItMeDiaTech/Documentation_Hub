@@ -53,34 +53,8 @@ export interface Header2TableValidationResult {
 /**
  * Table processing service
  */
-/**
- * Internal interface for row formatting access
- * Used as a workaround since DocXMLater doesn't expose a clearHeight() method
- */
-interface RowFormattingInternal {
-  height?: number;
-  heightRule?: string;
-}
-
 export class TableProcessor {
   private readonly DEBUG = process.env.NODE_ENV !== "production";
-
-  /**
-   * Clear the height settings from a table row.
-   *
-   * WORKAROUND: DocXMLater's TableRow class doesn't expose a clearHeight() method,
-   * so we access the internal formatting property directly. This should be replaced
-   * with an official API method when one becomes available.
-   *
-   * @param row - The table row to clear height from
-   */
-  private clearRowHeight(row: ReturnType<Table["getRows"]>[number]): void {
-    const rowWithFormatting = row as unknown as { formatting: RowFormattingInternal };
-    if (rowWithFormatting.formatting) {
-      rowWithFormatting.formatting.height = undefined;
-      rowWithFormatting.formatting.heightRule = undefined;
-    }
-  }
 
   /**
    * Recursively search XMLElement tree for w:shd element and extract val attribute
@@ -243,14 +217,11 @@ export class TableProcessor {
             }
 
             // Format text in 1x1 tables using Heading 2 style configuration
+            // Using TableCell convenience methods for cleaner code
             const h2FontFamily = shadingSettings?.heading2FontFamily ?? "Verdana";
             const h2FontSize = shadingSettings?.heading2FontSize ?? 14; // 14pt default for Heading 2
-            for (const para of singleCell.getParagraphs()) {
-              for (const run of para.getRuns()) {
-                run.setFont(h2FontFamily);
-                run.setSize(h2FontSize);
-              }
-            }
+            singleCell.setAllRunsFont(h2FontFamily);
+            singleCell.setAllRunsSize(h2FontSize);
           }
         } else {
           // Handle multi-cell tables
@@ -642,7 +613,7 @@ export class TableProcessor {
           const formatting = row.getFormatting();
           // Remove specified height - let row auto-size
           if (formatting.height !== undefined) {
-            this.clearRowHeight(row);
+            row.clearHeight();
             rowsFixed++;
           }
         }

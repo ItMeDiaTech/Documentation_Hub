@@ -85,23 +85,23 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
       level: 0,
       symbolIndent: 0.5,
       textIndent: 0.75,
-      bulletChar: '•',
+      bulletChar: '•',  // closed (filled)
       numberedFormat: '1.',
     },
-    { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '•', numberedFormat: 'a.' },
+    { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },  // open
     {
       level: 2,
       symbolIndent: 1.5,
       textIndent: 1.75,
-      bulletChar: '•',
+      bulletChar: '•',  // closed (filled)
       numberedFormat: 'i.',
     },
-    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '•', numberedFormat: '1)' },
+    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },  // open
     {
       level: 4,
       symbolIndent: 2.5,
       textIndent: 2.75,
-      bulletChar: '•',
+      bulletChar: '•',  // closed (filled)
       numberedFormat: 'a)',
     },
   ],

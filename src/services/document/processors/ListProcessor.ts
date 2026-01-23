@@ -9,7 +9,7 @@
  * - Spacing between list items
  */
 
-import { Document, Paragraph } from "docxmlater";
+import { Document, Paragraph, inchesToTwips } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("ListProcessor");
@@ -71,11 +71,20 @@ export class ListProcessor {
       const indentSetting = settings.indentationLevels.find((l) => l.level === level);
 
       if (indentSetting) {
+        // Validate indentation - symbolIndent must be less than textIndent
+        if (indentSetting.symbolIndent >= indentSetting.textIndent) {
+          log.warn(
+            `Invalid indentation for level ${level}: symbolIndent (${indentSetting.symbolIndent}) ` +
+            `must be less than textIndent (${indentSetting.textIndent}). Skipping.`
+          );
+          continue;
+        }
+
         try {
           // Apply indentation using individual methods
-          para.setLeftIndent(this.inchesToTwips(indentSetting.textIndent));
+          para.setLeftIndent(inchesToTwips(indentSetting.textIndent));
           // Hanging indent is implemented as a negative first-line indent
-          const hangingTwips = this.inchesToTwips(indentSetting.textIndent - indentSetting.symbolIndent);
+          const hangingTwips = inchesToTwips(indentSetting.textIndent - indentSetting.symbolIndent);
           para.setFirstLineIndent(-hangingTwips);
 
           // Apply spacing if configured
@@ -283,12 +292,6 @@ export class ListProcessor {
     }
   }
 
-  /**
-   * Convert inches to twips (1 inch = 1440 twips)
-   */
-  private inchesToTwips(inches: number): number {
-    return Math.round(inches * 1440);
-  }
 }
 
 export const listProcessor = new ListProcessor();
