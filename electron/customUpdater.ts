@@ -192,7 +192,7 @@ export class CustomUpdater {
 
   /**
    * Install update and restart
-   * Uses silent install with auto-restart for seamless user experience
+   * Shows installer UI for reliable MSI installation on Windows
    */
   public quitAndInstall(): void {
     log.info('Installing update and restarting...');
@@ -200,11 +200,12 @@ export class CustomUpdater {
     // Remove listeners that might prevent quit
     app.removeAllListeners('window-all-closed');
 
-    // Use standard auto-updater with silent install
     // quitAndInstall(isSilent, isForceRunAfter)
-    // isSilent=true: No installer UI shown
-    // isForceRunAfter=true: App restarts after silent install
-    autoUpdater.quitAndInstall(true, true);
+    // isSilent=false: Show installer UI (required for MSI on Windows)
+    // isForceRunAfter=false: Don't auto-launch after install (avoids MSI error 2753)
+    // Note: User will need to manually start the app after update completes
+    // This is more reliable than auto-launch which can fail with path issues
+    autoUpdater.quitAndInstall(false, false);
   }
 
   /**
