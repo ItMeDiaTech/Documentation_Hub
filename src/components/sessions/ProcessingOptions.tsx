@@ -107,6 +107,12 @@ export const defaultOptions: ProcessingOption[] = [
     group: 'lists',
     enabled: true,
   },
+  {
+    id: 'adjust-table-padding',
+    label: 'Adjust Table Padding',
+    group: 'lists',
+    enabled: true,
+  },
 ];
 
 // TYPE SAFETY: Use Record with ProcessingGroup to ensure all groups have labels

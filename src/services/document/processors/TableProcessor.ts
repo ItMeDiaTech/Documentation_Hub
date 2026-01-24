@@ -31,6 +31,15 @@ export interface TableShadingSettings {
   normalSpaceBefore?: number; // Space before in points (default 3)
   normalSpaceAfter?: number; // Space after in points (default 3)
   normalLineSpacing?: number; // Line spacing multiplier (default 1.0)
+  // Table cell padding in inches
+  padding1x1Top?: number; // default: 0
+  padding1x1Bottom?: number; // default: 0
+  padding1x1Left?: number; // default: 0.08
+  padding1x1Right?: number; // default: 0.08
+  paddingOtherTop?: number; // default: 0
+  paddingOtherBottom?: number; // default: 0
+  paddingOtherLeft?: number; // default: 0.08
+  paddingOtherRight?: number; // default: 0.08
 }
 
 /**
@@ -235,13 +244,21 @@ export class TableProcessor {
 
             for (const cell of row.getCells()) {
               // Check if cell has visual shading using resolved detection (direct fill only)
-              const { hasShading } = this.getResolvedCellShading(cell, table, doc, { tableIndex, rowIndex, cellIndex });
+              const { hasShading, fill: existingFill } = this.getResolvedCellShading(cell, table, doc, { tableIndex, rowIndex, cellIndex });
 
               if (isFirstRow) {
-                // HEADER ROW: Always shade with "Other Table Shading" + bold + center
-                log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true, center=true`);
-                cell.setShading({ fill: otherShading });
-                cellsRecolored++;
+                // Check if header row has special shading that should be preserved (orange/yellow)
+                const preservedColors = ["FFC000", "FFF2CC"];
+                const shouldPreserveShading = hasShading && existingFill && preservedColors.includes(existingFill.toUpperCase());
+
+                if (shouldPreserveShading) {
+                  log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Preserving original shading #${existingFill}`);
+                } else {
+                  // HEADER ROW: Apply "Other Table Shading" + bold + center
+                  log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true, center=true`);
+                  cell.setShading({ fill: otherShading });
+                  cellsRecolored++;
+                }
 
                 for (const para of cell.getParagraphs()) {
                   const isListItem = !!para.getNumbering();
@@ -630,6 +647,13 @@ export class TableProcessor {
   }
 
   /**
+   * Convert inches to twips (1 inch = 1440 twips)
+   */
+  private inchesToTwips(inches: number): number {
+    return Math.round(inches * 1440);
+  }
+
+  /**
    * Standardize cell margins and enable text wrapping on all table cells.
    * Sets 0" top/bottom margins, 0.08" left/right margins, and enables text wrapping.
    *
@@ -669,6 +693,87 @@ export class TableProcessor {
     }
 
     return cellsFixed;
+  }
+
+  /**
+   * Apply custom cell padding to all tables based on table type (1x1 vs other).
+   * Uses padding values from TableShadingSettings.
+   *
+   * @param doc - The document to process
+   * @param paddingSettings - Padding settings from session configuration
+   * @returns Number of cells with padding applied
+   */
+  async applyTablePadding(
+    doc: Document,
+    paddingSettings?: TableShadingSettings
+  ): Promise<number> {
+    // Default padding values in inches
+    const padding1x1Top = paddingSettings?.padding1x1Top ?? 0;
+    const padding1x1Bottom = paddingSettings?.padding1x1Bottom ?? 0;
+    const padding1x1Left = paddingSettings?.padding1x1Left ?? 0.08;
+    const padding1x1Right = paddingSettings?.padding1x1Right ?? 0.08;
+    const paddingOtherTop = paddingSettings?.paddingOtherTop ?? 0;
+    const paddingOtherBottom = paddingSettings?.paddingOtherBottom ?? 0;
+    const paddingOtherLeft = paddingSettings?.paddingOtherLeft ?? 0.08;
+    const paddingOtherRight = paddingSettings?.paddingOtherRight ?? 0.08;
+
+    const tables = doc.getTables();
+    let cellsProcessed = 0;
+    let emptyTablesSkipped = 0;
+
+    log.info(`Applying custom table padding to ${tables.length} tables`);
+    log.debug(`1x1 Tables: top=${padding1x1Top}", bottom=${padding1x1Bottom}", left=${padding1x1Left}", right=${padding1x1Right}"`);
+    log.debug(`Other Tables: top=${paddingOtherTop}", bottom=${paddingOtherBottom}", left=${paddingOtherLeft}", right=${paddingOtherRight}"`);
+
+    for (const table of tables) {
+      try {
+        const rows = table.getRows();
+        if (rows.length === 0) {
+          emptyTablesSkipped++;
+          continue;
+        }
+
+        // Detect if this is a 1x1 table
+        const is1x1Table = rows.length === 1 && rows[0].getCells().length === 1;
+
+        // Select padding values based on table type
+        const top = is1x1Table ? padding1x1Top : paddingOtherTop;
+        const bottom = is1x1Table ? padding1x1Bottom : paddingOtherBottom;
+        const left = is1x1Table ? padding1x1Left : paddingOtherLeft;
+        const right = is1x1Table ? padding1x1Right : paddingOtherRight;
+
+        // Convert inches to twips
+        const topTwips = this.inchesToTwips(top);
+        const bottomTwips = this.inchesToTwips(bottom);
+        const leftTwips = this.inchesToTwips(left);
+        const rightTwips = this.inchesToTwips(right);
+
+        for (const row of rows) {
+          for (const cell of row.getCells()) {
+            cell.setMargins({
+              top: topTwips,
+              bottom: bottomTwips,
+              left: leftTwips,
+              right: rightTwips,
+            });
+            // Enable text wrapping (noWrap=false)
+            cell.setNoWrap(false);
+            cellsProcessed++;
+          }
+        }
+      } catch (error) {
+        log.warn(`Failed to apply padding to table: ${error}`);
+      }
+    }
+
+    if (cellsProcessed > 0) {
+      log.info(`Applied custom padding to ${cellsProcessed} table cells`);
+    }
+    if (emptyTablesSkipped > 0) {
+      log.debug(`Skipped ${emptyTablesSkipped} empty tables during padding application`);
+    }
+
+    return cellsProcessed;
   }
 
   /**

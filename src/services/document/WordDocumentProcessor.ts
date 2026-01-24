@@ -154,6 +154,15 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
     header2Shading: string; // Hex color for Header 2 / 1x1 table cells (default: #BFBFBF)
     otherShading: string; // Hex color for other table cells and If.../Then... patterns (default: #DFDFDF)
     imageBorderWidth?: number; // Border width in points for images (default: 1.0)
+    // Table cell padding in inches
+    padding1x1Top?: number; // default: 0
+    padding1x1Bottom?: number; // default: 0
+    padding1x1Left?: number; // default: 0.08
+    padding1x1Right?: number; // default: 0.08
+    paddingOtherTop?: number; // default: 0
+    paddingOtherBottom?: number; // default: 0
+    paddingOtherLeft?: number; // default: 0.08
+    paddingOtherRight?: number; // default: 0.08
   };
   smartTables?: boolean; // smart-tables: Smart table detection and formatting (NEW)
   tableOfContentsSettings?: {
@@ -194,6 +203,12 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   documentId?: string;
   /** Enable capturing pre-processing snapshot for comparison */
   captureSnapshot?: boolean;
+
+  // ═══════════════════════════════════════════════════════════
+  // Processing Options Control
+  // ═══════════════════════════════════════════════════════════
+  /** Array of enabled operation IDs from ProcessingOptions (e.g., 'adjust-table-padding') */
+  enabledOperations?: string[];
 
   // ═══════════════════════════════════════════════════════════
   // Legacy/Existing Options
@@ -1709,6 +1724,19 @@ export class WordDocumentProcessor {
         // which internally calls addStructureBlankLines() with afterLists: true default
       }
 
+      // Apply list continuation indentation to non-list paragraphs that follow list items
+      // These are "continuation" paragraphs that should align with the list item's text
+      if (options.listBulletSettings?.enabled) {
+        this.log.debug("=== APPLYING LIST CONTINUATION INDENTATION ===");
+        const continuationsIndented = await this.applyListContinuationIndentation(
+          doc,
+          options.listBulletSettings
+        );
+        if (continuationsIndented > 0) {
+          this.log.info(`Applied list continuation indentation to ${continuationsIndented} paragraphs`);
+        }
+      }
+
       // Standardize numbering colors to fix green bullet issue
       // NOTE: Indentation is now set via in-memory model in applyBulletUniformity()
       // The old injectIndentationToNumbering() raw XML approach was ineffective (changes lost during save)
@@ -1746,11 +1774,17 @@ export class WordDocumentProcessor {
           this.log.info(`Removed specified heights from ${rowHeightsRemoved} table rows`);
         }
 
-        // Standardize cell margins (0" top/bottom, 0.08" left/right) and enable text wrapping
-        const cellMarginsFixed = await tableProcessor.standardizeCellMargins(doc);
-        if (cellMarginsFixed > 0) {
-          this.log.info(`Standardized margins for ${cellMarginsFixed} table cells`);
+        // Apply cell padding based on "Adjust Table Padding" processing option
+        // When disabled, tables keep their existing padding (no modification)
+        const adjustTablePadding = options.enabledOperations?.includes('adjust-table-padding');
+        if (adjustTablePadding) {
+          // Apply custom padding from user settings
+          const cellPaddingApplied = await tableProcessor.applyTablePadding(doc, options.tableShadingSettings);
+          if (cellPaddingApplied > 0) {
+            this.log.info(`Applied custom padding to ${cellPaddingApplied} table cells`);
+          }
         }
+        // Note: When 'adjust-table-padding' is disabled, tables keep their original padding
 
         // NOTE: ensureHeading2StyleIn1x1Tables() is now called BEFORE style application
         // (see line ~1175) so 1x1 table paragraphs get proper Heading 2 formatting
@@ -1819,6 +1853,31 @@ export class WordDocumentProcessor {
           category: 'structure',
           description: 'Normalized table borders to thin uniform style',
           count: bordersNormalized,
+        });
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // TABLE AUTOFIT TO WINDOW + CLEAR ROW HEIGHTS
+      // Set all tables to auto-fit layout and clear fixed row heights
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== SETTING TABLES TO AUTOFIT WINDOW ===");
+      const tables = doc.getTables();
+      let autofitCount = 0;
+      for (const table of tables) {
+        table.setLayout("auto");
+        // Clear fixed row heights to allow content-based sizing
+        for (const row of table.getRows()) {
+          row.clearHeight();
+        }
+        autofitCount++;
+      }
+      if (autofitCount > 0) {
+        this.log.info(`Set ${autofitCount} tables to autofit window layout with auto row heights`);
+        result.changes?.push({
+          type: 'table',
+          category: 'structure',
+          description: 'Set tables to autofit window layout',
+          count: autofitCount,
         });
       }
 
@@ -4622,6 +4681,78 @@ export class WordDocumentProcessor {
 
     this.log.debug(`Applied spacing to ${formattedCount} list paragraphs`);
     return formattedCount;
+  }
+
+  /**
+   * Apply list continuation indentation - Indent non-list paragraphs that follow list items
+   * When a paragraph has some existing indentation and follows a list item,
+   * set its left indent to match the list item's textIndent (where text aligns)
+   */
+  private async applyListContinuationIndentation(
+    doc: Document,
+    settings: {
+      indentationLevels: Array<{
+        level: number;
+        symbolIndent: number;
+        textIndent: number;
+      }>;
+    }
+  ): Promise<number> {
+    let indentedCount = 0;
+    const paragraphs = doc.getAllParagraphs();
+
+    // Helper to get textIndent for any level (extrapolating if needed)
+    const getTextIndentForLevel = (level: number): number => {
+      const levelConfig = settings.indentationLevels.find(l => l.level === level);
+      if (levelConfig) {
+        return levelConfig.textIndent;
+      }
+
+      // Guard against empty array
+      if (settings.indentationLevels.length === 0) {
+        return 0.5 + level * 0.25; // Default: 0.5" base + 0.25" per level
+      }
+
+      // Extrapolate from last configured level (0.25" per extra level)
+      const lastConfig = settings.indentationLevels[settings.indentationLevels.length - 1];
+      const extraLevels = level - (settings.indentationLevels.length - 1);
+      return lastConfig.textIndent + extraLevels * 0.25;
+    };
+
+    for (let i = 1; i < paragraphs.length; i++) {
+      const currentPara = paragraphs[i];
+      const previousPara = paragraphs[i - 1];
+
+      // Skip if current paragraph IS a list item
+      if (currentPara.getNumbering()) continue;
+
+      // Skip if previous paragraph is NOT a list item
+      const previousNumbering = previousPara.getNumbering();
+      if (!previousNumbering) continue;
+
+      // Check if current paragraph has SOME existing indentation
+      const formatting = currentPara.getFormatting();
+      const existingLeftIndent = formatting.indentation?.left || 0;
+      if (existingLeftIndent === 0) continue;
+
+      // Get textIndent for the previous list item's level
+      const previousLevel = previousNumbering.level ?? 0;
+      const textIndentInches = getTextIndentForLevel(previousLevel);
+      const textIndentTwips = Math.round(textIndentInches * 1440);
+
+      // Apply the list's textIndent as the paragraph's left indent
+      currentPara.setLeftIndent(textIndentTwips);
+      currentPara.setFirstLineIndent(0);
+
+      this.log.debug(
+        `List continuation indent: para ${i}, level=${previousLevel}, ` +
+        `textIndent=${textIndentInches}" (${textIndentTwips}twips), was ${existingLeftIndent}twips`
+      );
+
+      indentedCount++;
+    }
+
+    return indentedCount;
   }
 
   /**
