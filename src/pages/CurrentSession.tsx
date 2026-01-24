@@ -440,12 +440,37 @@ export function CurrentSession() {
     });
   };
 
-  const handleTableShadingChange = (header2: string, other: string, imageBorderWidth?: number) => {
-    // Update session table shading settings
+  const handleTableShadingChange = (
+    header2: string,
+    other: string,
+    imageBorderWidth?: number,
+    paddingSettings?: {
+      padding1x1Top: number;
+      padding1x1Bottom: number;
+      padding1x1Left: number;
+      padding1x1Right: number;
+      paddingOtherTop: number;
+      paddingOtherBottom: number;
+      paddingOtherLeft: number;
+      paddingOtherRight: number;
+    }
+  ) => {
+    // Update session table shading settings including padding
     updateSessionTableShadingSettings(session.id, {
       header2Shading: header2,
       otherShading: other,
       imageBorderWidth: imageBorderWidth,
+      // Include padding settings if provided
+      ...(paddingSettings && {
+        padding1x1Top: paddingSettings.padding1x1Top,
+        padding1x1Bottom: paddingSettings.padding1x1Bottom,
+        padding1x1Left: paddingSettings.padding1x1Left,
+        padding1x1Right: paddingSettings.padding1x1Right,
+        paddingOtherTop: paddingSettings.paddingOtherTop,
+        paddingOtherBottom: paddingSettings.paddingOtherBottom,
+        paddingOtherLeft: paddingSettings.paddingOtherLeft,
+        paddingOtherRight: paddingSettings.paddingOtherRight,
+      }),
     });
   };
 
@@ -898,6 +923,14 @@ export function CurrentSession() {
           tableHeader2Shading={session.tableShadingSettings?.header2Shading || "#BFBFBF"}
           tableOtherShading={session.tableShadingSettings?.otherShading || "#DFDFDF"}
           imageBorderWidth={session.tableShadingSettings?.imageBorderWidth ?? 1.0}
+          padding1x1Top={session.tableShadingSettings?.padding1x1Top ?? 0}
+          padding1x1Bottom={session.tableShadingSettings?.padding1x1Bottom ?? 0}
+          padding1x1Left={session.tableShadingSettings?.padding1x1Left ?? 0.08}
+          padding1x1Right={session.tableShadingSettings?.padding1x1Right ?? 0.08}
+          paddingOtherTop={session.tableShadingSettings?.paddingOtherTop ?? 0}
+          paddingOtherBottom={session.tableShadingSettings?.paddingOtherBottom ?? 0}
+          paddingOtherLeft={session.tableShadingSettings?.paddingOtherLeft ?? 0.08}
+          paddingOtherRight={session.tableShadingSettings?.paddingOtherRight ?? 0.08}
           onTableShadingChange={handleTableShadingChange}
         />
       ),

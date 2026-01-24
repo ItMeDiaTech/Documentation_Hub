@@ -195,6 +195,17 @@ const convertToStyleDefinitions = (
   });
 };
 
+interface TablePaddingSettings {
+  padding1x1Top: number;
+  padding1x1Bottom: number;
+  padding1x1Left: number;
+  padding1x1Right: number;
+  paddingOtherTop: number;
+  paddingOtherBottom: number;
+  paddingOtherLeft: number;
+  paddingOtherRight: number;
+}
+
 interface StylesEditorProps {
   initialStyles?: Partial<StyleDefinition>[];
   initialListBulletSettings?: ListBulletSettings;
@@ -203,7 +214,21 @@ interface StylesEditorProps {
   tableHeader2Shading?: string;
   tableOtherShading?: string;
   imageBorderWidth?: number;
-  onTableShadingChange?: (header2: string, other: string, imageBorderWidth?: number) => void;
+  // Table padding props (in inches)
+  padding1x1Top?: number;
+  padding1x1Bottom?: number;
+  padding1x1Left?: number;
+  padding1x1Right?: number;
+  paddingOtherTop?: number;
+  paddingOtherBottom?: number;
+  paddingOtherLeft?: number;
+  paddingOtherRight?: number;
+  onTableShadingChange?: (
+    header2: string,
+    other: string,
+    imageBorderWidth?: number,
+    paddingSettings?: TablePaddingSettings
+  ) => void;
 }
 
 // PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
@@ -215,6 +240,14 @@ export const StylesEditor = memo(function StylesEditor({
   tableHeader2Shading,
   tableOtherShading,
   imageBorderWidth,
+  padding1x1Top,
+  padding1x1Bottom,
+  padding1x1Left,
+  padding1x1Right,
+  paddingOtherTop,
+  paddingOtherBottom,
+  paddingOtherLeft,
+  paddingOtherRight,
   onTableShadingChange,
 }: StylesEditorProps) {
   // NOTE: convertToStyleDefinitions is now defined outside component for better performance
@@ -235,6 +268,21 @@ export const StylesEditor = memo(function StylesEditor({
   const [localImageBorderWidth, setLocalImageBorderWidth] = useState<number>(
     imageBorderWidth ?? 1.0
   );
+  // Clamp padding value to valid range (0-1 inch)
+  const clampPadding = (value: number | undefined, defaultValue: number): number => {
+    if (value === undefined) return defaultValue;
+    return Math.max(0, Math.min(1, value));
+  };
+
+  // Table padding state (in inches) - values clamped to 0-1 inch range
+  const [localPadding1x1Top, setLocalPadding1x1Top] = useState<number>(clampPadding(padding1x1Top, 0));
+  const [localPadding1x1Bottom, setLocalPadding1x1Bottom] = useState<number>(clampPadding(padding1x1Bottom, 0));
+  const [localPadding1x1Left, setLocalPadding1x1Left] = useState<number>(clampPadding(padding1x1Left, 0.08));
+  const [localPadding1x1Right, setLocalPadding1x1Right] = useState<number>(clampPadding(padding1x1Right, 0.08));
+  const [localPaddingOtherTop, setLocalPaddingOtherTop] = useState<number>(clampPadding(paddingOtherTop, 0));
+  const [localPaddingOtherBottom, setLocalPaddingOtherBottom] = useState<number>(clampPadding(paddingOtherBottom, 0));
+  const [localPaddingOtherLeft, setLocalPaddingOtherLeft] = useState<number>(clampPadding(paddingOtherLeft, 0.08));
+  const [localPaddingOtherRight, setLocalPaddingOtherRight] = useState<number>(clampPadding(paddingOtherRight, 0.08));
 
   // Sync internal state when external props change
   // This fixes the issue where useState initializer only runs once
@@ -267,6 +315,21 @@ export const StylesEditor = memo(function StylesEditor({
       setLocalImageBorderWidth(imageBorderWidth);
     }
   }, [imageBorderWidth]);
+
+  // Sync all padding props when they change (single effect for better reliability)
+  useEffect(() => {
+    if (padding1x1Top !== undefined) setLocalPadding1x1Top(clampPadding(padding1x1Top, 0));
+    if (padding1x1Bottom !== undefined) setLocalPadding1x1Bottom(clampPadding(padding1x1Bottom, 0));
+    if (padding1x1Left !== undefined) setLocalPadding1x1Left(clampPadding(padding1x1Left, 0.08));
+    if (padding1x1Right !== undefined) setLocalPadding1x1Right(clampPadding(padding1x1Right, 0.08));
+    if (paddingOtherTop !== undefined) setLocalPaddingOtherTop(clampPadding(paddingOtherTop, 0));
+    if (paddingOtherBottom !== undefined) setLocalPaddingOtherBottom(clampPadding(paddingOtherBottom, 0));
+    if (paddingOtherLeft !== undefined) setLocalPaddingOtherLeft(clampPadding(paddingOtherLeft, 0.08));
+    if (paddingOtherRight !== undefined) setLocalPaddingOtherRight(clampPadding(paddingOtherRight, 0.08));
+  }, [
+    padding1x1Top, padding1x1Bottom, padding1x1Left, padding1x1Right,
+    paddingOtherTop, paddingOtherBottom, paddingOtherLeft, paddingOtherRight
+  ]);
 
   const updateStyle = (styleId: string, updates: Partial<StyleDefinition>) => {
     const updatedStyles = styles.map((style) =>
@@ -950,21 +1013,47 @@ export const StylesEditor = memo(function StylesEditor({
 
   // Table Shading Settings - moved from Processing Options to Styles for better organization
   const renderTableShadingSettings = () => {
+    // Helper to get current padding settings
+    const getCurrentPaddingSettings = (): TablePaddingSettings => ({
+      padding1x1Top: localPadding1x1Top,
+      padding1x1Bottom: localPadding1x1Bottom,
+      padding1x1Left: localPadding1x1Left,
+      padding1x1Right: localPadding1x1Right,
+      paddingOtherTop: localPaddingOtherTop,
+      paddingOtherBottom: localPaddingOtherBottom,
+      paddingOtherLeft: localPaddingOtherLeft,
+      paddingOtherRight: localPaddingOtherRight,
+    });
+
     const handleHeader2ShadingChange = (value: string) => {
       setLocalTableHeader2Shading(value);
-      onTableShadingChange?.(value, localTableOtherShading, localImageBorderWidth);
+      onTableShadingChange?.(value, localTableOtherShading, localImageBorderWidth, getCurrentPaddingSettings());
     };
 
     const handleOtherShadingChange = (value: string) => {
       setLocalTableOtherShading(value);
-      onTableShadingChange?.(localTableHeader2Shading, value, localImageBorderWidth);
+      onTableShadingChange?.(localTableHeader2Shading, value, localImageBorderWidth, getCurrentPaddingSettings());
     };
 
     const handleImageBorderWidthChange = (value: string) => {
       const numValue = parseFloat(value);
       if (!isNaN(numValue) && numValue >= 0.5 && numValue <= 10) {
         setLocalImageBorderWidth(numValue);
-        onTableShadingChange?.(localTableHeader2Shading, localTableOtherShading, numValue);
+        onTableShadingChange?.(localTableHeader2Shading, localTableOtherShading, numValue, getCurrentPaddingSettings());
+      }
+    };
+
+    // Handle padding changes - update local state and call parent callback
+    const handlePaddingChange = (
+      field: keyof TablePaddingSettings,
+      value: string,
+      setter: React.Dispatch<React.SetStateAction<number>>
+    ) => {
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue) && numValue >= 0 && numValue <= 1) {
+        setter(numValue);
+        const updatedPadding = { ...getCurrentPaddingSettings(), [field]: numValue };
+        onTableShadingChange?.(localTableHeader2Shading, localTableOtherShading, localImageBorderWidth, updatedPadding);
       }
     };
 
@@ -974,7 +1063,7 @@ export const StylesEditor = memo(function StylesEditor({
           <span className="font-semibold text-base">Table & Image Settings</span>
         </div>
         <p className="text-sm text-muted-foreground">
-          Configure default shading colors for table cells and image border width
+          Configure default shading colors for table cells, image border width, and cell padding
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
@@ -1034,6 +1123,150 @@ export const StylesEditor = memo(function StylesEditor({
             <p className="text-xs text-muted-foreground mt-1">
               Border thickness for centered images (0.5 - 10pt)
             </p>
+          </div>
+        </div>
+
+        {/* Table Cell Padding Section */}
+        <div className="pt-4 border-t border-border">
+          <h4 className="text-sm font-medium mb-3">Table Cell Padding</h4>
+          <p className="text-xs text-muted-foreground mb-4">
+            Set cell padding for 1x1 tables and other tables. Values are in inches.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* 1x1 Tables Padding */}
+            <div className="space-y-3">
+              <h5 className="text-sm font-medium text-muted-foreground">1x1 Tables</h5>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Top</label>
+                  <div className="flex gap-1 items-center">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={localPadding1x1Top}
+                      onChange={(e) => handlePaddingChange('padding1x1Top', e.target.value, setLocalPadding1x1Top)}
+                      className="w-20 px-2 py-1 text-sm border border-border rounded-md bg-background"
+                    />
+                    <span className="text-xs text-muted-foreground">"</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Bottom</label>
+                  <div className="flex gap-1 items-center">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={localPadding1x1Bottom}
+                      onChange={(e) => handlePaddingChange('padding1x1Bottom', e.target.value, setLocalPadding1x1Bottom)}
+                      className="w-20 px-2 py-1 text-sm border border-border rounded-md bg-background"
+                    />
+                    <span className="text-xs text-muted-foreground">"</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Left</label>
+                  <div className="flex gap-1 items-center">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={localPadding1x1Left}
+                      onChange={(e) => handlePaddingChange('padding1x1Left', e.target.value, setLocalPadding1x1Left)}
+                      className="w-20 px-2 py-1 text-sm border border-border rounded-md bg-background"
+                    />
+                    <span className="text-xs text-muted-foreground">"</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Right</label>
+                  <div className="flex gap-1 items-center">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={localPadding1x1Right}
+                      onChange={(e) => handlePaddingChange('padding1x1Right', e.target.value, setLocalPadding1x1Right)}
+                      className="w-20 px-2 py-1 text-sm border border-border rounded-md bg-background"
+                    />
+                    <span className="text-xs text-muted-foreground">"</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Other Tables Padding */}
+            <div className="space-y-3">
+              <h5 className="text-sm font-medium text-muted-foreground">Other Tables</h5>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Top</label>
+                  <div className="flex gap-1 items-center">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={localPaddingOtherTop}
+                      onChange={(e) => handlePaddingChange('paddingOtherTop', e.target.value, setLocalPaddingOtherTop)}
+                      className="w-20 px-2 py-1 text-sm border border-border rounded-md bg-background"
+                    />
+                    <span className="text-xs text-muted-foreground">"</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Bottom</label>
+                  <div className="flex gap-1 items-center">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={localPaddingOtherBottom}
+                      onChange={(e) => handlePaddingChange('paddingOtherBottom', e.target.value, setLocalPaddingOtherBottom)}
+                      className="w-20 px-2 py-1 text-sm border border-border rounded-md bg-background"
+                    />
+                    <span className="text-xs text-muted-foreground">"</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Left</label>
+                  <div className="flex gap-1 items-center">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={localPaddingOtherLeft}
+                      onChange={(e) => handlePaddingChange('paddingOtherLeft', e.target.value, setLocalPaddingOtherLeft)}
+                      className="w-20 px-2 py-1 text-sm border border-border rounded-md bg-background"
+                    />
+                    <span className="text-xs text-muted-foreground">"</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Right</label>
+                  <div className="flex gap-1 items-center">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={localPaddingOtherRight}
+                      onChange={(e) => handlePaddingChange('paddingOtherRight', e.target.value, setLocalPaddingOtherRight)}
+                      className="w-20 px-2 py-1 text-sm border border-border rounded-md bg-background"
+                    />
+                    <span className="text-xs text-muted-foreground">"</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

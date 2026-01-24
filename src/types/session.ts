@@ -319,6 +319,19 @@ export interface TableShadingSettings {
   preserveBold?: boolean; // If true, preserve original bold formatting in table cells (default: use Normal style's preserveBold)
   heading2FontFamily?: string; // Font family for Heading 2 / 1x1 table cells (default: from Heading 2 style config)
   heading2FontSize?: number; // Font size in points for Heading 2 / 1x1 table cells (default: from Heading 2 style config)
+
+  // Table cell padding in inches
+  // 1x1 Tables padding
+  padding1x1Top?: number; // default: 0
+  padding1x1Bottom?: number; // default: 0
+  padding1x1Left?: number; // default: 0.08
+  padding1x1Right?: number; // default: 0.08
+
+  // Other Tables padding (>1x1)
+  paddingOtherTop?: number; // default: 0
+  paddingOtherBottom?: number; // default: 0
+  paddingOtherLeft?: number; // default: 0.08
+  paddingOtherRight?: number; // default: 0.08
 }
 
 export interface ReplacementRule {

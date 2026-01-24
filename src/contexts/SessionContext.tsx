@@ -223,6 +223,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
     'bullet-uniformity',
     'normalize-table-lists',
     'smart-tables',
+    'adjust-table-padding',
   ],
 };
 
@@ -233,6 +234,16 @@ const DEFAULT_TABLE_SHADING_SETTINGS: TableShadingSettings = {
   header2Shading: '#BFBFBF',
   otherShading: '#DFDFDF',
   imageBorderWidth: 1.0,
+  // 1x1 Tables padding (in inches)
+  padding1x1Top: 0,
+  padding1x1Bottom: 0,
+  padding1x1Left: 0.08,
+  padding1x1Right: 0.08,
+  // Other Tables padding (in inches)
+  paddingOtherTop: 0,
+  paddingOtherBottom: 0,
+  paddingOtherLeft: 0.08,
+  paddingOtherRight: 0.08,
 };
 
 /**
@@ -1208,8 +1219,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           tableShadingSettings?: {
             header2Shading: string;
             otherShading: string;
+            // Table cell padding in inches
+            padding1x1Top?: number;
+            padding1x1Bottom?: number;
+            padding1x1Left?: number;
+            padding1x1Right?: number;
+            paddingOtherTop?: number;
+            paddingOtherBottom?: number;
+            paddingOtherLeft?: number;
+            paddingOtherRight?: number;
           };
           tableOfContentsSettings?: TableOfContentsSettings;
+
+          // Processing Options Control
+          enabledOperations?: string[];
 
           // Legacy
           tableUniformitySettings?: TableUniformitySettings;
@@ -1356,6 +1379,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   header2Shading: sessionToProcess.tableShadingSettings.header2Shading,
                   otherShading: sessionToProcess.tableShadingSettings.otherShading,
                   imageBorderWidth: sessionToProcess.tableShadingSettings.imageBorderWidth ?? 1.0,
+                  // Table cell padding settings (in inches)
+                  padding1x1Top: sessionToProcess.tableShadingSettings.padding1x1Top ?? 0,
+                  padding1x1Bottom: sessionToProcess.tableShadingSettings.padding1x1Bottom ?? 0,
+                  padding1x1Left: sessionToProcess.tableShadingSettings.padding1x1Left ?? 0.08,
+                  padding1x1Right: sessionToProcess.tableShadingSettings.padding1x1Right ?? 0.08,
+                  paddingOtherTop: sessionToProcess.tableShadingSettings.paddingOtherTop ?? 0,
+                  paddingOtherBottom: sessionToProcess.tableShadingSettings.paddingOtherBottom ?? 0,
+                  paddingOtherLeft: sessionToProcess.tableShadingSettings.paddingOtherLeft ?? 0.08,
+                  paddingOtherRight: sessionToProcess.tableShadingSettings.paddingOtherRight ?? 0.08,
                   // Derived from Heading 2 paragraph style
                   heading2FontFamily: heading2Style?.fontFamily || 'Verdana',
                   heading2FontSize: heading2Style?.fontSize || 14,
@@ -1371,6 +1403,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 }
               : undefined;
           })(),
+
+          // Pass enabled operations array for condition checks in processor
+          enabledOperations: sessionToProcess.processingOptions?.enabledOperations,
 
           // Table of Contents Settings - Simplified to enabled flag only
           tableOfContentsSettings: sessionToProcess.tableOfContentsSettings,

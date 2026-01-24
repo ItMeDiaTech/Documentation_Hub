@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "5.0.13",
+  "version": "5.0.18",
   "description": "A modern document processing and session management desktop application",
   "author": "DiaTech",
   "main": "dist/electron/main.js",
@@ -161,7 +161,8 @@
         "msi"
       ],
       "icon": "build/icon.ico",
-      "artifactName": "Documentation-Hub-${version}.${ext}"
+      "artifactName": "Documentation-Hub-${version}.${ext}",
+      "signAndEditExecutable": false
     },
     "msi": {
       "upgradeCode": "CF863E5D-30C2-470B-B337-4373B543F563",
