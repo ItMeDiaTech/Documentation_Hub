@@ -72,7 +72,8 @@ export class StyleProcessor {
     doc: Document,
     styles: SessionStyle[],
     tableShadingSettings?: TableShadingSettings,
-    preserveBlankLinesAfterHeader2Tables?: boolean
+    preserveBlankLinesAfterHeader2Tables?: boolean,
+    preserveRedFont?: boolean
   ): Promise<StyleApplicationResult> {
     const result: StyleApplicationResult = {
       heading1: 0,
@@ -93,7 +94,8 @@ export class StyleProcessor {
     if (typeof (doc as any).applyStyles === "function") {
       const config = this.convertStylesToDocXMLaterConfig(
         styles,
-        tableShadingSettings
+        tableShadingSettings,
+        preserveRedFont
       );
 
       try {
@@ -158,7 +160,7 @@ export class StyleProcessor {
       }
 
       if (styleToApply && styleType) {
-        this.applyStyleToParagraph(para, styleToApply);
+        this.applyStyleToParagraph(para, styleToApply, preserveRedFont);
         result[styleType]++;
       }
     }
@@ -174,7 +176,7 @@ export class StyleProcessor {
   /**
    * Apply a single style to a paragraph
    */
-  private applyStyleToParagraph(para: Paragraph, style: SessionStyle): void {
+  private applyStyleToParagraph(para: Paragraph, style: SessionStyle, preserveRedFont?: boolean): void {
     // Apply paragraph formatting
     // PRESERVE center alignment if it already exists in the document
     // This prevents overriding intentional center formatting (like image captions)
@@ -224,8 +226,13 @@ export class StyleProcessor {
       }
 
       // Preserve white font - don't change color if run is white (FFFFFF)
+      // Preserve red font if option enabled - don't change color if run is red (FF0000)
       const currentColor = run.getFormatting().color?.toUpperCase();
-      if (currentColor !== 'FFFFFF') {
+      if (currentColor === 'FFFFFF') {
+        // White is always preserved
+      } else if (currentColor === 'FF0000' && preserveRedFont) {
+        // Red is preserved when flag is true
+      } else {
         run.setColor(style.color.replace("#", ""));
       }
     }
@@ -264,10 +271,12 @@ export class StyleProcessor {
    */
   private convertStylesToDocXMLaterConfig(
     styles: SessionStyle[],
-    tableShadingSettings?: TableShadingSettings
+    tableShadingSettings?: TableShadingSettings,
+    preserveRedFont?: boolean
   ): Record<string, unknown> {
     const config: Record<string, unknown> = {
       preserveWhiteFont: true, // Always preserve white font (FFFFFF) during style application
+      preserveRedFont: preserveRedFont ?? false, // Preserve red font (#FF0000) when enabled
     };
 
     for (const style of styles) {

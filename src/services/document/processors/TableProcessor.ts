@@ -249,7 +249,9 @@ export class TableProcessor {
               if (isFirstRow) {
                 // Check if header row has special shading that should be preserved (orange/yellow)
                 const preservedColors = ["FFC000", "FFF2CC"];
-                const shouldPreserveShading = hasShading && existingFill && preservedColors.includes(existingFill.toUpperCase());
+                // Normalize existingFill by removing # prefix before comparison
+                const normalizedFill = existingFill?.replace("#", "").toUpperCase();
+                const shouldPreserveShading = hasShading && normalizedFill && preservedColors.includes(normalizedFill);
 
                 if (shouldPreserveShading) {
                   log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Preserving original shading #${existingFill}`);
@@ -286,10 +288,21 @@ export class TableProcessor {
                   }
                 }
               } else if (hasShading) {
-                // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
-                log.debug(`[Table ${tableIndex}] DATA cell WITH shading (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true`);
-                cell.setShading({ fill: otherShading });
-                cellsRecolored++;
+                // Check if data row has special shading that should be preserved (orange/yellow)
+                const preservedColors = ["FFC000", "FFF2CC"];
+                // Normalize existingFill by removing # prefix before comparison
+                const normalizedFill = existingFill?.replace("#", "").toUpperCase();
+                const shouldPreserveShading = normalizedFill && preservedColors.includes(normalizedFill);
+
+                if (shouldPreserveShading) {
+                  log.debug(`[Table ${tableIndex}] DATA cell (${rowIndex},${cellIndex}): Preserving original shading #${existingFill}`);
+                  // Skip setShading() but still apply text formatting below
+                } else {
+                  // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
+                  log.debug(`[Table ${tableIndex}] DATA cell WITH shading (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true`);
+                  cell.setShading({ fill: otherShading });
+                  cellsRecolored++;
+                }
 
                 for (const para of cell.getParagraphs()) {
                   const isListItem = !!para.getNumbering();

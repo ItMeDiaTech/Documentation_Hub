@@ -95,6 +95,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   preserveUserBlankStructures?: boolean; // preserve-user-blank-structures: Preserve single blank lines, only remove consecutive duplicates (2+)
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
   normalizeDashes?: boolean; // normalize-dashes: Replace en-dashes (U+2013) with hyphens (U+002D)
+  preserveRedFont?: boolean; // preserve-red-font: Skip color change if text is #FF0000 red
   standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
   standardizeListPrefixFormatting?: boolean; // standardize-list-prefix-formatting: Apply consistent Verdana 12pt black formatting to all list symbols/numbers
 
@@ -1326,7 +1327,8 @@ export class WordDocumentProcessor {
           doc,
           options.styles,
           options.tableShadingSettings,
-          options.preserveBlankLinesAfterHeader2Tables ?? true
+          options.preserveBlankLinesAfterHeader2Tables ?? true,
+          options.preserveRedFont ?? false
         );
         this.log.info(
           `Applied custom formatting: Heading1=${styleResults.heading1}, Heading2=${styleResults.heading2}, Heading3=${styleResults.heading3}, Normal=${styleResults.normal}, ListParagraph=${styleResults.listParagraph}`
@@ -3820,10 +3822,12 @@ export class WordDocumentProcessor {
       header2Shading: string;
       otherShading: string;
       imageBorderWidth?: number;
-    }
+    },
+    preserveRedFont: boolean = false
   ): any {
     const config: any = {
       preserveWhiteFont: true,
+      preserveRedFont: preserveRedFont,
     };
 
     for (const style of styles) {
@@ -3937,7 +3941,8 @@ export class WordDocumentProcessor {
       header2Shading: string;
       otherShading: string;
     },
-    preserveBlankLinesAfterHeader2Tables: boolean = true
+    preserveBlankLinesAfterHeader2Tables: boolean = true,
+    preserveRedFont: boolean = false
   ): Promise<{
     heading1: boolean;
     heading2: boolean;
@@ -3946,13 +3951,14 @@ export class WordDocumentProcessor {
     listParagraph: boolean;
   }> {
     // Convert SessionStyle array to docXMLater format
-    const config = this.convertSessionStylesToDocXMLaterConfig(styles, tableShadingSettings);
+    const config = this.convertSessionStylesToDocXMLaterConfig(styles, tableShadingSettings, preserveRedFont);
 
     // Add v1.16.0 blank line preservation option
     // This prevents accidental removal of spacing after Header 2 tables
     const options = {
       ...config,
       preserveBlankLinesAfterHeader2Tables: preserveBlankLinesAfterHeader2Tables,
+      preserveRedFont: preserveRedFont,
     };
 
     this.log.debug("Applying custom formatting with options:", {
@@ -4735,18 +4741,57 @@ export class WordDocumentProcessor {
       const existingLeftIndent = formatting.indentation?.left || 0;
       if (existingLeftIndent === 0) continue;
 
-      // Get textIndent for the previous list item's level
+      // Get the previous list item's level and the actual text indent from the numbering definition
       const previousLevel = previousNumbering.level ?? 0;
-      const textIndentInches = getTextIndentForLevel(previousLevel);
-      const textIndentTwips = Math.round(textIndentInches * 1440);
+      const previousNumId = previousNumbering.numId;
+
+      // Try to get the actual text indent from the document's numbering level definition
+      // This ensures continuation paragraphs align with the actual list text position
+      let targetIndentTwips: number;
+      try {
+        const manager = doc.getNumberingManager();
+        const instance = manager.getInstance(previousNumId);
+        if (instance) {
+          const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+          const levelDef = abstractNum?.getLevel(previousLevel);
+          if (levelDef) {
+            // The leftIndent is where text starts (after the number/bullet)
+            targetIndentTwips = levelDef.getLeftIndent();
+          } else {
+            // Fallback to UI settings if level not found
+            const textIndentInches = getTextIndentForLevel(previousLevel);
+            targetIndentTwips = Math.round(textIndentInches * 1440);
+          }
+        } else {
+          // Fallback to UI settings if instance not found
+          const textIndentInches = getTextIndentForLevel(previousLevel);
+          targetIndentTwips = Math.round(textIndentInches * 1440);
+        }
+      } catch (error) {
+        // Fallback to UI settings on error
+        const textIndentInches = getTextIndentForLevel(previousLevel);
+        targetIndentTwips = Math.round(textIndentInches * 1440);
+        this.log.warn(`Error getting numbering level indent: ${error}`);
+      }
+
+      // Check if existing indentation is already close to target (within 72 twips = 0.05")
+      // If so, preserve the original indentation to avoid unnecessary changes
+      const tolerance = 72; // 0.05 inches
+      const difference = Math.abs(existingLeftIndent - targetIndentTwips);
+      if (difference <= tolerance) {
+        this.log.debug(
+          `List continuation: para ${i} already aligned (existing=${existingLeftIndent}twips, target=${targetIndentTwips}twips, diff=${difference}twips) - skipping`
+        );
+        continue;
+      }
 
       // Apply the list's textIndent as the paragraph's left indent
-      currentPara.setLeftIndent(textIndentTwips);
+      currentPara.setLeftIndent(targetIndentTwips);
       currentPara.setFirstLineIndent(0);
 
       this.log.debug(
         `List continuation indent: para ${i}, level=${previousLevel}, ` +
-        `textIndent=${textIndentInches}" (${textIndentTwips}twips), was ${existingLeftIndent}twips`
+        `textIndent=${(targetIndentTwips / 1440).toFixed(2)}" (${targetIndentTwips}twips), was ${existingLeftIndent}twips`
       );
 
       indentedCount++;
@@ -4846,11 +4891,12 @@ export class WordDocumentProcessor {
       // Find the level that best matches this indentation
       const inferredLevel = this.inferLevelFromIndentation(leftTwips, thresholds);
 
-      // If inferred level differs from current level, update it
-      if (inferredLevel !== numbering.level) {
+      // Only PROMOTE levels (never demote) - Issue #2: preserve original higher levels
+      // This prevents incorrectly demoting Level 1 items to Level 0
+      if (inferredLevel > numbering.level) {
         this.log.debug(
-          `  Normalizing paragraph: left=${leftTwips} twips, ` +
-            `current level=${numbering.level}, inferred level=${inferredLevel}`
+          `  Promoting paragraph: left=${leftTwips} twips, ` +
+            `current level=${numbering.level}, promoted to level=${inferredLevel}`
         );
         para.setNumbering(numbering.numId, inferredLevel);
         normalized++;
