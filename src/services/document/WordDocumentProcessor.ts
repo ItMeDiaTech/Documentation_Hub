@@ -28,6 +28,8 @@ import {
   Table,
   type TableOfContents,
   WORD_NATIVE_BULLETS,
+  type CellBorders,
+  type BorderStyle,
 } from "docxmlater";
 import type { ParagraphContent } from "docxmlater";
 import type { RevisionHandlingMode } from "@/types/session";
@@ -166,6 +168,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
     paddingOtherRight?: number; // default: 0.08
   };
   smartTables?: boolean; // smart-tables: Smart table detection and formatting (NEW)
+  standardizeBorderThickness?: boolean; // standardize-border-thickness: Limit borders to 0.5pt, colors to black or orange
   tableOfContentsSettings?: {
     // NEW: Table of Contents generation settings
     enabled: boolean;
@@ -1848,23 +1851,21 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
-      // TABLE BORDER NORMALIZATION
-      // Ensure all tables have uniform thin borders (size 4, single, black)
+      // TABLE BORDER STANDARDIZATION
+      // Standardize cell borders: max 0.5pt thickness, colors to black or orange
       // ═══════════════════════════════════════════════════════════
-      this.log.debug("=== NORMALIZING TABLE BORDERS ===");
-      const bordersNormalized = doc.normalizeTableBorders({
-        style: 'single',
-        size: 4,
-        color: '000000',
-      });
-      if (bordersNormalized > 0) {
-        this.log.info(`Normalized borders on ${bordersNormalized} tables`);
-        result.changes?.push({
-          type: 'table',
-          category: 'structure',
-          description: 'Normalized table borders to thin uniform style',
-          count: bordersNormalized,
-        });
+      if (options.standardizeBorderThickness) {
+        this.log.debug("=== STANDARDIZING TABLE CELL BORDERS ===");
+        const bordersFixed = await this.standardizeCellBorders(doc);
+        if (bordersFixed > 0) {
+          this.log.info(`Standardized ${bordersFixed} cell borders`);
+          result.changes?.push({
+            type: 'table',
+            category: 'structure',
+            description: 'Standardized cell borders (max 0.5pt, black/orange colors)',
+            count: bordersFixed,
+          });
+        }
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -4931,6 +4932,29 @@ export class WordDocumentProcessor {
     let normalized = 0;
     const allParagraphs = doc.getAllParagraphs();
 
+    // Check if document already has proper multi-level hierarchy
+    // If bullets already have different ilvl values, skip normalization to preserve hierarchy
+    const levelsPerNumId = new Map<number, Set<number>>();
+    for (const para of allParagraphs) {
+      const numbering = para.getNumbering();
+      if (!numbering) continue;
+
+      if (!levelsPerNumId.has(numbering.numId)) {
+        levelsPerNumId.set(numbering.numId, new Set());
+      }
+      levelsPerNumId.get(numbering.numId)!.add(numbering.level);
+    }
+
+    // If any numId has multiple levels, the hierarchy is already correct - don't flatten it
+    for (const [numId, levels] of levelsPerNumId) {
+      if (levels.size > 1) {
+        this.log.debug(
+          `Skipping level normalization: numId ${numId} already has ${levels.size} levels (${[...levels].join(', ')}) - preserving existing hierarchy`
+        );
+        return 0; // Don't normalize - hierarchy exists
+      }
+    }
+
     // Track indent-to-level mapping as we process (per numId)
     // Key: indentation twips (rounded), Value: assigned level
     const indentToLevelByNumId = new Map<number, Map<number, number>>();
@@ -5420,6 +5444,78 @@ export class WordDocumentProcessor {
     }
 
     return result.levelsModified + formatsConverted;
+  }
+
+  /**
+   * Standardize cell borders: max 0.5pt thickness, only #000000 or #FFC000 colors.
+   * Inspects each cell individually and only modifies borders that violate rules.
+   *
+   * @param doc - The document to process
+   * @returns Number of cells with borders fixed
+   */
+  private async standardizeCellBorders(doc: Document): Promise<number> {
+    const MAX_SIZE = 4; // 0.5pt in eighths of a point
+    const ALLOWED_COLORS = ['000000', 'FFC000'];
+    const DEFAULT_COLOR = '000000';
+
+    let fixedCount = 0;
+    const tables = doc.getTables();
+
+    this.log.debug(`Checking borders on ${tables.length} tables`);
+
+    for (const table of tables) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          const borders = cell.getBorders();
+          if (!borders) continue;
+
+          let needsUpdate = false;
+          const newBorders: CellBorders = {};
+
+          for (const side of ['top', 'bottom', 'left', 'right'] as const) {
+            const border = borders[side];
+            if (!border) continue;
+
+            let newSize = border.size;
+            let newColor = border.color;
+            const newStyle = border.style;
+
+            // Check thickness (size > 4 means > 0.5pt)
+            if (border.size && border.size > MAX_SIZE) {
+              newSize = MAX_SIZE;
+              needsUpdate = true;
+              this.log.debug(`  Reducing border size: ${border.size} → ${MAX_SIZE} (${side})`);
+            }
+
+            // Check color (normalize to uppercase, strip # if present)
+            const color = (border.color || '').replace('#', '').toUpperCase();
+            if (color && !ALLOWED_COLORS.includes(color)) {
+              newColor = DEFAULT_COLOR;
+              needsUpdate = true;
+              this.log.debug(`  Changing border color: ${color} → ${DEFAULT_COLOR} (${side})`);
+            } else if (!color) {
+              // Set default color when border exists but has no color defined
+              newColor = DEFAULT_COLOR;
+              needsUpdate = true;
+              this.log.debug(`  Setting missing border color to: ${DEFAULT_COLOR} (${side})`);
+            }
+
+            newBorders[side] = {
+              style: newStyle,
+              size: newSize,
+              color: newColor,
+            };
+          }
+
+          if (needsUpdate) {
+            cell.setBorders(newBorders);
+            fixedCount++;
+          }
+        }
+      }
+    }
+
+    return fixedCount;
   }
 
   /**
