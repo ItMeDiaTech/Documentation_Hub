@@ -5,9 +5,21 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.1.0
+**Current App Version:** 5.1.1
 **docxmlater Framework Version:** 9.5.1
 **Status:** Production Ready
+
+---
+
+## [5.1.1] - 2026-01-24
+
+### Fixed
+
+- **Multi-Level Bullet List Flattening**: Fixed bug where multi-level bullet lists were being converted to single-level
+  - Root cause: `normalizeListLevelsFromIndentation()` only checked paragraph indentation, missing indentation from numbering definitions
+  - Now calculates effective indentation from both paragraph and abstractNum level
+  - Items with visual indentation from numbering definitions are now correctly promoted to appropriate levels
+  - Preserves original visual hierarchy (• for level 0, ○ for level 1)
 
 ---
 
