@@ -5,13 +5,22 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.1.3
+**Current App Version:** 5.1.4
 **docxmlater Framework Version:** 9.5.1
 **Status:** Production Ready
 
 ---
 
-## [5.1.3] - 2026-01-25
+## [5.1.4] - 2026-01-25
+
+### Reverted
+
+- Reverted v5.1.3 changes (relative level mapping)
+- Restored v5.1.2 bullet level normalization logic
+
+---
+
+## [5.1.3] - 2026-01-25 (Reverted)
 
 ### Fixed
 
