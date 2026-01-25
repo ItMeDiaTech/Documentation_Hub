@@ -1,6 +1,6 @@
 {
   "name": "documentation-hub",
-  "version": "5.1.7",
+  "version": "5.1.8",
   "description": "A modern document processing and session management desktop application",
   "author": "DiaTech",
   "main": "dist/electron/main.js",

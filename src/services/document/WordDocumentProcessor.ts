@@ -5019,7 +5019,8 @@ export class WordDocumentProcessor {
 
           if (closestLowerLevel >= 0) {
             // This indent is greater than a known indent - it's a deeper level
-            targetLevel = closestLowerLevel + 1;
+            // Cap at Word's max level (8) to prevent document corruption
+            targetLevel = Math.min(closestLowerLevel + 1, 8);
             this.log.debug(
               `    New deeper indent: ${indent} twips (>${closestLowerIndent}) → Level ${targetLevel}`
             );
@@ -5029,7 +5030,8 @@ export class WordDocumentProcessor {
             targetLevel = 0;
             const newMap = new Map<number, number>();
             for (const [knownIndent, level] of indentToLevel) {
-              newMap.set(knownIndent, level + 1);
+              // Cap at Word's max level (8) to prevent document corruption
+              newMap.set(knownIndent, Math.min(level + 1, 8));
             }
             indentToLevel.clear();
             for (const [k, v] of newMap) {
@@ -5047,10 +5049,12 @@ export class WordDocumentProcessor {
 
       // Update level if different from current
       if (targetLevel !== numbering.level) {
+        // Final validation: ensure level is within valid Word range (0-8)
+        const safeLevel = Math.min(Math.max(targetLevel, 0), 8);
         this.log.debug(
-          `    Adjusting: indent=${indent} twips, level ${numbering.level} → ${targetLevel}`
+          `    Adjusting: indent=${indent} twips, level ${numbering.level} → ${safeLevel}`
         );
-        para.setNumbering(numbering.numId, targetLevel);
+        para.setNumbering(numbering.numId, safeLevel);
         normalized++;
       }
     }
