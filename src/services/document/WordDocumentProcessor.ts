@@ -4881,21 +4881,29 @@ export class WordDocumentProcessor {
       const numbering = para.getNumbering();
       if (!numbering) continue;
 
-      // Get paragraph's visual indentation (in twips)
+      // Get paragraph's direct indentation (in twips)
       const formatting = para.getFormatting();
-      const leftTwips = formatting.indentation?.left || 0;
+      const paragraphLeftTwips = formatting.indentation?.left || 0;
 
-      // Skip if no explicit paragraph indentation
-      if (leftTwips === 0) continue;
+      // Get indentation from numbering definition (abstractNum level)
+      // This captures visual indentation that comes from the list style, not the paragraph
+      const numberingIndent = this.getNumberingLevelIndentation(doc, numbering.numId, numbering.level);
 
-      // Find the level that best matches this indentation
-      const inferredLevel = this.inferLevelFromIndentation(leftTwips, thresholds);
+      // Use EFFECTIVE (visual) indentation - the greater of paragraph or numbering definition
+      // This fixes the bug where items visually indented via numbering were being skipped
+      const effectiveLeftTwips = Math.max(paragraphLeftTwips, numberingIndent);
+
+      // Skip if no effective indentation at all
+      if (effectiveLeftTwips === 0) continue;
+
+      // Find the level that best matches this effective indentation
+      const inferredLevel = this.inferLevelFromIndentation(effectiveLeftTwips, thresholds);
 
       // Only PROMOTE levels (never demote) - Issue #2: preserve original higher levels
       // This prevents incorrectly demoting Level 1 items to Level 0
       if (inferredLevel > numbering.level) {
         this.log.debug(
-          `  Promoting paragraph: left=${leftTwips} twips, ` +
+          `  Promoting paragraph: effective=${effectiveLeftTwips} twips (para=${paragraphLeftTwips}, num=${numberingIndent}), ` +
             `current level=${numbering.level}, promoted to level=${inferredLevel}`
         );
         para.setNumbering(numbering.numId, inferredLevel);
@@ -4965,6 +4973,38 @@ export class WordDocumentProcessor {
     }
     // Default to level 0 if no match (shouldn't happen with proper thresholds)
     return 0;
+  }
+
+  /**
+   * Get the left indentation defined in a numbering level (abstractNum)
+   *
+   * This is used to get the "effective" visual indentation for list items
+   * where the indentation is defined in the numbering definition rather than
+   * the paragraph itself.
+   *
+   * @param doc - The document
+   * @param numId - The numbering instance ID (w:numId)
+   * @param level - The level within the numbering (w:ilvl)
+   * @returns The left indentation in twips, or 0 if not found
+   */
+  private getNumberingLevelIndentation(doc: Document, numId: number, level: number): number {
+    try {
+      const manager = doc.getNumberingManager();
+      if (!manager) return 0;
+
+      const instance = manager.getNumberingInstance(numId);
+      if (!instance) return 0;
+
+      const abstractNumId = instance.getAbstractNumId();
+      const abstractNum = manager.getAbstractNumbering(abstractNumId);
+      if (!abstractNum) return 0;
+
+      const lvl = abstractNum.getLevel(level);
+      return lvl?.getLeftIndent() || 0;
+    } catch (error) {
+      this.log.debug(`Failed to get numbering level indentation: ${error}`);
+      return 0;
+    }
   }
 
   /**
