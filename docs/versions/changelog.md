@@ -5,9 +5,32 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.1.4
+**Current App Version:** 5.1.5
 **docxmlater Framework Version:** 9.5.1
 **Status:** Production Ready
+
+---
+
+## [5.1.5] - 2026-01-25
+
+### Added
+
+- **Adjacent List Merging**: Automatically merge consecutive lists with different numIds
+  - When a list is immediately followed by another list (different numId), they are merged into one
+  - Handles documents from copy/paste or Google Docs export where lists get split
+  - Preserves each item's level (ilvl) during merge
+  - Non-list paragraphs break the merge sequence
+
+- **Sequential List Level Detection**: New algorithm for normalizing list levels based on indentation
+  - Processes list items sequentially in document order
+  - Tracks indent-to-level mapping per numId
+  - Uses 180 twips (0.125") threshold for level changes
+  - First unique indent → Level 0, next unique indent ≥180 twips greater → Level 1, etc.
+  - Items returning to previous indent return to that level
+
+### Changed
+
+- Removed obsolete threshold-based methods (`buildDocumentThresholds`, `getDefaultThresholds`, `inferLevelFromIndentation`, `buildIndentationThresholds`)
 
 ---
 
