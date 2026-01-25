@@ -4968,8 +4968,13 @@ export class WordDocumentProcessor {
       const numbering = para.getNumbering();
       if (!numbering) continue;
 
-      // Get this item's indentation from abstractNum definition
-      const indent = this.getNumberingLevelIndentation(doc, numbering.numId, numbering.level);
+      // Get paragraph's actual left indentation (w:ind w:left), not just abstractNum definition
+      // This captures visual indentation from paragraph properties for documents where
+      // all bullets have ilvl=0 but sub-bullets have extra paragraph indentation
+      const formatting = para.getFormatting();
+      const paraIndent = formatting.indentation?.left || 0;
+      const numIndent = this.getNumberingLevelIndentation(doc, numbering.numId, numbering.level);
+      const indent = Math.max(paraIndent, numIndent); // Use effective visual indentation
       if (indent === 0) continue;
 
       // Get or create indent-to-level map for this numId
