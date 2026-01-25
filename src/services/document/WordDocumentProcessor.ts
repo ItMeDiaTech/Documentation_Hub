@@ -4868,53 +4868,42 @@ export class WordDocumentProcessor {
     let normalized = 0;
     const allParagraphs = doc.getAllParagraphs();
 
-    // Cache document thresholds per numId - built from DOCUMENT's actual abstractNum definitions
-    // This fixes the bug where UI thresholds didn't match document's actual indentation values
-    const docThresholdsByNumId = new Map<number, Array<{ level: number; minTwips: number; maxTwips: number }>>();
+    // Build relative level map from document's actual indentations
+    // This preserves the document's visual hierarchy by mapping relative positions to UI levels
+    const indentToLevel = this.buildRelativeLevelMap(doc, allParagraphs);
 
-    this.log.debug("=== NORMALIZING LIST LEVELS FROM INDENTATION ===");
+    this.log.debug("=== NORMALIZING LIST LEVELS (Relative Mapping) ===");
+    this.log.debug(`  Found ${indentToLevel.size} unique indentation levels:`);
+    indentToLevel.forEach((level, indent) => {
+      this.log.debug(`    ${indent} twips (${(indent / 1440).toFixed(2)}") → UI Level ${level}`);
+    });
+
+    const TOLERANCE = 72; // 0.05" tolerance for grouping similar indents
 
     for (const para of allParagraphs) {
       const numbering = para.getNumbering();
       if (!numbering) continue;
 
-      // Build thresholds from DOCUMENT's abstractNum (not UI settings) for this numId
-      if (!docThresholdsByNumId.has(numbering.numId)) {
-        const thresholds = this.buildDocumentThresholds(doc, numbering.numId);
-        docThresholdsByNumId.set(numbering.numId, thresholds);
-        this.log.debug(`  Built thresholds for numId ${numbering.numId}:`);
-        thresholds.forEach((t) => {
-          this.log.debug(`    Level ${t.level}: ${t.minTwips} - ${t.maxTwips} twips`);
-        });
-      }
-      const thresholds = docThresholdsByNumId.get(numbering.numId)!;
+      // Get the item's current indentation from abstractNum
+      const indent = this.getNumberingLevelIndentation(doc, numbering.numId, numbering.level);
+      if (indent === 0) continue;
 
-      // Get paragraph's direct indentation (in twips)
-      const formatting = para.getFormatting();
-      const paragraphLeftTwips = formatting.indentation?.left || 0;
-
-      // Get indentation from numbering definition (abstractNum level) for CURRENT level
-      const numberingIndent = this.getNumberingLevelIndentation(doc, numbering.numId, numbering.level);
-
-      // Skip if no explicit PARAGRAPH indentation beyond the numbering definition
-      // This is the key fix: only promote if there's EXTRA indentation at the paragraph level
-      // Items that just have numbering-level indentation should stay at their current level
-      const TOLERANCE = 36; // 0.025 inches tolerance for minor variations
-      if (paragraphLeftTwips <= numberingIndent + TOLERANCE) {
-        continue; // No extra paragraph indentation, don't promote
+      // Find matching level in map (with tolerance)
+      let targetLevel = 0;
+      for (const [mapIndent, level] of indentToLevel) {
+        if (Math.abs(mapIndent - indent) < TOLERANCE) {
+          targetLevel = level;
+          break;
+        }
       }
 
-      // Use the paragraph's explicit indentation to infer the level
-      // This only happens when paragraph has MORE indentation than its numbering definition
-      const inferredLevel = this.inferLevelFromIndentation(paragraphLeftTwips, thresholds);
-
-      // Only PROMOTE levels (never demote) - Issue #2: preserve original higher levels
-      if (inferredLevel > numbering.level) {
+      // Update level if different (both promote AND demote to correct UI level)
+      if (targetLevel !== numbering.level) {
         this.log.debug(
-          `  Promoting paragraph: para=${paragraphLeftTwips} twips, num=${numberingIndent} twips, ` +
-            `current level=${numbering.level}, promoted to level=${inferredLevel}`
+          `  Remapping: indent=${indent} twips (${(indent / 1440).toFixed(2)}"), ` +
+            `level ${numbering.level} → ${targetLevel}`
         );
-        para.setNumbering(numbering.numId, inferredLevel);
+        para.setNumbering(numbering.numId, targetLevel);
         normalized++;
       }
     }
@@ -4923,146 +4912,53 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Build indentation thresholds from user's level settings
+   * Build a mapping from document indentation values to UI levels
    *
-   * Each level owns the range from midpoint between previous level to midpoint to next level.
-   * This ensures items with indentation "close to" a level get assigned to that level.
-   *
-   * @param levels - User's indentation levels from UI
-   * @returns Array of threshold ranges for each level
-   */
-  private buildIndentationThresholds(
-    levels: Array<{ symbolIndent: number }>
-  ): Array<{ level: number; minTwips: number; maxTwips: number }> {
-    const thresholds: Array<{ level: number; minTwips: number; maxTwips: number }> = [];
-
-    for (let i = 0; i < levels.length; i++) {
-      const currentTwips = Math.round(levels[i].symbolIndent * 1440);
-      const nextTwips =
-        i < levels.length - 1
-          ? Math.round(levels[i + 1].symbolIndent * 1440)
-          : currentTwips + 720; // Default 0.5" increment for extrapolation
-
-      // This level owns from midpoint with previous level to midpoint with next level
-      const midpointToNext = Math.round((currentTwips + nextTwips) / 2);
-      const prevTwips = i > 0 ? Math.round(levels[i - 1].symbolIndent * 1440) : 0;
-      const midpointFromPrev = i > 0 ? Math.round((prevTwips + currentTwips) / 2) : 0;
-
-      thresholds.push({
-        level: i,
-        minTwips: midpointFromPrev,
-        maxTwips: midpointToNext,
-      });
-    }
-
-    // Extend the last level's max to catch any higher indentation
-    if (thresholds.length > 0) {
-      thresholds[thresholds.length - 1].maxTwips = 999999;
-    }
-
-    return thresholds;
-  }
-
-  /**
-   * Build indentation thresholds from the document's actual abstractNum definitions
-   *
-   * This creates thresholds based on what the document ACTUALLY uses for each level,
-   * not what the UI settings say. This fixes the bug where UI thresholds didn't match
-   * the document's actual indentation values, causing incorrect level promotions.
+   * This preserves the document's relative hierarchy by:
+   * 1. Collecting all unique indentation values from list items
+   * 2. Sorting them from smallest to largest
+   * 3. Mapping each to a UI level (smallest → Level 0, next → Level 1, etc.)
    *
    * @param doc - The document
-   * @param numId - The numbering instance ID (w:numId)
-   * @returns Array of threshold ranges for each level
+   * @param allParagraphs - All paragraphs in the document
+   * @returns Map from indentation (twips) to UI level number
    */
-  private buildDocumentThresholds(
+  private buildRelativeLevelMap(
     doc: Document,
-    numId: number
-  ): Array<{ level: number; minTwips: number; maxTwips: number }> {
-    const thresholds: Array<{ level: number; minTwips: number; maxTwips: number }> = [];
+    allParagraphs: Paragraph[]
+  ): Map<number, number> {
+    const TOLERANCE = 72; // 0.05" tolerance for grouping similar indents
+    const indentations: number[] = [];
 
-    try {
-      const manager = doc.getNumberingManager();
-      if (!manager) return this.getDefaultThresholds();
+    // Collect all unique numbering indentations
+    for (const para of allParagraphs) {
+      const numbering = para.getNumbering();
+      if (!numbering) continue;
 
-      const instance = manager.getNumberingInstance(numId);
-      if (!instance) return this.getDefaultThresholds();
-
-      const abstractNumId = instance.getAbstractNumId();
-      const abstractNum = manager.getAbstractNumbering(abstractNumId);
-      if (!abstractNum) return this.getDefaultThresholds();
-
-      // Get indentation for each level (0-8) from the document's abstractNum
-      const levelIndents: number[] = [];
-      for (let i = 0; i < 9; i++) {
-        const lvl = abstractNum.getLevel(i);
-        levelIndents.push(lvl?.getLeftIndent() || 0);
-      }
-
-      // Build thresholds using midpoints between actual document levels
-      for (let i = 0; i < levelIndents.length; i++) {
-        const currentTwips = levelIndents[i];
-        const nextTwips = i < levelIndents.length - 1 ? levelIndents[i + 1] : currentTwips + 720;
-        const prevTwips = i > 0 ? levelIndents[i - 1] : 0;
-
-        // This level owns from midpoint with previous level to midpoint with next level
-        const midpointToNext = Math.round((currentTwips + nextTwips) / 2);
-        const midpointFromPrev = i > 0 ? Math.round((prevTwips + currentTwips) / 2) : 0;
-
-        thresholds.push({
-          level: i,
-          minTwips: midpointFromPrev,
-          maxTwips: midpointToNext,
-        });
-      }
-
-      // Extend the last level's max to catch any higher indentation
-      if (thresholds.length > 0) {
-        thresholds[thresholds.length - 1].maxTwips = 999999;
-      }
-
-      return thresholds;
-    } catch (error) {
-      this.log.debug(`Failed to build document thresholds for numId ${numId}: ${error}`);
-      return this.getDefaultThresholds();
-    }
-  }
-
-  /**
-   * Get default thresholds when document thresholds can't be determined
-   * Uses standard 0.5" increments
-   */
-  private getDefaultThresholds(): Array<{ level: number; minTwips: number; maxTwips: number }> {
-    return [
-      { level: 0, minTwips: 0, maxTwips: 540 },
-      { level: 1, minTwips: 540, maxTwips: 1080 },
-      { level: 2, minTwips: 1080, maxTwips: 1620 },
-      { level: 3, minTwips: 1620, maxTwips: 2160 },
-      { level: 4, minTwips: 2160, maxTwips: 2700 },
-      { level: 5, minTwips: 2700, maxTwips: 3240 },
-      { level: 6, minTwips: 3240, maxTwips: 3780 },
-      { level: 7, minTwips: 3780, maxTwips: 4320 },
-      { level: 8, minTwips: 4320, maxTwips: 999999 },
-    ];
-  }
-
-  /**
-   * Infer the appropriate list level from paragraph indentation
-   *
-   * @param leftTwips - Paragraph's left indentation in twips
-   * @param thresholds - Level threshold ranges
-   * @returns The inferred level number (0-8)
-   */
-  private inferLevelFromIndentation(
-    leftTwips: number,
-    thresholds: Array<{ level: number; minTwips: number; maxTwips: number }>
-  ): number {
-    for (const threshold of thresholds) {
-      if (leftTwips >= threshold.minTwips && leftTwips < threshold.maxTwips) {
-        return threshold.level;
+      const indent = this.getNumberingLevelIndentation(doc, numbering.numId, numbering.level);
+      if (indent > 0) {
+        // Group similar indentations within tolerance
+        let found = false;
+        for (const existing of indentations) {
+          if (Math.abs(existing - indent) < TOLERANCE) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) indentations.push(indent);
       }
     }
-    // Default to level 0 if no match (shouldn't happen with proper thresholds)
-    return 0;
+
+    // Sort from smallest to largest
+    indentations.sort((a, b) => a - b);
+
+    // Create mapping: sorted index becomes the UI level
+    const map = new Map<number, number>();
+    indentations.forEach((indent, index) => {
+      map.set(indent, index);
+    });
+
+    return map;
   }
 
   /**
@@ -5232,7 +5128,9 @@ export class WordDocumentProcessor {
             level.setText(mapping.char); // Font-specific character (· for Symbol, 'o' for Courier New)
             level.setFont(mapping.font); // Correct font for this bullet type
             level.setFontSize(24); // Size: 12pt = 24 half-points
-            // Bold is NOT set here - bullets should not be bold (handled by standardizeListPrefixFormatting)
+            level.setBold(false); // ✅ NEVER bold on bullets
+            level.setItalic(false); // ✅ NEVER italic on bullets
+            level.clearUnderline(); // ✅ NEVER underline on bullets
             level.setColor("000000"); // Color: Black (#000000)
 
             // ✅ SET INDENTATION from UI settings
@@ -5431,6 +5329,11 @@ export class WordDocumentProcessor {
               );
             }
           }
+
+          // ✅ PREVENT FORMATTING on numbered list prefixes
+          level.setBold(false); // ✅ NEVER bold on numbered prefixes
+          level.setItalic(false); // ✅ NEVER italic on numbered prefixes
+          level.clearUnderline(); // ✅ NEVER underline on numbered prefixes
 
           // ✅ SET INDENTATION from UI settings (same as bullet lists)
           if (configLevel) {
