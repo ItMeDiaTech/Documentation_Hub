@@ -5,9 +5,31 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.1.2
+**Current App Version:** 5.1.3
 **docxmlater Framework Version:** 9.5.1
 **Status:** Production Ready
+
+---
+
+## [5.1.3] - 2026-01-25
+
+### Fixed
+
+- **Relative Level Mapping for Bullet Lists**: Complete rewrite of list level normalization
+  - Now preserves document's visual hierarchy by mapping relative positions to UI levels
+  - Collects all unique indentation values, sorts them, and maps smallest to Level 0, next to Level 1, etc.
+  - Works with any document regardless of original indentation values
+  - Supports both promotion AND demotion to correct UI level
+
+- **Bullet/Number Prefix Formatting Prevention**: Ensures bullets and numbered prefixes are never formatted
+  - Added explicit `setBold(false)`, `setItalic(false)`, `clearUnderline()` to all numbering levels
+  - Applies to both bullet lists and numbered lists
+  - Prevents accidental formatting inheritance from paragraph styles
+
+### Changed
+
+- Removed obsolete threshold-based methods (`buildDocumentThresholds`, `getDefaultThresholds`, `inferLevelFromIndentation`, `buildIndentationThresholds`)
+- Bullet symbols now properly sourced from UI Styles settings (•, ○, or ■ per level)
 
 ---
 
