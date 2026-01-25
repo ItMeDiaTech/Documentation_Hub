@@ -59,15 +59,15 @@ import { tableProcessor } from "./processors/TableProcessor";
 // Each bullet type uses a SPECIFIC font AND PUA character for correct rendering
 // ═══════════════════════════════════════════════════════════
 const BULLET_CHAR_MAP: Record<string, { char: string; font: string }> = {
-  '●': WORD_NATIVE_BULLETS.FILLED_BULLET,  // Filled bullet: Symbol font U+F0B7
-  '○': WORD_NATIVE_BULLETS.OPEN_CIRCLE,    // Open circle: Courier New U+006F
-  '■': WORD_NATIVE_BULLETS.FILLED_SQUARE,  // Filled square: Wingdings U+F0A7
+  '•': WORD_NATIVE_BULLETS.FILLED_BULLET,  // U+2022 BULLET - Microsoft standard filled bullet (Symbol font U+F0B7)
+  '○': WORD_NATIVE_BULLETS.OPEN_CIRCLE,    // U+25CB WHITE CIRCLE - Open circle (Courier New 'o')
+  '■': WORD_NATIVE_BULLETS.FILLED_SQUARE,  // U+25A0 BLACK SQUARE - Filled square (Wingdings U+F0A7)
 };
 
 /**
  * Get the correct font AND character for a bullet symbol
  * Uses Word-native encoding from docxmlater for maximum compatibility
- * @param bulletChar The UI bullet character (e.g., ●, ○, ■)
+ * @param bulletChar The UI bullet character (e.g., •, ○, ■)
  * @returns Object with font-specific character and font name
  */
 function getBulletMapping(bulletChar: string): { char: string; font: string } {
