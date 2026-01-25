@@ -5,9 +5,22 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.1.1
+**Current App Version:** 5.1.2
 **docxmlater Framework Version:** 9.5.1
 **Status:** Production Ready
+
+---
+
+## [5.1.2] - 2026-01-25
+
+### Fixed
+
+- **Bullet Level Normalization Regression**: Fixed bug where level 0 bullets were incorrectly promoted to level 1
+  - Root cause: v5.1.1 fix compared document indentation against UI-configured thresholds, causing mismatches
+  - Now builds thresholds from the document's actual `abstractNum` definitions instead of UI settings
+  - Only promotes items with explicit paragraph-level indentation beyond the numbering definition
+  - Added 36 twips (0.025") tolerance for minor indentation variations
+  - Items correctly indented at their level (via numbering definition) are now left unchanged
 
 ---
 
