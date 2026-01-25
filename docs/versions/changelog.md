@@ -5,9 +5,44 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.0.18
-**docxmlater Framework Version:** 9.4.0
+**Current App Version:** 5.1.0
+**docxmlater Framework Version:** 9.5.1
 **Status:** Production Ready
+
+---
+
+## [5.1.0] - 2026-01-24
+
+### Improved
+
+- **Dependency Updates**:
+  - docxmlater: 9.5.0 → 9.5.1
+
+---
+
+## [5.0.19] - 2026-01-24
+
+### Added
+
+- **Preserve Red Font Option**: New processing option to preserve #FF0000 red text during style application
+  - Defaults to false (unchecked)
+  - When enabled, red text is not changed to the style's default color
+
+### Fixed
+
+- **Table Shading Preservation**: Fixed #FFC000 and #FFF2CC shading being overwritten
+  - Normalized color comparison (removes # prefix for accurate matching)
+  - Added preservation check to data rows (was only in header rows)
+  - Affects both header and data rows with orange/yellow shading
+
+- **List Continuation Indentation**: Fixed over-indentation of continuation paragraphs
+  - Added tolerance check (72 twips = 0.05") to prevent adjusting already-aligned text
+  - "Note:" paragraphs now properly align with list text above
+
+### Improved
+
+- **Dependency Updates**:
+  - docxmlater: 9.4.0 → 9.5.0
 
 ---
 
