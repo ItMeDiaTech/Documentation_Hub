@@ -324,6 +324,58 @@ const ensureSessionStyles = (session: Session): Session => {
   return session;
 };
 
+/**
+ * Ensures session has all default-enabled processing options
+ * Adds any new options that have enabled: true in defaultOptions but are missing from the session
+ * This is critical for existing sessions to get newly added processing options
+ */
+const ensureProcessingOptions = (session: Session): Session => {
+  // List of all options that should be enabled by default
+  // Must match defaultOptions in ProcessingOptions.tsx where enabled: true
+  const defaultEnabledOptionIds = [
+    'remove-italics',
+    'normalize-dashes',
+    'apply-doc-styles',
+    'update-hyperlink-titles',
+    'top-of-document',
+    'table-of-contents',
+    'thesource-hyperlinks',
+    'thesource-content-ids',
+    'center-border-images',
+    'remove-whitespace',
+    'remove-paragraph-lines',
+    'remove-headers-footers',
+    'add-document-warning',
+    'validate-header2-tables',
+    'list-indentation',
+    'bullet-uniformity',
+    'smart-tables',
+    'adjust-table-padding',
+    'standardize-cell-borders',
+  ];
+
+  const currentEnabled = session.processingOptions?.enabledOperations || [];
+
+  // Add any missing default-enabled options
+  const missingOptions = defaultEnabledOptionIds.filter(id => !currentEnabled.includes(id));
+
+  if (missingOptions.length === 0) {
+    return session;
+  }
+
+  return {
+    ...session,
+    processingOptions: {
+      validateUrls: session.processingOptions?.validateUrls ?? true,
+      createBackup: session.processingOptions?.createBackup ?? true,
+      processInternalLinks: session.processingOptions?.processInternalLinks ?? true,
+      processExternalLinks: session.processingOptions?.processExternalLinks ?? true,
+      ...session.processingOptions,
+      enabledOperations: [...currentEnabled, ...missingOptions],
+    },
+  };
+};
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const log = logger.namespace('SessionContext');
   // Conditional verbose logger - only logs when SESSION_STATE debug mode is enabled
@@ -477,15 +529,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
         // BACKFILL FIX: Ensure all loaded sessions have valid styles
         // This is critical for font color to be applied - without styles, applyStyles() is skipped
-        const backfilledSessions = listBackfilledSessions.map(ensureSessionStyles);
+        const stylesBackfilledSessions = listBackfilledSessions.map(ensureSessionStyles);
 
         // Log how many sessions were backfilled for styles
-        const stylesBackfillCount = backfilledSessions.filter(
+        const stylesBackfillCount = stylesBackfilledSessions.filter(
           (s, idx) => s.styles !== listBackfilledSessions[idx].styles
         ).length;
         if (stylesBackfillCount > 0) {
           log.info(
             `[Session] Backfilled ${stylesBackfillCount} session(s) with default styles`
+          );
+        }
+
+        // BACKFILL FIX: Ensure all loaded sessions have new default-enabled processing options
+        // This adds new options (like standardize-cell-borders) to existing sessions
+        const backfilledSessions = stylesBackfilledSessions.map(ensureProcessingOptions);
+
+        // Log how many sessions were backfilled for processing options
+        const optionsBackfillCount = backfilledSessions.filter(
+          (s, idx) => s.processingOptions?.enabledOperations?.length !== stylesBackfilledSessions[idx].processingOptions?.enabledOperations?.length
+        ).length;
+        if (optionsBackfillCount > 0) {
+          log.info(
+            `[Session] Backfilled ${optionsBackfillCount} session(s) with default processing options`
           );
         }
 
