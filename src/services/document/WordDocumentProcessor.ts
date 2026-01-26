@@ -5229,14 +5229,9 @@ export class WordDocumentProcessor {
       }));
     }
 
-    // Create custom list with all UI-configured levels
-    const numId = manager.createCustomList(levels, "UI Bullet List");
-    if (!numId) {
-      this.log.warn("Failed to create custom bullet list");
-      return 0;
-    }
-
-    this.log.debug(`Created bullet list numId=${numId} with ${levels.length} levels`);
+    // NOTE: Removed createCustomList() call - it was creating orphaned numId references
+    // Since paragraph reassignment was removed (to preserve hierarchy), the custom list wasn't being used
+    // We now only update existing abstractNum definitions below
 
     // FIX: Update ALL existing abstractNum definitions to use user's bullet symbols & Calibri font
     // CRITICAL: Must set font to Calibri for proper Unicode bullet rendering (● vs ■)
@@ -5400,14 +5395,9 @@ export class WordDocumentProcessor {
       }));
     }
 
-    // Create custom numbered list with all UI-configured levels
-    const numId = manager.createCustomList(levels, "UI Numbered List");
-    if (!numId) {
-      this.log.warn("Failed to create custom numbered list");
-      return 0;
-    }
-
-    this.log.debug(`Created numbered list numId=${numId} with ${levels.length} levels`);
+    // NOTE: Removed createCustomList() call - it was creating orphaned numId references
+    // Since paragraph reassignment was removed (to preserve hierarchy), the custom list wasn't being used
+    // We now only update existing abstractNum definitions below
 
     // ✅ FIX: Don't reassign paragraphs to new numId - this destroys document hierarchy
     // The original document may use multiple numIds (all with ilvl=0) to create visual hierarchy.
