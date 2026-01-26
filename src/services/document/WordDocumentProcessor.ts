@@ -5051,10 +5051,13 @@ export class WordDocumentProcessor {
       if (targetLevel !== numbering.level) {
         // Final validation: ensure level is within valid Word range (0-8)
         const safeLevel = Math.min(Math.max(targetLevel, 0), 8);
+        // Also ensure level exists in abstractNum to prevent orphaned XML references
+        const maxAvailable = this.getMaxAvailableLevelForNumId(doc, numbering.numId);
+        const validLevel = Math.min(safeLevel, maxAvailable);
         this.log.debug(
-          `    Adjusting: indent=${indent} twips, level ${numbering.level} → ${safeLevel}`
+          `    Adjusting: indent=${indent} twips, level ${numbering.level} → ${validLevel} (max available: ${maxAvailable})`
         );
-        para.setNumbering(numbering.numId, safeLevel);
+        para.setNumbering(numbering.numId, validLevel);
         normalized++;
       }
     }
@@ -5091,6 +5094,42 @@ export class WordDocumentProcessor {
       return lvl?.getLeftIndent() || 0;
     } catch (error) {
       this.log.debug(`Failed to get numbering level indentation: ${error}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Get the maximum level that exists in an abstractNum definition for a numId
+   *
+   * This prevents orphaned level references - if we try to assign level 5 but
+   * the abstractNum only defines levels 0-2, Word will report corruption.
+   *
+   * @param doc - The document
+   * @param numId - The numbering instance ID (w:numId)
+   * @returns The maximum level that exists (0-8), or 0 if not found
+   */
+  private getMaxAvailableLevelForNumId(doc: Document, numId: number): number {
+    try {
+      const manager = doc.getNumberingManager();
+      if (!manager) return 0;
+
+      const instance = manager.getNumberingInstance(numId);
+      if (!instance) return 0;
+
+      const abstractNumId = instance.getAbstractNumId();
+      const abstractNum = manager.getAbstractNumbering(abstractNumId);
+      if (!abstractNum) return 0;
+
+      // Find max level that exists (start from 8 and work down)
+      for (let i = 8; i >= 0; i--) {
+        const level = abstractNum.getLevel(i);
+        if (level) {
+          return i;
+        }
+      }
+      return 0;
+    } catch (error) {
+      this.log.debug(`Failed to get max available level for numId ${numId}: ${error}`);
       return 0;
     }
   }
