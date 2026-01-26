@@ -5,9 +5,36 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.2.5
-**docxmlater Framework Version:** 9.5.13
+**Current App Version:** 5.2.6
+**docxmlater Framework Version:** 9.5.14
 **Status:** Production Ready
+
+---
+
+## [5.2.6] - 2026-01-26
+
+### Added
+
+- **Preserve Red Font Option**: New processing option to preserve exact #FF0000 red font color
+  - Located in Processing Options tab → Text Formatting Fixes group
+  - Only applies to Normal style paragraphs (Headers not affected)
+  - Default: disabled
+
+- **Power Automate Timeout Retry**: Enhanced error handling for API timeouts
+  - Displays "Power Automate Timeout" status instead of generic "Error"
+  - Shows Retry button (similar to file locked errors)
+  - Orange badge in error details dialog with helpful tip
+
+### Fixed
+
+- **List Continuation Indentation**: Multiple consecutive indented paragraphs after a list item now all receive the same indentation
+  - Previously only the first indented paragraph was processed
+  - Now checks if previous paragraph is indented text and matches that indent
+
+### Improved
+
+- **Dependency Updates**:
+  - docxmlater: 9.5.13 → 9.5.14
 
 ---
 
