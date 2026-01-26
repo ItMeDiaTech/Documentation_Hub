@@ -23,6 +23,7 @@ export const defaultOptions: ProcessingOption[] = [
   // Text Formatting Fixes Group
   { id: 'remove-italics', label: 'Remove All Italics', group: 'text', enabled: true },
   { id: 'normalize-dashes', label: 'Normalize Dashes to Hyphens', group: 'text', enabled: true },
+  { id: 'preserve-red-font', label: 'Preserve Red (#FF0000) Font', group: 'text', enabled: false },
   {
     id: 'replace-outdated-titles',
     label: 'Update Outdated Hyperlink Titles',

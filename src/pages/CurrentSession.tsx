@@ -721,9 +721,13 @@ export function CurrentSession() {
                               className="text-xs text-red-500 font-medium hover:text-red-600 hover:underline cursor-pointer"
                               title="Click to view error details"
                             >
-                              {doc.errorType === 'file_locked' ? "Close File Before Processing" : "Error"}
+                              {doc.errorType === 'file_locked'
+                                ? "Close File Before Processing"
+                                : doc.errorType === 'api_timeout'
+                                  ? "Power Automate Timeout"
+                                  : "Error"}
                             </button>
-                            {doc.errorType === 'file_locked' && (
+                            {(doc.errorType === 'file_locked' || doc.errorType === 'api_timeout') && (
                               <Button
                                 size="xs"
                                 onClick={() => handleProcessDocument(doc.id)}

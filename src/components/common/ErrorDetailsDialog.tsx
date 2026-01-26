@@ -9,7 +9,7 @@ export interface ErrorDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   documentName: string;
   errors: string[];
-  errorType?: 'file_locked' | 'general';
+  errorType?: 'file_locked' | 'api_timeout' | 'general';
   processedAt?: Date;
 }
 
@@ -66,6 +66,10 @@ export function ErrorDetailsDialog({
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
                 File Locked
               </span>
+            ) : errorType === 'api_timeout' ? (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">
+                API Timeout
+              </span>
             ) : (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
                 Error
@@ -94,6 +98,15 @@ export function ErrorDetailsDialog({
             <div className="mb-4 p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
                 <strong>Tip:</strong> Please close the document in Microsoft Word and try processing again.
+              </p>
+            </div>
+          )}
+
+          {/* Helpful Tip for API Timeout */}
+          {errorType === 'api_timeout' && (
+            <div className="mb-4 p-3 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+              <p className="text-sm text-orange-800 dark:text-orange-200">
+                <strong>Tip:</strong> The Power Automate service timed out. Please wait a moment and try again.
               </p>
             </div>
           )}

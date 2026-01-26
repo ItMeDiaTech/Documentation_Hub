@@ -150,7 +150,7 @@ export interface Document {
   status: 'pending' | 'processing' | 'completed' | 'error';
   processedAt?: Date;
   errors?: string[];
-  errorType?: 'file_locked' | 'general';
+  errorType?: 'file_locked' | 'api_timeout' | 'general';
   fileData?: ArrayBuffer; // Store file data for processing
   /** Pre-existing tracked changes that were in the document BEFORE DocHub processing */
   previousRevisions?: PreviousRevisionState;

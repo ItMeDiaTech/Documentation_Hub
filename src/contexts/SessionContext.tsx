@@ -1201,6 +1201,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           preserveBlankLinesAfterHeader2Tables?: boolean;
           preserveUserBlankStructures?: boolean;
           removeItalics?: boolean;
+          preserveRedFont?: boolean;
           standardizeHyperlinkFormatting?: boolean;
           standardizeListPrefixFormatting?: boolean;
 
@@ -1329,6 +1330,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           preserveUserBlankStructures:
             sessionToProcess.processingOptions?.enabledOperations?.includes('preserve-user-blank-structures'),
           removeItalics: sessionToProcess.processingOptions?.enabledOperations?.includes('remove-italics'),
+          preserveRedFont: sessionToProcess.processingOptions?.enabledOperations?.includes('preserve-red-font'),
 
           // ALWAYS ENABLED: Standardize hyperlink formatting (remove bold/italic from all hyperlinks)
           // This is intentional and required for the work environment to maintain professional document standards.
@@ -1593,9 +1595,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           status: result.success ? ('completed' as const) : ('error' as const),
                           processedAt: new Date(),
                           errors: result.errorMessages,
-                          errorType: !result.success && result.errorMessages?.some(
-                            (msg) => msg.toLowerCase().includes('close the file')
-                          ) ? 'file_locked' : (!result.success ? 'general' : undefined),
+                          errorType: !result.success
+                            ? (result.errorMessages?.some((msg) => msg.toLowerCase().includes('close the file'))
+                                ? 'file_locked'
+                                : result.errorMessages?.some((msg) => msg.toLowerCase().includes('timeout'))
+                                  ? 'api_timeout'
+                                  : 'general')
+                            : undefined,
                           // Store pre-existing revisions (from before DocHub processing)
                           previousRevisions: result.previousRevisions,
                           // Store Word revisions state from DocHub processing
@@ -1699,7 +1705,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           errors: [error instanceof Error ? error.message : 'Processing failed'],
                           errorType: (error instanceof Error && error.message.toLowerCase().includes('close the file'))
                             ? 'file_locked'
-                            : 'general',
+                            : (error instanceof Error && error.message.toLowerCase().includes('timeout'))
+                              ? 'api_timeout'
+                              : 'general',
                         }
                       : d
                   ),

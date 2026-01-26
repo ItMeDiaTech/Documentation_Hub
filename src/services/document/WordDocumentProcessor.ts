@@ -94,6 +94,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   preserveBlankLinesAfterAllTables?: boolean; // preserve-all-table-blank-lines: Add blank lines after ALL tables regardless of size (user request)
   preserveUserBlankStructures?: boolean; // preserve-user-blank-structures: Preserve single blank lines, only remove consecutive duplicates (2+)
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
+  preserveRedFont?: boolean; // preserve-red-font: Preserve exact #FF0000 red font color on Normal style paragraphs
   normalizeDashes?: boolean; // normalize-dashes: Replace en-dashes (U+2013) with hyphens (U+002D)
   standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
   standardizeListPrefixFormatting?: boolean; // standardize-list-prefix-formatting: Apply consistent Verdana 12pt black formatting to all list symbols/numbers
@@ -1326,7 +1327,8 @@ export class WordDocumentProcessor {
           doc,
           options.styles,
           options.tableShadingSettings,
-          options.preserveBlankLinesAfterHeader2Tables ?? true
+          options.preserveBlankLinesAfterHeader2Tables ?? true,
+          options.preserveRedFont ?? false
         );
         this.log.info(
           `Applied custom formatting: Heading1=${styleResults.heading1}, Heading2=${styleResults.heading2}, Heading3=${styleResults.heading3}, Normal=${styleResults.normal}, ListParagraph=${styleResults.listParagraph}`
@@ -3624,7 +3626,8 @@ export class WordDocumentProcessor {
       spaceBefore: number;
       spaceAfter: number;
       lineSpacing: number;
-    }>
+    }>,
+    preserveRedFont: boolean = false
   ): Promise<number> {
     let appliedCount = 0;
     const paragraphs = doc.getAllParagraphs();
@@ -3777,8 +3780,13 @@ export class WordDocumentProcessor {
             run.setUnderline(styleToApply.underline ? "single" : false);
           }
           // Preserve white font - don't change color if run is white (FFFFFF)
+          // Preserve red font (#FF0000) if option enabled AND this is Normal style
           const currentColor = runFormatting.color?.toUpperCase();
-          if (currentColor !== 'FFFFFF') {
+          const isWhiteFont = currentColor === 'FFFFFF';
+          const isRedFont = currentColor === 'FF0000';
+          const isNormalStyle = styleToApply.id === 'normal';
+
+          if (!isWhiteFont && !(isRedFont && preserveRedFont && isNormalStyle)) {
             run.setColor(styleToApply.color.replace("#", ""));
           }
         }
@@ -3937,7 +3945,8 @@ export class WordDocumentProcessor {
       header2Shading: string;
       otherShading: string;
     },
-    preserveBlankLinesAfterHeader2Tables: boolean = true
+    preserveBlankLinesAfterHeader2Tables: boolean = true,
+    preserveRedFont: boolean = false
   ): Promise<{
     heading1: boolean;
     heading2: boolean;
@@ -4042,7 +4051,7 @@ export class WordDocumentProcessor {
     // The framework method may not process paragraphs without explicit styles
     // (e.g., table cell paragraphs that have no w:pStyle defined)
     this.log.debug("Running manual assignStylesToDocument() for comprehensive coverage");
-    const manualCount = await this.assignStylesToDocument(doc, styles);
+    const manualCount = await this.assignStylesToDocument(doc, styles, preserveRedFont);
     this.log.debug(`Manual style assignment applied to ${manualCount} additional paragraphs`);
 
     // Return results - use framework results if available, otherwise construct from styles
@@ -4726,34 +4735,50 @@ export class WordDocumentProcessor {
       // Skip if current paragraph IS a list item
       if (currentPara.getNumbering()) continue;
 
-      // Skip if previous paragraph is NOT a list item
-      const previousNumbering = previousPara.getNumbering();
-      if (!previousNumbering) continue;
-
       // Check if current paragraph has SOME existing indentation
       const formatting = currentPara.getFormatting();
       const existingLeftIndent = formatting.indentation?.left || 0;
       if (existingLeftIndent === 0) continue;
 
-      // Get the actual text indent from the document's numbering definition
-      const previousLevel = previousNumbering.level ?? 0;
-      const numId = previousNumbering.numId;
+      // Check previous paragraph's state
+      const previousNumbering = previousPara.getNumbering();
+      const previousFormatting = previousPara.getFormatting();
+      const previousLeftIndent = previousFormatting.indentation?.left || 0;
 
-      // Try to get actual indent from numbering definition, fall back to UI settings
-      const actualIndent = this.getListTextIndent(doc, numId, previousLevel);
-      const textIndentTwips = actualIndent ?? Math.round(getTextIndentForLevel(previousLevel) * 1440);
+      // Case 1: Previous is a list item - get indent from list definition
+      if (previousNumbering) {
+        const previousLevel = previousNumbering.level ?? 0;
+        const numId = previousNumbering.numId;
 
-      // Apply the list's textIndent as the paragraph's left indent
-      currentPara.setLeftIndent(textIndentTwips);
-      currentPara.setFirstLineIndent(0);
+        // Try to get actual indent from numbering definition, fall back to UI settings
+        const actualIndent = this.getListTextIndent(doc, numId, previousLevel);
+        const textIndentTwips = actualIndent ?? Math.round(getTextIndentForLevel(previousLevel) * 1440);
 
-      const source = actualIndent !== undefined ? 'numbering.xml' : 'UI settings';
-      this.log.debug(
-        `List continuation indent: para ${i}, level=${previousLevel}, ` +
-        `textIndent=${textIndentTwips}twips (from ${source}), was ${existingLeftIndent}twips`
-      );
+        // Apply the list's textIndent as the paragraph's left indent
+        currentPara.setLeftIndent(textIndentTwips);
+        currentPara.setFirstLineIndent(0);
 
-      indentedCount++;
+        const source = actualIndent !== undefined ? 'numbering.xml' : 'UI settings';
+        this.log.debug(
+          `List continuation indent: para ${i}, level=${previousLevel}, ` +
+          `textIndent=${textIndentTwips}twips (from ${source}), was ${existingLeftIndent}twips`
+        );
+
+        indentedCount++;
+      }
+      // Case 2: Previous is an indented non-list paragraph - match its indent
+      else if (previousLeftIndent > 0) {
+        currentPara.setLeftIndent(previousLeftIndent);
+        currentPara.setFirstLineIndent(0);
+
+        this.log.debug(
+          `List continuation indent: para ${i}, matching previous text indent ` +
+          `${previousLeftIndent}twips, was ${existingLeftIndent}twips`
+        );
+
+        indentedCount++;
+      }
+      // Case 3: Previous has no indent - skip this paragraph
     }
 
     return indentedCount;
