@@ -4735,18 +4735,22 @@ export class WordDocumentProcessor {
       const existingLeftIndent = formatting.indentation?.left || 0;
       if (existingLeftIndent === 0) continue;
 
-      // Get textIndent for the previous list item's level
+      // Get the actual text indent from the document's numbering definition
       const previousLevel = previousNumbering.level ?? 0;
-      const textIndentInches = getTextIndentForLevel(previousLevel);
-      const textIndentTwips = Math.round(textIndentInches * 1440);
+      const numId = previousNumbering.numId;
+
+      // Try to get actual indent from numbering definition, fall back to UI settings
+      const actualIndent = this.getListTextIndent(doc, numId, previousLevel);
+      const textIndentTwips = actualIndent ?? Math.round(getTextIndentForLevel(previousLevel) * 1440);
 
       // Apply the list's textIndent as the paragraph's left indent
       currentPara.setLeftIndent(textIndentTwips);
       currentPara.setFirstLineIndent(0);
 
+      const source = actualIndent !== undefined ? 'numbering.xml' : 'UI settings';
       this.log.debug(
         `List continuation indent: para ${i}, level=${previousLevel}, ` +
-        `textIndent=${textIndentInches}" (${textIndentTwips}twips), was ${existingLeftIndent}twips`
+        `textIndent=${textIndentTwips}twips (from ${source}), was ${existingLeftIndent}twips`
       );
 
       indentedCount++;
@@ -4797,6 +4801,29 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Helper: Get the text indent (leftIndent) for a specific level of a numbering definition
+   * Returns the actual indent from the numbering.xml, or undefined if not found
+   */
+  private getListTextIndent(doc: Document, numId: number, level: number): number | undefined {
+    try {
+      const manager = doc.getNumberingManager();
+      const instance = manager.getInstance(numId);
+      if (!instance) return undefined;
+
+      const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+      if (!abstractNum) return undefined;
+
+      const levelDef = abstractNum.getLevel(level);
+      if (!levelDef) return undefined;
+
+      return levelDef.getProperties().leftIndent;
+    } catch (error) {
+      this.log.warn(`Error getting list text indent: ${error}`);
+      return undefined;
+    }
+  }
+
+  /**
    * Normalize list levels based on visual indentation
    *
    * Some documents have bullets where all items have w:ilvl="0" (level 0) but some have
@@ -4821,7 +4848,6 @@ export class WordDocumentProcessor {
     }
   ): Promise<number> {
     let normalized = 0;
-    const allParagraphs = doc.getAllParagraphs();
 
     // Build threshold ranges from user settings (convert inches to twips)
     const thresholds = this.buildIndentationThresholds(settings.indentationLevels);
@@ -4832,24 +4858,68 @@ export class WordDocumentProcessor {
       this.log.debug(`    Level ${t.level}: ${t.minTwips} - ${t.maxTwips} twips`);
     });
 
-    for (const para of allParagraphs) {
+    // Process table cells - check for existing hierarchy before normalizing
+    for (const table of doc.getAllTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          const paragraphs = cell.getParagraphs();
+
+          // Check if cell already has multi-level hierarchy
+          const levels = new Set<number>();
+          for (const para of paragraphs) {
+            const numbering = para.getNumbering();
+            if (numbering) levels.add(numbering.level);
+          }
+
+          // Skip if cell has items at multiple levels (hierarchy exists)
+          if (levels.size > 1) {
+            this.log.debug(
+              `  Skipping cell with existing ${levels.size}-level hierarchy (levels: ${Array.from(levels).join(', ')})`
+            );
+            continue;
+          }
+
+          // Only normalize if all items are at same level (potential orphans)
+          for (const para of paragraphs) {
+            const numbering = para.getNumbering();
+            if (!numbering) continue;
+
+            const formatting = para.getFormatting();
+            const leftTwips = formatting.indentation?.left || 0;
+
+            if (leftTwips === 0) continue;
+
+            const inferredLevel = this.inferLevelFromIndentation(leftTwips, thresholds);
+
+            if (inferredLevel !== numbering.level) {
+              this.log.debug(
+                `  Normalizing paragraph: left=${leftTwips} twips, ` +
+                  `current level=${numbering.level}, inferred level=${inferredLevel}`
+              );
+              para.setNumbering(numbering.numId, inferredLevel);
+              normalized++;
+            }
+          }
+        }
+      }
+    }
+
+    // Process body-level paragraphs (outside tables) - original logic
+    const bodyParagraphs = doc.getParagraphs();
+    for (const para of bodyParagraphs) {
       const numbering = para.getNumbering();
       if (!numbering) continue;
 
-      // Get paragraph's visual indentation (in twips)
       const formatting = para.getFormatting();
       const leftTwips = formatting.indentation?.left || 0;
 
-      // Skip if no explicit paragraph indentation
       if (leftTwips === 0) continue;
 
-      // Find the level that best matches this indentation
       const inferredLevel = this.inferLevelFromIndentation(leftTwips, thresholds);
 
-      // If inferred level differs from current level, update it
       if (inferredLevel !== numbering.level) {
         this.log.debug(
-          `  Normalizing paragraph: left=${leftTwips} twips, ` +
+          `  Normalizing body paragraph: left=${leftTwips} twips, ` +
             `current level=${numbering.level}, inferred level=${inferredLevel}`
         );
         para.setNumbering(numbering.numId, inferredLevel);
