@@ -135,18 +135,22 @@ export function sanitizeHyperlinkTexts(texts: string[]): string[] {
 }
 
 /**
- * Replace en-dashes with regular hyphens
+ * Replace en-dashes and em-dashes with regular hyphens
  *
- * Normalizes typographic en-dashes to standard ASCII hyphens:
+ * Normalizes typographic dashes to standard ASCII hyphens:
  * - En-dash (U+2013, –) -> Hyphen (U+002D, -)
+ * - Em-dash (U+2014, —) -> Hyphen (U+002D, -)
  *
- * @param text - The text that may contain en-dashes
- * @returns The text with en-dashes normalized to hyphens
+ * @param text - The text that may contain en-dashes or em-dashes
+ * @returns The text with dashes normalized to hyphens
  *
  * @example
  * ```typescript
  * normalizeEnDashesToHyphens("2020–2024")
  * // Returns: "2020-2024"
+ *
+ * normalizeEnDashesToHyphens("Hello—World")
+ * // Returns: "Hello-World"
  *
  * normalizeEnDashesToHyphens("Normal text with - hyphens")
  * // Returns: "Normal text with - hyphens" (unchanged)
@@ -154,5 +158,5 @@ export function sanitizeHyperlinkTexts(texts: string[]): string[] {
  */
 export function normalizeEnDashesToHyphens(text: string): string {
   if (!text) return '';
-  return text.replace(/\u2013/g, '-');
+  return text.replace(/[\u2013\u2014]/g, '-');
 }
