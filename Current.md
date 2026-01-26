@@ -1,6 +1,6 @@
 # Documentation Hub - Current State
 
-**Current Version:** 5.2.8
+**Current Version:** 5.2.9
 
 ---
 
