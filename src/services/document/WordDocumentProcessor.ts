@@ -94,8 +94,8 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   preserveBlankLinesAfterAllTables?: boolean; // preserve-all-table-blank-lines: Add blank lines after ALL tables regardless of size (user request)
   preserveUserBlankStructures?: boolean; // preserve-user-blank-structures: Preserve single blank lines, only remove consecutive duplicates (2+)
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
-  preserveRedFont?: boolean; // preserve-red-font: Preserve exact #FF0000 red font color on Normal style paragraphs
-  normalizeDashes?: boolean; // normalize-dashes: Replace en-dashes (U+2013) with hyphens (U+002D)
+  preserveRedFont?: boolean; // preserve-red-font: Preserve exact #FF0000 red font color on Normal and List Paragraph style paragraphs
+  normalizeDashes?: boolean; // normalize-dashes: Replace en-dashes (U+2013) and em-dashes (U+2014) with hyphens (U+002D)
   standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
   standardizeListPrefixFormatting?: boolean; // standardize-list-prefix-formatting: Apply consistent Verdana 12pt black formatting to all list symbols/numbers
 
@@ -3780,13 +3780,13 @@ export class WordDocumentProcessor {
             run.setUnderline(styleToApply.underline ? "single" : false);
           }
           // Preserve white font - don't change color if run is white (FFFFFF)
-          // Preserve red font (#FF0000) if option enabled AND this is Normal style
+          // Preserve red font (#FF0000) if option enabled AND this is Normal or List Paragraph style
           const currentColor = runFormatting.color?.toUpperCase();
           const isWhiteFont = currentColor === 'FFFFFF';
           const isRedFont = currentColor === 'FF0000';
-          const isNormalStyle = styleToApply.id === 'normal';
+          const isNormalOrListStyle = styleToApply.id === 'normal' || styleToApply.id === 'listParagraph';
 
-          if (!isWhiteFont && !(isRedFont && preserveRedFont && isNormalStyle)) {
+          if (!isWhiteFont && !(isRedFont && preserveRedFont && isNormalOrListStyle)) {
             run.setColor(styleToApply.color.replace("#", ""));
           }
         }
