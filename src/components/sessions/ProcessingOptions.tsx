@@ -75,7 +75,7 @@ export const defaultOptions: ProcessingOption[] = [
   { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'structure', enabled: true },
   {
     id: 'remove-paragraph-lines',
-    label: 'Remove Extra Blank Lines',
+    label: 'Standardize Blank Lines',
     group: 'structure',
     enabled: true,
   },
@@ -91,7 +91,7 @@ export const defaultOptions: ProcessingOption[] = [
     group: 'structure',
     enabled: true,
   },
-  { id: 'add-document-warning', label: 'Add Document Disclaimer', group: 'structure', enabled: true },
+  { id: 'add-document-warning', label: 'Add Document Disclaimer When Missing', group: 'structure', enabled: true },
   {
     id: 'validate-header2-tables',
     label: 'Header 2 Section Tables',
@@ -111,6 +111,12 @@ export const defaultOptions: ProcessingOption[] = [
   {
     id: 'adjust-table-padding',
     label: 'Adjust Table Padding',
+    group: 'lists',
+    enabled: true,
+  },
+  {
+    id: 'standardize-cell-borders',
+    label: 'Standardize Cell Borders',
     group: 'lists',
     enabled: true,
   },

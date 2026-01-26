@@ -332,6 +332,9 @@ export interface TableShadingSettings {
   paddingOtherBottom?: number; // default: 0
   paddingOtherLeft?: number; // default: 0.08
   paddingOtherRight?: number; // default: 0.08
+
+  // Cell border settings
+  cellBorderThickness?: number; // Border thickness in points (default: 0.5)
 }
 
 export interface ReplacementRule {

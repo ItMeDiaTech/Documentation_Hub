@@ -244,6 +244,8 @@ const DEFAULT_TABLE_SHADING_SETTINGS: TableShadingSettings = {
   paddingOtherBottom: 0,
   paddingOtherLeft: 0.08,
   paddingOtherRight: 0.08,
+  // Cell border thickness (in points)
+  cellBorderThickness: 0.5,
 };
 
 /**
@@ -1390,6 +1392,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   paddingOtherBottom: sessionToProcess.tableShadingSettings.paddingOtherBottom ?? 0,
                   paddingOtherLeft: sessionToProcess.tableShadingSettings.paddingOtherLeft ?? 0.08,
                   paddingOtherRight: sessionToProcess.tableShadingSettings.paddingOtherRight ?? 0.08,
+                  // Cell border thickness setting
+                  cellBorderThickness: sessionToProcess.tableShadingSettings.cellBorderThickness ?? 0.5,
                   // Derived from Heading 2 paragraph style
                   heading2FontFamily: heading2Style?.fontFamily || 'Verdana',
                   heading2FontSize: heading2Style?.fontSize || 14,

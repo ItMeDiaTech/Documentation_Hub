@@ -164,8 +164,10 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
     paddingOtherBottom?: number; // default: 0
     paddingOtherLeft?: number; // default: 0.08
     paddingOtherRight?: number; // default: 0.08
+    cellBorderThickness?: number; // Cell border thickness in points (default: 0.5)
   };
   smartTables?: boolean; // smart-tables: Smart table detection and formatting (NEW)
+  standardizeCellBorders?: boolean; // standardize-cell-borders: Standardize all cell border thickness and color (preserves FFC000)
   tableOfContentsSettings?: {
     // NEW: Table of Contents generation settings
     enabled: boolean;
@@ -1839,23 +1841,28 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
-      // TABLE BORDER NORMALIZATION
-      // Ensure all tables have uniform thin borders (size 4, single, black)
+      // TABLE BORDER STANDARDIZATION (CONDITIONAL)
+      // Standardize cell border thickness and color (preserves FFC000 yellow/gold)
       // ═══════════════════════════════════════════════════════════
-      this.log.debug("=== NORMALIZING TABLE BORDERS ===");
-      const bordersNormalized = doc.normalizeTableBorders({
-        style: 'single',
-        size: 4,
-        color: '000000',
-      });
-      if (bordersNormalized > 0) {
-        this.log.info(`Normalized borders on ${bordersNormalized} tables`);
-        result.changes?.push({
-          type: 'table',
-          category: 'structure',
-          description: 'Normalized table borders to thin uniform style',
-          count: bordersNormalized,
+      if (options.standardizeCellBorders) {
+        this.log.debug("=== STANDARDIZING CELL BORDERS ===");
+        const borderThickness = options.tableShadingSettings?.cellBorderThickness ?? 0.5;
+        const borderSize = Math.round(borderThickness * 8); // Convert points to eighths
+
+        const bordersNormalized = this.standardizeCellBorderThickness(doc, {
+          size: borderSize,
+          preserveColor: 'FFC000', // Preserve yellow/gold borders
         });
+
+        if (bordersNormalized > 0) {
+          this.log.info(`Standardized borders on ${bordersNormalized} cells to ${borderThickness}pt`);
+          result.changes?.push({
+            type: 'table',
+            category: 'structure',
+            description: `Standardized cell borders to ${borderThickness}pt thickness`,
+            count: bordersNormalized,
+          });
+        }
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -3462,6 +3469,87 @@ export class WordDocumentProcessor {
 
     this.log.info(`Applied Hidden Text style to ${hiddenTextCount} runs`);
     return hiddenTextCount;
+  }
+
+  /**
+   * Standardize cell border thickness and color across all tables
+   *
+   * This method sets all table cell borders to a specified thickness and sets
+   * the color to black (#000000), EXCEPT for borders that have the preserved
+   * color (default: #FFC000 yellow/gold), which retain their original color.
+   *
+   * @param doc - Document to process
+   * @param options - Standardization options
+   * @param options.size - Border size in eighths of a point (e.g., 4 = 0.5pt)
+   * @param options.preserveColor - Hex color to preserve (default: 'FFC000')
+   * @returns Number of cells with borders standardized
+   */
+  private standardizeCellBorderThickness(
+    doc: Document,
+    options: {
+      size: number;
+      preserveColor?: string;
+    }
+  ): number {
+    const tables = doc.getTables();
+    let cellsProcessed = 0;
+    const PRESERVED_COLOR = (options.preserveColor ?? 'FFC000').toUpperCase().replace('#', '');
+    const DEFAULT_COLOR = '000000';
+
+    this.log.debug(`Standardizing borders: size=${options.size} (${options.size / 8}pt), preserveColor=${PRESERVED_COLOR}`);
+
+    for (const table of tables) {
+      try {
+        for (const row of table.getRows()) {
+          for (const cell of row.getCells()) {
+            const existingBorders = cell.getBorders();
+
+            // Build new borders, preserving FFC000 color if present
+            const newBorders = {
+              top: this.standardizeBorder(existingBorders?.top, options.size, PRESERVED_COLOR, DEFAULT_COLOR),
+              bottom: this.standardizeBorder(existingBorders?.bottom, options.size, PRESERVED_COLOR, DEFAULT_COLOR),
+              left: this.standardizeBorder(existingBorders?.left, options.size, PRESERVED_COLOR, DEFAULT_COLOR),
+              right: this.standardizeBorder(existingBorders?.right, options.size, PRESERVED_COLOR, DEFAULT_COLOR),
+            };
+
+            cell.setBorders(newBorders);
+            cellsProcessed++;
+          }
+        }
+      } catch (error) {
+        this.log.warn(`Failed to standardize borders for table: ${error}`);
+      }
+    }
+
+    return cellsProcessed;
+  }
+
+  /**
+   * Standardize a single border, preserving the specified color if present
+   *
+   * @param existing - Existing border definition (may be undefined)
+   * @param size - New border size in eighths of a point
+   * @param preserveColor - Color to preserve (uppercase, no # prefix)
+   * @param defaultColor - Color to use if not preserving (uppercase, no # prefix)
+   * @returns New border definition
+   */
+  private standardizeBorder(
+    existing: { style?: string; size?: number; color?: string } | undefined,
+    size: number,
+    preserveColor: string,
+    defaultColor: string
+  ): { style: 'single'; size: number; color: string } {
+    // Normalize existing color for comparison (handle undefined, #prefix, case)
+    const existingColor = existing?.color?.toUpperCase().replace('#', '') || '';
+
+    // Preserve color if it matches the preserved color, otherwise use default (black)
+    const color = (existingColor === preserveColor) ? preserveColor : defaultColor;
+
+    return {
+      style: 'single' as const,
+      size: size,
+      color: color,
+    };
   }
 
   /**
