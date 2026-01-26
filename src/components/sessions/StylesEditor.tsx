@@ -204,6 +204,7 @@ interface TablePaddingSettings {
   paddingOtherBottom: number;
   paddingOtherLeft: number;
   paddingOtherRight: number;
+  cellBorderThickness?: number;
 }
 
 interface StylesEditorProps {
@@ -223,6 +224,7 @@ interface StylesEditorProps {
   paddingOtherBottom?: number;
   paddingOtherLeft?: number;
   paddingOtherRight?: number;
+  cellBorderThickness?: number;
   onTableShadingChange?: (
     header2: string,
     other: string,
@@ -248,6 +250,7 @@ export const StylesEditor = memo(function StylesEditor({
   paddingOtherBottom,
   paddingOtherLeft,
   paddingOtherRight,
+  cellBorderThickness,
   onTableShadingChange,
 }: StylesEditorProps) {
   // NOTE: convertToStyleDefinitions is now defined outside component for better performance
@@ -283,6 +286,7 @@ export const StylesEditor = memo(function StylesEditor({
   const [localPaddingOtherBottom, setLocalPaddingOtherBottom] = useState<number>(clampPadding(paddingOtherBottom, 0));
   const [localPaddingOtherLeft, setLocalPaddingOtherLeft] = useState<number>(clampPadding(paddingOtherLeft, 0.08));
   const [localPaddingOtherRight, setLocalPaddingOtherRight] = useState<number>(clampPadding(paddingOtherRight, 0.08));
+  const [localCellBorderThickness, setLocalCellBorderThickness] = useState<number>(cellBorderThickness ?? 0.5);
 
   // Sync internal state when external props change
   // This fixes the issue where useState initializer only runs once
@@ -315,6 +319,12 @@ export const StylesEditor = memo(function StylesEditor({
       setLocalImageBorderWidth(imageBorderWidth);
     }
   }, [imageBorderWidth]);
+
+  useEffect(() => {
+    if (cellBorderThickness !== undefined) {
+      setLocalCellBorderThickness(cellBorderThickness);
+    }
+  }, [cellBorderThickness]);
 
   // Sync all padding props when they change (single effect for better reliability)
   useEffect(() => {
@@ -1013,7 +1023,7 @@ export const StylesEditor = memo(function StylesEditor({
 
   // Table Shading Settings - moved from Processing Options to Styles for better organization
   const renderTableShadingSettings = () => {
-    // Helper to get current padding settings
+    // Helper to get current padding settings (and border thickness)
     const getCurrentPaddingSettings = (): TablePaddingSettings => ({
       padding1x1Top: localPadding1x1Top,
       padding1x1Bottom: localPadding1x1Bottom,
@@ -1023,6 +1033,7 @@ export const StylesEditor = memo(function StylesEditor({
       paddingOtherBottom: localPaddingOtherBottom,
       paddingOtherLeft: localPaddingOtherLeft,
       paddingOtherRight: localPaddingOtherRight,
+      cellBorderThickness: localCellBorderThickness,
     });
 
     const handleHeader2ShadingChange = (value: string) => {
@@ -1056,6 +1067,27 @@ export const StylesEditor = memo(function StylesEditor({
         onTableShadingChange?.(localTableHeader2Shading, localTableOtherShading, localImageBorderWidth, updatedPadding);
       }
     };
+
+    const handleCellBorderThicknessChange = (value: string) => {
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue)) {
+        setLocalCellBorderThickness(numValue);
+        const updatedPadding = { ...getCurrentPaddingSettings(), cellBorderThickness: numValue };
+        onTableShadingChange?.(localTableHeader2Shading, localTableOtherShading, localImageBorderWidth, updatedPadding);
+      }
+    };
+
+    // Cell border thickness options in points
+    const borderThicknessOptions = [
+      { value: 0.25, label: '0.25 pt' },
+      { value: 0.5, label: '0.5 pt (Default)' },
+      { value: 0.75, label: '0.75 pt' },
+      { value: 1, label: '1 pt' },
+      { value: 1.5, label: '1.5 pt' },
+      { value: 2, label: '2 pt' },
+      { value: 2.25, label: '2.25 pt' },
+      { value: 3, label: '3 pt' },
+    ];
 
     return (
       <div className="space-y-4 p-4 border border-border rounded-lg">
@@ -1123,6 +1155,27 @@ export const StylesEditor = memo(function StylesEditor({
             <p className="text-xs text-muted-foreground mt-1">
               Border thickness for centered images (0.5 - 10pt)
             </p>
+          </div>
+        </div>
+
+        {/* Cell Border Thickness Section */}
+        <div className="pt-4 border-t border-border">
+          <h4 className="text-sm font-medium mb-3">Cell Border Thickness</h4>
+          <p className="text-xs text-muted-foreground mb-4">
+            Set the border thickness for all table cells. Borders with color #FFC000 will preserve their color.
+          </p>
+          <div className="flex gap-2 items-center">
+            <select
+              value={localCellBorderThickness}
+              onChange={(e) => handleCellBorderThicknessChange(e.target.value)}
+              className="w-48 px-3 py-1.5 text-sm border border-border rounded-md bg-background"
+            >
+              {borderThicknessOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

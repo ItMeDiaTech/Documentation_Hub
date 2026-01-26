@@ -90,6 +90,7 @@ function mapTableShadingSettings(
     header2Shading: normalizeColor(settings.header2Shading),
     otherShading: normalizeColor(settings.otherShading),
     imageBorderWidth: settings.imageBorderWidth ?? 1.0,
+    cellBorderThickness: settings.cellBorderThickness ?? 0.5,
   };
 }
 
@@ -141,6 +142,9 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
   if (enabled.has('smart-tables')) {
     flags.smartTables = true;
     flags.tableUniformity = true; // Auto-enable table uniformity with smart tables
+  }
+  if (enabled.has('standardize-cell-borders')) {
+    flags.standardizeCellBorders = true;
   }
 
   // ═══════════════════════════════════════════════════════════

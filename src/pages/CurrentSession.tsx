@@ -453,9 +453,10 @@ export function CurrentSession() {
       paddingOtherBottom: number;
       paddingOtherLeft: number;
       paddingOtherRight: number;
+      cellBorderThickness?: number;
     }
   ) => {
-    // Update session table shading settings including padding
+    // Update session table shading settings including padding and border thickness
     updateSessionTableShadingSettings(session.id, {
       header2Shading: header2,
       otherShading: other,
@@ -470,6 +471,7 @@ export function CurrentSession() {
         paddingOtherBottom: paddingSettings.paddingOtherBottom,
         paddingOtherLeft: paddingSettings.paddingOtherLeft,
         paddingOtherRight: paddingSettings.paddingOtherRight,
+        cellBorderThickness: paddingSettings.cellBorderThickness,
       }),
     });
   };
@@ -935,6 +937,7 @@ export function CurrentSession() {
           paddingOtherBottom={session.tableShadingSettings?.paddingOtherBottom ?? 0}
           paddingOtherLeft={session.tableShadingSettings?.paddingOtherLeft ?? 0.08}
           paddingOtherRight={session.tableShadingSettings?.paddingOtherRight ?? 0.08}
+          cellBorderThickness={session.tableShadingSettings?.cellBorderThickness ?? 0.5}
           onTableShadingChange={handleTableShadingChange}
         />
       ),
