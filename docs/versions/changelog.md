@@ -5,9 +5,42 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.2.7
-**docxmlater Framework Version:** 9.5.14
+**Current App Version:** 5.2.35
+**docxmlater Framework Version:** 9.5.33
 **Status:** Production Ready
+
+---
+
+## [5.2.35] - 2026-01-28
+
+### Improved
+
+- **Documentation Cleanup**: Updated version references and removed development artifacts
+- **Dependency Updates**:
+  - docxmlater: 9.5.31 → 9.5.33
+
+---
+
+## [5.2.32] - 2026-01-28
+
+### Improved
+
+- **Dependency Updates**:
+  - docxmlater: 9.5.30 → 9.5.31
+
+---
+
+## [5.2.16] - 2026-01-26
+
+### Improved
+
+- **Table Shading Logic**: Enhanced shading rules for better document handling
+  - 1x1 tables containing large images (≥100x100 pixels) no longer receive shading
+  - Cells with #FFC000 (orange) shading color are now preserved in ALL table cells, not just header rows
+  - Light yellow (#FFF2CC) shading also preserved in data rows
+
+- **Dependency Updates**:
+  - docxmlater: 9.5.14 → 9.5.19
 
 ---
 

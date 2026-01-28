@@ -105,6 +105,30 @@ export interface CertificateConfiguredInfo {
 }
 
 /**
+ * Display/Monitor information for multi-monitor support
+ */
+export interface DisplayInfo {
+  id: number;
+  label: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  workArea: { x: number; y: number; width: number; height: number };
+  isPrimary: boolean;
+}
+
+/**
+ * Display API interface for monitor selection and comparison
+ */
+export interface DisplayAPI {
+  getAllDisplays: () => Promise<DisplayInfo[]>;
+  identifyMonitors: () => Promise<{ success: boolean }>;
+  openComparison: (
+    backupPath: string,
+    processedPath: string,
+    monitorIndex: number
+  ) => Promise<{ success: boolean; error?: string }>;
+}
+
+/**
  * Backup API interface
  */
 export interface BackupAPI {
@@ -165,6 +189,11 @@ export interface ElectronAPI {
   getPlatform: () => Promise<NodeJS.Platform>;
   openDevTools: () => Promise<void>;
 
+  // Always on top (pin window)
+  setAlwaysOnTop: (flag: boolean) => Promise<boolean>;
+  isAlwaysOnTop: () => Promise<boolean>;
+  onAlwaysOnTopChanged: (callback: (isOnTop: boolean) => void) => () => void;
+
   // File handling
   selectDocuments: () => Promise<string[] | null>;
   processDocument: (path: string) => Promise<unknown>;
@@ -176,6 +205,18 @@ export interface ElectronAPI {
     targetPath: string
   ) => Promise<{ success: boolean; error?: string }>;
   getPathsForFiles: (files: File[]) => string[];
+
+  // Export and Reporting
+  selectFolder: () => Promise<string | null>;
+  copyFilesToFolder: (
+    filePaths: string[],
+    destinationFolder: string
+  ) => Promise<{ copied: number; skipped: number }>;
+  getDownloadsPath: () => Promise<string>;
+  createFolder: (folderPath: string) => Promise<boolean>;
+  copyFileToFolder: (sourcePath: string, destFolder: string) => Promise<boolean>;
+  createReportZip: (folderPath: string, zipName: string) => Promise<string>;
+  openOutlookEmail: (subject: string, attachmentPath: string) => Promise<boolean>;
 
   // Document text extraction (for comparison views)
   extractDocumentText: (filePath: string) => Promise<{
@@ -235,6 +276,9 @@ export interface ElectronAPI {
 
   // Dictionary operations (Local SharePoint Dictionary)
   dictionary: DictionaryAPI;
+
+  // Display/Monitor operations
+  display: DisplayAPI;
 
   // Auto-updater
   checkForUpdates: () => Promise<void>;

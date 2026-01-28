@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from '@/contexts/SessionContext';
 import type { QueueItem } from '@/types/session';
+import { processingTimeEstimator, ProcessingTimeEstimator } from '@/utils/processingTimeEstimator';
 
 export interface UseDocumentQueueOptions {
   onDocumentComplete?: (documentId: string, success: boolean) => void;
@@ -13,6 +14,8 @@ export interface UseDocumentQueueReturn {
   queue: QueueItem[];
   isProcessing: boolean;
   currentDocumentId: string | null;
+  estimatedTimeRemaining: number; // in milliseconds
+  estimatedTimeRemainingFormatted: string; // human-readable format
 
   // Actions
   addToQueue: (sessionId: string, documentId: string) => void;
@@ -40,12 +43,16 @@ export function useDocumentQueue(
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0);
 
   // Sync ref to state for UI updates
   const syncState = useCallback(() => {
     if (isMountedRef.current) {
       setQueue([...queueRef.current]);
       setIsProcessing(isProcessingRef.current);
+      // Update estimated time remaining
+      const remaining = processingTimeEstimator.estimateRemainingTime(queueRef.current.length);
+      setEstimatedTimeRemaining(remaining);
     }
   }, []);
 
@@ -68,6 +75,9 @@ export function useDocumentQueue(
     setCurrentDocumentId(nextItem.documentId);
     syncState();
 
+    // Start timing this document (assume 1 API call per document)
+    processingTimeEstimator.startDocument(nextItem.documentId, 1);
+
     try {
       // Process the document (this is the IPC call that makes the API request)
       await processDocument(nextItem.sessionId, nextItem.documentId);
@@ -82,6 +92,9 @@ export function useDocumentQueue(
       onError?.(nextItem.documentId, errorMessage);
       onDocumentComplete?.(nextItem.documentId, false);
     }
+
+    // End timing for this document
+    processingTimeEstimator.endDocument();
 
     // Remove from queue
     queueRef.current = queueRef.current.filter(item => item.documentId !== nextItem.documentId);
@@ -159,6 +172,20 @@ export function useDocumentQueue(
     return queueRef.current.some(item => item.documentId === documentId);
   }, []);
 
+  // Update estimated time remaining periodically while processing
+  useEffect(() => {
+    if (!isProcessing) return;
+
+    const updateTimer = setInterval(() => {
+      if (isMountedRef.current) {
+        const remaining = processingTimeEstimator.estimateRemainingTime(queueRef.current.length);
+        setEstimatedTimeRemaining(remaining);
+      }
+    }, 1000);
+
+    return () => clearInterval(updateTimer);
+  }, [isProcessing]);
+
   // Cleanup on unmount
   useEffect(() => {
     isMountedRef.current = true;
@@ -171,6 +198,8 @@ export function useDocumentQueue(
     queue,
     isProcessing,
     currentDocumentId,
+    estimatedTimeRemaining,
+    estimatedTimeRemainingFormatted: ProcessingTimeEstimator.formatTime(estimatedTimeRemaining),
     addToQueue,
     addManyToQueue,
     removeFromQueue,

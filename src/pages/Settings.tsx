@@ -1,6 +1,10 @@
 import { Button } from '@/components/common/Button';
 import { ColorPickerDialog } from '@/components/common/ColorPickerDialog';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Input } from '@/components/common/Input';
+import { SegmentedControl } from '@/components/settings/SegmentedControl';
+import { SettingRow } from '@/components/settings/SettingRow';
+import * as Switch from '@radix-ui/react-switch';
 import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -11,28 +15,34 @@ import logger from '@/utils/logger';
 import { hasEncodingIssues, sanitizeUrl, validatePowerAutomateUrl } from '@/utils/urlHelpers';
 import { motion } from 'framer-motion';
 import {
+  Accessibility,
   AlertCircle,
   Archive,
   Check,
   CheckCircle2,
+  ChevronDown,
   Cloud,
-  Database,
   Download,
   Globe,
   HardDrive,
+  Laptop,
   Lightbulb,
   Link2,
   LogOut,
+  Monitor,
   Moon,
   Palette,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Send,
+  Sparkles,
   Sun,
   Type,
   User,
-  Wifi
+  Wifi,
+  Zap
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -48,6 +58,7 @@ const settingsSections = [
     items: [
       { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme & colors' },
       { id: 'typography', label: 'Typography', icon: Type, description: 'Fonts & text styling' },
+      { id: 'display', label: 'Display', icon: Monitor, description: 'Monitor settings' },
     ],
   },
   {
@@ -73,7 +84,6 @@ const settingsSections = [
         icon: Archive,
         description: 'Document backup options',
       },
-      { id: 'data', label: 'Storage', icon: Database, description: 'Data management' },
       {
         id: 'submit-idea',
         label: 'Submit Idea for New Implementation',
@@ -111,11 +121,12 @@ export function Settings() {
     updateUpdateSettings,
     updateLocalDictionary,
     updateBackupSettings,
+    updateDisplaySettings,
     updateSettings,
     saveSettings,
   } = useUserSettings();
   const { sessions } = useSession();
-  const { stats } = useGlobalStats();
+  const { stats, resetAllStats } = useGlobalStats();
 
   // Local form states
   const [profileForm, setProfileForm] = useState(settings.profile);
@@ -127,6 +138,17 @@ export function Settings() {
   const [updateSettingsForm, setUpdateSettingsForm] = useState(settings.updateSettings);
   const [localDictionaryForm, setLocalDictionaryForm] = useState(settings.localDictionary);
   const [backupSettingsForm, setBackupSettingsForm] = useState(settings.backupSettings);
+  const [displaySettingsForm, setDisplaySettingsForm] = useState(settings.displaySettings);
+
+  // Display settings states
+  const [availableDisplays, setAvailableDisplays] = useState<Array<{
+    id: number;
+    label: string;
+    bounds: { x: number; y: number; width: number; height: number };
+    workArea: { x: number; y: number; width: number; height: number };
+    isPrimary: boolean;
+  }>>([]);
+  const [identifyingMonitors, setIdentifyingMonitors] = useState(false);
 
   // Dictionary sync states
   const [dictionaryStatus, setDictionaryStatus] = useState<{
@@ -143,6 +165,8 @@ export function Settings() {
   const [clientSecretInput, setClientSecretInput] = useState('');
   const [showClientSecretDialog, setShowClientSecretDialog] = useState(false);
   const [credentialsSaved, setCredentialsSaved] = useState(false);
+  const [showResetStatsDialog, setShowResetStatsDialog] = useState(false);
+  const [isResettingStats, setIsResettingStats] = useState(false);
 
   // Timeout refs for cleanup
   const urlWarningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -236,7 +260,25 @@ export function Settings() {
     setUpdateSettingsForm(settings.updateSettings);
     setLocalDictionaryForm(settings.localDictionary);
     setBackupSettingsForm(settings.backupSettings);
+    setDisplaySettingsForm(settings.displaySettings);
   }, [settings]);
+
+  // Fetch available displays when display section is active
+  useEffect(() => {
+    const fetchDisplays = async () => {
+      if (typeof window.electronAPI === 'undefined' || !window.electronAPI.display) return;
+      try {
+        const displays = await window.electronAPI.display.getAllDisplays();
+        setAvailableDisplays(displays);
+      } catch (_error) {
+        // Silent fail - displays not available
+      }
+    };
+
+    if (activeSection === 'display') {
+      fetchDisplays();
+    }
+  }, [activeSection]);
 
   // Dictionary status polling
   useEffect(() => {
@@ -327,6 +369,18 @@ export function Settings() {
       setUrlValidation(validation);
     } else {
       setUrlValidation(null);
+    }
+  };
+
+  const handleResetStats = async () => {
+    setIsResettingStats(true);
+    try {
+      await resetAllStats();
+      setShowResetStatsDialog(false);
+    } catch (error) {
+      logger.error('Failed to reset stats:', error);
+    } finally {
+      setIsResettingStats(false);
     }
   };
 
@@ -659,6 +713,8 @@ export function Settings() {
     setAnimations,
     blur,
     setBlur,
+    reduceMotion,
+    setReduceMotion,
     fontSize,
     setFontSize,
     fontFamily,
@@ -821,6 +877,25 @@ export function Settings() {
                   </Button>
                 </div>
               </div>
+
+              {/* Reset Statistics */}
+              <div className="pt-6 border-t border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-destructive">Reset Analytics Statistics</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Permanently delete all historical analytics data. This action cannot be undone.
+                    </p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setShowResetStatsDialog(true)}
+                    icon={<RotateCcw className="w-4 h-4" />}
+                  >
+                    Reset Stats
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -834,423 +909,316 @@ export function Settings() {
                 </p>
               </div>
 
-              {/* Theme & Density */}
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-medium mb-4">Theme & Display</h3>
-                  <div className="flex flex-col lg:flex-row gap-6">
-                    <div className="flex-1">
-                      <label className="text-sm text-foreground mb-3 block">Theme Mode</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          {
-                            value: 'light' as const,
-                            label: 'Light',
-                            icon: Sun,
-                            gradient: 'from-amber-200 to-yellow-400',
-                          },
-                          {
-                            value: 'dark' as const,
-                            label: 'Dark',
-                            icon: Moon,
-                            gradient: 'from-slate-800 to-slate-900',
-                          },
-                        ].map((option) => {
-                          const Icon = option.icon;
-                          return (
-                            <motion.button
-                              key={option.value}
-                              onClick={() => setTheme(option.value)}
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
-                              aria-label={`Select ${option.label} theme`}
-                              className={cn(
-                                'relative p-3 rounded-lg border-2 transition-all overflow-hidden group',
-                                theme === option.value
-                                  ? 'border-primary shadow-lg'
-                                  : 'border-border hover:border-muted-foreground'
-                              )}
-                            >
-                              <div
-                                className={cn(
-                                  'absolute inset-0 bg-linear-to-br opacity-10 group-hover:opacity-20 transition-opacity',
-                                  option.gradient
-                                )}
-                              />
-                              <div className="relative">
-                                <Icon className="w-5 h-5 mb-1 mx-auto" />
-                                <p className="text-xs font-medium">{option.label}</p>
-                              </div>
-                              {theme === option.value && (
-                                <motion.div
-                                  initial={{ scale: 0 }}
-                                  animate={{ scale: 1 }}
-                                  className="absolute top-1 right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center"
-                                >
-                                  <Check className="w-2.5 h-2.5 text-primary-foreground" />
-                                </motion.div>
-                              )}
-                            </motion.button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="flex-1">
-                      <label className="text-sm text-foreground mb-3 block">
-                        Interface Density
-                      </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { value: 'comfortable' as const, label: 'Comfortable' },
-                          { value: 'compact' as const, label: 'Compact' },
-                          { value: 'minimal' as const, label: 'Minimal' },
-                        ].map((option) => (
-                          <motion.button
-                            key={option.value}
-                            onClick={() => setDensity(option.value)}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            aria-label={`Select ${option.label} density`}
-                            className={cn(
-                              'relative p-3 rounded-lg border-2 transition-all overflow-hidden',
-                              density === option.value
-                                ? 'border-primary shadow-lg bg-primary/10'
-                                : 'border-border hover:border-muted-foreground hover:bg-muted'
-                            )}
-                          >
-                            <p className="text-xs font-medium">{option.label}</p>
-                            {density === option.value && (
-                              <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                className="absolute top-1 right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center"
-                              >
-                                <Check className="w-2.5 h-2.5 text-primary-foreground" />
-                              </motion.div>
-                            )}
-                          </motion.button>
-                        ))}
-                      </div>
-                    </div>
+              {/* Theme & Display Card */}
+              <div className="rounded-xl border border-border bg-card p-6 space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-lg bg-primary/10">
+                    <Palette className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Theme & Display</h3>
+                    <p className="text-sm text-muted-foreground">Choose your preferred theme and interface density</p>
                   </div>
                 </div>
 
+                <div className="space-y-5">
+                  {/* Theme Mode */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <label className="text-sm font-medium">Theme Mode</label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Select light, dark, or follow system preference
+                      </p>
+                    </div>
+                    <SegmentedControl
+                      value={theme}
+                      onValueChange={setTheme}
+                      options={[
+                        { value: 'light' as const, label: 'Light', icon: Sun },
+                        { value: 'dark' as const, label: 'Dark', icon: Moon },
+                        { value: 'system' as const, label: 'System', icon: Laptop },
+                      ]}
+                      size="sm"
+                    />
+                  </div>
+
+                  <div className="border-t border-border" />
+
+                  {/* Interface Density */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <label className="text-sm font-medium">Interface Density</label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Adjust spacing and element sizes
+                      </p>
+                    </div>
+                    <SegmentedControl
+                      value={density}
+                      onValueChange={setDensity}
+                      options={[
+                        { value: 'comfortable' as const, label: 'Comfortable' },
+                        { value: 'compact' as const, label: 'Compact' },
+                        { value: 'minimal' as const, label: 'Minimal' },
+                      ]}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Colors Card */}
+              <div className="rounded-xl border border-border bg-card p-6 space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-lg bg-primary/10">
+                    <Sparkles className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Colors</h3>
+                    <p className="text-sm text-muted-foreground">Customize your accent color and theme</p>
+                  </div>
+                </div>
+
+                {/* Accent Color */}
                 <div>
-                  <h3 className="font-medium mb-4">Accent Color</h3>
-                  <div className="grid grid-cols-4 gap-3">
+                  <label className="text-sm font-medium mb-3 block">Accent Color</label>
+                  <div className="flex flex-wrap gap-3">
                     {[
-                      {
-                        name: 'blue' as const,
-                        color: 'bg-blue-500',
-                        gradient: 'from-blue-400 to-blue-600',
-                      },
-                      {
-                        name: 'purple' as const,
-                        color: 'bg-purple-500',
-                        gradient: 'from-purple-400 to-purple-600',
-                      },
-                      {
-                        name: 'green' as const,
-                        color: 'bg-green-500',
-                        gradient: 'from-green-400 to-green-600',
-                      },
-                      {
-                        name: 'orange' as const,
-                        color: 'bg-orange-500',
-                        gradient: 'from-orange-400 to-orange-600',
-                      },
-                      {
-                        name: 'pink' as const,
-                        color: 'bg-pink-500',
-                        gradient: 'from-pink-400 to-pink-600',
-                      },
-                      {
-                        name: 'cyan' as const,
-                        color: 'bg-cyan-500',
-                        gradient: 'from-cyan-400 to-cyan-600',
-                      },
-                      {
-                        name: 'indigo' as const,
-                        color: 'bg-indigo-500',
-                        gradient: 'from-indigo-400 to-indigo-600',
-                      },
-                      {
-                        name: 'custom' as const,
-                        color: '',
-                        gradient:
-                          'from-red-400 via-yellow-400 via-green-400 via-blue-400 via-indigo-400 via-purple-400 to-pink-400',
-                      },
-                    ].map((color) => (
+                      { name: 'blue' as const, label: 'Blue', color: '#3b82f6' },
+                      { name: 'purple' as const, label: 'Purple', color: '#8b5cf6' },
+                      { name: 'green' as const, label: 'Green', color: '#22c55e' },
+                      { name: 'orange' as const, label: 'Orange', color: '#f97316' },
+                      { name: 'pink' as const, label: 'Pink', color: '#ec4899' },
+                      { name: 'cyan' as const, label: 'Cyan', color: '#06b6d4' },
+                      { name: 'indigo' as const, label: 'Indigo', color: '#6366f1' },
+                    ].map((colorOption) => (
                       <motion.button
-                        key={color.name}
-                        onClick={() => {
-                          if (color.name === 'custom') {
-                            setAccentColor('custom');
-                            setTempColor(customAccentColor);
-                            setActiveColorPicker('accent');
-                          } else {
-                            setAccentColor(color.name);
-                          }
-                        }}
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
+                        key={colorOption.name}
+                        onClick={() => setAccentColor(colorOption.name)}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         className={cn(
-                          'relative w-12 h-12 rounded-xl overflow-hidden transition-all',
-                          'ring-2 ring-offset-2 ring-offset-background',
-                          accentColor === color.name
-                            ? 'ring-primary shadow-lg'
-                            : 'ring-transparent hover:ring-muted-foreground/50'
+                          'group relative flex items-center gap-2 px-3 py-2 rounded-full border-2 transition-all',
+                          accentColor === colorOption.name
+                            ? 'border-primary bg-primary/10 shadow-sm'
+                            : 'border-border hover:border-muted-foreground bg-background'
                         )}
-                        aria-label={`${color.name} accent`}
+                        aria-label={`Select ${colorOption.label} accent`}
                       >
-                        {color.name === 'custom' ? (
-                          <>
-                            {/* Inline style required for dynamic custom or conic gradient background */}
-                            <div
-                              className="absolute inset-0"
-                              style={{
-                                background:
-                                  accentColor === 'custom'
-                                    ? customAccentColor
-                                    : `conic-gradient(from 180deg at 50% 50%, #ef4444, #f59e0b, #eab308, #84cc16, #22c55e, #14b8a6, #06b6d4, #3b82f6, #6366f1, #8b5cf6, #a855f7, #d946ef, #ec4899, #ef4444)`,
-                              }}
-                            />
-                          </>
-                        ) : (
-                          <div
-                            className={cn('absolute inset-0 bg-linear-to-br', color.gradient)}
-                          />
-                        )}
-                        {accentColor === color.name && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                          >
-                            <Check className="w-4 h-4 text-white drop-shadow-md" />
-                          </motion.div>
+                        <div
+                          className="w-4 h-4 rounded-full shadow-inner"
+                          style={{ backgroundColor: colorOption.color }}
+                        />
+                        <span className="text-xs font-medium">{colorOption.label}</span>
+                        {accentColor === colorOption.name && (
+                          <Check className="w-3 h-3 text-primary" />
                         )}
                       </motion.button>
                     ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="font-medium mb-4">Visual Effects</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">Glass morphism effects</span>
-                        <p className="text-xs text-muted-foreground">
-                          Blur and transparency effects
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setBlur(!blur)}
-                        aria-label="Toggle glass morphism effects"
-                        className={cn(
-                          'relative w-11 h-6 rounded-full transition-colors shrink-0 border-2',
-                          blur
-                            ? 'bg-primary border-primary toggle-checked'
-                            : 'bg-input border-border hover:bg-accent'
-                        )}
-                      >
-                        <motion.span
-                          className="absolute top-0.5 w-5 h-5 bg-background rounded-full shadow-xs"
-                          animate={{ left: blur ? '1.25rem' : '0.125rem' }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">Smooth animations</span>
-                        <p className="text-xs text-muted-foreground">
-                          Transitions and micro-interactions
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setAnimations(!animations)}
-                        aria-label="Toggle smooth animations"
-                        className={cn(
-                          'relative w-11 h-6 rounded-full transition-colors shrink-0 border-2',
-                          animations
-                            ? 'bg-primary border-primary toggle-checked'
-                            : 'bg-input border-border hover:bg-accent'
-                        )}
-                      >
-                        <motion.span
-                          className="absolute top-0.5 w-5 h-5 bg-background rounded-full shadow-xs"
-                          animate={{ left: animations ? '1.25rem' : '0.125rem' }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        />
-                      </button>
-                    </div>
-
-                    <div className="pt-2 text-xs text-muted-foreground">
-                      <p>
-                        Note: Disabling visual effects can improve performance on slower systems.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-4 mb-4">
-                    <h3 className="font-medium flex-1">Custom Theme Colors</h3>
-                    <button
-                      onClick={() => setUseCustomColors(!useCustomColors)}
-                      aria-label="Toggle custom theme colors"
+                    <motion.button
+                      onClick={() => {
+                        setAccentColor('custom');
+                        setTempColor(customAccentColor);
+                        setActiveColorPicker('accent');
+                      }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                       className={cn(
-                        'relative w-11 h-6 rounded-full transition-colors shrink-0 border-2',
-                        useCustomColors
-                          ? 'bg-primary border-primary toggle-checked'
-                          : 'bg-input border-border hover:bg-accent'
+                        'group relative flex items-center gap-2 px-3 py-2 rounded-full border-2 transition-all',
+                        accentColor === 'custom'
+                          ? 'border-primary bg-primary/10 shadow-sm'
+                          : 'border-border hover:border-muted-foreground bg-background'
                       )}
+                      aria-label="Select custom accent color"
                     >
-                      <motion.span
-                        className="absolute top-0.5 w-5 h-5 bg-background rounded-full shadow-xs"
-                        animate={{ left: useCustomColors ? '1.25rem' : '0.125rem' }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{
+                          background: accentColor === 'custom'
+                            ? customAccentColor
+                            : 'conic-gradient(from 180deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #8b5cf6, #ec4899, #ef4444)',
+                        }}
                       />
-                    </button>
+                      <span className="text-xs font-medium">Custom</span>
+                      {accentColor === 'custom' && (
+                        <Check className="w-3 h-3 text-primary" />
+                      )}
+                    </motion.button>
+                  </div>
+                </div>
+
+                {/* Custom Theme Colors - Collapsible */}
+                <div className="border-t border-border pt-5">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setUseCustomColors(!useCustomColors)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setUseCustomColors(!useCustomColors);
+                      }
+                    }}
+                    className="flex items-center justify-between w-full group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium">Advanced: Custom Theme Colors</span>
+                      <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground uppercase tracking-wide">
+                        Advanced
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Switch.Root
+                        checked={useCustomColors}
+                        onCheckedChange={setUseCustomColors}
+                        className={cn(
+                          'relative w-10 h-5 rounded-full transition-colors',
+                          useCustomColors ? 'bg-primary' : 'bg-input border border-border'
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Switch.Thumb
+                          className={cn(
+                            'block w-4 h-4 bg-background rounded-full shadow-sm transition-transform',
+                            useCustomColors ? 'translate-x-5' : 'translate-x-0.5'
+                          )}
+                        />
+                      </Switch.Root>
+                      <ChevronDown
+                        className={cn(
+                          'w-4 h-4 text-muted-foreground transition-transform',
+                          useCustomColors && 'rotate-180'
+                        )}
+                      />
+                    </div>
                   </div>
 
                   {useCustomColors && (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-xs text-foreground mb-1 block">Primary</label>
-                        <button
-                          aria-label="Select primary color"
-                          onClick={() => {
-                            setTempColor(customPrimaryColor);
-                            setActiveColorPicker('primary');
-                          }}
-                          className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
-                        >
-                          {}
-                          <div
-                            className="w-6 h-6 rounded"
-                            style={{
-                              backgroundColor: customPrimaryColor,
-                              border: `2px solid ${getContrastTextColor(customPrimaryColor)}`,
-                            }}
-                          />
-                        </button>
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="mt-4"
+                    >
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        {[
+                          { key: 'primary', label: 'Primary', color: customPrimaryColor, setter: setCustomPrimaryColor },
+                          { key: 'background', label: 'Background', color: customBackgroundColor, setter: setCustomBackgroundColor, showTextHint: true },
+                          { key: 'header', label: 'Header', color: customHeaderColor, setter: setCustomHeaderColor, showTextHint: true },
+                          { key: 'sidebar', label: 'Sidebar', color: customSidebarColor, setter: setCustomSidebarColor, showTextHint: true },
+                          { key: 'border', label: 'Borders', color: customBorderColor, setter: setCustomBorderColor },
+                        ].map((item) => (
+                          <div key={item.key}>
+                            <label className="text-xs text-muted-foreground mb-1.5 block">{item.label}</label>
+                            <button
+                              aria-label={`Select ${item.label.toLowerCase()} color`}
+                              onClick={() => {
+                                setTempColor(item.color);
+                                setActiveColorPicker(item.key);
+                              }}
+                              className="w-full h-10 rounded-lg border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors group"
+                            >
+                              <div
+                                className="w-6 h-6 rounded-md shadow-inner group-hover:scale-110 transition-transform"
+                                style={{ backgroundColor: item.color }}
+                              />
+                            </button>
+                            {item.showTextHint && (
+                              <p className="text-[10px] text-muted-foreground mt-1 text-center">
+                                Text: {getContrastTextColor(item.color) === '#FFFFFF' ? 'White' : 'Black'}
+                              </p>
+                            )}
+                          </div>
+                        ))}
                       </div>
-
-                      <div>
-                        <label className="text-xs text-foreground mb-1 block">Background</label>
-                        <button
-                          aria-label="Select background color"
-                          onClick={() => {
-                            setTempColor(customBackgroundColor);
-                            setActiveColorPicker('background');
-                          }}
-                          className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
-                        >
-                          {}
-                          <div
-                            className="w-6 h-6 rounded"
-                            style={{
-                              backgroundColor: customBackgroundColor,
-                              border: `2px solid ${getContrastTextColor(customBackgroundColor)}`,
-                            }}
-                          />
-                        </button>
-                        {/* Visual indicator for calculated text color */}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Text:{' '}
-                          {getContrastTextColor(customBackgroundColor) === '#FFFFFF'
-                            ? '⚪ White'
-                            : '⚫ Black'}{' '}
-                          (auto)
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-foreground mb-1 block">Header</label>
-                        <button
-                          aria-label="Select header color"
-                          onClick={() => {
-                            setTempColor(customHeaderColor);
-                            setActiveColorPicker('header');
-                          }}
-                          className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
-                        >
-                          {}
-                          <div
-                            className="w-6 h-6 rounded"
-                            style={{
-                              backgroundColor: customHeaderColor,
-                              border: `2px solid ${getContrastTextColor(customHeaderColor)}`,
-                            }}
-                          />
-                        </button>
-                        {/* Visual indicator for calculated text color */}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Text:{' '}
-                          {getContrastTextColor(customHeaderColor) === '#FFFFFF'
-                            ? '⚪ White'
-                            : '⚫ Black'}{' '}
-                          (auto)
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-foreground mb-1 block">Sidebar</label>
-                        <button
-                          aria-label="Select sidebar color"
-                          onClick={() => {
-                            setTempColor(customSidebarColor);
-                            setActiveColorPicker('sidebar');
-                          }}
-                          className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
-                        >
-                          {}
-                          <div
-                            className="w-6 h-6 rounded"
-                            style={{
-                              backgroundColor: customSidebarColor,
-                              border: `2px solid ${getContrastTextColor(customSidebarColor)}`,
-                            }}
-                          />
-                        </button>
-                        {/* Visual indicator for calculated text color */}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Text:{' '}
-                          {getContrastTextColor(customSidebarColor) === '#FFFFFF'
-                            ? '⚪ White'
-                            : '⚫ Black'}{' '}
-                          (auto)
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-foreground mb-1 block">Borders</label>
-                        <button
-                          aria-label="Select border color"
-                          onClick={() => {
-                            setTempColor(customBorderColor);
-                            setActiveColorPicker('border');
-                          }}
-                          className="w-full h-10 rounded-md border border-border flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
-                        >
-                          {}
-                          <div
-                            className="w-6 h-6 rounded"
-                            style={{
-                              backgroundColor: customBorderColor,
-                              border: `2px solid ${getContrastTextColor(customBorderColor)}`,
-                            }}
-                          />
-                        </button>
-                      </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
+              </div>
+
+              {/* Visual Effects Card */}
+              <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2.5 rounded-lg bg-primary/10">
+                    <Zap className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Visual Effects</h3>
+                    <p className="text-sm text-muted-foreground">Control animations and visual enhancements</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1 divide-y divide-border">
+                  <SettingRow
+                    icon={Sparkles}
+                    title="Glass morphism effects"
+                    description="Blur and transparency for a modern look"
+                  >
+                    <Switch.Root
+                      checked={blur}
+                      onCheckedChange={setBlur}
+                      className={cn(
+                        'relative w-10 h-5 rounded-full transition-colors',
+                        blur ? 'bg-primary' : 'bg-input border border-border'
+                      )}
+                    >
+                      <Switch.Thumb
+                        className={cn(
+                          'block w-4 h-4 bg-background rounded-full shadow-sm transition-transform',
+                          blur ? 'translate-x-5' : 'translate-x-0.5'
+                        )}
+                      />
+                    </Switch.Root>
+                  </SettingRow>
+
+                  <SettingRow
+                    icon={Zap}
+                    title="Smooth animations"
+                    description="Transitions and micro-interactions"
+                  >
+                    <Switch.Root
+                      checked={animations}
+                      onCheckedChange={setAnimations}
+                      className={cn(
+                        'relative w-10 h-5 rounded-full transition-colors',
+                        animations ? 'bg-primary' : 'bg-input border border-border'
+                      )}
+                    >
+                      <Switch.Thumb
+                        className={cn(
+                          'block w-4 h-4 bg-background rounded-full shadow-sm transition-transform',
+                          animations ? 'translate-x-5' : 'translate-x-0.5'
+                        )}
+                      />
+                    </Switch.Root>
+                  </SettingRow>
+
+                  <SettingRow
+                    icon={Accessibility}
+                    title="Reduce motion"
+                    description="Minimize animations for accessibility"
+                  >
+                    <Switch.Root
+                      checked={reduceMotion}
+                      onCheckedChange={setReduceMotion}
+                      className={cn(
+                        'relative w-10 h-5 rounded-full transition-colors',
+                        reduceMotion ? 'bg-primary' : 'bg-input border border-border'
+                      )}
+                    >
+                      <Switch.Thumb
+                        className={cn(
+                          'block w-4 h-4 bg-background rounded-full shadow-sm transition-transform',
+                          reduceMotion ? 'translate-x-5' : 'translate-x-0.5'
+                        )}
+                      />
+                    </Switch.Root>
+                  </SettingRow>
+                </div>
+
+                <p className="text-xs text-muted-foreground pt-2">
+                  Disabling visual effects can improve performance on slower systems.
+                </p>
               </div>
             </div>
           )}
@@ -1528,6 +1496,108 @@ export function Settings() {
                       </span>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'display' && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div>
+                <h2 className="text-2xl font-bold">Display</h2>
+                <p className="text-muted-foreground mt-1">
+                  Configure monitor settings for document comparison
+                </p>
+              </div>
+
+              {/* Monitor Selection */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium mb-4">Monitor for Comparing Files</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Select which monitor to use when comparing documents side by side
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row gap-4 items-start">
+                    <div className="flex-1">
+                      <label htmlFor="comparison-monitor" className="block text-sm font-medium mb-2">
+                        Select Monitor
+                      </label>
+                      <select
+                        id="comparison-monitor"
+                        value={displaySettingsForm?.comparisonMonitorId ?? 0}
+                        onChange={(e) => setDisplaySettingsForm((prev) => ({
+                          ...prev,
+                          comparisonMonitorId: parseInt(e.target.value, 10),
+                        }))}
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background"
+                      >
+                        {availableDisplays.length > 0 ? (
+                          availableDisplays.map((display) => (
+                            <option key={display.id} value={display.id}>
+                              {display.label} ({display.workArea.width} x {display.workArea.height})
+                            </option>
+                          ))
+                        ) : (
+                          <option value={0}>Primary (loading...)</option>
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="pt-6">
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          if (typeof window.electronAPI === 'undefined' || !window.electronAPI.display) return;
+                          setIdentifyingMonitors(true);
+                          try {
+                            await window.electronAPI.display.identifyMonitors();
+                          } finally {
+                            // The identification windows close automatically after 3 seconds
+                            setTimeout(() => setIdentifyingMonitors(false), 3000);
+                          }
+                        }}
+                        disabled={identifyingMonitors}
+                      >
+                        {identifyingMonitors ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                            Identifying...
+                          </>
+                        ) : (
+                          <>
+                            <Monitor className="w-4 h-4 mr-2" />
+                            Identify Monitors
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Click "Identify Monitors" to display a number on each connected monitor for 3 seconds
+                  </p>
+                </div>
+
+                {/* Save Button */}
+                <div className="pt-4 border-t">
+                  <Button
+                    onClick={() => {
+                      updateDisplaySettings(displaySettingsForm);
+                      setSaveSuccess(true);
+                      if (saveSuccessTimeoutRef.current) {
+                        clearTimeout(saveSuccessTimeoutRef.current);
+                      }
+                      saveSuccessTimeoutRef.current = setTimeout(() => {
+                        setSaveSuccess(false);
+                      }, 2000);
+                    }}
+                    showSuccess={saveSuccess}
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Display Settings
+                  </Button>
                 </div>
               </div>
             </div>
@@ -2233,56 +2303,6 @@ Submitted: ${new Date().toLocaleString()}
             </div>
           )}
 
-          {activeSection === 'data' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold">Storage</h2>
-                <p className="text-muted-foreground mt-1">
-                  Manage your data storage and application cache
-                </p>
-              </div>
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-medium">Storage Used</p>
-                      <p className="text-sm text-muted-foreground">2.4 GB of 10 GB</p>
-                    </div>
-                    <span className="text-2xl font-bold">24%</span>
-                  </div>
-                  <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="w-1/4 h-full bg-primary" />
-                  </div>
-                </div>
-
-                <div className="space-y-3 pt-4 border-t border-border">
-                  <Button variant="outline" className="w-full">
-                    Clear Cache
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    icon={<Download className="w-4 h-4" />}
-                    onClick={handleExport}
-                  >
-                    Export Settings & Data
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    icon={<Download className="w-4 h-4" style={{ transform: 'rotate(180deg)' }} />}
-                    onClick={handleImport}
-                  >
-                    Import Settings & Data
-                  </Button>
-                  <Button variant="destructive" className="w-full">
-                    Delete Account
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {activeSection === 'local-dictionary' && (
             <div className="space-y-6">
               <div>
@@ -2534,7 +2554,7 @@ Submitted: ${new Date().toLocaleString()}
                     </div>
 
                     <div className="flex items-start gap-3">
-                      <Database className="w-5 h-5 text-muted-foreground mt-0.5" />
+                      <Archive className="w-5 h-5 text-muted-foreground mt-0.5" />
                       <div>
                         <p className="font-medium text-sm">Naming Convention</p>
                         <p className="text-xs text-muted-foreground">
@@ -2624,6 +2644,18 @@ Submitted: ${new Date().toLocaleString()}
                       ? 'Custom Border Color'
                       : 'Pick a Color'
         }
+      />
+
+      {/* Reset Stats Confirmation Dialog */}
+      <ConfirmDialog
+        open={showResetStatsDialog}
+        onOpenChange={setShowResetStatsDialog}
+        onConfirm={handleResetStats}
+        title="Reset All Statistics?"
+        message="This will permanently delete all historical data including daily, weekly, and monthly statistics. Your all-time totals will be reset to zero. This action cannot be undone."
+        confirmText="Reset All Stats"
+        variant="destructive"
+        loading={isResettingStats}
       />
     </motion.div>
   );

@@ -1,8 +1,9 @@
-import { ChevronRight, Zap, Moon, Sun, Clock } from 'lucide-react';
+import { ChevronRight, Zap, Moon, Sun, Clock, Monitor } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/utils/cn';
-import { useState, useEffect, memo, useCallback, useMemo } from 'react';
+import { useState, useEffect, memo, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { SimpleTooltip } from '@/components/common/Tooltip';
 
 const pathToTitle: Record<string, string> = {
   '/': 'Dashboard',
@@ -83,7 +84,7 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
   }, []);
 
   const handleThemeChange = useCallback(
-    (value: 'light' | 'dark') => {
+    (value: 'light' | 'dark' | 'system') => {
       setTheme(value);
       setShowThemeMenu(false);
     },
@@ -125,62 +126,63 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
 
           <div className="w-px h-6 bg-border" />
 
-          <button
-            onClick={onCommandPalette}
-            className={cn(
-              'p-2 rounded-md',
-              'hover:bg-accent hover:text-accent-foreground transition-colors',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              'group relative'
-            )}
-            aria-label="Quick actions (Ctrl+K)"
-            title="Quick actions (Ctrl+K)"
-          >
-            <Zap className="w-4 h-4" />
-            <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-popover text-popover-foreground rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-              Ctrl+K to quickly access this menu
-            </span>
-          </button>
-
-          <div className="relative">
+          <SimpleTooltip content="Quick actions (Ctrl+K)">
             <button
-              onClick={toggleThemeMenu}
+              onClick={onCommandPalette}
               className={cn(
                 'p-2 rounded-md',
                 'hover:bg-accent hover:text-accent-foreground transition-colors',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
               )}
-              aria-label="Theme switcher"
+              aria-label="Quick actions (Ctrl+K)"
             >
-              {theme === 'light' && <Sun className="w-4 h-4" />}
-              {theme === 'dark' && <Moon className="w-4 h-4" />}
+              <Zap className="w-4 h-4" />
             </button>
+          </SimpleTooltip>
 
-            {showThemeMenu && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowThemeMenu(false)} />
-                <div className="absolute right-0 top-full mt-2 w-36 rounded-md border border-border bg-popover p-1 shadow-md z-20">
-                  {[
-                    { value: 'light' as const, icon: Sun, label: 'Light' },
-                    { value: 'dark' as const, icon: Moon, label: 'Dark' },
-                  ].map(({ value, icon: Icon, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => handleThemeChange(value)}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm',
-                        'hover:bg-accent hover:text-accent-foreground transition-colors',
-                        theme === value && 'bg-accent text-accent-foreground'
-                      )}
-                    >
-                      <Icon className="w-3 h-3" />
-                      <span>{label}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          <SimpleTooltip content={`Theme: ${theme === 'light' ? 'Light' : theme === 'dark' ? 'Dark' : 'System'}`}>
+            <div className="relative">
+              <button
+                onClick={toggleThemeMenu}
+                className={cn(
+                  'p-2 rounded-md',
+                  'hover:bg-accent hover:text-accent-foreground transition-colors',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                )}
+                aria-label="Theme switcher"
+              >
+                {theme === 'light' && <Sun className="w-4 h-4" />}
+                {theme === 'dark' && <Moon className="w-4 h-4" />}
+                {theme === 'system' && <Monitor className="w-4 h-4" />}
+              </button>
+
+              {showThemeMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowThemeMenu(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-36 rounded-md border border-border bg-popover p-1 shadow-md z-20">
+                    {[
+                      { value: 'light' as const, icon: Sun, label: 'Light' },
+                      { value: 'dark' as const, icon: Moon, label: 'Dark' },
+                      { value: 'system' as const, icon: Monitor, label: 'System' },
+                    ].map(({ value, icon: Icon, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => handleThemeChange(value)}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm',
+                          'hover:bg-accent hover:text-accent-foreground transition-colors',
+                          theme === value && 'bg-accent text-accent-foreground'
+                        )}
+                      >
+                        <Icon className="w-3 h-3" />
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </SimpleTooltip>
         </div>
       </div>
     </header>

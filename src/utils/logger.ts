@@ -528,6 +528,8 @@ export const debugModes = {
   HYPERLINKS: 'debug:hyperlinks',
   /** Verbose logging for backup operations */
   BACKUPS: 'debug:backups',
+  /** Verbose logging for list/bullet processing operations */
+  LIST_PROCESSING: 'debug:listProcessing',
 } as const;
 
 export type DebugMode = (typeof debugModes)[keyof typeof debugModes];

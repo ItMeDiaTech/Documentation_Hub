@@ -19,115 +19,81 @@ export interface ProcessingOption {
   enabled: boolean;
 }
 
+// User-friendly descriptions for the right panel
+const optionDescriptions: Record<string, string> = {
+  // Text Formatting
+  'remove-italics': 'Removes all italic text formatting',
+  'normalize-dashes': 'Converts special dashes (em-dash, en-dash) to regular hyphens',
+  'preserve-red-font': 'Prevents changes to text that is colored red',
+  'replace-outdated-titles': 'Updates a hyperlink\'s display text to match the title within theSource if different',
+  'validate-document-styles': 'Applies your custom style settings from the Styles tab',
+
+  // Links & Navigation
+  'update-top-hyperlinks': 'Adds or updates links that jump to the document start',
+  'update-toc-hyperlinks': 'Creates or updates clickable links in the table of contents',
+  'force-remove-heading1-toc': 'Removes the main document title from the table of contents',
+  'fix-internal-hyperlinks': 'Fixes broken links that point to other parts of the document',
+  'fix-content-ids': 'Appends Content ID to the end of theSource Hyperlinks',
+
+  // Document Structure
+  'center-border-images': 'Centers and borders images if image is bigger than 100x100 pixels',
+  'remove-whitespace': 'Removes unnecessary spaces, tabs, and blank areas',
+  'remove-paragraph-lines': 'Makes spacing between paragraphs consistent',
+  'preserve-user-blank-structures': 'Preserves blank lines that were intentionally added',
+  'remove-headers-footers': 'Removes text from document headers and footers',
+  'add-document-warning': 'Adds a standard disclaimer notice if missing',
+  'validate-header2-tables': 'Formats 1x1 Heading 2 tables to ensure standardization across document',
+
+  // Lists & Tables
+  'list-indentation': 'Corrects the indentation of bulleted and numbered lists',
+  'bullet-uniformity': 'Makes bullet styles consistent throughout',
+  'normalize-table-lists': 'Converts typed list prefixes (1., A., •) to proper Word formatting and fixes mixed lists',
+  'smart-tables': 'Applies consistent styling to all tables',
+  'adjust-table-padding': 'Adjusts the space inside table cells',
+  'standardize-table-borders': 'Makes table border styles uniform',
+  'set-landscape-margins': 'Sets document to landscape orientation with 1-inch margins',
+};
+
 export const defaultOptions: ProcessingOption[] = [
-  // Text Formatting Fixes Group
-  { id: 'remove-italics', label: 'Remove All Italics', group: 'text', enabled: true },
-  { id: 'normalize-dashes', label: 'Normalize Dashes to Hyphens', group: 'text', enabled: true },
-  { id: 'preserve-red-font', label: 'Preserve Red (#FF0000) Font', group: 'text', enabled: false },
-  {
-    id: 'replace-outdated-titles',
-    label: 'Update Outdated Hyperlink Titles',
-    group: 'hyperlinks',
-    enabled: true,
-  },
-  {
-    id: 'validate-document-styles',
-    label: 'Apply User Defined Styles',
-    group: 'text',
-    enabled: true,
-  },
+  // Text Formatting Group
+  { id: 'remove-italics', label: 'Remove Italics', group: 'text', enabled: true },
+  { id: 'normalize-dashes', label: 'Standardize Dashes', group: 'text', enabled: true },
+  { id: 'preserve-red-font', label: 'Keep Red Text', group: 'text', enabled: false },
+  { id: 'replace-outdated-titles', label: 'Update theSource Link Titles', group: 'hyperlinks', enabled: true },
+  { id: 'validate-document-styles', label: 'Apply Custom Styles', group: 'text', enabled: true },
 
-  // Hyperlink Fixes Group
-  {
-    id: 'update-top-hyperlinks',
-    label: 'Top of the Document',
-    group: 'hyperlinks',
-    enabled: true,
-  },
-  {
-    id: 'update-toc-hyperlinks',
-    label: 'Table of Contents',
-    group: 'hyperlinks',
-    enabled: true,
-  },
-  {
-    id: 'force-remove-heading1-toc',
-    label: 'Force Remove Heading 1 from TOC',
-    group: 'hyperlinks',
-    enabled: true,
-  },
-  {
-    id: 'fix-internal-hyperlinks',
-    label: 'theSource Hyperlinks',
-    group: 'hyperlinks',
-    enabled: true,
-  },
-  { id: 'fix-content-ids', label: 'theSource Content IDs', group: 'hyperlinks', enabled: true },
+  // Links & Navigation Group
+  { id: 'update-top-hyperlinks', label: '"Top of Document" Hyperlinks', group: 'hyperlinks', enabled: true },
+  { id: 'update-toc-hyperlinks', label: 'Table of Contents Hyperlinks', group: 'hyperlinks', enabled: true },
+  { id: 'force-remove-heading1-toc', label: 'Remove Title from TOC', group: 'hyperlinks', enabled: true },
+  { id: 'fix-internal-hyperlinks', label: 'Internal Hyperlinks', group: 'hyperlinks', enabled: true },
+  { id: 'fix-content-ids', label: 'Content ID References', group: 'hyperlinks', enabled: true },
 
-  // Content Structure Fixes Group
-  // Note: assign-styles and center-images are now applied automatically during processing
-  {
-    id: 'center-border-images',
-    label: 'Center and Border Images',
-    group: 'structure',
-    enabled: true,
-  },
-  { id: 'remove-whitespace', label: 'Remove Extra Whitespace', group: 'structure', enabled: true },
-  {
-    id: 'remove-paragraph-lines',
-    label: 'Standardize Blank Lines',
-    group: 'structure',
-    enabled: true,
-  },
-  {
-    id: 'preserve-user-blank-structures',
-    label: 'Preserve Previous User Set Blank Lines',
-    group: 'structure',
-    enabled: false,
-  },
-  {
-    id: 'remove-headers-footers',
-    label: 'Remove All Headers / Footers',
-    group: 'structure',
-    enabled: true,
-  },
-  { id: 'add-document-warning', label: 'Add Document Disclaimer When Missing', group: 'structure', enabled: true },
-  {
-    id: 'validate-header2-tables',
-    label: 'Header 2 Section Tables',
-    group: 'structure',
-    enabled: true,
-  },
+  // Document Structure Group
+  { id: 'center-border-images', label: 'Center and Border Images', group: 'structure', enabled: true },
+  { id: 'remove-whitespace', label: 'Clean Up Spaces', group: 'structure', enabled: true },
+  { id: 'remove-paragraph-lines', label: 'Standardize Blank Lines', group: 'structure', enabled: true },
+  { id: 'preserve-user-blank-structures', label: 'Keep Manual Spacing', group: 'structure', enabled: false },
+  { id: 'remove-headers-footers', label: 'Clear Headers/Footers', group: 'structure', enabled: true },
+  { id: 'add-document-warning', label: 'Add Missing Disclaimer', group: 'structure', enabled: true },
+  { id: 'validate-header2-tables', label: 'Heading 2 Tables', group: 'structure', enabled: true },
+  { id: 'set-landscape-margins', label: 'Landscape Layout', group: 'structure', enabled: true },
 
-  // List & Table Fixes Group
-  { id: 'list-indentation', label: 'List Indentation', group: 'lists', enabled: true },
-  { id: 'bullet-uniformity', label: 'List Styles', group: 'lists', enabled: true },
-  {
-    id: 'smart-tables',
-    label: 'Table Formatting',
-    group: 'lists',
-    enabled: true,
-  },
-  {
-    id: 'adjust-table-padding',
-    label: 'Adjust Table Padding',
-    group: 'lists',
-    enabled: true,
-  },
-  {
-    id: 'standardize-cell-borders',
-    label: 'Standardize Cell Borders',
-    group: 'lists',
-    enabled: true,
-  },
+  // Lists & Tables Group
+  { id: 'list-indentation', label: 'Fix List Spacing', group: 'lists', enabled: true },
+  { id: 'bullet-uniformity', label: 'Standardize Bullets', group: 'lists', enabled: true },
+  { id: 'normalize-table-lists', label: 'Fix Typed List Prefixes', group: 'lists', enabled: true },
+  { id: 'smart-tables', label: 'Format Tables', group: 'lists', enabled: true },
+  { id: 'adjust-table-padding', label: 'Table Cell Spacing', group: 'lists', enabled: true },
+  { id: 'standardize-table-borders', label: 'Fix Table Borders', group: 'lists', enabled: true },
 ];
 
-// TYPE SAFETY: Use Record with ProcessingGroup to ensure all groups have labels
+// User-friendly group labels
 const groupLabels: Record<ProcessingGroup, string> = {
-  text: 'Text Formatting Fixes',
-  hyperlinks: 'Hyperlink Fixes',
-  structure: 'Content Structure Fixes',
-  lists: 'List & Table Fixes',
+  text: 'Text Formatting',
+  hyperlinks: 'Links & Navigation',
+  structure: 'Document Structure',
+  lists: 'Lists & Tables',
 };
 
 interface ProcessingOptionsProps {
@@ -137,7 +103,6 @@ interface ProcessingOptionsProps {
   // Revision handling options
   autoAcceptRevisions?: boolean;
   onAutoAcceptRevisionsChange?: (autoAccept: boolean) => void;
-  // Note: Table shading colors moved to StylesEditor for better organization
 }
 
 export function ProcessingOptions({
@@ -146,10 +111,6 @@ export function ProcessingOptions({
   autoAcceptRevisions = false,
   onAutoAcceptRevisionsChange,
 }: ProcessingOptionsProps) {
-  // REFACTORED: Fully controlled component - no local state
-  // All state lives in parent (SessionContext)
-  // This eliminates race conditions and state synchronization issues
-
   // Calculate master toggle state from props (derived state, not stored)
   const masterToggle = useMemo(() => {
     return options.every((opt) => opt.enabled);
@@ -195,113 +156,133 @@ export function ProcessingOptions({
     {} as Record<string, ProcessingOption[]>
   );
 
+  // Get enabled options grouped by category for the right panel
+  const enabledByGroup = useMemo(() => {
+    const result: Record<string, ProcessingOption[]> = {};
+    for (const group of PROCESSING_GROUPS) {
+      const enabledInGroup = options.filter((opt) => opt.group === group && opt.enabled);
+      if (enabledInGroup.length > 0) {
+        result[group] = enabledInGroup;
+      }
+    }
+    return result;
+  }, [options]);
+
+  const hasEnabledOptions = Object.keys(enabledByGroup).length > 0;
+
   return (
     <div className="space-y-6">
-      {/* Master Toggle */}
-      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-        <div>
-          <h3 className="font-medium">Autonomous Processing</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Enable all processing options when documents are added
-          </p>
-        </div>
-        <button
-          onClick={toggleAll}
-          role="switch"
-          aria-checked={masterToggle}
-          aria-label="Toggle all processing options"
-          className={cn(
-            'relative w-12 h-6 rounded-full transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-            masterToggle ? 'bg-primary' : 'bg-muted'
-          )}
-        >
-          <motion.div
-            className="absolute w-5 h-5 bg-background rounded-full shadow-xs"
-            animate={{ x: masterToggle ? 26 : 1 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            style={{ top: '0.5px' }}
-          />
-        </button>
-      </div>
+      {/* Two-Column Layout: Options on Left, Descriptions on Right */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column: Options */}
+        <div className="space-y-4">
+          {Object.entries(groupedOptions).map(([group, groupOptions]) => {
+            const allEnabled = groupOptions.every((opt) => opt.enabled);
+            const someEnabled = groupOptions.some((opt) => opt.enabled);
 
-      {/* Grouped Options */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {Object.entries(groupedOptions).map(([group, groupOptions]) => {
-          const allEnabled = groupOptions.every((opt) => opt.enabled);
-          const someEnabled = groupOptions.some((opt) => opt.enabled);
-
-          return (
-            <div key={group} className="space-y-3">
-              <button
-                type="button"
-                className="flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
-                onClick={() => toggleGroup(group)}
-                role="checkbox"
-                aria-checked={allEnabled ? true : someEnabled ? 'mixed' : false}
-                aria-label={`Toggle ${groupLabels[group as ProcessingGroup]}`}
-              >
-                <div
-                  aria-hidden="true"
-                  className={cn(
-                    'w-6 h-6 rounded border-2 flex items-center justify-center transition-all',
-                    allEnabled
-                      ? 'bg-primary border-primary checkbox-checked'
-                      : someEnabled
-                        ? 'bg-primary/50 border-primary'
-                        : 'border-border hover:border-primary/50'
-                  )}
+            return (
+              <div key={group} className="space-y-2">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
+                  onClick={() => toggleGroup(group)}
+                  role="checkbox"
+                  aria-checked={allEnabled ? true : someEnabled ? 'mixed' : false}
+                  aria-label={`Toggle ${groupLabels[group as ProcessingGroup]}`}
                 >
-                  {(allEnabled || someEnabled) && (
-                    <Check className="w-4 h-4 text-primary-foreground checkbox-checkmark" />
-                  )}
-                </div>
-                <span className="font-semibold text-base">
-                  {groupLabels[group as ProcessingGroup]}
-                </span>
-              </button>
+                  <div
+                    aria-hidden="true"
+                    className={cn(
+                      'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                      allEnabled
+                        ? 'bg-primary border-primary checkbox-checked'
+                        : someEnabled
+                          ? 'bg-primary/50 border-primary'
+                          : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    {(allEnabled || someEnabled) && (
+                      <Check className="w-3 h-3 text-primary-foreground checkbox-checkmark" />
+                    )}
+                  </div>
+                  <span className="font-semibold text-sm">
+                    {groupLabels[group as ProcessingGroup]}
+                  </span>
+                </button>
 
-              <div className="pl-6 space-y-2">
-                {groupOptions.map((option) => (
-                  <label key={option.id} className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={option.enabled}
-                        onChange={() => toggleOption(option.id)}
-                        className="sr-only"
-                      />
-                      <div
-                        className={cn(
-                          'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                          option.enabled
-                            ? 'bg-primary border-primary checkbox-checked'
-                            : 'border-border group-hover:border-primary/50'
-                        )}
-                      >
-                        {option.enabled && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                          >
-                            <Check className="w-3 h-3 text-primary-foreground checkbox-checkmark" />
-                          </motion.div>
-                        )}
+                <div className="pl-5 space-y-1">
+                  {groupOptions.map((option) => (
+                    <label key={option.id} className="flex items-center gap-2 cursor-pointer group">
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          checked={option.enabled}
+                          onChange={() => toggleOption(option.id)}
+                          className="sr-only"
+                        />
+                        <div
+                          className={cn(
+                            'w-4 h-4 rounded border-2 flex items-center justify-center transition-all',
+                            option.enabled
+                              ? 'bg-primary border-primary checkbox-checked'
+                              : 'border-border group-hover:border-primary/50'
+                          )}
+                        >
+                          {option.enabled && (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                            >
+                              <Check className="w-2.5 h-2.5 text-primary-foreground checkbox-checkmark" />
+                            </motion.div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-sm">{option.label}</span>
-                  </label>
-                ))}
+                      <span className="text-sm">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
+            );
+          })}
+        </div>
+
+        {/* Right Column: Enabled Processing Descriptions */}
+        <div className="bg-muted/20 rounded-lg p-4 border border-border/50">
+          <h4 className="font-medium text-sm mb-3 text-muted-foreground">Enabled processing:</h4>
+
+          {hasEnabledOptions ? (
+            <div className="space-y-4">
+              {Object.entries(enabledByGroup).map(([group, groupOptions]) => (
+                <div key={group}>
+                  <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    {groupLabels[group as ProcessingGroup]}
+                  </h5>
+                  <ul className="space-y-1.5">
+                    {groupOptions.map((option) => (
+                      <motion.li
+                        key={option.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -10 }}
+                        className="flex items-start gap-2 text-sm"
+                      >
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>{optionDescriptions[option.id]}</span>
+                      </motion.li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
-          );
-        })}
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No processing options enabled</p>
+          )}
+        </div>
       </div>
 
-      {/* Note: Table shading colors moved to StylesEditor for better organization */}
-
-      {/* Word Tracked Changes Handling */}
+      {/* DO NOT REMOVE - May utilize this in the future.
       {onAutoAcceptRevisionsChange && (
         <div className="pt-4 border-t border-border">
           <RevisionHandlingOptions
@@ -310,6 +291,7 @@ export function ProcessingOptions({
           />
         </div>
       )}
+      */}
     </div>
   );
 }

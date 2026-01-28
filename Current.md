@@ -1,6 +1,6 @@
 # Documentation Hub - Current State
 
-**Current Version:** 5.2.9
+**Current Version:** 5.2.35
 
 ---
 
@@ -13,10 +13,13 @@
 	- Should no longer insert a blank line above keywords indented on the next line of list paragraphs, and will actually align them to the text of the list item above it
 	- Added some checks for text that will better predict when a blank line is needed with regular text items
 	- Will now also add a blank line above the High Level Process hyperlinks that links back to the High Level Process section. Also formatted them the same as the "Top of the Document" styled hyperlinks (right aligned, 0pt spacing after, hex color blue #0000FF, Verdana, 12pt size, underline, no bold or underline
-	- Updated the name of the processing option from "Remove Extra Blank Lines" to "Standardize Blank Lines" as this is a better description of what it is doing
 - Added "Normalize Dashes to Hyphens" processing option to replace en-dashes and em-dashes with regular hyphens (Default: Enabled)
 - Added "Table Cell Padding" to Styles section with appropriate defaults (0" Top, 0" Bottom, 0.08" Left, 0.08" Right). "Adjust Table Padding" processing option will update padding of tables when enabled. (Default: Enabled)
-- Added "Standardize Cell Border Thickness" processing option that sets the borders of all cells in every table to the color #000000 (Black) unless color is #FFC000 (High Level Process border color) in which case it won't change the color. It will then change the thickness of all borders of all cells of all tables to 1/2 pt (Word default, which is used in most if not all documents) with a dropdown menu in Styles to change this if needed.
+- Added "Standardize Cell Borders" processing option that sets the borders of all cells in every table to the color #000000 (Black) unless color is #FFC000 (High Level Process border color) in which case it won't change the color. It will then change the thickness of all borders of all cells of all tables to 1/2 pt (Word default, which is used in most if not all documents) with a dropdown menu in Styles to change this if needed.
+- Updated "Add Document Disclaimer" text to "Add Document Disclaimer When Missing" to better align the name to what it is doing 
+- Updated "Remove Extra Blank Lines" processing option text to "Standardize Blank Lines" as this is a better description of what it is doing
+
+Other Changes:
 - Added previously but quick reminder: If a document has an error during processing (shows a red "Error" next to the document), then double clicking this will provide a more thorough explanation as to what happened that can be provided to me for fixing.
 - Although bullet symbols were correct in appearance, Word's default uses a different symbol that looks identical. Preferring to align exactly with Word, I updated the bullets accordingly. 
 	- You should not notice this change.
@@ -88,7 +91,7 @@ Applies uniform list indentation across the document using the configured indent
 Standardizes bullet characters and numbered list formatting throughout the document. Ensures consistent symbols (such as filled circles, open circles, and squares) are used at each bullet level across all lists.
 
 #### Table Formatting
-Performs intelligent table detection and applies appropriate formatting based on table patterns. Handles different table types including 1x1 tables (often used for callout boxes), header rows, and data tables, applying optimal formatting for each type.
+Performs intelligent table detection and applies appropriate formatting based on table patterns. Handles different table types including 1x1 tables, header rows, and data tables, applying optimal formatting for each type.
 
 #### Adjust Table Padding
 Applies custom cell padding values to table cells based on the configured settings. When enabled, standardizes the spacing within table cells. When disabled, tables retain their original padding values.

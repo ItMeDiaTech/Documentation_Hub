@@ -32,6 +32,8 @@ interface ThemeContextType {
   setAnimations: (enabled: boolean) => void;
   blur: boolean;
   setBlur: (enabled: boolean) => void;
+  reduceMotion: boolean;
+  setReduceMotion: (enabled: boolean) => void;
   fontSize: number;
   setFontSize: (size: number) => void;
   fontFamily: string;
@@ -143,6 +145,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [blur, setBlur] = useState<boolean>(() => {
     const stored = localStorage.getItem('blur');
     return stored !== 'false';
+  });
+
+  const [reduceMotion, setReduceMotion] = useState<boolean>(() => {
+    const stored = localStorage.getItem('reduceMotion');
+    // Default to system preference if not stored
+    if (stored === null) {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+    return stored === 'true';
   });
 
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
@@ -313,6 +324,19 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     log.debug('Blur effects toggled', { enabled: blur });
   }, [blur, log]);
 
+  useEffect(() => {
+    const root = window.document.documentElement;
+
+    // Apply reduce motion preference
+    if (reduceMotion) {
+      root.classList.add('reduce-motion');
+    } else {
+      root.classList.remove('reduce-motion');
+    }
+    localStorage.setItem('reduceMotion', String(reduceMotion));
+    log.debug('Reduce motion toggled', { enabled: reduceMotion });
+  }, [reduceMotion, log]);
+
   // PERFORMANCE FIX: Apply typography settings with requestAnimationFrame
   // Batches all 6 CSS updates into a single frame to prevent layout thrashing
   useEffect(() => {
@@ -369,6 +393,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         setAnimations,
         blur,
         setBlur,
+        reduceMotion,
+        setReduceMotion,
         fontSize,
         setFontSize,
         fontFamily,

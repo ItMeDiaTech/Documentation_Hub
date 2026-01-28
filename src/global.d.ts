@@ -59,6 +59,11 @@ export type ElectronAPI = {
   getPlatform: () => Promise<string>;
   openDevTools: () => Promise<void>;
 
+  // Always on top (pin window)
+  setAlwaysOnTop: (flag: boolean) => Promise<boolean>;
+  isAlwaysOnTop: () => Promise<boolean>;
+  onAlwaysOnTopChanged: (callback: (isOnTop: boolean) => void) => () => void;
+
   // File handling
   selectDocuments: () => Promise<string[]>;
   processDocument: (path: string) => Promise<any>;
@@ -67,6 +72,18 @@ export type ElectronAPI = {
   getFileStats: (filePath: string) => Promise<any>;
   restoreFromBackup: (backupPath: string, targetPath: string) => Promise<any>;
   getPathsForFiles: (files: File[]) => string[];
+
+  // Export and Reporting
+  selectFolder: () => Promise<string | null>;
+  copyFilesToFolder: (
+    filePaths: string[],
+    destinationFolder: string
+  ) => Promise<{ copied: number; skipped: number }>;
+  getDownloadsPath: () => Promise<string>;
+  createFolder: (folderPath: string) => Promise<boolean>;
+  copyFileToFolder: (sourcePath: string, destFolder: string) => Promise<boolean>;
+  createReportZip: (folderPath: string, zipName: string) => Promise<string>;
+  openOutlookEmail: (subject: string, attachmentPath: string) => Promise<boolean>;
 
   // Document text extraction (for comparison views)
   extractDocumentText: (filePath: string) => Promise<{
@@ -151,6 +168,23 @@ export type ElectronAPI = {
     isSharePointAuthenticated: () => Promise<{ authenticated: boolean }>;
     onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => () => void;
     onSyncComplete: (callback: (result: DictionarySyncResponse) => void) => () => void;
+  };
+
+  // Display/Monitor operations
+  display: {
+    getAllDisplays: () => Promise<Array<{
+      id: number;
+      label: string;
+      bounds: { x: number; y: number; width: number; height: number };
+      workArea: { x: number; y: number; width: number; height: number };
+      isPrimary: boolean;
+    }>>;
+    identifyMonitors: () => Promise<{ success: boolean }>;
+    openComparison: (
+      backupPath: string,
+      processedPath: string,
+      monitorIndex: number
+    ) => Promise<{ success: boolean; error?: string }>;
   };
 
   // Auto-updater

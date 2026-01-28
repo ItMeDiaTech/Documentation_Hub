@@ -274,7 +274,7 @@
   /* Let active and hover states keep their semantic colors */
   [data-custom-colors='true'] .sidebar-bg .bg-primary,
   [data-custom-colors='true'] .sidebar-bg .bg-primary * {
-    color: hsl(var(--color-primary-foreground)) !important;
+    color: hsl(var(--custom-primary-text)) !important;
   }
 
   /* Apply subtle secondary text color to muted elements */
@@ -306,13 +306,42 @@
   [data-custom-colors='true'] .bg-primary,
   [data-custom-colors='true'] .bg-primary *,
   [data-custom-colors='true'] button.bg-primary,
-  [data-custom-colors='true'] button.bg-primary * {
+  [data-custom-colors='true'] button.bg-primary *,
+  [data-custom-colors='true'] a.bg-primary,
+  [data-custom-colors='true'] a.bg-primary *,
+  [data-custom-colors='true'] div.bg-primary,
+  [data-custom-colors='true'] div.bg-primary * {
     color: hsl(var(--custom-primary-text)) !important;
   }
 
-  /* Text elements explicitly marked as primary-foreground */
-  [data-custom-colors='true'] .text-primary-foreground {
+  /* SVG icons within primary backgrounds - force color inheritance */
+  [data-custom-colors='true'] .bg-primary svg,
+  [data-custom-colors='true'] button.bg-primary svg,
+  [data-custom-colors='true'] a.bg-primary svg,
+  [data-custom-colors='true'] div.bg-primary svg {
     color: hsl(var(--custom-primary-text)) !important;
+    --svg-color: hsl(var(--custom-primary-text)) !important;
+  }
+
+  /* Force SVG stroke color for Lucide icons (which use stroke, not fill) */
+  [data-custom-colors='true'] .bg-primary svg,
+  [data-custom-colors='true'] .bg-primary svg *,
+  [data-custom-colors='true'] button.bg-primary svg,
+  [data-custom-colors='true'] button.bg-primary svg * {
+    stroke: hsl(var(--custom-primary-text)) !important;
+  }
+
+  /* Text elements explicitly marked as primary-foreground */
+  [data-custom-colors='true'] .text-primary-foreground,
+  [data-custom-colors='true'] .text-primary-foreground * {
+    color: hsl(var(--custom-primary-text)) !important;
+  }
+
+  /* Ensure text-primary-foreground SVG icons also adapt */
+  [data-custom-colors='true'] .text-primary-foreground svg,
+  [data-custom-colors='true'] .text-primary-foreground svg * {
+    color: hsl(var(--custom-primary-text)) !important;
+    stroke: hsl(var(--custom-primary-text)) !important;
   }
 
   /* ========================================
@@ -493,6 +522,28 @@
   .no-blur .backdrop-blur-md {
     backdrop-filter: none !important;
     background: var(--color-background) !important;
+  }
+
+  /* Reduce motion - accessibility option */
+  .reduce-motion *,
+  .reduce-motion *::before,
+  .reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Also respect system preference for reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   /* Scrollbar Styling */

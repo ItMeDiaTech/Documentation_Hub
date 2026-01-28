@@ -99,8 +99,9 @@ export class StructureProcessor {
         const text = run.getText();
         if (!text) continue;
 
-        // Step 1: Collapse multiple spaces/tabs/newlines within the run
-        let cleaned = text.replace(/\s+/g, " ");
+        // Step 1: Collapse multiple consecutive SPACES only
+        // Preserve tabs (\t) and newlines (\n) as they represent intentional formatting (<w:tab/> and <w:br/>)
+        let cleaned = text.replace(/ {2,}/g, " ");
 
         // Step 2: Trim trailing space if next run starts with space (cross-run double space)
         if (i < runs.length - 1) {

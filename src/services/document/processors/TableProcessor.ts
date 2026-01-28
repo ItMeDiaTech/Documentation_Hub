@@ -14,6 +14,21 @@ import { logger } from "@/utils/logger";
 
 const log = logger.namespace("TableProcessor");
 
+// ═══════════════════════════════════════════════════════════
+// HLP (High Level Process) Table Constants
+// ═══════════════════════════════════════════════════════════
+const HLP_HEADER_COLOR = 'FFC000';  // Orange header shading
+const HLP_TIPS_COLOR = 'FFF2CC';    // Light yellow tips column
+const HLP_BORDER_SIZE = 18;         // 2.25pt in eighths of a point
+
+/**
+ * Result of HLP table processing
+ */
+export interface HLPTableProcessingResult {
+  tablesFound: number;
+  headersStyled: number;
+}
+
 /**
  * Table shading configuration
  */
@@ -167,6 +182,124 @@ export class TableProcessor {
   }
 
   /**
+   * Check if a cell contains ANY image (not just large ones).
+   * Images can appear as Image or ImageRun instances in paragraph content.
+   *
+   * @param cell - The table cell to check
+   * @returns True if the cell contains any image
+   */
+  private cellContainsAnyImage(
+    cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number]
+  ): boolean {
+    for (const para of cell.getParagraphs()) {
+      const content = para.getContent();
+      for (const item of content) {
+        if (item instanceof Image || item instanceof ImageRun) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Count the number of text lines in a cell.
+   * Each paragraph counts as 1 line, plus any soft line breaks (\n) within paragraphs.
+   *
+   * @param cell - The table cell to check
+   * @returns Number of text lines in the cell
+   */
+  private countCellTextLines(
+    cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number]
+  ): number {
+    let lineCount = 0;
+    for (const para of cell.getParagraphs()) {
+      lineCount += 1;
+      const text = para.getText() || "";
+      lineCount += (text.match(/\n/g) || []).length;
+    }
+    return lineCount;
+  }
+
+  /**
+   * Check if text starts with a typed list prefix (bullet character or number).
+   * Used as fallback detection when Word list formatting is not detected.
+   *
+   * @param text - The text to check
+   * @returns True if the text starts with a list prefix
+   */
+  private hasTypedListPrefix(text: string): boolean {
+    if (!text) return false;
+    // Bullet characters (including dash variants)
+    if (/^[•●○◦▪▫‣⁃\-–—]\s/.test(text)) return true;
+    // Numbered: "1.", "1)", "(1)", "a.", "a)", "(a)", "i.", etc.
+    if (/^(\d+[\.\):]|\(\d+\)|[a-zA-Z][\.\):]|\([a-zA-Z]\)|[ivxIVX]+[\.\):])/.test(text)) return true;
+    return false;
+  }
+
+  /**
+   * Check if a table cell contains any list items (bullets or numbered lists).
+   * Uses multiple detection methods for robustness:
+   * 1. Word list formatting via getNumbering() / hasNumbering()
+   * 2. Typed list prefixes (bullet characters or numbers in text)
+   *
+   * @param cell - The table cell to check
+   * @returns True if the cell contains any list formatting
+   */
+  private cellContainsAnyList(
+    cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number]
+  ): boolean {
+    const paragraphs = cell.getParagraphs();
+    log.info(`cellContainsAnyList: checking ${paragraphs.length} paragraphs`);
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      const para = paragraphs[i];
+      const numbering = para.getNumbering();
+      const text = para.getText()?.trim() || '';
+
+      // Method 1: Check Word list formatting via getNumbering()
+      if (numbering && numbering.numId) {
+        log.info(`  Para ${i}: FOUND LIST via getNumbering() numId=${numbering.numId}, text="${text.substring(0, 40)}..."`);
+        return true;
+      }
+
+      // Method 2: Check Word list formatting via hasNumbering() (handles edge cases)
+      if (typeof para.hasNumbering === 'function' && para.hasNumbering()) {
+        log.info(`  Para ${i}: FOUND LIST via hasNumbering(), text="${text.substring(0, 40)}..."`);
+        return true;
+      }
+
+      // Method 3: Check for typed list prefixes (fallback)
+      if (this.hasTypedListPrefix(text)) {
+        log.info(`  Para ${i}: FOUND LIST via typed prefix, text="${text.substring(0, 40)}..."`);
+        return true;
+      }
+    }
+
+    log.info(`  -> NO LISTS FOUND in ${paragraphs.length} paragraphs`);
+    return false;
+  }
+
+  /**
+   * Check if a 1x1 table should be excluded from Heading 2 styling and shading.
+   * Excluded if the cell has more than 2 lines of text.
+   *
+   * @param cell - The single cell of a 1x1 table
+   * @returns True if the table should be excluded from styling/shading
+   */
+  private should1x1TableBeExcluded(
+    cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number]
+  ): boolean {
+    const lineCount = this.countCellTextLines(cell);
+    if (lineCount > 2) {
+      log.info(`should1x1TableBeExcluded: ${lineCount} lines (>2) -> EXCLUDED`);
+      return true;
+    }
+    log.info(`should1x1TableBeExcluded: ${lineCount} lines (<=2) -> NOT EXCLUDED`);
+    return false;
+  }
+
+  /**
    * Apply uniform formatting to all tables in the document
    */
   async applyTableUniformity(
@@ -208,9 +341,23 @@ export class TableProcessor {
         log.debug(`[Table ${tableIndex}] Type: ${is1x1Table ? "1x1" : `${rowCount}x${rows[0].getCells().length}`}`);
 
         if (is1x1Table) {
-          // Apply shading to 1x1 tables if they have existing shading OR Heading 2 style
+          // Apply shading and font formatting to 1x1 tables
+          // EXCEPTION: Skip if cell has >2 lines of text
           const singleCell = rows[0].getCells()[0];
           if (singleCell) {
+            // Check if this 1x1 table should be excluded from styling
+            if (this.should1x1TableBeExcluded(singleCell)) {
+              const lineCount = this.countCellTextLines(singleCell);
+              log.debug(`[Table ${tableIndex}] 1x1 table: Skipping styling (${lineCount} lines)`);
+
+              // Clear existing shading from excluded tables
+              singleCell.setShading({ fill: 'auto' });
+
+              tablesProcessed++;
+              tableIndex++;
+              continue;
+            }
+
             const { hasShading } = this.getResolvedCellShading(singleCell, table, doc, { tableIndex, rowIndex: 0, cellIndex: 0 });
 
             // Also check if any paragraph has Heading 2 style
@@ -287,10 +434,19 @@ export class TableProcessor {
                 }
               } else if (hasShading) {
                 // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
-                log.debug(`[Table ${tableIndex}] DATA cell WITH shading (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true`);
-                cell.setShading({ fill: otherShading });
-                cellsRecolored++;
+                // EXCEPTION: Preserve special shading colors (orange #FFC000, light yellow #FFF2CC)
+                const preservedColors = ["FFC000", "FFF2CC"];
+                const shouldPreserveShading = existingFill && preservedColors.includes(existingFill.toUpperCase());
 
+                if (shouldPreserveShading) {
+                  log.debug(`[Table ${tableIndex}] DATA cell (${rowIndex},${cellIndex}): Preserving original shading #${existingFill}`);
+                } else {
+                  log.debug(`[Table ${tableIndex}] DATA cell WITH shading (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true`);
+                  cell.setShading({ fill: otherShading });
+                  cellsRecolored++;
+                }
+
+                // Apply formatting regardless of shading preservation
                 for (const para of cell.getParagraphs()) {
                   const isListItem = !!para.getNumbering();
                   for (const run of para.getRuns()) {
@@ -805,6 +961,10 @@ export class TableProcessor {
         // Check if header is "Step"
         if (headerText !== "step") continue;
 
+        // Check if header cell is shaded
+        const { hasShading } = this.getResolvedCellShading(headerCell, table, doc);
+        if (!hasShading) continue;
+
         // Verify cells below contain numbers
         let hasNumericContent = false;
         for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
@@ -859,6 +1019,17 @@ export class TableProcessor {
         }
 
         const cell = rows[0].getCells()[0];
+
+        // Skip excluded 1x1 tables (>2 lines of text)
+        if (this.should1x1TableBeExcluded(cell)) {
+          log.debug(`Skipping Heading 2 style for 1x1 table (>2 lines)`);
+
+          // Clear existing shading from excluded tables
+          cell.setShading({ fill: 'auto' });
+
+          continue;
+        }
+
         const paragraphs = cell.getParagraphs();
 
         for (const para of paragraphs) {
@@ -881,6 +1052,170 @@ export class TableProcessor {
     }
 
     return paragraphsUpdated;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // HLP (High Level Process) Table Detection and Formatting
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Detect if a table is an HLP (High Level Process) table.
+   * HLP tables are identified by having a first row with FFC000 (orange) shading.
+   *
+   * @param table - Table to check
+   * @returns true if table is an HLP table
+   */
+  isHLPTable(table: Table): boolean {
+    const rows = table.getRows();
+    if (rows.length === 0) return false;
+
+    const firstRow = rows[0];
+    const cells = firstRow.getCells();
+    if (cells.length === 0) return false;
+
+    const firstCell = cells[0];
+    const formatting = firstCell.getFormatting();
+    const fill = formatting.shading?.fill?.toUpperCase();
+
+    return fill === HLP_HEADER_COLOR;
+  }
+
+  /**
+   * Apply HLP-specific table-level borders.
+   * - Outer borders: 2.25pt orange (#FFC000)
+   * - Inside Horizontal: None
+   * - Inside Vertical: 2.25pt orange (#FFC000)
+   *
+   * @param table - HLP table to format
+   */
+  private applyHLPTableBorders(table: Table): void {
+    table.setBorders({
+      top: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+      bottom: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+      left: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+      right: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+      insideH: { style: 'none', size: 0, color: 'auto' },
+      insideV: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+    });
+  }
+
+  /**
+   * Apply Heading 2 style to all paragraphs in the HLP header row.
+   *
+   * @param table - HLP table to format
+   * @returns Number of paragraphs styled
+   */
+  private applyHLPHeaderStyle(table: Table): number {
+    const rows = table.getRows();
+    if (rows.length === 0) return 0;
+
+    let paragraphsStyled = 0;
+    const headerRow = rows[0];
+
+    for (const cell of headerRow.getCells()) {
+      for (const para of cell.getParagraphs()) {
+        para.setStyle('Heading2');
+        paragraphsStyled++;
+      }
+    }
+
+    return paragraphsStyled;
+  }
+
+  /**
+   * Apply HLP-specific cell-level borders for data rows.
+   * Creates seamless appearance between left column and tips column.
+   *
+   * - Left column cells: Only left outer border
+   * - Right column cells (tips with FFF2CC): No left border, right outer border
+   * - Last row: Bottom border on all cells
+   *
+   * @param table - HLP table to format
+   */
+  private applyHLPCellBorders(table: Table): void {
+    const rows = table.getRows();
+
+    // Skip header row (index 0), process data rows only
+    for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+      const row = rows[rowIndex];
+      const cells = row.getCells();
+      const isLastRow = rowIndex === rows.length - 1;
+
+      for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
+        const cell = cells[cellIndex];
+        const isLeftColumn = cellIndex === 0;
+        const isRightColumn = cellIndex === cells.length - 1;
+
+        // Check if this cell has FFF2CC (tips) shading
+        const formatting = cell.getFormatting();
+        const fill = formatting.shading?.fill?.toUpperCase();
+        const isTipsCell = fill === HLP_TIPS_COLOR;
+
+        cell.setBorders({
+          top: { style: 'none', size: 0, color: 'auto' },
+          left: isLeftColumn
+            ? { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR }
+            : { style: 'none', size: 0, color: 'auto' },
+          right: isRightColumn
+            ? { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR }
+            : { style: 'none', size: 0, color: 'auto' },
+          bottom: isLastRow
+            ? { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR }
+            : { style: 'none', size: 0, color: 'auto' },
+        });
+
+        if (isTipsCell) {
+          log.debug(`HLP tips cell (${rowIndex},${cellIndex}): removed left border`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Process all HLP (High Level Process) tables in the document.
+   *
+   * HLP tables are detected by FFC000 shading in the first row.
+   * Special formatting applied:
+   * - Outer borders: 2.25pt orange (#FFC000)
+   * - No internal horizontal borders
+   * - Internal vertical borders: 2.25pt orange
+   * - Header row: Heading 2 style
+   * - Cell-level borders for seamless appearance
+   *
+   * Note: FFC000 and FFF2CC colors are already preserved by existing
+   * preservedColors logic in applyTableUniformity().
+   *
+   * @param doc - Document to process
+   * @returns Processing results
+   */
+  async processHLPTables(doc: Document): Promise<HLPTableProcessingResult> {
+    const tables = doc.getTables();
+    let tablesFound = 0;
+    let headersStyled = 0;
+
+    for (const table of tables) {
+      if (!this.isHLPTable(table)) {
+        continue;
+      }
+
+      tablesFound++;
+      log.debug(`Processing HLP table #${tablesFound}`);
+
+      // Apply HLP table-level borders
+      this.applyHLPTableBorders(table);
+
+      // Apply Heading 2 style to header row
+      headersStyled += this.applyHLPHeaderStyle(table);
+
+      // Apply cell-level borders for data rows
+      this.applyHLPCellBorders(table);
+    }
+
+    if (tablesFound > 0) {
+      log.info(`HLP table processing complete: ${tablesFound} tables, ${headersStyled} headers styled`);
+    }
+
+    return { tablesFound, headersStyled };
   }
 }
 
