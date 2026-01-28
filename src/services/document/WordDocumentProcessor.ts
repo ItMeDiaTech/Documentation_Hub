@@ -7,6 +7,7 @@
 
 import {
   Bookmark,
+  buildHyperlinkInstruction,
   ChangelogGenerator,
   CleanupHelper,
   ComplexField,
@@ -59,9 +60,15 @@ import { tableProcessor } from "./processors/TableProcessor";
 // Each bullet type uses a SPECIFIC font AND PUA character for correct rendering
 // ═══════════════════════════════════════════════════════════
 const BULLET_CHAR_MAP: Record<string, { char: string; font: string }> = {
-  '●': WORD_NATIVE_BULLETS.FILLED_BULLET,  // Filled bullet: Symbol font U+F0B7
-  '○': WORD_NATIVE_BULLETS.OPEN_CIRCLE,    // Open circle: Courier New U+006F
-  '■': WORD_NATIVE_BULLETS.FILLED_SQUARE,  // Filled square: Wingdings U+F0A7
+  // Filled bullets - various Unicode representations that should all map to Word's filled bullet
+  '●': WORD_NATIVE_BULLETS.FILLED_BULLET,  // U+25CF BLACK CIRCLE
+  '•': WORD_NATIVE_BULLETS.FILLED_BULLET,  // U+2022 BULLET (used in UI default settings)
+  // Open circle bullets
+  '○': WORD_NATIVE_BULLETS.OPEN_CIRCLE,    // U+25CB WHITE CIRCLE
+  'o': WORD_NATIVE_BULLETS.OPEN_CIRCLE,    // Lowercase o (alternative representation)
+  // Filled square bullets
+  '■': WORD_NATIVE_BULLETS.FILLED_SQUARE,  // U+25A0 BLACK SQUARE
+  '▪': WORD_NATIVE_BULLETS.FILLED_SQUARE,  // U+25AA BLACK SMALL SQUARE (alternative)
 };
 
 /**
@@ -167,7 +174,8 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
     cellBorderThickness?: number; // Cell border thickness in points (default: 0.5)
   };
   smartTables?: boolean; // smart-tables: Smart table detection and formatting (NEW)
-  standardizeCellBorders?: boolean; // standardize-cell-borders: Standardize all cell border thickness and color (preserves FFC000)
+  standardizeTableBorders?: boolean; // standardize-table-borders: Standardize all table border thickness and color (preserves FFC000)
+  setLandscapeMargins?: boolean; // set-landscape-margins: Set document to landscape orientation with 1" margins
   tableOfContentsSettings?: {
     // NEW: Table of Contents generation settings
     enabled: boolean;
@@ -290,6 +298,10 @@ export class WordDocumentProcessor {
 
   private log = logger.namespace("WordDocProcessor");
 
+  // Counter for generating unique TOC bookmark names
+  // Reset at the start of each document processing to ensure uniqueness
+  private tocBookmarkCounter: number = 0;
+
   // DEPRECATED v1.16.0: Header 2 table detection (replaced with 1x1 table dimension check)
   // Kept for potential future use: stored Header 2 table indices during style application
   // OLD APPROACH: Required style application timing, complex detection logic
@@ -331,6 +343,62 @@ export class WordDocumentProcessor {
       }
     }
     return false;
+  }
+
+  /**
+   * Debug helper: Capture and log list paragraph state at a specific point
+   * Only logs when LIST_PROCESSING debug mode is enabled
+   */
+  private debugCaptureListState(doc: Document, label: string): void {
+    if (!isDebugEnabled(debugModes.LIST_PROCESSING)) return;
+
+    this.log.debug(`\n=== LIST DEBUG: ${label} ===`);
+
+    // Capture from tables
+    const tables = doc.getAllTables();
+    for (let tableIdx = 0; tableIdx < tables.length; tableIdx++) {
+      const table = tables[tableIdx];
+      const rows = table.getRows();
+      for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+        const row = rows[rowIdx];
+        const cells = row.getCells();
+        for (let cellIdx = 0; cellIdx < cells.length; cellIdx++) {
+          const cell = cells[cellIdx];
+          const paras = cell.getParagraphs();
+          for (let paraIdx = 0; paraIdx < paras.length; paraIdx++) {
+            const para = paras[paraIdx];
+            const numbering = para.getNumbering();
+            if (!numbering) continue;
+
+            const formatting = para.getFormatting();
+            const text = para.getText().substring(0, 40);
+            this.log.debug(
+              `  T${tableIdx}R${rowIdx}C${cellIdx}[${paraIdx}]: ilvl=${numbering.level}, numId=${numbering.numId}, ` +
+              `left=${formatting.indentation?.left || 0}tw, ` +
+              `hanging=${formatting.indentation?.hanging || 0}tw, ` +
+              `text="${text}${text.length >= 40 ? '...' : ''}"`
+            );
+          }
+        }
+      }
+    }
+
+    // Capture from body
+    const bodyParas = doc.getParagraphs();
+    for (let i = 0; i < bodyParas.length; i++) {
+      const para = bodyParas[i];
+      const numbering = para.getNumbering();
+      if (!numbering) continue;
+
+      const formatting = para.getFormatting();
+      const text = para.getText().substring(0, 40);
+      this.log.debug(
+        `  Body[${i}]: ilvl=${numbering.level}, numId=${numbering.numId}, ` +
+        `left=${formatting.indentation?.left || 0}tw, ` +
+        `hanging=${formatting.indentation?.hanging || 0}tw, ` +
+        `text="${text}${text.length >= 40 ? '...' : ''}"`
+      );
+    }
   }
 
   /**
@@ -589,6 +657,9 @@ export class WordDocumentProcessor {
 
     let backupCreated = false;
     let doc: Document | null = null;
+
+    // Reset TOC bookmark counter for this document processing session
+    this.tocBookmarkCounter = 0;
 
     try {
       // Validate file
@@ -1631,8 +1702,28 @@ export class WordDocumentProcessor {
       // First, normalize typed list prefixes to proper Word lists
       // This converts manually typed prefixes like "1.", "a.", "•" to proper <w:numPr> formatting
       if (options.normalizeTableLists) {
+        // First, pre-process extended typed prefixes that DocXMLater doesn't handle
+        // (parenthetical numbers, Roman numerals, etc.)
+        this.debugCaptureListState(doc, 'BEFORE preProcessExtendedTypedPrefixes');
+        const extendedPrefixesConverted = this.preProcessExtendedTypedPrefixes(doc);
+        this.debugCaptureListState(doc, 'AFTER preProcessExtendedTypedPrefixes');
+
+        if (extendedPrefixesConverted > 0) {
+          result.changes?.push({
+            type: 'structure',
+            category: 'list_fix',
+            description: 'Converted extended typed prefixes (Roman numerals, parenthetical) to Word numbering',
+            count: extendedPrefixesConverted,
+          });
+        }
+
+        // Then run DocXMLater's normalizeTableLists for standard patterns
+        this.debugCaptureListState(doc, 'BEFORE normalizeTableLists');
         this.log.debug("=== NORMALIZING TYPED LIST PREFIXES IN TABLES ===");
-        const normReport = doc.normalizeTableLists();
+        // Pass indentationLevels so ListNormalizer can apply correct indentation settings
+        const normReport = doc.normalizeTableLists({
+          indentationLevels: options.listBulletSettings?.indentationLevels,
+        });
         if (normReport.normalized > 0) {
           this.log.info(
             `Normalized ${normReport.normalized} typed list items to proper Word lists (majority: ${normReport.appliedCategory})`
@@ -1647,11 +1738,23 @@ export class WordDocumentProcessor {
         if (normReport.errors.length > 0) {
           this.log.warn(`List normalization had ${normReport.errors.length} errors:`, normReport.errors);
         }
+        this.debugCaptureListState(doc, 'AFTER normalizeTableLists');
+        if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+          this.log.debug(`  normalizeTableLists Report: normalized=${normReport.normalized}, category=${normReport.appliedCategory}`);
+        }
+
+        // After normalizing typed list prefixes, clean up any blank lines between list items
+        // that were missed earlier (because items didn't have Word numbering yet)
+        const blanksRemoved = doc.removeBlanksBetweenListItems();
+        if (blanksRemoved > 0) {
+          this.log.debug(`Removed ${blanksRemoved} blank lines between list items (post-normalization cleanup)`);
+        }
       }
 
       // Next, normalize list levels based on visual indentation (before applying uniformity)
       // This handles documents where items have w:ilvl="0" but extra paragraph indentation
       if (options.listBulletSettings?.enabled && options.listBulletSettings.indentationLevels) {
+        this.debugCaptureListState(doc, 'BEFORE normalizeListLevelsFromIndentation');
         this.log.debug("=== NORMALIZING LIST LEVELS FROM VISUAL INDENTATION ===");
         const levelsNormalized = await this.normalizeListLevelsFromIndentation(doc, {
           indentationLevels: options.listBulletSettings.indentationLevels,
@@ -1659,11 +1762,13 @@ export class WordDocumentProcessor {
         if (levelsNormalized > 0) {
           this.log.info(`Normalized ${levelsNormalized} list item levels from visual indentation`);
         }
+        this.debugCaptureListState(doc, 'AFTER normalizeListLevelsFromIndentation');
       }
 
       // Normalize orphan Level 1+ bullets in table cells
       // If a cell's first bullet is Level 1+ with no preceding Level 0, shift all bullets down
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
+        this.debugCaptureListState(doc, 'BEFORE normalizeOrphanListLevelsInTable');
         this.log.debug("=== NORMALIZING ORPHAN LIST LEVELS IN TABLE CELLS ===");
         const tables = doc.getTables();
         let orphanLevelsFixed = 0;
@@ -1673,15 +1778,18 @@ export class WordDocumentProcessor {
         if (orphanLevelsFixed > 0) {
           this.log.info(`Normalized ${orphanLevelsFixed} orphan list levels in table cells`);
         }
+        this.debugCaptureListState(doc, 'AFTER normalizeOrphanListLevelsInTable');
       }
 
       if (options.listBulletSettings?.enabled) {
+        this.debugCaptureListState(doc, 'BEFORE applyListIndentationUniformity');
         this.log.debug("=== APPLYING LIST INDENTATION UNIFORMITY ===");
         const listsFormatted = await this.applyListIndentationUniformity(
           doc,
           options.listBulletSettings
         );
         this.log.info(`Applied indentation to ${listsFormatted} list paragraphs`);
+        this.debugCaptureListState(doc, 'AFTER applyListIndentationUniformity');
       }
 
       this.log.debug("=== DEBUG: BULLET UNIFORMITY CHECK ===");
@@ -1699,6 +1807,7 @@ export class WordDocumentProcessor {
       }
 
       if (options.bulletUniformity && options.listBulletSettings) {
+        this.debugCaptureListState(doc, 'BEFORE applyBulletUniformity/applyNumberedUniformity');
         this.log.debug("=== APPLYING BULLET AND NUMBERED LIST UNIFORMITY ===");
         const bulletsStandardized = await this.applyBulletUniformity(
           doc,
@@ -1711,9 +1820,21 @@ export class WordDocumentProcessor {
           options.listBulletSettings
         );
         this.log.info(`Standardized ${numbersStandardized} numbered lists`);
+        this.debugCaptureListState(doc, 'AFTER applyBulletUniformity/applyNumberedUniformity');
+
+        // Convert mixed list formats to maintain consistency within each abstractNum
+        // This ensures all levels within a list use the same format type (all bullets or all numbered)
+        // based on what level 0 uses (the dominant format)
+        this.debugCaptureListState(doc, 'BEFORE convertMixedListFormats');
+        this.log.debug("=== CONVERTING MIXED LIST FORMATS ===");
+        const mixedConverted = await this.convertMixedListFormats(doc, options.listBulletSettings);
+        if (mixedConverted > 0) {
+          this.log.info(`Converted ${mixedConverted} mixed list levels to uniform format`);
+        }
+        this.debugCaptureListState(doc, 'AFTER convertMixedListFormats');
 
         // Track list formatting changes
-        const totalListsFixed = bulletsStandardized + numbersStandardized;
+        const totalListsFixed = bulletsStandardized + numbersStandardized + mixedConverted;
         if (totalListsFixed > 0) {
           result.changes?.push({
             type: 'structure',
@@ -1731,24 +1852,43 @@ export class WordDocumentProcessor {
       // Apply list continuation indentation to non-list paragraphs that follow list items
       // These are "continuation" paragraphs that should align with the list item's text
       if (options.listBulletSettings?.enabled) {
+        this.debugCaptureListState(doc, 'BEFORE applyListContinuationIndentation');
         this.log.debug("=== APPLYING LIST CONTINUATION INDENTATION ===");
-        const continuationsIndented = await this.applyListContinuationIndentation(
+
+        // First, handle table cells with cell-scoped context
+        // This ensures "Example:" paragraphs in tables are properly indented
+        const tableIndented = await this.applyListContinuationIndentationInTables(
           doc,
           options.listBulletSettings
         );
-        if (continuationsIndented > 0) {
-          this.log.info(`Applied list continuation indentation to ${continuationsIndented} paragraphs`);
+
+        // Then handle body paragraphs (outside tables)
+        const bodyIndented = await this.applyListContinuationIndentation(
+          doc,
+          options.listBulletSettings
+        );
+
+        const totalIndented = tableIndented + bodyIndented;
+        if (totalIndented > 0) {
+          this.log.info(`Applied list continuation indentation to ${totalIndented} paragraphs (${tableIndented} in tables, ${bodyIndented} in body)`);
         }
+        this.debugCaptureListState(doc, 'AFTER applyListContinuationIndentation');
       }
 
       // Standardize numbering colors to fix green bullet issue
       // NOTE: Indentation is now set via in-memory model in applyBulletUniformity()
       // The old injectIndentationToNumbering() raw XML approach was ineffective (changes lost during save)
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
+        if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+          this.log.debug('=== LIST DEBUG: BEFORE standardizeNumberingColors (modifies numbering.xml) ===');
+        }
         this.log.debug("=== STANDARDIZING NUMBERING COLORS ===");
         const colorFixed = await this.standardizeNumberingColors(doc);
         if (colorFixed) {
           this.log.info("Standardized all numbering colors to black");
+        }
+        if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+          this.log.debug('=== LIST DEBUG: AFTER standardizeNumberingColors ===');
         }
       }
 
@@ -1842,27 +1982,47 @@ export class WordDocumentProcessor {
 
       // ═══════════════════════════════════════════════════════════
       // TABLE BORDER STANDARDIZATION (CONDITIONAL)
-      // Standardize cell border thickness and color (preserves FFC000 yellow/gold)
+      // Standardize all table and cell borders to uniform thickness
       // ═══════════════════════════════════════════════════════════
-      if (options.standardizeCellBorders) {
-        this.log.debug("=== STANDARDIZING CELL BORDERS ===");
+      if (options.standardizeTableBorders) {
+        this.log.debug("=== STANDARDIZING TABLE BORDERS ===");
         const borderThickness = options.tableShadingSettings?.cellBorderThickness ?? 0.5;
         const borderSize = Math.round(borderThickness * 8); // Convert points to eighths
 
-        const bordersNormalized = this.standardizeCellBorderThickness(doc, {
+        const tablesNormalized = this.standardizeTableBorders(doc, {
           size: borderSize,
-          preserveColor: 'FFC000', // Preserve yellow/gold borders
         });
 
-        if (bordersNormalized > 0) {
-          this.log.info(`Standardized borders on ${bordersNormalized} cells to ${borderThickness}pt`);
+        if (tablesNormalized > 0) {
+          this.log.info(`Standardized borders on ${tablesNormalized} tables to ${borderThickness}pt`);
           result.changes?.push({
             type: 'table',
             category: 'structure',
-            description: `Standardized cell borders to ${borderThickness}pt thickness`,
-            count: bordersNormalized,
+            description: `Standardized table borders to ${borderThickness}pt thickness`,
+            count: tablesNormalized,
           });
         }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // HLP TABLE DETECTION AND FORMATTING
+      // Detect HLP tables (FFC000 header) and apply special formatting:
+      // - Outer borders: 2.25pt orange (#FFC000)
+      // - No internal horizontal borders
+      // - Internal vertical borders: 2.25pt orange
+      // - Header row: Heading 2 style
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== PROCESSING HLP TABLES ===");
+      const hlpResult = await tableProcessor.processHLPTables(doc);
+
+      if (hlpResult.tablesFound > 0) {
+        this.log.info(`Processed ${hlpResult.tablesFound} HLP tables with ${hlpResult.headersStyled} headers styled`);
+        result.changes?.push({
+          type: 'table',
+          category: 'structure',
+          description: `Applied HLP formatting to ${hlpResult.tablesFound} table(s)`,
+          count: hlpResult.tablesFound,
+        });
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -1887,6 +2047,22 @@ export class WordDocumentProcessor {
           category: 'structure',
           description: 'Set tables to autofit window layout',
           count: autofitCount,
+        });
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // FIX "STEP" TABLE COLUMN WIDTH
+      // Tables with "Step" header and numbered rows get 1" first column
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== FIXING STEP TABLE COLUMN WIDTHS ===");
+      const stepTablesFixed = this.fixStepTableColumnWidth(doc);
+      if (stepTablesFixed > 0) {
+        this.log.info(`Fixed ${stepTablesFixed} "Step" tables with 1" first column`);
+        result.changes?.push({
+          type: 'table',
+          category: 'structure',
+          description: 'Set "Step" table first column to 1 inch',
+          count: stepTablesFixed,
         });
       }
 
@@ -2208,6 +2384,31 @@ export class WordDocumentProcessor {
       this.log.debug("=== SAVING DOCUMENT ===");
 
       // ═══════════════════════════════════════════════════════════
+      // DOCUMENT ORIENTATION AND MARGINS
+      // Set landscape orientation and 1" margins on all sides
+      // ═══════════════════════════════════════════════════════════
+      if (options.setLandscapeMargins) {
+        this.log.debug("=== SETTING LANDSCAPE ORIENTATION AND MARGINS ===");
+
+        // Set landscape orientation
+        doc.setPageOrientation('landscape');
+
+        // Set 1" margins on all sides (1440 twips = 1 inch)
+        doc.setMargins({
+          top: 1440,
+          bottom: 1440,
+          left: 1440,
+          right: 1440,
+        });
+
+        this.log.info('Set document to landscape orientation with 1" margins');
+        result.changes?.push({
+          type: 'structure',
+          category: 'structure',
+          description: 'Set landscape orientation with 1" margins',
+        });
+      }
+
       // PRESERVE TOC FIELD STRUCTURE
       // DocXMLater loses complex field structures (<w:fldChar>) during load.
       // Always rebuild TOCs to restore proper field structure before save.
@@ -2828,8 +3029,9 @@ export class WordDocumentProcessor {
         const text = run.getText();
         if (!text) continue;
 
-        // Step 1: Collapse multiple spaces/tabs/newlines within the run
-        let cleaned = text.replace(/\s+/g, " ");
+        // Step 1: Collapse multiple consecutive SPACES only
+        // Preserve tabs (\t) and newlines (\n) as they represent intentional formatting (<w:tab/> and <w:br/>)
+        let cleaned = text.replace(/ {2,}/g, " ");
 
         // Step 2: Trim trailing space if next run starts with space (cross-run double space)
         if (i < runs.length - 1) {
@@ -3472,84 +3674,56 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Standardize cell border thickness and color across all tables
+   * Standardize table border thickness and color across all tables
    *
-   * This method sets all table cell borders to a specified thickness and sets
-   * the color to black (#000000), EXCEPT for borders that have the preserved
-   * color (default: #FFC000 yellow/gold), which retain their original color.
+   * This method sets all table borders (outer, internal gridlines, and cell borders)
+   * to a specified thickness with black color (#000000).
+   *
+   * Uses docxmlater's setAllBorders() which applies borders to:
+   * - All 6 table border types (top, bottom, left, right, insideH, insideV)
+   * - All individual cell borders
    *
    * @param doc - Document to process
    * @param options - Standardization options
    * @param options.size - Border size in eighths of a point (e.g., 4 = 0.5pt)
-   * @param options.preserveColor - Hex color to preserve (default: 'FFC000')
-   * @returns Number of cells with borders standardized
+   * @returns Number of tables with borders standardized
    */
-  private standardizeCellBorderThickness(
+  private standardizeTableBorders(
     doc: Document,
     options: {
       size: number;
-      preserveColor?: string;
     }
   ): number {
     const tables = doc.getTables();
-    let cellsProcessed = 0;
-    const PRESERVED_COLOR = (options.preserveColor ?? 'FFC000').toUpperCase().replace('#', '');
+    let tablesProcessed = 0;
     const DEFAULT_COLOR = '000000';
 
-    this.log.debug(`Standardizing borders: size=${options.size} (${options.size / 8}pt), preserveColor=${PRESERVED_COLOR}`);
+    this.log.debug(`Standardizing table borders: size=${options.size} (${options.size / 8}pt)`);
 
     for (const table of tables) {
       try {
-        for (const row of table.getRows()) {
-          for (const cell of row.getCells()) {
-            const existingBorders = cell.getBorders();
-
-            // Build new borders, preserving FFC000 color if present
-            const newBorders = {
-              top: this.standardizeBorder(existingBorders?.top, options.size, PRESERVED_COLOR, DEFAULT_COLOR),
-              bottom: this.standardizeBorder(existingBorders?.bottom, options.size, PRESERVED_COLOR, DEFAULT_COLOR),
-              left: this.standardizeBorder(existingBorders?.left, options.size, PRESERVED_COLOR, DEFAULT_COLOR),
-              right: this.standardizeBorder(existingBorders?.right, options.size, PRESERVED_COLOR, DEFAULT_COLOR),
-            };
-
-            cell.setBorders(newBorders);
-            cellsProcessed++;
-          }
+        // Skip HLP tables - they get special border treatment
+        if (tableProcessor.isHLPTable(table)) {
+          this.log.debug('Skipping HLP table for standard border processing');
+          continue;
         }
+
+        // Create uniform border definition
+        const border = {
+          style: 'single' as const,
+          size: options.size,
+          color: DEFAULT_COLOR,
+        };
+
+        // setAllBorders applies to all 6 border types AND all cells
+        table.setAllBorders(border);
+        tablesProcessed++;
       } catch (error) {
         this.log.warn(`Failed to standardize borders for table: ${error}`);
       }
     }
 
-    return cellsProcessed;
-  }
-
-  /**
-   * Standardize a single border, preserving the specified color if present
-   *
-   * @param existing - Existing border definition (may be undefined)
-   * @param size - New border size in eighths of a point
-   * @param preserveColor - Color to preserve (uppercase, no # prefix)
-   * @param defaultColor - Color to use if not preserving (uppercase, no # prefix)
-   * @returns New border definition
-   */
-  private standardizeBorder(
-    existing: { style?: string; size?: number; color?: string } | undefined,
-    size: number,
-    preserveColor: string,
-    defaultColor: string
-  ): { style: 'single'; size: number; color: string } {
-    // Normalize existing color for comparison (handle undefined, #prefix, case)
-    const existingColor = existing?.color?.toUpperCase().replace('#', '') || '';
-
-    // Preserve color if it matches the preserved color, otherwise use default (black)
-    const color = (existingColor === preserveColor) ? preserveColor : defaultColor;
-
-    return {
-      style: 'single' as const,
-      size: size,
-      color: color,
-    };
+    return tablesProcessed;
   }
 
   /**
@@ -3687,6 +3861,62 @@ export class WordDocumentProcessor {
       "DEPRECATED: insertBlankLinesAfter1x1Tables() called - use doc.ensureBlankLinesAfter1x1Tables() instead"
     );
     return 0;
+  }
+
+  /**
+   * Fix column width for "Step" tables.
+   * Detects tables where first column header is "Step" and cells below contain numbers.
+   * Sets the first column width to 1 inch (1440 twips).
+   *
+   * @param doc - The document to process
+   * @returns Number of tables fixed
+   */
+  private fixStepTableColumnWidth(doc: Document): number {
+    const STEP_COLUMN_WIDTH = 1440; // 1 inch in twips
+    let fixedCount = 0;
+
+    for (const table of doc.getTables()) {
+      const rows = table.getRows();
+      if (rows.length < 2) continue; // Need at least header + 1 data row
+
+      // Check if first cell in first row says "Step" (case-insensitive)
+      const headerRow = rows[0];
+      const firstCell = headerRow.getCells()[0];
+      if (!firstCell) continue;
+
+      const headerText = firstCell.getText().trim().toLowerCase();
+      if (headerText !== "step") continue;
+
+      // Check if cells below first column contain just numbers
+      let isStepTable = true;
+      for (let i = 1; i < rows.length; i++) {
+        const dataCell = rows[i].getCells()[0];
+        if (!dataCell) {
+          isStepTable = false;
+          break;
+        }
+        const cellText = dataCell.getText().trim();
+        // Check if cell contains only digits (or is empty for merged cells)
+        if (cellText && !/^\d+$/.test(cellText)) {
+          isStepTable = false;
+          break;
+        }
+      }
+
+      if (isStepTable) {
+        // Set first column width to 1 inch for all cells in first column
+        for (const row of rows) {
+          const cell = row.getCells()[0];
+          if (cell) {
+            cell.setWidth(STEP_COLUMN_WIDTH);
+          }
+        }
+        this.log.debug(`Fixed "Step" table: set first column to 1 inch`);
+        fixedCount++;
+      }
+    }
+
+    return fixedCount;
   }
 
   /**
@@ -4323,6 +4553,19 @@ export class WordDocumentProcessor {
       const is1x1Table = rows.length === 1 && rows[0]?.getCells().length === 1;
       let tableHasHeader2 = false;
 
+      // Skip excluded 1x1 tables (>2 lines of text)
+      if (is1x1Table) {
+        const singleCell = rows[0]?.getCells()[0];
+        if (singleCell && this.should1x1TableBeExcluded(singleCell)) {
+          this.log.debug(`Skipping Header 2 validation for excluded 1x1 table`);
+
+          // Clear existing shading from excluded tables
+          singleCell.setShading({ fill: 'auto' });
+
+          continue;
+        }
+      }
+
       for (const row of rows) {
         const cells = row.getCells();
 
@@ -4781,6 +5024,145 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Helper: Get text indent for a level, extrapolating if needed
+   * Used by list continuation methods to determine proper indentation
+   */
+  private getTextIndentForLevel(
+    level: number,
+    settings: { indentationLevels: Array<{ level: number; symbolIndent: number; textIndent: number }> }
+  ): number {
+    const config = settings.indentationLevels.find(l => l.level === level);
+    if (config) return config.textIndent;
+    if (settings.indentationLevels.length === 0) return 0.5 + level * 0.25;
+    const lastConfig = settings.indentationLevels[settings.indentationLevels.length - 1];
+    return lastConfig.textIndent + (level - settings.indentationLevels.length + 1) * 0.25;
+  }
+
+  /**
+   * Apply list continuation indentation within table cells
+   *
+   * Context is scoped to each cell - does not bleed across cells.
+   * This handles the case where a non-list paragraph (like "Example:") appears
+   * between list items in a table cell and needs proper indentation to align
+   * with the text content of the preceding list item.
+   *
+   * @param doc - The document to process
+   * @param settings - User's indentation level settings from UI
+   * @returns Number of paragraphs indented
+   */
+  private async applyListContinuationIndentationInTables(
+    doc: Document,
+    settings: {
+      indentationLevels: Array<{
+        level: number;
+        symbolIndent: number;
+        textIndent: number;
+      }>;
+    }
+  ): Promise<number> {
+    let indentedCount = 0;
+
+    this.log.debug("=== APPLYING LIST CONTINUATION INDENTATION IN TABLES ===");
+
+    for (const table of doc.getAllTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          const paragraphs = cell.getParagraphs();
+
+          // Track list context within this cell only
+          let activeContext: { numId: number; level: number; textIndentTwips: number } | null = null;
+
+          for (let i = 0; i < paragraphs.length; i++) {
+            const para = paragraphs[i];
+            const numbering = para.getNumbering();
+
+            if (numbering) {
+              // This IS a list item - update context
+              const level = numbering.level ?? 0;
+              const actualIndent = this.getListTextIndent(doc, numbering.numId, level);
+              const textIndentTwips = actualIndent ?? Math.round(this.getTextIndentForLevel(level, settings) * 1440);
+              activeContext = { numId: numbering.numId, level, textIndentTwips };
+              continue; // Don't modify list items themselves
+            }
+
+            // Not a list item - check if it should inherit context
+            if (!activeContext) continue;
+
+            const formatting = para.getFormatting();
+            const existingLeftIndent = formatting.indentation?.left || 0;
+
+            // Check if paragraph contains a small image (like emoji < 100x100px)
+            const hasSmallImage = doc.isSmallImageParagraph(para);
+
+            // Apply indentation if:
+            // 1. Paragraph already has some indentation (was meant to be indented), OR
+            // 2. Paragraph contains a small image (emoji+text paragraphs within list context need indenting)
+            if (existingLeftIndent > 0 || hasSmallImage) {
+              // Get cell width and margins to calculate safe indent
+              const cellWidth = cell.getWidth(); // twips, or undefined
+              const cellMargins = cell.getMargins();
+              const leftMargin = cellMargins?.left || 0;
+              const rightMargin = cellMargins?.right || 0;
+
+              // Determine target indent
+              let targetIndent = activeContext.textIndentTwips;
+
+              // Respect cell boundary: cap indent based on available width
+              if (cellWidth !== undefined && cellWidth > 0) {
+                const availableWidth = cellWidth - leftMargin - rightMargin;
+
+                // Skip indent entirely for very narrow cells (< 3 inches)
+                // Indentation in narrow cells causes text clipping
+                const NARROW_CELL_THRESHOLD = 4320; // 3 inches
+                if (availableWidth < NARROW_CELL_THRESHOLD) {
+                  this.log.debug(
+                    `  Skipping indent for narrow cell (available: ${availableWidth}tw < ${NARROW_CELL_THRESHOLD}tw threshold)`
+                  );
+                  continue;
+                }
+
+                // Ensure at least 2 inches (2880 twips) remains for text content
+                const MIN_TEXT_SPACE = 2880;
+                const maxSafeIndent = Math.max(0, availableWidth - MIN_TEXT_SPACE);
+
+                // Skip if calculated indent would be negligible (< 0.25 inches)
+                if (maxSafeIndent < 360) {
+                  this.log.debug(
+                    `  Skipping indent - maxSafeIndent too small (${maxSafeIndent}tw < 360tw)`
+                  );
+                  continue;
+                }
+
+                if (targetIndent > maxSafeIndent) {
+                  // Cap indent at safe maximum, or keep existing if it's smaller
+                  targetIndent = existingLeftIndent > 0
+                    ? Math.min(existingLeftIndent, maxSafeIndent)
+                    : maxSafeIndent;
+                  this.log.debug(
+                    `  Capped indent to ${targetIndent} twips (cell: ${cellWidth}, margins: L${leftMargin}/R${rightMargin}, available: ${availableWidth})`
+                  );
+                }
+              }
+
+              para.setLeftIndent(targetIndent);
+              para.setFirstLineIndent(0);
+
+              this.log.debug(
+                `  Table cell continuation: para ${i}, numId=${activeContext.numId}, ` +
+                `level=${activeContext.level}, indent=${targetIndent}twips ` +
+                `(was ${existingLeftIndent}, hasSmallImage=${hasSmallImage})`
+              );
+              indentedCount++;
+            }
+          }
+        }
+      }
+    }
+
+    return indentedCount;
+  }
+
+  /**
    * Apply list continuation indentation - Indent non-list paragraphs that follow list items
    * When a paragraph has some existing indentation and follows a list item,
    * set its left indent to match the list item's textIndent (where text aligns)
@@ -4914,6 +5296,75 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Helper: Check if a numbering ID represents a "hybrid" list:
+   * - Level 0 is numbered (decimal, lowerLetter, etc.)
+   * - Level 1+ contains bullets
+   *
+   * These lists need nested bullets converted to letters (a., b., c.)
+   * to maintain proper sequence continuation.
+   */
+  private isHybridNumberedBulletList(doc: Document, numId: number): boolean {
+    try {
+      const manager = doc.getNumberingManager();
+      const instance = manager.getInstance(numId);
+      if (!instance) return false;
+
+      const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+      if (!abstractNum) return false;
+
+      const level0 = abstractNum.getLevel(0);
+      if (!level0 || level0.getFormat() === "bullet") return false; // Level 0 must be numbered
+
+      // Check if any level 1+ is a bullet
+      for (let i = 1; i < 9; i++) {
+        const level = abstractNum.getLevel(i);
+        if (level && level.getFormat() === "bullet") {
+          return true; // Found a nested bullet under a numbered level 0
+        }
+      }
+      return false;
+    } catch (error) {
+      this.log.warn(`Error checking if numId ${numId} is hybrid list: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Helper: Check if a numbering ID represents a "hybrid" list (inverse of above):
+   * - Level 0 is bullet format
+   * - Level 1+ contains numbered format (decimal, lowerLetter, etc.)
+   *
+   * These lists need nested numbers converted to bullets
+   * when the majority format in the context is bullets.
+   */
+  private isHybridBulletNumberedList(doc: Document, numId: number): boolean {
+    try {
+      const manager = doc.getNumberingManager();
+      const instance = manager.getInstance(numId);
+      if (!instance) return false;
+
+      const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+      if (!abstractNum) return false;
+
+      const level0 = abstractNum.getLevel(0);
+      if (!level0 || level0.getFormat() !== "bullet") return false; // Level 0 must be bullet
+
+      // Check if any level 1+ is numbered (not bullet)
+      const numberedFormats = ["decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"];
+      for (let i = 1; i < 9; i++) {
+        const level = abstractNum.getLevel(i);
+        if (level && numberedFormats.includes(level.getFormat())) {
+          return true; // Found a numbered level under a bullet level 0
+        }
+      }
+      return false;
+    } catch (error) {
+      this.log.warn(`Error checking if numId ${numId} is hybrid bullet-numbered list: ${error}`);
+      return false;
+    }
+  }
+
+  /**
    * Helper: Get the text indent (leftIndent) for a specific level of a numbering definition
    * Returns the actual indent from the numbering.xml, or undefined if not found
    */
@@ -4992,7 +5443,16 @@ export class WordDocumentProcessor {
             continue;
           }
 
-          // Only normalize if all items are at same level (potential orphans)
+          // First pass: collect list items and find minimum indentation
+          // This establishes a baseline so items are normalized relative to each other,
+          // not against absolute thresholds (which may not account for cell padding)
+          const listItems: Array<{
+            para: typeof paragraphs[0];
+            numbering: NonNullable<ReturnType<typeof paragraphs[0]['getNumbering']>>;
+            leftTwips: number;
+          }> = [];
+          let minIndent = Infinity;
+
           for (const para of paragraphs) {
             const numbering = para.getNumbering();
             if (!numbering) continue;
@@ -5000,13 +5460,81 @@ export class WordDocumentProcessor {
             const formatting = para.getFormatting();
             const leftTwips = formatting.indentation?.left || 0;
 
-            if (leftTwips === 0) continue;
+            listItems.push({ para, numbering, leftTwips });
+            if (leftTwips < minIndent) {
+              minIndent = leftTwips;
+            }
+          }
 
-            const inferredLevel = this.inferLevelFromIndentation(leftTwips, thresholds);
+          // Skip if no list items
+          if (listItems.length === 0 || minIndent === Infinity) {
+            continue;
+          }
+
+          // Use minimum indent as baseline for level 0 (accounts for cell padding)
+          const baselineOffset = minIndent > 0 ? minIndent : 0;
+
+          // Second pass: normalize levels using relative indentation
+          for (const { para, numbering, leftTwips } of listItems) {
+            // Calculate relative indentation from the cell's baseline
+            const relativeIndent = leftTwips - baselineOffset;
+
+            // DEBUG: Log detailed info for each item BEFORE any changes
+            if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+              const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
+              const textSnippet = para.getText().substring(0, 35).replace(/\n/g, ' ');
+              this.log.debug(
+                `  [TABLE ITEM] "${textSnippet}..." ` +
+                  `origLevel=${numbering.level}, paraLeft=${leftTwips}tw, ` +
+                  `numDefIndent=${numDefIndent ?? 'N/A'}tw, ` +
+                  `baseline=${baselineOffset}tw, relativeIndent=${relativeIndent}tw`
+              );
+            }
+
+            // Items at the baseline (relative indent = 0) should only be normalized to level 0
+            // if they don't have a valid numbering definition indentation for their current level
+            if (relativeIndent === 0) {
+              if (numbering.level > 0) {
+                // Check if the numbering definition provides indentation for this level
+                const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
+
+                // If numbering definition has valid indentation for this level, respect it
+                if (numDefIndent !== undefined && numDefIndent > 0) {
+                  // Item has legitimate ilvl with numbering definition indentation - skip
+                  if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+                    this.log.debug(
+                      `    -> PRESERVING level ${numbering.level} (numDefIndent=${numDefIndent}tw provides visual indent)`
+                    );
+                  }
+                  continue;
+                }
+
+                // No valid numbering definition indentation - normalize to level 0
+                if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+                  this.log.debug(
+                    `    -> CHANGING from level ${numbering.level} to 0 (no numDefIndent, at baseline)`
+                  );
+                }
+                this.log.debug(
+                  `  Normalizing baseline item: left=${leftTwips} twips (baseline), ` +
+                    `current level=${numbering.level}, inferred level=0`
+                );
+                para.setNumbering(numbering.numId, 0);
+                normalized++;
+              }
+              continue;
+            }
+
+            const inferredLevel = this.inferLevelFromIndentation(relativeIndent, thresholds);
 
             if (inferredLevel !== numbering.level) {
+              if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+                this.log.debug(
+                  `    -> CHANGING from level ${numbering.level} to ${inferredLevel} (threshold match)`
+                );
+              }
               this.log.debug(
-                `  Normalizing paragraph: left=${leftTwips} twips, ` +
+                `  Normalizing paragraph: left=${leftTwips} twips (relative=${relativeIndent}), ` +
                   `current level=${numbering.level}, inferred level=${inferredLevel}`
               );
               para.setNumbering(numbering.numId, inferredLevel);
@@ -5017,8 +5545,19 @@ export class WordDocumentProcessor {
       }
     }
 
-    // Process body-level paragraphs (outside tables) - original logic
+    // Process body-level paragraphs (outside tables)
+    // Group by numId to apply relative indentation within each list
     const bodyParagraphs = doc.getParagraphs();
+    const listGroups = new Map<
+      number,
+      Array<{
+        para: typeof bodyParagraphs[0];
+        numbering: NonNullable<ReturnType<typeof bodyParagraphs[0]['getNumbering']>>;
+        leftTwips: number;
+      }>
+    >();
+
+    // First pass: group list items by numId
     for (const para of bodyParagraphs) {
       const numbering = para.getNumbering();
       if (!numbering) continue;
@@ -5026,17 +5565,100 @@ export class WordDocumentProcessor {
       const formatting = para.getFormatting();
       const leftTwips = formatting.indentation?.left || 0;
 
-      if (leftTwips === 0) continue;
+      if (!listGroups.has(numbering.numId)) {
+        listGroups.set(numbering.numId, []);
+      }
+      listGroups.get(numbering.numId)!.push({ para, numbering, leftTwips });
+    }
 
-      const inferredLevel = this.inferLevelFromIndentation(leftTwips, thresholds);
+    // Second pass: normalize each list group using relative indentation
+    for (const [numId, items] of listGroups) {
+      // Find minimum indentation in this list group
+      let minIndent = Infinity;
+      for (const { leftTwips } of items) {
+        if (leftTwips < minIndent) {
+          minIndent = leftTwips;
+        }
+      }
 
-      if (inferredLevel !== numbering.level) {
+      // Skip if no valid minimum
+      if (minIndent === Infinity) continue;
+
+      // Check if group already has multi-level hierarchy
+      const levels = new Set(items.map((item) => item.numbering.level));
+      if (levels.size > 1) {
         this.log.debug(
-          `  Normalizing body paragraph: left=${leftTwips} twips, ` +
-            `current level=${numbering.level}, inferred level=${inferredLevel}`
+          `  Skipping body list (numId=${numId}) with existing ${levels.size}-level hierarchy`
         );
-        para.setNumbering(numbering.numId, inferredLevel);
-        normalized++;
+        continue;
+      }
+
+      // Use minimum indent as baseline
+      const baselineOffset = minIndent > 0 ? minIndent : 0;
+
+      for (const { para, numbering, leftTwips } of items) {
+        const relativeIndent = leftTwips - baselineOffset;
+
+        // Get numbering definition indentation (needed for both debug logging and fix logic)
+        const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
+
+        // DEBUG: Log detailed info for each item BEFORE any changes
+        if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+          const textSnippet = para.getText().substring(0, 35).replace(/\n/g, ' ');
+          this.log.debug(
+            `  [BODY ITEM] "${textSnippet}..." ` +
+              `origLevel=${numbering.level}, paraLeft=${leftTwips}tw, ` +
+              `numDefIndent=${numDefIndent ?? 'N/A'}tw, ` +
+              `baseline=${baselineOffset}tw, relativeIndent=${relativeIndent}tw`
+          );
+        }
+
+        // Items at the baseline (relative indent = 0) should only be normalized to level 0
+        // if they don't have a valid numbering definition indentation for their current level
+        if (relativeIndent === 0) {
+          if (numbering.level > 0) {
+            // If numbering definition has valid indentation for this level, respect it
+            if (numDefIndent !== undefined && numDefIndent > 0) {
+              // Item has legitimate ilvl with numbering definition indentation - skip
+              if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+                this.log.debug(
+                  `    -> PRESERVING level ${numbering.level} (numDefIndent=${numDefIndent}tw provides visual indent)`
+                );
+              }
+              continue;
+            }
+
+            // No valid numbering definition indentation - normalize to level 0
+            if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+              this.log.debug(
+                `    -> CHANGING from level ${numbering.level} to 0 (no numDefIndent, at baseline)`
+              );
+            }
+            this.log.debug(
+              `  Normalizing body baseline item: left=${leftTwips} twips (baseline), ` +
+                `current level=${numbering.level}, inferred level=0`
+            );
+            para.setNumbering(numbering.numId, 0);
+            normalized++;
+          }
+          continue;
+        }
+
+        const inferredLevel = this.inferLevelFromIndentation(relativeIndent, thresholds);
+
+        if (inferredLevel !== numbering.level) {
+          if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+            this.log.debug(
+              `    -> CHANGING from level ${numbering.level} to ${inferredLevel} (threshold match)`
+            );
+          }
+          this.log.debug(
+            `  Normalizing body paragraph: left=${leftTwips} twips (relative=${relativeIndent}), ` +
+              `current level=${numbering.level}, inferred level=${inferredLevel}`
+          );
+          para.setNumbering(numbering.numId, inferredLevel);
+          normalized++;
+        }
       }
     }
 
@@ -5189,13 +5811,17 @@ export class WordDocumentProcessor {
       // Get font-specific character and font for this bullet type
       const mapping = getBulletMapping(bullet);
 
+      // OOXML indentation semantics:
+      // - leftIndent (w:left): where TEXT starts (in twips from left margin)
+      // - hangingIndent (w:hanging): how far the BULLET/NUMBER hangs back from text position
+      // So if symbolIndent=0.5" and textIndent=0.75", bullet is at 0.5" and text at 0.75"
       levels.push(new NumberingLevel({
         level: index,
         format: "bullet",
         text: mapping.char, // Font-specific character (e.g., · for Symbol, 'o' for Courier New)
         font: mapping.font, // Correct font for this bullet type
-        leftIndent: symbolTwips, // Bullet position (where bullet appears)
-        hangingIndent: hangingTwips, // Text offset from bullet
+        leftIndent: textTwips, // Text starts at textIndent position
+        hangingIndent: hangingTwips, // Bullet hangs back by (textIndent - symbolIndent)
       }));
     }
 
@@ -5243,13 +5869,14 @@ export class WordDocumentProcessor {
             level.setColor("000000"); // Color: Black (#000000)
 
             // ✅ SET INDENTATION from UI settings
+            // OOXML semantics: w:left = where TEXT starts, w:hanging = how far NUMBER hangs back
             const levelConfig = settings.indentationLevels[levelIndex];
             if (levelConfig) {
               const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
               const textTwips = Math.round(levelConfig.textIndent * 1440);
               const hangingTwips = textTwips - symbolTwips;
-              level.setLeftIndent(symbolTwips);
-              level.setHangingIndent(hangingTwips);
+              level.setLeftIndent(textTwips);      // Text starts at textIndent
+              level.setHangingIndent(hangingTwips); // Number hangs back by (textIndent - symbolIndent)
             }
 
             isModified = true;
@@ -5257,7 +5884,7 @@ export class WordDocumentProcessor {
             this.log.debug(
               `  Updated abstractNum level ${levelIndex}: ` +
                 `char="${mapping.char}", font=${mapping.font}, ` +
-                `indent=${levelConfig?.symbolIndent || 'default'}", color=#000000`
+                `textIndent=${levelConfig?.textIndent || 'default'}", symbolIndent=${levelConfig?.symbolIndent || 'default'}", color=#000000`
             );
           }
         }
@@ -5361,12 +5988,15 @@ export class WordDocumentProcessor {
       const textTwips = Math.round(textIndent * 1440);
       const hangingTwips = textTwips - symbolTwips;
 
+      // OOXML indentation semantics:
+      // - leftIndent (w:left): where TEXT starts (in twips from left margin)
+      // - hangingIndent (w:hanging): how far the NUMBER hangs back from text position
       levels.push(new NumberingLevel({
         level: index,
         format: format,
         text: `%${index + 1}.`, // Standard template (e.g., %1., %2.)
-        leftIndent: symbolTwips, // Number position (where number appears)
-        hangingIndent: hangingTwips, // Text offset from number
+        leftIndent: textTwips, // Text starts at textIndent position
+        hangingIndent: hangingTwips, // Number hangs back by (textIndent - symbolIndent)
       }));
     }
 
@@ -5440,14 +6070,15 @@ export class WordDocumentProcessor {
           }
 
           // ✅ SET INDENTATION from UI settings (same as bullet lists)
+          // OOXML semantics: w:left = where TEXT starts, w:hanging = how far NUMBER hangs back
           if (configLevel) {
             const symbolTwips = Math.round(configLevel.symbolIndent * 1440);
             const textTwips = Math.round(configLevel.textIndent * 1440);
             const hangingTwips = textTwips - symbolTwips;
-            level.setLeftIndent(symbolTwips);
-            level.setHangingIndent(hangingTwips);
+            level.setLeftIndent(textTwips);      // Text starts at textIndent
+            level.setHangingIndent(hangingTwips); // Number hangs back by (textIndent - symbolIndent)
             this.log.debug(
-              `  Set numbered level ${levelIndex} indentation: left=${symbolTwips}twips, hanging=${hangingTwips}twips`
+              `  Set numbered level ${levelIndex} indentation: textIndent=${textTwips}twips, hanging=${hangingTwips}twips (number at ${symbolTwips}twips)`
             );
           }
         }
@@ -5462,6 +6093,659 @@ export class WordDocumentProcessor {
     }
 
     return result.levelsModified + formatsConverted;
+  }
+
+  /**
+   * Pre-process extended typed prefixes that DocXMLater's normalizeTableLists doesn't handle.
+   *
+   * DocXMLater handles simple patterns like "1.", "a.", "A." but misses:
+   * - Parenthetical formats: (1), (a), (A), 1), a), A)
+   * - Roman numerals: i., ii., iii., (i), (ii), I., II., (I), (II)
+   *
+   * This method scans table cells for these extended patterns and converts them to
+   * proper Word numbering BEFORE DocXMLater's normalizeTableLists runs.
+   *
+   * @param doc - The document to process
+   * @returns Number of prefixes converted
+   */
+  private preProcessExtendedTypedPrefixes(doc: Document): number {
+    const manager = doc.getNumberingManager();
+    let converted = 0;
+
+    this.log.debug("=== PRE-PROCESSING EXTENDED TYPED PREFIXES ===");
+
+    // Extended patterns not handled by DocXMLater
+    // Each pattern maps to a Word numFmt and suggested level
+    const extendedPatterns: Array<{
+      regex: RegExp;
+      getFormat: (match: RegExpMatchArray) => string;
+      getLevel: () => number;
+      description: string;
+    }> = [
+      // Parenthetical numbers: (1), (2), etc.
+      {
+        regex: /^\((\d+)\)\s*/,
+        getFormat: () => 'decimal',
+        getLevel: () => 0,
+        description: 'parenthetical decimal'
+      },
+      // Number with closing paren: 1), 2), etc.
+      {
+        regex: /^(\d+)\)\s*/,
+        getFormat: () => 'decimal',
+        getLevel: () => 0,
+        description: 'decimal with paren'
+      },
+      // Parenthetical letters: (a), (b), (A), (B), etc.
+      {
+        regex: /^\(([a-zA-Z])\)\s*/,
+        getFormat: (m) => m[1] === m[1].toUpperCase() ? 'upperLetter' : 'lowerLetter',
+        getLevel: () => 1,
+        description: 'parenthetical letter'
+      },
+      // Letter with closing paren: a), b), A), B), etc.
+      {
+        regex: /^([a-zA-Z])\)\s*/,
+        getFormat: (m) => m[1] === m[1].toUpperCase() ? 'upperLetter' : 'lowerLetter',
+        getLevel: () => 1,
+        description: 'letter with paren'
+      },
+      // Lowercase Roman numerals with period: i., ii., iii., iv., v., vi., vii., viii., ix., x., xi., xii., xiii.
+      {
+        regex: /^(i{1,3}|iv|vi{0,3}|ix|xi{1,3}|xiv|xv)\.\s*/i,
+        getFormat: (m) => m[1] === m[1].toUpperCase() ? 'upperRoman' : 'lowerRoman',
+        getLevel: () => 2,
+        description: 'Roman numeral'
+      },
+      // Parenthetical Roman: (i), (ii), (iii), (I), (II), etc.
+      {
+        regex: /^\((i{1,3}|iv|vi{0,3}|ix|xi{1,3}|xiv|xv)\)\s*/i,
+        getFormat: (m) => m[1] === m[1].toUpperCase() ? 'upperRoman' : 'lowerRoman',
+        getLevel: () => 2,
+        description: 'parenthetical Roman'
+      },
+    ];
+
+    // Cache for found numbering definitions by format
+    const formatToNumId = new Map<string, number>();
+
+    // Find all numIds used in the document by scanning paragraphs
+    const usedNumIds = new Set<number>();
+    for (const para of doc.getAllParagraphs()) {
+      const numbering = para.getNumbering();
+      if (numbering && numbering.numId !== undefined) {
+        usedNumIds.add(numbering.numId);
+      }
+    }
+
+    // Build format -> numId mapping from used numbering definitions
+    for (const numId of usedNumIds) {
+      const instance = manager.getInstance(numId);
+      if (!instance) continue;
+
+      const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+      if (!abstractNum) continue;
+
+      const level0 = abstractNum.getLevel(0);
+      if (level0) {
+        const format = level0.getFormat();
+        if (!formatToNumId.has(format)) {
+          formatToNumId.set(format, numId);
+        }
+      }
+    }
+
+    // Process all table cells
+    const tables = doc.getAllTables();
+    for (const table of tables) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          const paragraphs = cell.getParagraphs();
+
+          for (const para of paragraphs) {
+            // Skip if already has Word numbering
+            const existingNumbering = para.getNumbering();
+            if (existingNumbering) continue;
+
+            const text = para.getText();
+            if (!text || text.trim().length === 0) continue;
+
+            // Check each extended pattern
+            for (const pattern of extendedPatterns) {
+              const match = text.match(pattern.regex);
+              if (match) {
+                const format = pattern.getFormat(match);
+                const level = pattern.getLevel();
+
+                // Find or get numId for this format
+                let numId = formatToNumId.get(format);
+
+                if (numId === undefined) {
+                  // Try to find any numbering with compatible format at any level
+                  for (const candidateNumId of usedNumIds) {
+                    const instance = manager.getInstance(candidateNumId);
+                    if (!instance) continue;
+
+                    const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+                    if (!abstractNum) continue;
+
+                    for (let lvl = 0; lvl < 9; lvl++) {
+                      const levelDef = abstractNum.getLevel(lvl);
+                      if (levelDef && levelDef.getFormat() === format) {
+                        numId = candidateNumId;
+                        formatToNumId.set(format, numId);
+                        break;
+                      }
+                    }
+                    if (numId !== undefined) break;
+                  }
+                }
+
+                if (numId !== undefined) {
+                  // Remove the prefix from text
+                  const newText = text.replace(pattern.regex, '');
+                  para.setText(newText);
+
+                  // Apply numbering
+                  para.setNumbering(numId, level);
+
+                  converted++;
+                  this.log.debug(
+                    `  Converted ${pattern.description} prefix: "${match[0].trim()}" -> numId=${numId}, level=${level}`
+                  );
+                }
+                break; // Only match first pattern
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (converted > 0) {
+      this.log.info(`Pre-processed ${converted} extended typed prefixes to Word numbering`);
+    } else {
+      this.log.debug("  No extended typed prefixes found");
+    }
+
+    return converted;
+  }
+
+  /**
+   * Convert mixed list formats to maintain consistency within each abstractNum definition.
+   *
+   * This method analyzes each abstractNum and ensures all levels use the same format type
+   * (either all bullets or all numbered) based on what level 0 uses.
+   *
+   * This fixes documents where lists have inconsistent formatting like:
+   * - Bullet level 0, but numbered levels 1-2
+   * - Numbered level 0, but bullet levels 1-3
+   *
+   * The dominant format is determined by level 0:
+   * - If level 0 is bullet → convert all numbered levels to bullets
+   * - If level 0 is numbered → convert all bullet levels to numbered
+   *
+   * @param doc - The document to process
+   * @param settings - User's indentation level settings from UI (for bullet chars and number formats)
+   * @returns Number of levels converted
+   */
+  /**
+   * Get appropriate format fallback string based on format family.
+   * When level 0 uses uppercase formats (A, B, C or I, II, III), nested levels
+   * should also use uppercase (A.) as the fallback. Otherwise use lowercase (a.).
+   *
+   * @param level0Format - The format of level 0 (e.g., 'upperLetter', 'lowerLetter', 'decimal')
+   * @returns The appropriate fallback format string ('A.' or 'a.')
+   */
+  private getFormatFallbackString(level0Format: string | undefined): string {
+    if (!level0Format) return 'a.';
+
+    const upperFormats = ['upperLetter', 'upperRoman'];
+    const isUpperFamily = upperFormats.includes(level0Format);
+
+    return isUpperFamily ? 'A.' : 'a.';
+  }
+
+  private async convertMixedListFormats(
+    doc: Document,
+    settings: {
+      indentationLevels: Array<{
+        level: number;
+        symbolIndent: number;
+        textIndent: number;
+        bulletChar?: string;
+        numberedFormat?: string;
+      }>;
+    }
+  ): Promise<number> {
+    let converted = 0;
+    const manager = doc.getNumberingManager();
+
+    this.log.debug("=== CONVERTING MIXED LIST FORMATS ===");
+
+    try {
+      const abstractNums = manager.getAllAbstractNumberings();
+      this.log.debug(`  Analyzing ${abstractNums.length} abstractNum definitions`);
+
+      for (const abstractNum of abstractNums) {
+        // Determine dominant format based on level 0
+        const level0 = abstractNum.getLevel(0);
+        if (!level0) continue;
+
+        const dominantFormat = level0.getFormat();
+        const isBulletList = dominantFormat === "bullet";
+        const numberedFormats = ["decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"];
+
+        // Analyze all levels to check for mixed formats
+        let hasNonConformingLevels = false;
+        for (let i = 1; i < 9; i++) {
+          const level = abstractNum.getLevel(i);
+          if (!level) continue;
+
+          const currentFormat = level.getFormat();
+          if (isBulletList && currentFormat !== "bullet" && numberedFormats.includes(currentFormat)) {
+            hasNonConformingLevels = true;
+            break;
+          } else if (!isBulletList && currentFormat === "bullet") {
+            hasNonConformingLevels = true;
+            break;
+          }
+        }
+
+        if (!hasNonConformingLevels) continue;
+
+        this.log.debug(
+          `  Found mixed format abstractNum (level0=${dominantFormat}), converting levels...`
+        );
+
+        // Convert non-conforming levels
+        for (let i = 1; i < 9; i++) {
+          const level = abstractNum.getLevel(i);
+          if (!level) continue;
+
+          const currentFormat = level.getFormat();
+          const configLevel = settings.indentationLevels[i];
+
+          if (isBulletList && currentFormat !== "bullet" && numberedFormats.includes(currentFormat)) {
+            // Convert numbered level to bullet
+            level.setFormat("bullet");
+
+            // Apply UI-configured bullet character
+            const bulletChar = configLevel?.bulletChar || settings.indentationLevels[0]?.bulletChar || "●";
+            const mapping = getBulletMapping(bulletChar);
+            level.setText(mapping.char);
+            level.setFont(mapping.font);
+            level.setFontSize(24); // 12pt
+            level.setColor("000000");
+
+            // Apply UI-configured indentation
+            if (configLevel) {
+              const symbolTwips = Math.round(configLevel.symbolIndent * 1440);
+              const textTwips = Math.round(configLevel.textIndent * 1440);
+              level.setLeftIndent(textTwips);
+              level.setHangingIndent(textTwips - symbolTwips);
+            }
+
+            converted++;
+            this.log.debug(
+              `    Level ${i}: ${currentFormat} -> bullet (char="${bulletChar}")`
+            );
+          } else if (!isBulletList && currentFormat === "bullet") {
+            // Convert bullet level to numbered
+            // Use format family from level 0 to determine fallback (upper vs lower)
+            const fallbackFormat = this.getFormatFallbackString(dominantFormat);
+            const numberedFormat = this.parseNumberedFormat(
+              configLevel?.numberedFormat || fallbackFormat
+            );
+            level.setFormat(numberedFormat);
+            level.setText(`%${i + 1}.`);
+            level.setFont("Verdana");
+            level.setFontSize(24); // 12pt
+            level.setColor("000000");
+
+            // Apply UI-configured indentation
+            if (configLevel) {
+              const symbolTwips = Math.round(configLevel.symbolIndent * 1440);
+              const textTwips = Math.round(configLevel.textIndent * 1440);
+              level.setLeftIndent(textTwips);
+              level.setHangingIndent(textTwips - symbolTwips);
+            }
+
+            converted++;
+            this.log.debug(
+              `    Level ${i}: bullet -> ${numberedFormat}`
+            );
+          }
+        }
+      }
+
+      if (converted > 0) {
+        this.log.info(`Converted ${converted} mixed list levels to uniform format`);
+      } else {
+        this.log.debug("  No mixed format levels found");
+      }
+    } catch (error) {
+      this.log.warn("Failed to convert mixed list formats:", error);
+    }
+
+    return converted;
+  }
+
+  /**
+   * Convert nested bullets in hybrid lists to letter format (a., b., c.)
+   *
+   * When a numbered list (level 0 = decimal) has bullet levels at 1+,
+   * this converts those bullet levels to lowerLetter format.
+   *
+   * This ensures nested items under numbered lists display as:
+   * 1. First item
+   *    a. Nested item (was: • Nested item)
+   *    b. Another nested (was: • Another nested)
+   * 2. Second item
+   *
+   * @param doc - The document to process
+   * @param settings - User's indentation level settings from UI
+   * @returns Number of levels converted
+   */
+  private async convertNestedBulletsToLetters(
+    doc: Document,
+    settings: {
+      indentationLevels: Array<{
+        level: number;
+        symbolIndent: number;
+        textIndent: number;
+      }>;
+    }
+  ): Promise<number> {
+    const manager = doc.getNumberingManager();
+    let conversions = 0;
+
+    this.log.debug("=== CONVERTING NESTED BULLETS TO LETTERS IN HYBRID LISTS ===");
+
+    // Find all hybrid numIds used in document
+    const hybridNumIds = new Set<number>();
+    for (const para of doc.getAllParagraphs()) {
+      const numbering = para.getNumbering();
+      if (numbering && numbering.numId !== undefined && this.isHybridNumberedBulletList(doc, numbering.numId)) {
+        hybridNumIds.add(numbering.numId);
+      }
+    }
+
+    if (hybridNumIds.size === 0) {
+      this.log.debug("  No hybrid numbered/bullet lists found");
+      return 0;
+    }
+
+    this.log.debug(`  Found ${hybridNumIds.size} hybrid lists needing bullet-to-letter conversion`);
+
+    // For each hybrid numId, modify the abstractNum to convert bullet levels to letters
+    for (const numId of hybridNumIds) {
+      const instance = manager.getInstance(numId);
+      if (!instance) continue;
+
+      const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+      if (!abstractNum) continue;
+
+      // Determine letter case from level 0 format (upper vs lower family)
+      const level0 = abstractNum.getLevel(0);
+      const level0Format = level0?.getFormat();
+      const useUpperCase = level0Format && ['upperLetter', 'upperRoman'].includes(level0Format);
+      const letterFormat = useUpperCase ? 'upperLetter' : 'lowerLetter';
+
+      // Convert each bullet level (1-8) to letter format
+      for (let levelIndex = 1; levelIndex < 9; levelIndex++) {
+        const level = abstractNum.getLevel(levelIndex);
+        if (level && level.getFormat() === "bullet") {
+          // Convert to letter format (respecting upper/lower case from level 0)
+          level.setFormat(letterFormat);
+          level.setText(`%${levelIndex + 1}.`); // a., b., c. or A., B., C. format
+          level.setFont("Verdana"); // Standard font for letters
+          level.setFontSize(24); // 12pt = 24 half-points
+          level.setColor("000000");
+
+          // Apply UI-configured indentation if available
+          // OOXML semantics: w:left = where TEXT starts, w:hanging = how far NUMBER hangs back
+          const config = settings.indentationLevels[levelIndex];
+          if (config) {
+            const symbolTwips = Math.round(config.symbolIndent * 1440);
+            const textTwips = Math.round(config.textIndent * 1440);
+            level.setLeftIndent(textTwips);      // Text starts at textIndent
+            level.setHangingIndent(textTwips - symbolTwips);
+          }
+
+          conversions++;
+          this.log.debug(
+            `  Converted level ${levelIndex} in numId ${numId}: bullet -> ${letterFormat}`
+          );
+        }
+      }
+    }
+
+    return conversions;
+  }
+
+  /**
+   * Convert nested numbered items to bullets in table cells where majority is bullets
+   *
+   * This function:
+   * 1. Iterates through all table cells
+   * 2. Analyzes each cell to determine the majority list format (bullet vs numbered)
+   * 3. For cells where majority is bullets (or equal), converts numbered sub-items to bullets
+   *
+   * @param doc - The document to process
+   * @param settings - User's indentation level settings from UI
+   * @returns Number of conversions made
+   */
+  private async convertNestedNumbersToBulletsInTableCells(
+    doc: Document,
+    settings: {
+      indentationLevels: Array<{
+        level: number;
+        symbolIndent: number;
+        textIndent: number;
+        bulletChar?: string;
+      }>;
+    }
+  ): Promise<number> {
+    const manager = doc.getNumberingManager();
+    let totalConversions = 0;
+
+    this.log.debug("=== CONVERTING NESTED NUMBERS TO BULLETS IN TABLE CELLS ===");
+
+    const tables = doc.getAllTables();
+    for (const table of tables) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          const paragraphs = cell.getParagraphs();
+
+          // Count bullet vs numbered items in this cell
+          let bulletCount = 0;
+          let numberedCount = 0;
+          const numIdsInCell = new Set<number>();
+
+          for (const para of paragraphs) {
+            const numbering = para.getNumbering();
+            if (!numbering || numbering.numId === undefined) continue;
+
+            numIdsInCell.add(numbering.numId);
+
+            if (this.isBulletList(doc, numbering.numId)) {
+              bulletCount++;
+            } else if (this.isNumberedList(doc, numbering.numId)) {
+              numberedCount++;
+            }
+          }
+
+          // Skip if bullets are not majority or equal (favor bullets when equal)
+          if (bulletCount < numberedCount || bulletCount === 0) continue;
+
+          this.log.debug(`  Cell has bullets >= numbers (${bulletCount} bullet, ${numberedCount} numbered)`);
+
+          // Convert numbered sub-levels in hybrid lists to bullets
+          for (const numId of numIdsInCell) {
+            if (!this.isHybridBulletNumberedList(doc, numId)) continue;
+
+            const instance = manager.getInstance(numId);
+            if (!instance) continue;
+
+            const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+            if (!abstractNum) continue;
+
+            const numberedFormats = ["decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"];
+            for (let levelIndex = 1; levelIndex < 9; levelIndex++) {
+              const level = abstractNum.getLevel(levelIndex);
+              if (level && numberedFormats.includes(level.getFormat())) {
+                // Get UI-configured bullet for this level
+                const levelConfig = settings.indentationLevels[levelIndex];
+                const bulletChar = levelConfig?.bulletChar || settings.indentationLevels[1]?.bulletChar || "○";
+
+                const mapping = getBulletMapping(bulletChar);
+
+                level.setFormat("bullet");
+                level.setText(mapping.char);
+                level.setFont(mapping.font);
+                level.setFontSize(24); // 12pt
+                level.setColor("000000");
+
+                // OOXML semantics: w:left = where TEXT starts, w:hanging = how far BULLET hangs back
+                if (levelConfig) {
+                  const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
+                  const textTwips = Math.round(levelConfig.textIndent * 1440);
+                  level.setLeftIndent(textTwips);      // Text starts at textIndent
+                  level.setHangingIndent(textTwips - symbolTwips);
+                }
+
+                totalConversions++;
+                this.log.debug(
+                  `    Converted level ${levelIndex} in numId ${numId}: numbered -> bullet (${bulletChar})`
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return totalConversions;
+  }
+
+  /**
+   * Convert nested numbered items to bullets in body lists where majority is bullets
+   *
+   * This function:
+   * 1. Gets all paragraphs NOT in tables
+   * 2. Groups paragraphs by numId
+   * 3. For each numId group, counts bullet vs numbered items
+   * 4. If majority is bullets (or equal), converts numbered sub-items to bullets
+   *
+   * @param doc - The document to process
+   * @param settings - User's indentation level settings from UI
+   * @returns Number of conversions made
+   */
+  private async convertNestedNumbersToBulletsInBody(
+    doc: Document,
+    settings: {
+      indentationLevels: Array<{
+        level: number;
+        symbolIndent: number;
+        textIndent: number;
+        bulletChar?: string;
+      }>;
+    }
+  ): Promise<number> {
+    const manager = doc.getNumberingManager();
+    let totalConversions = 0;
+
+    this.log.debug("=== CONVERTING NESTED NUMBERS TO BULLETS IN BODY ===");
+
+    // Collect all numIds that appear in table cells (these are handled by the table cell function)
+    const tableNumIds = new Set<number>();
+    for (const table of doc.getAllTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          for (const para of cell.getParagraphs()) {
+            const numbering = para.getNumbering();
+            if (numbering && numbering.numId !== undefined) {
+              tableNumIds.add(numbering.numId);
+            }
+          }
+        }
+      }
+    }
+
+    // Get all paragraphs and group by numId (only for numIds NOT in tables)
+    const allParagraphs = doc.getAllParagraphs();
+
+    // Group by numId and analyze each list (only numIds not in tables)
+    const listGroups = new Map<number, { bulletCount: number; numberedCount: number }>();
+
+    for (const para of allParagraphs) {
+      const numbering = para.getNumbering();
+      if (!numbering || numbering.numId === undefined) continue;
+
+      const numId = numbering.numId;
+
+      // Skip numIds that appear in tables (handled by table cell function)
+      if (tableNumIds.has(numId)) continue;
+
+      if (!listGroups.has(numId)) {
+        listGroups.set(numId, { bulletCount: 0, numberedCount: 0 });
+      }
+
+      const group = listGroups.get(numId)!;
+      if (this.isBulletList(doc, numId)) {
+        group.bulletCount++;
+      } else if (this.isNumberedList(doc, numId)) {
+        group.numberedCount++;
+      }
+    }
+
+    // Convert hybrid lists where bullets are majority or equal (favor bullets when equal)
+    // Only processes numIds that are exclusively in the body (not in any table cell)
+    for (const [numId, counts] of listGroups) {
+      if (counts.bulletCount < counts.numberedCount || counts.bulletCount === 0) continue;
+      if (!this.isHybridBulletNumberedList(doc, numId)) continue;
+
+      this.log.debug(`  List numId ${numId} has bullets >= numbers (${counts.bulletCount} bullet, ${counts.numberedCount} numbered)`);
+
+      const instance = manager.getInstance(numId);
+      if (!instance) continue;
+
+      const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+      if (!abstractNum) continue;
+
+      const numberedFormats = ["decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"];
+      for (let levelIndex = 1; levelIndex < 9; levelIndex++) {
+        const level = abstractNum.getLevel(levelIndex);
+        if (level && numberedFormats.includes(level.getFormat())) {
+          const levelConfig = settings.indentationLevels[levelIndex];
+          const bulletChar = levelConfig?.bulletChar || settings.indentationLevels[1]?.bulletChar || "○";
+
+          const mapping = getBulletMapping(bulletChar);
+
+          level.setFormat("bullet");
+          level.setText(mapping.char);
+          level.setFont(mapping.font);
+          level.setFontSize(24);
+          level.setColor("000000");
+
+          // OOXML semantics: w:left = where TEXT starts, w:hanging = how far BULLET hangs back
+          if (levelConfig) {
+            const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
+            const textTwips = Math.round(levelConfig.textIndent * 1440);
+            level.setLeftIndent(textTwips);      // Text starts at textIndent
+            level.setHangingIndent(textTwips - symbolTwips);
+          }
+
+          totalConversions++;
+          this.log.debug(
+            `    Converted level ${levelIndex} in numId ${numId}: numbered -> bullet (${bulletChar})`
+          );
+        }
+      }
+    }
+
+    return totalConversions;
   }
 
   /**
@@ -5757,6 +7041,124 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Check if a cell contains ANY image (not just large ones).
+   * Images can appear as Image or ImageRun instances in paragraph content.
+   *
+   * @param cell - The table cell to check
+   * @returns True if the cell contains any image
+   */
+  private cellContainsAnyImage(
+    cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number]
+  ): boolean {
+    for (const para of cell.getParagraphs()) {
+      const content = para.getContent();
+      for (const item of content) {
+        if (item instanceof Image || item instanceof ImageRun) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Count the number of text lines in a cell.
+   * Each paragraph counts as 1 line, plus any soft line breaks (\n) within paragraphs.
+   *
+   * @param cell - The table cell to check
+   * @returns Number of text lines in the cell
+   */
+  private countCellTextLines(
+    cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number]
+  ): number {
+    let lineCount = 0;
+    for (const para of cell.getParagraphs()) {
+      lineCount += 1;
+      const text = para.getText() || "";
+      lineCount += (text.match(/\n/g) || []).length;
+    }
+    return lineCount;
+  }
+
+  /**
+   * Check if text starts with a typed list prefix (bullet character or number).
+   * Used as fallback detection when Word list formatting is not detected.
+   *
+   * @param text - The text to check
+   * @returns True if the text starts with a list prefix
+   */
+  private hasTypedListPrefix(text: string): boolean {
+    if (!text) return false;
+    // Bullet characters (including dash variants)
+    if (/^[•●○◦▪▫‣⁃\-–—]\s/.test(text)) return true;
+    // Numbered: "1.", "1)", "(1)", "a.", "a)", "(a)", "i.", etc.
+    if (/^(\d+[\.\):]|\(\d+\)|[a-zA-Z][\.\):]|\([a-zA-Z]\)|[ivxIVX]+[\.\):])/.test(text)) return true;
+    return false;
+  }
+
+  /**
+   * Check if a table cell contains any list items (bullets or numbered lists).
+   * Uses multiple detection methods for robustness:
+   * 1. Word list formatting via getNumbering() / hasNumbering()
+   * 2. Typed list prefixes (bullet characters or numbers in text)
+   *
+   * @param cell - The table cell to check
+   * @returns True if the cell contains any list formatting
+   */
+  private cellContainsAnyList(
+    cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number]
+  ): boolean {
+    const paragraphs = cell.getParagraphs();
+    this.log.info(`cellContainsAnyList: checking ${paragraphs.length} paragraphs`);
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      const para = paragraphs[i];
+      const numbering = para.getNumbering();
+      const text = para.getText()?.trim() || '';
+
+      // Method 1: Check Word list formatting via getNumbering()
+      if (numbering && numbering.numId) {
+        this.log.info(`  Para ${i}: FOUND LIST via getNumbering() numId=${numbering.numId}, text="${text.substring(0, 40)}..."`);
+        return true;
+      }
+
+      // Method 2: Check Word list formatting via hasNumbering() (handles edge cases)
+      if (typeof para.hasNumbering === 'function' && para.hasNumbering()) {
+        this.log.info(`  Para ${i}: FOUND LIST via hasNumbering(), text="${text.substring(0, 40)}..."`);
+        return true;
+      }
+
+      // Method 3: Check for typed list prefixes (fallback)
+      if (this.hasTypedListPrefix(text)) {
+        this.log.info(`  Para ${i}: FOUND LIST via typed prefix, text="${text.substring(0, 40)}..."`);
+        return true;
+      }
+    }
+
+    this.log.info(`  -> NO LISTS FOUND in ${paragraphs.length} paragraphs`);
+    return false;
+  }
+
+  /**
+   * Check if a 1x1 table should be excluded from Heading 2 styling and shading.
+   * Excluded if the cell has more than 2 lines of text.
+   *
+   * @param cell - The single cell of a 1x1 table
+   * @returns True if the table should be excluded from styling/shading
+   */
+  private should1x1TableBeExcluded(
+    cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number]
+  ): boolean {
+    const lineCount = this.countCellTextLines(cell);
+    if (lineCount > 2) {
+      this.log.info(`should1x1TableBeExcluded: ${lineCount} lines (>2) -> EXCLUDED`);
+      return true;
+    }
+    this.log.info(`should1x1TableBeExcluded: ${lineCount} lines (<=2) -> NOT EXCLUDED`);
+    return false;
+  }
+
+  /**
    * Apply smart table formatting using docxmlater APIs
    *
    * Intelligent table formatting:
@@ -5825,8 +7227,23 @@ export class WordDocumentProcessor {
 
         if (is1x1Table) {
           // Handle 1x1 tables - apply Header 2 shading color only if cell has existing shading OR Heading 2 style
+          // EXCEPTION: Skip styling if cell has >2 lines of text
           const singleCell = table.getRow(0)?.getCell(0);
           if (singleCell) {
+            // Check if this 1x1 table should be excluded from styling
+            if (this.should1x1TableBeExcluded(singleCell)) {
+              const lineCount = this.countCellTextLines(singleCell);
+              this.log.debug(`Skipping 1x1 table styling (${lineCount} lines)`);
+
+              // Clear existing shading from excluded tables
+              singleCell.setShading({ fill: 'auto' });
+
+              // Still apply cell margins even for excluded tables
+              singleCell.setMargins(cellMargins);
+              formattedCount++;
+              continue;
+            }
+
             const { hasShading } = this.getResolvedCellShading(singleCell, table, doc);
 
             // Also check if any paragraph has Heading 2 style
@@ -6152,7 +7569,21 @@ export class WordDocumentProcessor {
   private async fixExistingTopHyperlinks(doc: Document): Promise<number> {
     let fixedCount = 0;
 
-    // Ensure TopHyperlink style exists before fixing existing hyperlinks
+    // STEP 1: Ensure _top bookmark exists BEFORE fixing hyperlinks
+    // This is required for internal hyperlinks to properly navigate to document start
+    if (!doc.hasBookmark("_top")) {
+      this.log.debug("Creating _top bookmark before fixing TOD hyperlinks...");
+      try {
+        doc.addTopBookmark();
+        this.log.debug("Created _top bookmark at document body start");
+      } catch (error) {
+        this.log.warn(
+          `Failed to create _top bookmark: ${error instanceof Error ? error.message : "Unknown error"}`
+        );
+      }
+    }
+
+    // STEP 2: Ensure TopHyperlink style exists before fixing existing hyperlinks
     this.ensureTopHyperlinkStyle(doc);
 
     // Check ALL paragraphs in document (body, tables, headers, footers)
@@ -6196,20 +7627,35 @@ export class WordDocumentProcessor {
         else if (item instanceof ComplexField) {
           if (item.isHyperlinkField()) {
             const parsedHyperlink = item.getParsedHyperlink();
-            // Check if it's a _top hyperlink by anchor
-            if (parsedHyperlink?.anchor === "_top") {
-              const resultText = item.getResult() || "";
-              if (this.isTopOfDocumentHyperlink(resultText)) {
-                // Apply formatting to the field result
-                item.setResultFormatting({
-                  font: "Verdana",
-                  size: 12,
-                  color: "0000FF",
-                  underline: "single",
-                });
-                foundTopHyperlink = true;
-                this.log.debug("Applied formatting to HYPERLINK field code");
+            const resultText = item.getResult() || "";
+
+            // Check if text indicates TOD hyperlink (regardless of current anchor)
+            // This allows us to fix hyperlinks pointing to wrong anchors
+            if (this.isTopOfDocumentHyperlink(resultText)) {
+              // Apply formatting to the field result with explicit bold/italic false
+              item.setResultFormatting({
+                font: "Verdana",
+                size: 12,
+                color: "0000FF",
+                underline: "single",
+                bold: false,
+                italic: false,
+              });
+
+              // Update anchor to _top if not already set
+              // ComplexField uses setInstruction() with buildHyperlinkInstruction()
+              if (parsedHyperlink?.anchor !== "_top") {
+                const newInstruction = buildHyperlinkInstruction(
+                  parsedHyperlink?.url || "",  // Keep URL (empty for internal links)
+                  "_top",                       // New anchor
+                  parsedHyperlink?.tooltip      // Preserve tooltip if any
+                );
+                item.setInstruction(newInstruction);
+                this.log.debug(`Updated ComplexField instruction to use "_top" anchor`);
               }
+
+              foundTopHyperlink = true;
+              this.log.debug("Applied formatting to HYPERLINK field code");
             }
           }
         }
@@ -6255,15 +7701,21 @@ export class WordDocumentProcessor {
 
   /**
    * Apply standard formatting to a Top of Document hyperlink
+   * - Formatting: Verdana 12pt, blue (#0000FF), underlined, no bold/italic
+   * - Text: "Top of the Document"
+   * - Anchor: "_top" bookmark
    */
   private applyTopHyperlinkFormatting(hyperlink: Hyperlink): void {
     // Use replace: true to clear any existing characterStyle reference (e.g., "Hyperlink")
     // This ensures the explicit formatting takes precedence in Word
+    // Explicitly set bold/italic to false to prevent formatting bleed
     hyperlink.setFormatting({
       font: "Verdana",
       size: 12,
       color: "0000FF",
       underline: "single",
+      bold: false,
+      italic: false,
     }, { replace: true });
 
     // Ensure text is "Top of the Document" (with "the")
@@ -6271,6 +7723,13 @@ export class WordDocumentProcessor {
     if (currentText.toLowerCase() !== "top of the document") {
       hyperlink.setText("Top of the Document");
       this.log.debug('Updated hyperlink text to "Top of the Document"');
+    }
+
+    // Ensure anchor points to "_top" bookmark
+    const currentAnchor = hyperlink.getAnchor();
+    if (currentAnchor !== "_top") {
+      hyperlink.setAnchor("_top");
+      this.log.debug(`Updated hyperlink anchor from "${currentAnchor || 'none'}" to "_top"`);
     }
   }
 
@@ -6331,13 +7790,24 @@ export class WordDocumentProcessor {
       let hasHeader2 = false;
 
       // ENHANCEMENT 3: Check if this table is a 1x1 table (user request)
+      // Skip shaded 1x1 tables - they don't need Top of Document links
       const rows = table.getRows();
       const is1x1Table = rows.length === 1 && rows[0]?.getCells().length === 1;
 
       if (is1x1Table) {
-        // Treat 1x1 tables the same as Header 2 tables
-        hasHeader2 = true;
-        this.log.debug(`Table ${tableIndex} is a 1x1 table - will add Top of Document link`);
+        // Check if the cell is shaded - if so, skip adding Top of Document link
+        const cell = rows[0].getCells()[0];
+        const cellFormatting = cell?.getFormatting();
+        const shadingFill = cellFormatting?.shading?.fill?.toUpperCase();
+        const isShaded = shadingFill && shadingFill !== "AUTO" && shadingFill !== "FFFFFF";
+
+        if (isShaded) {
+          this.log.debug(`Table ${tableIndex} is a shaded 1x1 table (fill: ${shadingFill}) - skipping Top of Document link`);
+        } else {
+          // Treat unshaded 1x1 tables the same as Header 2 tables
+          hasHeader2 = true;
+          this.log.debug(`Table ${tableIndex} is an unshaded 1x1 table - will add Top of Document link`);
+        }
       } else {
         // Original Header 2 detection for non-1x1 tables
         table.getRows().forEach((row) => {
@@ -6773,8 +8243,9 @@ export class WordDocumentProcessor {
 
         if (!hasBookmark) {
           const level = parseInt(match[1], 10);
-          const text = para.getText().replace(/[^\w]/g, "").substring(0, 30);
-          const bookmarkName = `_Toc_${level}_${this.shortHash(text + Date.now())}`;
+          // Use counter for guaranteed uniqueness instead of Date.now() which can cause collisions
+          // when multiple headings are processed within the same millisecond
+          const bookmarkName = `_Toc_${level}_${++this.tocBookmarkCounter}`;
           const bookmark = new Bookmark({ name: bookmarkName });
           // Register bookmark to get unique ID - fixes duplicate ID corruption issue
           const registered = doc.getBookmarkManager().register(bookmark);

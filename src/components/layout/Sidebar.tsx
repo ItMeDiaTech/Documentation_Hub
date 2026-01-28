@@ -9,10 +9,13 @@ import {
   FileText,
   X,
   Circle,
+  Keyboard,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
+import { SimpleTooltip } from '@/components/common/Tooltip';
 import iconPng from '/icon.png';
 
 interface NavItem {
@@ -24,6 +27,12 @@ interface NavItem {
   indented?: boolean;
   closeable?: boolean;
   onClose?: () => void;
+  shortcut?: string;
+}
+
+interface NavSection {
+  title?: string;
+  items: NavItem[];
 }
 
 export const Sidebar = memo(function Sidebar() {
@@ -51,6 +60,18 @@ export const Sidebar = memo(function Sidebar() {
     };
   }, [logoClickCount]);
 
+  // Ctrl+Q to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'q') {
+        e.preventDefault();
+        setCollapsed((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleLogoClick = useCallback(() => {
     const newCount = logoClickCount + 1;
     setLogoClickCount(newCount);
@@ -69,13 +90,18 @@ export const Sidebar = memo(function Sidebar() {
     [navigate]
   );
 
-  // Build navigation items with dynamic sessions
-  const navItems = useMemo(() => {
-    const items: NavItem[] = [{ id: 'home', label: 'Dashboard', icon: Home, path: '/' }];
+  // Build navigation sections with dynamic sessions
+  const navSections = useMemo(() => {
+    const sections: NavSection[] = [];
+
+    // Main navigation section
+    const mainItems: NavItem[] = [
+      { id: 'home', label: 'Dashboard', icon: Home, path: '/', shortcut: 'Ctrl+1' },
+    ];
 
     // Add active sessions under Dashboard
     activeSessions.forEach((session) => {
-      items.push({
+      mainItems.push({
         id: `session-${session.id}`,
         label: session.name,
         icon: Circle,
@@ -86,19 +112,25 @@ export const Sidebar = memo(function Sidebar() {
       });
     });
 
-    // Add other navigation items
-    items.push(
-      { id: 'sessions', label: 'Sessions', icon: FolderOpen, path: '/sessions' },
-      { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
-      { id: 'documents', label: 'Documents', icon: FileText, path: '/documents' }
-    );
+    sections.push({ items: mainItems });
 
-    return items;
+    // Workspace section
+    sections.push({
+      title: 'Workspace',
+      items: [
+        { id: 'sessions', label: 'Sessions', icon: FolderOpen, path: '/sessions', shortcut: 'Ctrl+2' },
+        { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics', shortcut: 'Ctrl+3' },
+        { id: 'documents', label: 'Documents', icon: FileText, path: '/documents', shortcut: 'Ctrl+4' },
+        { id: 'reporting', label: 'Reporting', icon: Mail, path: '/reporting', shortcut: 'Ctrl+5' },
+      ],
+    });
+
+    return sections;
   }, [activeSessions, closeSession]);
 
   const bottomItems = useMemo<NavItem[]>(
     () => [
-      { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
+      { id: 'settings', label: 'Settings', icon: Settings, path: '/settings', shortcut: 'Ctrl+,' },
     ],
     []
   );
@@ -107,9 +139,8 @@ export const Sidebar = memo(function Sidebar() {
     const Icon = item.icon;
     const isActive = location.pathname === item.path;
 
-    return (
+    const buttonElement = (
       <div
-        key={item.id}
         className={cn(
           'relative group',
           item.indented && !collapsed && 'ml-4',
@@ -172,6 +203,17 @@ export const Sidebar = memo(function Sidebar() {
         </button>
       </div>
     );
+
+    // Wrap with tooltip when collapsed (for non-indented items)
+    if (collapsed && !item.indented) {
+      return (
+        <SimpleTooltip key={item.id} content={item.label} side="right">
+          {buttonElement}
+        </SimpleTooltip>
+      );
+    }
+
+    return <div key={item.id}>{buttonElement}</div>;
   };
 
   return (
@@ -215,30 +257,48 @@ export const Sidebar = memo(function Sidebar() {
       <div className="mx-4 mb-3 h-px bg-border/50" />
 
       <nav className="flex-1 px-3 pb-3 overflow-y-auto">
-        <div className="space-y-1">{navItems.map(renderNavItem)}</div>
+        <div className="space-y-4">
+          {navSections.map((section, sectionIndex) => (
+            <div key={section.title || sectionIndex}>
+              {section.title && !collapsed && (
+                <div className="px-3 mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                    {section.title}
+                  </span>
+                </div>
+              )}
+              {section.title && collapsed && (
+                <div className="mx-auto my-2 w-6 h-px bg-border/50" />
+              )}
+              <div className="space-y-1">{section.items.map(renderNavItem)}</div>
+            </div>
+          ))}
+        </div>
       </nav>
 
       <div className="px-3 pb-3 space-y-1 border-t border-border pt-3">
         {bottomItems.map(renderNavItem)}
       </div>
 
-      <motion.button
-        onClick={() => setCollapsed(!collapsed)}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        className={cn(
-          'absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full',
-          'bg-background border-2 border-border',
-          'hover:border-primary hover:shadow-lg transition-all',
-          'flex items-center justify-center',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          'group'
-        )}
-      >
-        <motion.div animate={{ rotate: collapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
-          <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-        </motion.div>
-      </motion.button>
+      <SimpleTooltip content={collapsed ? 'Expand sidebar (Ctrl+Q)' : 'Collapse sidebar (Ctrl+Q)'} side="right">
+        <motion.button
+          onClick={() => setCollapsed(!collapsed)}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          className={cn(
+            'absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full',
+            'bg-background border-2 border-border',
+            'hover:border-primary hover:shadow-lg transition-all',
+            'flex items-center justify-center',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'group'
+          )}
+        >
+          <motion.div animate={{ rotate: collapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
+            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+          </motion.div>
+        </motion.button>
+      </SimpleTooltip>
     </motion.aside>
   );
 });

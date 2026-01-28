@@ -14,10 +14,22 @@ interface TabContainerProps {
   defaultTab?: string;
   className?: string;
   headerActions?: Record<string, React.ReactNode>; // Action buttons per tab ID
+  activeTabId?: string; // Controlled active tab
+  onTabChange?: (tabId: string) => void; // Callback when tab changes
 }
 
-export function TabContainer({ tabs, defaultTab, className, headerActions }: TabContainerProps) {
-  const [activeTab, setActiveTab] = useState(defaultTab || tabs[0]?.id);
+export function TabContainer({ tabs, defaultTab, className, headerActions, activeTabId, onTabChange }: TabContainerProps) {
+  const [internalActiveTab, setInternalActiveTab] = useState(defaultTab || tabs[0]?.id);
+
+  // Use controlled activeTabId if provided, otherwise use internal state
+  const activeTab = activeTabId !== undefined ? activeTabId : internalActiveTab;
+
+  const handleTabChange = (tabId: string) => {
+    if (activeTabId === undefined) {
+      setInternalActiveTab(tabId);
+    }
+    onTabChange?.(tabId);
+  };
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -79,7 +91,7 @@ export function TabContainer({ tabs, defaultTab, className, headerActions }: Tab
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={cn(
                 'relative px-4 py-2.5 text-sm font-medium transition-all whitespace-nowrap',
                 'hover:text-foreground',

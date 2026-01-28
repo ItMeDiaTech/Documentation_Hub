@@ -7,14 +7,17 @@ import { TitleBar } from '@/components/layout/TitleBar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { CommandPalette } from '@/components/navigation/CommandPalette';
+import { KeyboardShortcutsModal } from '@/components/navigation/KeyboardShortcutsModal';
+import { TooltipProvider } from '@/components/common/Tooltip';
 import { BugReportButton } from '@/components/common/BugReportButton';
 import { UpdateNotification } from '@/components/common/UpdateNotification';
 import { DebugConsole } from '@/components/common/DebugConsole';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { ContextErrorFallback } from '@/components/common/ErrorFallback';
 import { SplashScreen } from '@/components/common/SplashScreen';
-import { useState, lazy, Suspense, useEffect } from 'react';
+import { useState, lazy, Suspense, useEffect, useCallback } from 'react';
 import { useGlobalStats } from '@/contexts/GlobalStatsContext';
+import { useNavigate } from 'react-router-dom';
 
 // Lazy load pages for code splitting and faster initial load
 const Dashboard = lazy(() => import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })));
@@ -25,8 +28,8 @@ const CurrentSession = lazy(() =>
 const Sessions = lazy(() => import('@/pages/Sessions').then((m) => ({ default: m.Sessions })));
 const Documents = lazy(() => import('@/pages/Documents').then((m) => ({ default: m.Documents })));
 const Analytics = lazy(() => import('@/pages/Analytics').then((m) => ({ default: m.Analytics })));
+const Reporting = lazy(() => import('@/pages/Reporting').then((m) => ({ default: m.Reporting })));
 const Search = lazy(() => import('@/pages/Search').then((m) => ({ default: m.Search })));
-const Plugins = lazy(() => import('@/pages/Plugins').then((m) => ({ default: m.Plugins })));
 
 // Loading fallback component
 function PageLoader() {
@@ -53,8 +56,58 @@ function EmptyPage({ title }: { title: string }) {
 
 function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const { isLoading } = useGlobalStats();
   const [isInitialized, setIsInitialized] = useState(false);
+  const navigate = useNavigate();
+
+  // Global keyboard shortcuts
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Don't trigger shortcuts when typing in inputs
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return;
+    }
+
+    // ? - Show keyboard shortcuts
+    if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      setShortcutsModalOpen(true);
+      return;
+    }
+
+    const isMod = e.ctrlKey || e.metaKey;
+
+    // Mod+K - Command palette (handled elsewhere, but ensure consistency)
+    if (isMod && e.key === 'k') {
+      e.preventDefault();
+      setCommandPaletteOpen(true);
+      return;
+    }
+
+    // Navigation shortcuts
+    if (isMod && e.key >= '1' && e.key <= '4') {
+      e.preventDefault();
+      const routes = ['/', '/sessions', '/analytics', '/documents'];
+      const index = parseInt(e.key) - 1;
+      if (routes[index]) {
+        navigate(routes[index]);
+      }
+      return;
+    }
+
+    // Mod+, - Settings
+    if (isMod && e.key === ',') {
+      e.preventDefault();
+      navigate('/settings');
+      return;
+    }
+  }, [navigate]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   // Track initialization completion with slight delay for smooth transition
   useEffect(() => {
@@ -92,6 +145,8 @@ function Layout() {
 
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
 
+      <KeyboardShortcutsModal open={shortcutsModalOpen} onOpenChange={setShortcutsModalOpen} />
+
       <BugReportButton />
 
       <UpdateNotification />
@@ -113,7 +168,7 @@ const router = createHashRouter(
         { path: 'analytics', element: <Analytics /> },
         { path: 'team', element: <EmptyPage title="Team" /> },
         { path: 'documents', element: <Documents /> },
-        { path: 'plugins', element: <Plugins /> },
+        { path: 'reporting', element: <Reporting /> },
         { path: 'search', element: <Search /> },
         { path: 'profile', element: <EmptyPage title="Profile" /> },
         { path: 'settings', element: <Settings /> },
@@ -143,7 +198,9 @@ function App() {
                 <GlobalStatsProvider>
                   <ErrorBoundary fallback={<ContextErrorFallback context="session" />}>
                     <SessionProvider>
-                      <RouterProvider router={router} />
+                      <TooltipProvider>
+                        <RouterProvider router={router} />
+                      </TooltipProvider>
                     </SessionProvider>
                   </ErrorBoundary>
                 </GlobalStatsProvider>

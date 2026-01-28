@@ -224,6 +224,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
     'normalize-table-lists',
     'smart-tables',
     'adjust-table-padding',
+    'standardize-table-borders',
   ],
 };
 
@@ -349,6 +350,7 @@ const ensureProcessingOptions = (session: Session): Session => {
     'validate-header2-tables',
     'list-indentation',
     'bullet-uniformity',
+    'normalize-table-lists',
     'smart-tables',
     'adjust-table-padding',
     'standardize-cell-borders',
@@ -1285,6 +1287,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           normalizeTableLists?: boolean;
           tableUniformity?: boolean;
           smartTables?: boolean;
+          standardizeTableBorders?: boolean;
+          setLandscapeMargins?: boolean;
           tableShadingSettings?: {
             header2Shading: string;
             otherShading: string;
@@ -1436,6 +1440,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionToProcess.processingOptions?.enabledOperations?.includes('normalize-table-lists'),
           tableUniformity: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
           smartTables: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
+          standardizeTableBorders: sessionToProcess.processingOptions?.enabledOperations?.includes('standardize-table-borders'),
+          setLandscapeMargins: sessionToProcess.processingOptions?.enabledOperations?.includes('set-landscape-margins'),
           // Table shading settings with values derived from paragraph styles
           // This ensures table cell formatting inherits from the existing UI controls
           tableShadingSettings: (() => {

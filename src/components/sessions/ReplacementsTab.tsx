@@ -255,7 +255,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                               )}
                             >
                               {rule.enabled && replaceHyperlinksEnabled && (
-                                <Check className="w-3 h-3 text-white checkbox-checkmark" />
+                                <Check className="w-3 h-3 text-primary-foreground checkbox-checkmark" />
                               )}
                             </div>
                           </div>
@@ -390,7 +390,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                               )}
                             >
                               {rule.enabled && replaceTextEnabled && (
-                                <Check className="w-3 h-3 text-white checkbox-checkmark" />
+                                <Check className="w-3 h-3 text-primary-foreground checkbox-checkmark" />
                               )}
                             </div>
                           </div>

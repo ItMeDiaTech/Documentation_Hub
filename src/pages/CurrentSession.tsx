@@ -8,6 +8,7 @@ import {
 } from "@/components/common/Card";
 import { Toaster } from "@/components/common/Toast";
 import { ErrorDetailsDialog } from "@/components/common/ErrorDetailsDialog";
+import { SimpleTooltip } from "@/components/common/Tooltip";
 import { ChangeViewer } from "@/components/sessions/ChangeViewer";
 import {
   ProcessingOptions,
@@ -18,6 +19,7 @@ import { ReplacementsTab } from "@/components/sessions/ReplacementsTab";
 import { StylesEditor } from "@/components/sessions/StylesEditor";
 import { TabContainer } from "@/components/sessions/TabContainer";
 import { useSession } from "@/contexts/SessionContext";
+import { useUserSettings } from "@/contexts/UserSettingsContext";
 import { useDocumentQueue } from "@/hooks/useDocumentQueue";
 import { useToast } from "@/hooks/useToast";
 import type { Document } from "@/types/session";
@@ -30,10 +32,12 @@ import {
   Check,
   CheckCircle,
   Clock,
+  Download,
   Edit2,
   FileCheck,
   FileText,
   FolderOpen,
+  GitCompare,
   Link,
   Loader2,
   MessageSquare,
@@ -68,11 +72,14 @@ export function CurrentSession() {
     resetSessionToDefaults,
     saveAsCustomDefaults,
   } = useSession();
+  const { settings } = useUserSettings();
 
   const [isDragging, setIsDragging] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
   const [errorDialogDoc, setErrorDialogDoc] = useState<Document | null>(null);
+  const [expandedChangeDocId, setExpandedChangeDocId] = useState<string | null>(null);
+  const [activeTabId, setActiveTabId] = useState<string | undefined>(undefined);
 
   // Refs for preventing race conditions
   const isSelectingFiles = useRef(false);
@@ -121,6 +128,8 @@ export function CurrentSession() {
     clearQueue,
     getQueuePosition,
     isInQueue,
+    estimatedTimeRemainingFormatted,
+    isProcessing: isQueueProcessing,
   } = useDocumentQueue({
     onDocumentComplete: (docId, success) => {
       // Get fresh session data after async operation
@@ -396,6 +405,42 @@ export function CurrentSession() {
     navigate("/");
   };
 
+  const handleExportProcessedFiles = async () => {
+    const completedDocs = session.documents.filter(
+      (d) => d.status === "completed" && d.path
+    );
+    if (completedDocs.length === 0) {
+      toast({
+        title: "No completed files to export",
+        description: "Process some documents first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const folderPath = await window.electronAPI.selectFolder();
+      if (!folderPath) return;
+
+      const result = await window.electronAPI.copyFilesToFolder(
+        completedDocs.map((d) => d.path!),
+        folderPath
+      );
+
+      toast({
+        title: `Exported ${result.copied} file${result.copied !== 1 ? "s" : ""}`,
+        description: result.skipped > 0 ? `${result.skipped} file(s) skipped` : undefined,
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleEditTitle = () => {
     setEditedTitle(session.name);
     setIsEditingTitle(true);
@@ -508,30 +553,46 @@ export function CurrentSession() {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
+  // Get count of completed documents for export button
+  const completedDocsCount = session.documents.filter(
+    (d) => d.status === "completed" && d.path
+  ).length;
+
   // Create session content for the Session tab
   const sessionContent = (
     <div className="space-y-6">
-      {/* Action Button - Context dependent */}
-      <div className="flex justify-end">
-        {session.status === 'closed' ? (
-          <Button
-            onClick={() => reopenSession(session.id)}
-            variant="default"
-            className="bg-green-600 hover:bg-green-700 text-white font-medium"
-            icon={<FolderOpen className="w-4 h-4" />}
-          >
-            Re-Open Session
-          </Button>
-        ) : (
-          <Button
-            onClick={handleSaveAndClose}
-            variant="default"
-            className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
-            icon={<Save className="w-4 h-4" />}
-          >
-            Save and Close Session
-          </Button>
-        )}
+      {/* Action Buttons - Context dependent */}
+      <div className="flex justify-between items-center">
+        <Button
+          onClick={handleExportProcessedFiles}
+          variant="outline"
+          disabled={completedDocsCount === 0}
+          className="gap-2"
+          icon={<Download className="w-4 h-4" />}
+        >
+          Export Processed Files
+        </Button>
+        <div>
+          {session.status === 'closed' ? (
+            <Button
+              onClick={() => reopenSession(session.id)}
+              variant="default"
+              className="bg-green-600 hover:bg-green-700 text-white font-medium"
+              icon={<FolderOpen className="w-4 h-4" />}
+            >
+              Re-Open Session
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSaveAndClose}
+              variant="default"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+              icon={<Save className="w-4 h-4" />}
+            >
+              Save and Close Session
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -621,11 +682,17 @@ export function CurrentSession() {
               {/* Queue status banner - shows when documents are queued */}
               {documentQueue.length > 0 && (
                 <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
                     <span className="text-sm">
                       Processing document {documentQueue.findIndex(q => q.status === 'processing') + 1} of {documentQueue.length}
                     </span>
+                    {estimatedTimeRemainingFormatted && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Timer className="w-3 h-3" />
+                        ~{estimatedTimeRemainingFormatted} remaining
+                      </span>
+                    )}
                   </div>
                   <Button size="xs" variant="ghost" onClick={clearQueue}>
                     Cancel All
@@ -669,7 +736,17 @@ export function CurrentSession() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -20 }}
-                      className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-all group"
+                      className={cn(
+                        "flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-all group",
+                        doc.status === "completed" && "cursor-pointer"
+                      )}
+                      onDoubleClick={() => {
+                        if (doc.status === "completed") {
+                          // Switch to Document Changes tab and expand this document
+                          setActiveTabId("tracked-changes");
+                          setExpandedChangeDocId(doc.id);
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-3">
                         {getStatusIcon(doc.status)}
@@ -790,6 +867,59 @@ export function CurrentSession() {
                             title="Open backup file"
                           >
                             <Archive className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+                          </button>
+                        )}
+
+                        {/* Compare button - show backup vs processed side by side */}
+                        {doc.status === "completed" && doc.path && doc.processingResult?.backupPath && (
+                          <button
+                            onClick={async () => {
+                              if (!window.electronAPI?.display?.openComparison || !window.electronAPI?.display?.getAllDisplays) {
+                                toast({
+                                  title: "Compare unavailable",
+                                  description: "Feature not available in this version",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              try {
+                                // Get available displays to validate monitor index
+                                const displays = await window.electronAPI.display.getAllDisplays();
+                                const savedMonitorIndex = settings.displaySettings?.comparisonMonitorId ?? 0;
+                                // Ensure monitor index is within bounds (fallback to primary if saved monitor no longer exists)
+                                const monitorIndex = Math.min(Math.max(0, savedMonitorIndex), displays.length - 1);
+
+                                const result = await window.electronAPI.display.openComparison(
+                                  doc.processingResult!.backupPath!,
+                                  doc.path!,
+                                  monitorIndex
+                                );
+                                if (result.success) {
+                                  toast({
+                                    title: "Opening comparison",
+                                    description: "Documents opening in Word side by side",
+                                    variant: "default",
+                                  });
+                                } else {
+                                  toast({
+                                    title: "Compare failed",
+                                    description: result.error,
+                                    variant: "destructive",
+                                  });
+                                }
+                              } catch (err) {
+                                logger.error("Failed to open comparison:", err);
+                                toast({
+                                  title: "Compare failed",
+                                  description: err instanceof Error ? err.message : undefined,
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950"
+                            title="Compare before/after in Word"
+                          >
+                            <GitCompare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                           </button>
                         )}
 
@@ -950,7 +1080,13 @@ export function CurrentSession() {
     {
       id: "tracked-changes",
       label: "Document Changes",
-      content: <ChangeViewer sessionId={session.id} />,
+      content: (
+        <ChangeViewer
+          sessionId={session.id}
+          expandDocumentId={expandedChangeDocId}
+          onExpandHandled={() => setExpandedChangeDocId(null)}
+        />
+      ),
     },
   ];
 
@@ -1012,7 +1148,13 @@ export function CurrentSession() {
       {/* Scrollable Content Area */}
       <div className="flex-1 overflow-auto px-6 max-w-6xl mx-auto w-full">
         <Card>
-          <TabContainer tabs={tabs} defaultTab="session" headerActions={headerActions} />
+          <TabContainer
+            tabs={tabs}
+            defaultTab="session"
+            headerActions={headerActions}
+            activeTabId={activeTabId}
+            onTabChange={(tabId) => setActiveTabId(tabId)}
+          />
         </Card>
       </div>
 

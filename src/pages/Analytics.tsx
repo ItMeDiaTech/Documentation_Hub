@@ -20,17 +20,14 @@ import {
   CardTitle,
 } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
-import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { useGlobalStats } from '@/contexts/GlobalStatsContext';
 import { cn } from '@/utils/cn';
-import logger from '@/utils/logger';
 import {
   TrendingUp,
   BarChart3,
   Calendar,
   CalendarDays,
   CalendarRange,
-  RotateCcw,
   FileCheck,
   Link,
   MessageSquare,
@@ -60,26 +57,22 @@ const itemVariants = {
   },
 };
 
+// Type for chart hover data
+interface HoveredChartData {
+  date: string;
+  Documents?: number;
+  Hyperlinks?: number;
+  Feedback?: number;
+  'Time (min)'?: number;
+}
+
 // PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
 export const Analytics = memo(function Analytics() {
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
-  const [showResetDialog, setShowResetDialog] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
+  const [hoveredData, setHoveredData] = useState<HoveredChartData | null>(null);
 
-  const { stats, getDailyHistory, getWeeklyHistory, getMonthlyHistory, resetAllStats } =
+  const { stats, getDailyHistory, getWeeklyHistory, getMonthlyHistory } =
     useGlobalStats();
-
-  const handleResetStats = async () => {
-    setIsResetting(true);
-    try {
-      await resetAllStats();
-      setShowResetDialog(false);
-    } catch (error) {
-      logger.error('Failed to reset stats:', error);
-    } finally {
-      setIsResetting(false);
-    }
-  };
 
   // Prepare chart data based on view mode
   // PERFORMANCE FIX: Memoize chart data to prevent unnecessary recalculations
@@ -188,23 +181,41 @@ export const Analytics = memo(function Analytics() {
     >
       {/* Header */}
       <motion.div variants={itemVariants} className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
-            <BarChart3 className="w-8 h-8" />
-            Analytics
-          </h1>
-          <p className="text-muted-foreground">Visualize your productivity trends and insights</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold mb-1 flex items-center gap-2">
+              <BarChart3 className="w-8 h-8" />
+              Analytics
+            </h1>
+            <p className="text-muted-foreground">Track performance and insights</p>
+          </div>
+          <div className="h-12 w-px bg-border" />
+          {hoveredData ? (
+            <div className="text-base font-medium flex items-center gap-4">
+              <span className="text-muted-foreground">{hoveredData.date}:</span>
+              {hoveredData.Documents !== undefined && (
+                <span className="text-green-500">Docs: {hoveredData.Documents}</span>
+              )}
+              {hoveredData.Hyperlinks !== undefined && (
+                <span className="text-blue-500">Links: {hoveredData.Hyperlinks}</span>
+              )}
+              {hoveredData.Feedback !== undefined && (
+                <span className="text-purple-500">Feedback: {hoveredData.Feedback}</span>
+              )}
+              {hoveredData['Time (min)'] !== undefined && (
+                <span className="text-orange-500">Time: {hoveredData['Time (min)']}m</span>
+              )}
+            </div>
+          ) : (
+            <span className="text-muted-foreground italic text-sm">Hover over charts for details</span>
+          )}
         </div>
-        <Button variant="destructive" onClick={() => setShowResetDialog(true)} className="gap-2">
-          <RotateCcw className="w-4 h-4" />
-          Reset All Stats
-        </Button>
       </motion.div>
 
-      {/* Stats Summary */}
+      {/* Stats Summary - Sticky */}
       <motion.div
         variants={itemVariants}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+        className="sticky top-0 z-10 bg-background py-4 -mt-4 -mx-6 px-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 border-b border-border/50"
       >
         {statsSummary.map((stat) => {
           const Icon = stat.icon;
@@ -274,10 +285,11 @@ export const Analytics = memo(function Analytics() {
                 />
                 <YAxis tick={{ fontSize: 12, fill: 'var(--color-foreground)' }} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--background))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
+                  content={({ active, payload }) => {
+                    if (active && payload?.[0]?.payload) {
+                      setHoveredData(payload[0].payload);
+                    }
+                    return null;
                   }}
                 />
                 <Legend />
@@ -318,10 +330,11 @@ export const Analytics = memo(function Analytics() {
                 />
                 <YAxis tick={{ fontSize: 12, fill: 'var(--color-foreground)' }} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--background))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
+                  content={({ active, payload }) => {
+                    if (active && payload?.[0]?.payload) {
+                      setHoveredData(payload[0].payload);
+                    }
+                    return null;
                   }}
                 />
                 <Legend />
@@ -359,10 +372,11 @@ export const Analytics = memo(function Analytics() {
                 />
                 <YAxis tick={{ fontSize: 12, fill: 'var(--color-foreground)' }} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--background))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
+                  content={({ active, payload }) => {
+                    if (active && payload?.[0]?.payload) {
+                      setHoveredData(payload[0].payload);
+                    }
+                    return null;
                   }}
                 />
                 <Legend />
@@ -374,17 +388,6 @@ export const Analytics = memo(function Analytics() {
         </Card>
       </motion.div>
 
-      {/* Reset Confirmation Dialog */}
-      <ConfirmDialog
-        open={showResetDialog}
-        onOpenChange={setShowResetDialog}
-        onConfirm={handleResetStats}
-        title="Reset All Statistics?"
-        message="This will permanently delete all historical data including daily, weekly, and monthly statistics. Your all-time totals will be reset to zero. This action cannot be undone."
-        confirmText="Reset All Stats"
-        variant="destructive"
-        loading={isResetting}
-      />
     </motion.div>
   );
 });

@@ -143,8 +143,8 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
     flags.smartTables = true;
     flags.tableUniformity = true; // Auto-enable table uniformity with smart tables
   }
-  if (enabled.has('standardize-cell-borders')) {
-    flags.standardizeCellBorders = true;
+  if (enabled.has('standardize-table-borders')) {
+    flags.standardizeTableBorders = true;
   }
 
   // ═══════════════════════════════════════════════════════════

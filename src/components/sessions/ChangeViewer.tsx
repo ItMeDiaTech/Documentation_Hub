@@ -45,6 +45,8 @@ import { ChangeItem } from './ChangeItem';
 
 interface ChangeViewerProps {
   sessionId: string;
+  expandDocumentId?: string | null;
+  onExpandHandled?: () => void;
 }
 
 type SourceFilter = 'all' | 'word' | 'processing';
@@ -438,7 +440,7 @@ const categoryConfig: Record<
   contentControl: { label: 'Content Controls', icon: Box, color: 'text-teal-500' },
 };
 
-export function ChangeViewer({ sessionId }: ChangeViewerProps) {
+export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: ChangeViewerProps) {
   const { sessions } = useSession();
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
@@ -450,6 +452,15 @@ export function ChangeViewer({ sessionId }: ChangeViewerProps) {
   const authorDropdownRef = useRef<HTMLDivElement>(null);
   // DEFERRED: Compare Documents modal state
   // const [showComparisonModal, setShowComparisonModal] = useState(false);
+
+  // Handle external expand request (from double-click on document)
+  useEffect(() => {
+    if (expandDocumentId) {
+      // Expand only the requested document, collapse others
+      setExpandedDocs(new Set([expandDocumentId]));
+      onExpandHandled?.();
+    }
+  }, [expandDocumentId, onExpandHandled]);
 
   // Get the current session
   const session = sessions.find((s) => s.id === sessionId);

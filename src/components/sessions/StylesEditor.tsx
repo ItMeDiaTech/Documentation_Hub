@@ -752,7 +752,7 @@ export const StylesEditor = memo(function StylesEditor({
                 )}
               >
                 {style.noSpaceBetweenSame && (
-                  <Check className="w-3 h-3 text-white checkbox-checkmark" />
+                  <Check className="w-3 h-3 text-primary-foreground checkbox-checkmark" />
                 )}
               </div>
             </div>

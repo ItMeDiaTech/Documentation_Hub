@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, screen, session, shell } from "electron";
 import * as fs from "fs";
 import { promises as fsPromises } from "fs";
 import * as path from "path";
@@ -415,6 +415,16 @@ ipcMain.handle("window-is-maximized", () => {
 
 ipcMain.handle("window-is-fullscreen", () => {
   return mainWindow?.isFullScreen();
+});
+
+ipcMain.handle("window-set-always-on-top", (_event, flag: boolean) => {
+  mainWindow?.setAlwaysOnTop(flag, 'floating');
+  mainWindow?.webContents.send('window-always-on-top-changed', flag);
+  return flag;
+});
+
+ipcMain.handle("window-is-always-on-top", () => {
+  return mainWindow?.isAlwaysOnTop();
 });
 
 ipcMain.handle("app-version", () => {
@@ -1769,6 +1779,455 @@ class AutoUpdaterHandler {
     this.customUpdater.startScheduledChecks(intervalMs);
   }
 }
+
+// ============================================================================
+// Display/Monitor IPC Handlers
+// ============================================================================
+
+// Track active identification windows and timeout for cleanup
+let identifyWindows: BrowserWindow[] = [];
+let identifyCloseTimeout: NodeJS.Timeout | null = null;
+
+// Get all displays with their information
+ipcMain.handle("display:get-all-displays", () => {
+  const displays = screen.getAllDisplays();
+  const primaryDisplay = screen.getPrimaryDisplay();
+
+  return displays.map((d, index) => ({
+    id: index,
+    label: d.id === primaryDisplay.id ? "Primary" : `Display ${index + 1}`,
+    bounds: d.bounds,
+    workArea: d.workArea,
+    isPrimary: d.id === primaryDisplay.id,
+  }));
+});
+
+// Show identification overlay on all monitors for 3 seconds
+ipcMain.handle("display:identify-monitors", async () => {
+  // Cancel any pending timeout from previous identification
+  if (identifyCloseTimeout) {
+    clearTimeout(identifyCloseTimeout);
+    identifyCloseTimeout = null;
+  }
+
+  // Close any existing identification windows
+  identifyWindows.forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.close();
+    }
+  });
+  identifyWindows = [];
+
+  const displays = screen.getAllDisplays();
+  const primaryDisplay = screen.getPrimaryDisplay();
+
+  displays.forEach((display, index) => {
+    const isPrimary = display.id === primaryDisplay.id;
+    const label = isPrimary ? "1 (Primary)" : `${index + 1}`;
+
+    // Create a small, centered identification window on each display
+    const identifyWindow = new BrowserWindow({
+      x: display.bounds.x + Math.floor(display.bounds.width / 2) - 150,
+      y: display.bounds.y + Math.floor(display.bounds.height / 2) - 100,
+      width: 300,
+      height: 200,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      focusable: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    // Create HTML content with the monitor number
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          }
+          .container {
+            text-align: center;
+            color: white;
+          }
+          .number {
+            font-size: 80px;
+            font-weight: bold;
+            line-height: 1;
+          }
+          .label {
+            font-size: 16px;
+            opacity: 0.8;
+            margin-top: 8px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="number">${index + 1}</div>
+          <div class="label">${isPrimary ? "Primary Monitor" : `Monitor ${index + 1}`}</div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    identifyWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+    identifyWindows.push(identifyWindow);
+  });
+
+  // Close all identification windows after 3 seconds
+  identifyCloseTimeout = setTimeout(() => {
+    identifyWindows.forEach((win) => {
+      if (!win.isDestroyed()) {
+        win.close();
+      }
+    });
+    identifyWindows = [];
+    identifyCloseTimeout = null;
+  }, 3000);
+
+  return { success: true };
+});
+
+// Open comparison - two Word documents side by side on selected monitor
+ipcMain.handle(
+  "display:open-comparison",
+  async (
+    _event,
+    { backupPath, processedPath, monitorIndex }: { backupPath: string; processedPath: string; monitorIndex: number }
+  ) => {
+    try {
+      // Validate files exist
+      if (!fs.existsSync(backupPath)) {
+        return { success: false, error: `Backup file not found: ${backupPath}` };
+      }
+      if (!fs.existsSync(processedPath)) {
+        return { success: false, error: `Processed file not found: ${processedPath}` };
+      }
+
+      // Get the target display
+      const displays = screen.getAllDisplays();
+      const targetDisplay = displays[monitorIndex] || displays[0];
+      const { x, y, width, height } = targetDisplay.workArea;
+
+      log.info("[Display] Opening comparison", {
+        backupPath,
+        processedPath,
+        monitor: monitorIndex,
+        workArea: { x, y, width, height },
+      });
+
+      // Open both documents - they will open in Word
+      // On Windows, we can use PowerShell to position the windows after opening
+      const backupError = await shell.openPath(backupPath);
+      if (backupError) {
+        log.error("[Display] Failed to open backup:", backupError);
+        return { success: false, error: `Failed to open backup: ${backupError}` };
+      }
+
+      // Small delay before opening second file to avoid conflicts
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const processedError = await shell.openPath(processedPath);
+      if (processedError) {
+        log.error("[Display] Failed to open processed file:", processedError);
+        return { success: false, error: `Failed to open processed file: ${processedError}` };
+      }
+
+      // On Windows, try to position the Word windows using PowerShell
+      if (process.platform === "win32") {
+        // Give Word time to open the files
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        // PowerShell script to position Word windows
+        const { exec } = await import("child_process");
+        const util = await import("util");
+        const execPromise = util.promisify(exec);
+
+        // Calculate window sizes with bounds for readability
+        // Optimal document width is ~960px (readable on most screens)
+        // Clamp to reasonable bounds: min 700px, max 1200px per window
+        const scaleFactor = targetDisplay.scaleFactor || 1;
+        const effectiveWidth = Math.floor(width / scaleFactor);
+
+        // For small screens, just split in half; for larger screens, cap at comfortable reading width
+        const halfWidth = Math.floor(effectiveWidth / 2);
+        const optimalWidth = 960;
+        const maxWindowWidth = 1200;
+        const minWindowWidth = 700;
+
+        let windowWidth: number;
+        if (halfWidth < minWindowWidth) {
+          // Small screen: use half width even if cramped
+          windowWidth = Math.floor(width / 2);
+        } else if (halfWidth > maxWindowWidth) {
+          // Large screen: cap at max comfortable width
+          windowWidth = maxWindowWidth;
+        } else {
+          // Medium screen: use optimal width if it fits, otherwise half
+          windowWidth = Math.min(optimalWidth, halfWidth);
+        }
+
+        // Center the two windows on the display
+        const totalWidth = windowWidth * 2;
+        const startX = x + Math.floor((width - totalWidth) / 2);
+
+        const leftX = startX;
+        const leftWidth = windowWidth;
+        const rightX = startX + windowWidth;
+        const rightWidth = windowWidth;
+
+        // Extract filenames to match against window titles
+        // Word titles include filename: "MyDoc.docx - Word"
+        const backupFilename = path.basename(backupPath).replace(/'/g, "''");
+        const processedFilename = path.basename(processedPath).replace(/'/g, "''");
+
+        log.info("[Display] Looking for Word windows with filenames:", {
+          backup: backupFilename,
+          processed: processedFilename,
+        });
+
+        // PowerShell script to find and position Word windows BY FILENAME
+        // This ensures backup (Original) goes LEFT and processed goes RIGHT
+        // Using -EncodedCommand with Base64 to preserve here-string syntax
+        const psScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+  [DllImport("user32.dll")]
+  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+  [DllImport("user32.dll")]
+  public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+  [DllImport("user32.dll")]
+  public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+  [DllImport("user32.dll")]
+  public static extern bool IsWindowVisible(IntPtr hWnd);
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+}
+"@
+$backupFilename = '${backupFilename}'
+$processedFilename = '${processedFilename}'
+
+$wordWindows = @()
+$callback = {
+  param([IntPtr]$hWnd, [IntPtr]$lParam)
+  $sb = New-Object System.Text.StringBuilder 256
+  [Win32]::GetWindowText($hWnd, $sb, 256) | Out-Null
+  $title = $sb.ToString()
+  if ($title -match "Word" -and [Win32]::IsWindowVisible($hWnd)) {
+    $script:wordWindows += @{ hWnd = $hWnd; Title = $title }
+  }
+  return $true
+}
+[Win32]::EnumWindows($callback, [IntPtr]::Zero) | Out-Null
+
+$backupWindow = $null
+$processedWindow = $null
+
+foreach ($win in $wordWindows) {
+  if ($win.Title -like "*$backupFilename*" -and $backupWindow -eq $null) {
+    $backupWindow = $win
+  }
+  if ($win.Title -like "*$processedFilename*" -and $processedWindow -eq $null) {
+    $processedWindow = $win
+  }
+}
+
+if ($backupWindow -ne $null) {
+  [Win32]::SetWindowPos($backupWindow.hWnd, [IntPtr]::Zero, ${leftX}, ${y}, ${leftWidth}, ${height}, 0x0040) | Out-Null
+}
+
+if ($processedWindow -ne $null) {
+  [Win32]::SetWindowPos($processedWindow.hWnd, [IntPtr]::Zero, ${rightX}, ${y}, ${rightWidth}, ${height}, 0x0040) | Out-Null
+}
+`;
+
+        try {
+          // Encode script as Base64 (UTF-16LE) for PowerShell -EncodedCommand
+          const scriptBuffer = Buffer.from(psScript, "utf16le");
+          const encodedScript = scriptBuffer.toString("base64");
+
+          await execPromise(`powershell -EncodedCommand ${encodedScript}`, {
+            windowsHide: true,
+          });
+          log.info("[Display] Word windows positioned successfully (backup=left, processed=right)");
+        } catch (psError) {
+          // Non-fatal - windows opened but positioning may have failed
+          log.warn("[Display] Could not auto-position Word windows:", psError);
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      log.error("[Display] Error opening comparison:", error);
+      const message = error instanceof Error ? error.message : "Failed to open comparison";
+      return { success: false, error: message };
+    }
+  }
+);
+
+// ============================================================================
+// Export & Reporting Handlers
+// ============================================================================
+
+// Select folder for export
+ipcMain.handle("select-folder", async () => {
+  if (!mainWindow) {
+    throw new Error("Main window not available");
+  }
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    title: "Select Export Folder",
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+// Copy files to folder
+ipcMain.handle(
+  "copy-files-to-folder",
+  async (
+    ...[, request]: [
+      Electron.IpcMainInvokeEvent,
+      { filePaths: string[]; destinationFolder: string }
+    ]
+  ) => {
+    const { filePaths, destinationFolder } = request;
+    let copied = 0;
+    let skipped = 0;
+
+    for (const sourcePath of filePaths) {
+      try {
+        if (!sourcePath || !fs.existsSync(sourcePath)) {
+          skipped++;
+          continue;
+        }
+        const fileName = path.basename(sourcePath);
+        const destPath = path.join(destinationFolder, fileName);
+        await fsPromises.copyFile(sourcePath, destPath);
+        copied++;
+      } catch (error) {
+        log.warn(`Failed to copy file ${sourcePath}:`, error);
+        skipped++;
+      }
+    }
+
+    log.info(`Export complete: ${copied} files copied, ${skipped} skipped`);
+    return { copied, skipped };
+  }
+);
+
+// Get downloads path
+ipcMain.handle("get-downloads-path", () => {
+  return app.getPath("downloads");
+});
+
+// Create folder
+ipcMain.handle(
+  "create-folder",
+  async (...[, folderPath]: [Electron.IpcMainInvokeEvent, string]) => {
+    await fsPromises.mkdir(folderPath, { recursive: true });
+    return true;
+  }
+);
+
+// Copy single file to folder
+ipcMain.handle(
+  "copy-file-to-folder",
+  async (
+    ...[, request]: [
+      Electron.IpcMainInvokeEvent,
+      { sourcePath: string; destFolder: string }
+    ]
+  ) => {
+    const { sourcePath, destFolder } = request;
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      throw new Error(`Source file not found: ${sourcePath}`);
+    }
+    const fileName = path.basename(sourcePath);
+    const destPath = path.join(destFolder, fileName);
+    await fsPromises.copyFile(sourcePath, destPath);
+    return true;
+  }
+);
+
+// Create report zip
+ipcMain.handle(
+  "create-report-zip",
+  async (
+    ...[, request]: [
+      Electron.IpcMainInvokeEvent,
+      { folderPath: string; zipName: string }
+    ]
+  ) => {
+    const { folderPath, zipName } = request;
+    const AdmZip = require("adm-zip");
+    const zip = new AdmZip();
+    zip.addLocalFolder(folderPath);
+    const zipPath = path.join(app.getPath("downloads"), zipName);
+    zip.writeZip(zipPath);
+    // Clean up the folder after zipping
+    await fsPromises.rm(folderPath, { recursive: true, force: true });
+    log.info(`Created report zip: ${zipPath}`);
+    return zipPath;
+  }
+);
+
+// Open Outlook with attachment
+ipcMain.handle(
+  "open-outlook-email",
+  async (
+    ...[, request]: [
+      Electron.IpcMainInvokeEvent,
+      { subject: string; attachmentPath: string }
+    ]
+  ) => {
+    const { subject, attachmentPath } = request;
+
+    // Escape single quotes for PowerShell
+    const escapedSubject = subject.replace(/'/g, "''");
+    const escapedPath = attachmentPath.replace(/\\/g, "\\\\").replace(/'/g, "''");
+
+    const psScript = `
+      $outlook = New-Object -ComObject Outlook.Application
+      $mail = $outlook.CreateItem(0)
+      $mail.Subject = '${escapedSubject}'
+      $mail.Attachments.Add('${escapedPath}')
+      $mail.Display()
+    `;
+
+    const { exec } = require("child_process");
+    const util = require("util");
+    const execPromise = util.promisify(exec);
+
+    try {
+      // Use encoded command for safety with special characters
+      const scriptBuffer = Buffer.from(psScript, "utf16le");
+      const encodedScript = scriptBuffer.toString("base64");
+      await execPromise(`powershell -EncodedCommand ${encodedScript}`, {
+        windowsHide: true,
+      });
+      log.info(`Opened Outlook with attachment: ${attachmentPath}`);
+      return true;
+    } catch (error) {
+      log.error("Failed to open Outlook:", error);
+      throw error;
+    }
+  }
+);
 
 // ============================================================================
 // Auto-Updater Handler

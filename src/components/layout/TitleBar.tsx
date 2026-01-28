@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Minus, Square, X } from 'lucide-react';
+import { Minus, Square, X, Pin, PinOff } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
+import { SimpleTooltip, TooltipProvider } from '@/components/common/Tooltip';
 
 export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
   const [platform, setPlatform] = useState<NodeJS.Platform>('win32');
   const [clickCount, setClickCount] = useState(0);
   const [showDebugToast, setShowDebugToast] = useState(false);
@@ -19,19 +21,25 @@ export function TitleBar() {
 
     window.electronAPI.getPlatform().then((p: string) => setPlatform(p as NodeJS.Platform));
     window.electronAPI.isMaximized().then(setIsMaximized);
+    window.electronAPI.isAlwaysOnTop().then(setIsAlwaysOnTop);
 
     const unsubMaximized = window.electronAPI.onWindowMaximized(() => setIsMaximized(true));
     const unsubUnmaximized = window.electronAPI.onWindowUnmaximized(() => setIsMaximized(false));
+    const unsubAlwaysOnTop = window.electronAPI.onAlwaysOnTopChanged((isOnTop: boolean) => setIsAlwaysOnTop(isOnTop));
 
     return () => {
       unsubMaximized();
       unsubUnmaximized();
+      unsubAlwaysOnTop();
     };
   }, []);
 
   const handleMinimize = () => window.electronAPI?.minimizeWindow();
   const handleMaximize = () => window.electronAPI?.maximizeWindow();
   const handleClose = () => window.electronAPI?.closeWindow();
+  const handleToggleAlwaysOnTop = () => {
+    window.electronAPI?.setAlwaysOnTop(!isAlwaysOnTop);
+  };
 
   const handleLogoClick = () => {
     // Clear existing timeout
@@ -88,38 +96,57 @@ export function TitleBar() {
         </button>
 
         {isWindows && (
-          <div className="flex no-drag">
-            <button
-              onClick={handleMinimize}
-              className={cn(
-                'px-4 h-8 hover:bg-muted transition-colors',
-                'focus:outline-none focus-visible:bg-muted'
-              )}
-              aria-label="Minimize"
-            >
-              <Minus className="w-3 h-3" />
-            </button>
-            <button
-              onClick={handleMaximize}
-              className={cn(
-                'px-4 h-8 hover:bg-muted transition-colors',
-                'focus:outline-none focus-visible:bg-muted'
-              )}
-              aria-label={isMaximized ? 'Restore' : 'Maximize'}
-            >
-              <Square className="w-2.5 h-2.5" />
-            </button>
-            <button
-              onClick={handleClose}
-              className={cn(
-                'px-4 h-8 hover:bg-destructive hover:text-destructive-foreground transition-colors',
-                'focus:outline-none focus-visible:bg-destructive focus-visible:text-destructive-foreground'
-              )}
-              aria-label="Close"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <TooltipProvider>
+            <div className="flex no-drag">
+              <SimpleTooltip content={isAlwaysOnTop ? 'Unpin from top' : 'Pin on top'}>
+                <button
+                  onClick={handleToggleAlwaysOnTop}
+                  className={cn(
+                    'px-3 h-8 hover:bg-muted transition-colors',
+                    'focus:outline-none focus-visible:bg-muted',
+                    isAlwaysOnTop && 'text-primary bg-primary/10'
+                  )}
+                  aria-label={isAlwaysOnTop ? 'Unpin from top' : 'Pin on top'}
+                >
+                  {isAlwaysOnTop ? (
+                    <PinOff className="w-3 h-3" />
+                  ) : (
+                    <Pin className="w-3 h-3" />
+                  )}
+                </button>
+              </SimpleTooltip>
+              <button
+                onClick={handleMinimize}
+                className={cn(
+                  'px-4 h-8 hover:bg-muted transition-colors',
+                  'focus:outline-none focus-visible:bg-muted'
+                )}
+                aria-label="Minimize"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <button
+                onClick={handleMaximize}
+                className={cn(
+                  'px-4 h-8 hover:bg-muted transition-colors',
+                  'focus:outline-none focus-visible:bg-muted'
+                )}
+                aria-label={isMaximized ? 'Restore' : 'Maximize'}
+              >
+                <Square className="w-2.5 h-2.5" />
+              </button>
+              <button
+                onClick={handleClose}
+                className={cn(
+                  'px-4 h-8 hover:bg-destructive hover:text-destructive-foreground transition-colors',
+                  'focus:outline-none focus-visible:bg-destructive focus-visible:text-destructive-foreground'
+                )}
+                aria-label="Close"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </TooltipProvider>
         )}
 
         {isMac && (

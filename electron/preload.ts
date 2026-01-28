@@ -35,6 +35,15 @@ const electronAPI = {
   getPlatform: () => ipcRenderer.invoke('platform'),
   openDevTools: () => ipcRenderer.invoke('open-dev-tools'),
 
+  // Always on top (pin window)
+  setAlwaysOnTop: (flag: boolean) => ipcRenderer.invoke('window-set-always-on-top', flag),
+  isAlwaysOnTop: () => ipcRenderer.invoke('window-is-always-on-top'),
+  onAlwaysOnTopChanged: (callback: (isOnTop: boolean) => void) => {
+    const subscription = (_event: IpcRendererEvent, isOnTop: boolean) => callback(isOnTop);
+    ipcRenderer.on('window-always-on-top-changed', subscription);
+    return () => ipcRenderer.removeListener('window-always-on-top-changed', subscription);
+  },
+
   // File handling
   selectDocuments: () => ipcRenderer.invoke('select-documents'),
   processDocument: (path: string) => ipcRenderer.invoke('process-document', path),
@@ -47,6 +56,22 @@ const electronAPI = {
   getPathsForFiles: (files: File[]) => {
     return files.map((file) => webUtils.getPathForFile(file));
   },
+
+  // Export and Reporting
+  selectFolder: () => ipcRenderer.invoke('select-folder') as Promise<string | null>,
+  copyFilesToFolder: (filePaths: string[], destinationFolder: string) =>
+    ipcRenderer.invoke('copy-files-to-folder', { filePaths, destinationFolder }) as Promise<{
+      copied: number;
+      skipped: number;
+    }>,
+  getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path') as Promise<string>,
+  createFolder: (folderPath: string) => ipcRenderer.invoke('create-folder', folderPath) as Promise<boolean>,
+  copyFileToFolder: (sourcePath: string, destFolder: string) =>
+    ipcRenderer.invoke('copy-file-to-folder', { sourcePath, destFolder }) as Promise<boolean>,
+  createReportZip: (folderPath: string, zipName: string) =>
+    ipcRenderer.invoke('create-report-zip', { folderPath, zipName }) as Promise<string>,
+  openOutlookEmail: (subject: string, attachmentPath: string) =>
+    ipcRenderer.invoke('open-outlook-email', { subject, attachmentPath }) as Promise<boolean>,
 
   // Document text extraction (for comparison views)
   extractDocumentText: (filePath: string) =>
@@ -172,6 +197,14 @@ const electronAPI = {
       ipcRenderer.on('dictionary:sync-complete', subscription);
       return () => ipcRenderer.removeListener('dictionary:sync-complete', subscription);
     },
+  },
+
+  // Display/Monitor operations
+  display: {
+    getAllDisplays: () => ipcRenderer.invoke('display:get-all-displays'),
+    identifyMonitors: () => ipcRenderer.invoke('display:identify-monitors'),
+    openComparison: (backupPath: string, processedPath: string, monitorIndex: number) =>
+      ipcRenderer.invoke('display:open-comparison', { backupPath, processedPath, monitorIndex }),
   },
 
   // Auto-updater

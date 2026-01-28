@@ -653,7 +653,7 @@ Planned features for future releases:
 
 ---
 
-**Version:** 5.0.4
+**Version:** 5.2.35
 **Last Updated:** January 2026
 **Maintainer:** ItMeDiaTech
 

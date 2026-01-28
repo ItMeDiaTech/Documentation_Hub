@@ -48,6 +48,14 @@ export interface BackupSettings {
   enabled: boolean;
 }
 
+/**
+ * Display Settings for monitor configuration
+ * Used for document comparison feature
+ */
+export interface DisplaySettings {
+  comparisonMonitorId: number; // Index of selected monitor (0 = primary)
+}
+
 export interface UserSettings {
   profile: UserProfile;
   notifications: NotificationSettings;
@@ -58,6 +66,7 @@ export interface UserSettings {
   updateSettings: UpdateSettings;
   localDictionary: LocalDictionarySettings;
   backupSettings: BackupSettings;
+  displaySettings: DisplaySettings;
 }
 
 export const defaultUserSettings: UserSettings = {
@@ -96,5 +105,8 @@ export const defaultUserSettings: UserSettings = {
   },
   backupSettings: {
     enabled: true,
+  },
+  displaySettings: {
+    comparisonMonitorId: 0, // Default to primary monitor
   },
 };

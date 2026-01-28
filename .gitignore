@@ -283,7 +283,31 @@ docs/archive/
 /Errors
 /Original
 /scripts
-.gitignore
+
+# ============================================================================
+# DEVELOPMENT DEBUGGING ARTIFACTS
+# ============================================================================
+
+# Ad-hoc test/debug scripts (root level only)
+/test-*.js
+/analyze-*.js
+/debug-*.js
+/compare-*.js
+/trace-*.js
+
+# Extracted DOCX folders (unzipped for debugging)
+*_extracted/
+*_extract/
+
+# Claude AI temp directories
+tmpclaude-*/
+
+# Windows artifacts
+nul
+
+# ============================================================================
+# MISC
+# ============================================================================
 .prettierignore
 .prettierrc
 *.zip

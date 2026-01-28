@@ -78,7 +78,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <motion.button
         className={cn(
           buttonVariants({ variant, size, className }),
-          isSuccess && 'bg-green-500 hover:bg-green-500 text-white'
+          isSuccess && 'bg-green-500 hover:bg-green-500 text-green-50'
         )}
         ref={ref}
         disabled={disabled || loading || isSuccess}

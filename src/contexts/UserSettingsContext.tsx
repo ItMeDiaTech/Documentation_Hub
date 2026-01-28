@@ -13,6 +13,7 @@ interface UserSettingsContextType {
   updateUpdateSettings: (updates: Partial<UserSettings['updateSettings']>) => void;
   updateLocalDictionary: (updates: Partial<UserSettings['localDictionary']>) => void;
   updateBackupSettings: (updates: Partial<UserSettings['backupSettings']>) => void;
+  updateDisplaySettings: (updates: Partial<UserSettings['displaySettings']>) => void;
   saveSettings: () => Promise<boolean>;
   loadSettings: () => void;
   resetSettings: () => void;
@@ -210,6 +211,29 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const updateDisplaySettings = useCallback((updates: Partial<UserSettings['displaySettings']>) => {
+    setSettings((prev) => {
+      const newSettings = {
+        ...prev,
+        displaySettings: { ...prev.displaySettings, ...updates },
+      };
+      // Auto-save display settings to localStorage
+      const jsonString = safeJsonStringify(
+        newSettings,
+        undefined,
+        'UserSettings.updateDisplaySettings'
+      );
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          // Silent fail - logged elsewhere
+        }
+      }
+      return newSettings;
+    });
+  }, []);
+
   const resetSettings = useCallback(() => {
     setSettings(defaultUserSettings);
     localStorage.removeItem(STORAGE_KEY);
@@ -232,6 +256,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       updateUpdateSettings,
       updateLocalDictionary,
       updateBackupSettings,
+      updateDisplaySettings,
       saveSettings,
       loadSettings,
       resetSettings,
@@ -246,6 +271,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       updateUpdateSettings,
       updateLocalDictionary,
       updateBackupSettings,
+      updateDisplaySettings,
       saveSettings,
       loadSettings,
       resetSettings,
