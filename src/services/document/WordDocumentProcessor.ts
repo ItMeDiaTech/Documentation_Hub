@@ -30,7 +30,7 @@ import {
   type TableOfContents,
   WORD_NATIVE_BULLETS,
 } from "docxmlater";
-import type { ParagraphContent } from "docxmlater";
+import type { ParagraphContent, TableCell } from "docxmlater";
 import type { RevisionHandlingMode } from "@/types/session";
 // Note: Run, Hyperlink, ImageRun imported for type checking in isParagraphTrulyEmpty()
 import {
@@ -343,6 +343,76 @@ export class WordDocumentProcessor {
       }
     }
     return false;
+  }
+
+  /**
+   * Check if document is in Word compatibility mode (older format)
+   * Documents created in Word 2003/2007/2010 and not converted use older XML schemas
+   * that can cause processing issues.
+   *
+   * Detection: Check word/settings.xml for compatibilityMode value < 15
+   * Values: 11=Word2003, 12=Word2007, 14=Word2010, 15=Word2013+
+   *
+   * @returns Object with isCompatibilityMode flag and detected version
+   */
+  private async checkCompatibilityMode(doc: Document): Promise<{
+    isCompatibilityMode: boolean;
+    compatibilityValue?: number;
+    wordVersion?: string;
+  }> {
+    try {
+      // Use DocXMLater's getRawXml to access word/settings.xml
+      const settingsXml = await doc.getRawXml('word/settings.xml');
+
+      if (!settingsXml) {
+        // No settings.xml found - assume modern format
+        return { isCompatibilityMode: false };
+      }
+
+      // Look for compatibilityMode setting
+      // Pattern: <w:compatSetting w:name="compatibilityMode" ... w:val="XX"/>
+      // Also check alternate attribute order
+      const compatMatch = settingsXml.match(
+        /<w:compatSetting[^>]*w:name=["']compatibilityMode["'][^>]*w:val=["'](\d+)["'][^>]*\/?>/
+      ) || settingsXml.match(
+        /<w:compatSetting[^>]*w:val=["'](\d+)["'][^>]*w:name=["']compatibilityMode["'][^>]*\/?>/
+      );
+
+      if (compatMatch) {
+        const compatValue = parseInt(compatMatch[1], 10);
+
+        // Version mapping
+        const versionMap: Record<number, string> = {
+          11: 'Word 2003',
+          12: 'Word 2007',
+          14: 'Word 2010',
+          15: 'Word 2013+',
+        };
+
+        const wordVersion = versionMap[compatValue] || `Unknown (${compatValue})`;
+
+        // Compatibility mode if value is less than 15 (Word 2013)
+        const isCompatibilityMode = compatValue < 15;
+
+        this.log.debug(
+          `Compatibility mode check: value=${compatValue}, version=${wordVersion}, isCompatMode=${isCompatibilityMode}`
+        );
+
+        return {
+          isCompatibilityMode,
+          compatibilityValue: compatValue,
+          wordVersion,
+        };
+      }
+
+      // If no compatibilityMode setting found, document is likely modern
+      // (Word 2013+ doesn't always include this setting)
+      return { isCompatibilityMode: false };
+    } catch (error) {
+      this.log.warn('Failed to check compatibility mode (non-fatal):', error);
+      // On error, assume modern format to allow processing
+      return { isCompatibilityMode: false };
+    }
   }
 
   /**
@@ -693,6 +763,25 @@ export class WordDocumentProcessor {
         revisionHandling: 'preserve' // Always preserve to capture pre-existing changes
       });
       this.log.debug("Document loaded successfully");
+
+      // ═══════════════════════════════════════════════════════════
+      // COMPATIBILITY MODE CHECK
+      // Detect if document uses older Word format that requires conversion
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== CHECKING WORD COMPATIBILITY MODE ===");
+      const compatCheck = await this.checkCompatibilityMode(doc);
+
+      if (compatCheck.isCompatibilityMode) {
+        this.log.warn(
+          `Document is in compatibility mode: ${compatCheck.wordVersion} (value: ${compatCheck.compatibilityValue})`
+        );
+
+        // Throw error with specific message for UI detection
+        throw new Error(
+          `COMPATIBILITY_MODE: This document is using outdated functions from ${compatCheck.wordVersion}.`
+        );
+      }
+      this.log.debug("Document is in modern format");
 
       // ═══════════════════════════════════════════════════════════
       // CAPTURE PRE-EXISTING TRACKED CHANGES
@@ -1749,6 +1838,14 @@ export class WordDocumentProcessor {
         if (blanksRemoved > 0) {
           this.log.debug(`Removed ${blanksRemoved} blank lines between list items (post-normalization cleanup)`);
         }
+
+        // After normalizing lists and removing blanks between list items,
+        // ensure blank lines exist after complete list sequences (before non-list content).
+        // This handles table cells (cell-scoped) and body paragraphs separately.
+        const listBlankLinesAdded = await this.ensureBlankLinesAfterLists(doc);
+        if (listBlankLinesAdded > 0) {
+          this.log.info(`Added ${listBlankLinesAdded} blank lines after list sequences`);
+        }
       }
 
       // Next, normalize list levels based on visual indentation (before applying uniformity)
@@ -2475,11 +2572,15 @@ export class WordDocumentProcessor {
 
       return result;
     } catch (error) {
-      // Detect file lock errors and show user-friendly message
+      // Detect file lock errors and compatibility mode errors, show user-friendly messages
       let errorMessage: string;
       if (this.isFileLockError(error)) {
         errorMessage = "Please close the file and try again";
         this.log.error("ERROR (file locked):", error instanceof Error ? error.message : String(error));
+      } else if (error instanceof Error && error.message.startsWith('COMPATIBILITY_MODE:')) {
+        // Remove the internal prefix for user-friendly display
+        errorMessage = error.message.replace('COMPATIBILITY_MODE: ', '');
+        this.log.error("ERROR (compatibility mode):", errorMessage);
       } else {
         errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
         this.log.error("ERROR:", errorMessage);
@@ -3990,36 +4091,29 @@ export class WordDocumentProcessor {
       } else if ((currentStyle === "ListParagraph" || currentStyle === "List Paragraph") && listParagraphStyle) {
         // Preserve List Paragraph - apply user's List Paragraph formatting
         styleToApply = listParagraphStyle;
-      } else if (currentStyle === "Normal" && normalStyle && para.getText()?.trim()) {
-        // Only apply Normal formatting to paragraphs explicitly set to Normal
+      } else if ((currentStyle === "Normal" || currentStyle === "NormalWeb") && normalStyle && para.getText()?.trim()) {
+        // Apply Normal formatting to paragraphs with Normal or NormalWeb style.
+        // NormalWeb is treated identically to Normal — its style will be reassigned below.
         styleToApply = normalStyle;
       } else if ((!currentStyle || currentStyle === "") && para.getText()?.trim()) {
-        // PRIORITY 2: For paragraphs without any style, use detectHeadingLevel as fallback
-        // then apply Normal if not a heading
-        try {
-          const headingLevel = await (para as any).detectHeadingLevel?.();
-
-          if (headingLevel === 1 && header1Style) {
-            styleToApply = header1Style;
-          } else if (headingLevel === 2 && header2Style) {
-            styleToApply = header2Style;
-          } else if (headingLevel === 3 && header3Style) {
-            styleToApply = header3Style;
-          } else if (normalStyle) {
-            // No heading detected, no style - apply Normal
-            styleToApply = normalStyle;
-          }
-        } catch {
-          // detectHeadingLevel not available - apply Normal to unstyled paragraphs
-          if (normalStyle) {
-            styleToApply = normalStyle;
-          }
+        // Paragraphs without an explicit style get Normal formatting.
+        // NOTE: detectHeadingLevel() was previously used here but produced false positives
+        // for table cell paragraphs that have outlineLevel set without being actual headings.
+        // If a paragraph is truly a heading, it should have an explicit Heading style (Heading1, Heading2, etc.)
+        // applied by the document author or earlier processing steps (e.g., ensureHeading2StyleIn1x1Tables).
+        if (normalStyle) {
+          styleToApply = normalStyle;
         }
       }
       // IMPORTANT: Do NOT apply any style to paragraphs with unknown styles (e.g., TOC1, TOC2, etc.)
       // This preserves special styles that shouldn't be overwritten
 
       if (styleToApply) {
+        // Convert NormalWeb to Normal style so the paragraph inherits Normal's style definition
+        if (currentStyle === "NormalWeb") {
+          para.setStyle("Normal");
+        }
+
         // Apply paragraph formatting
         const formatting = para.getFormatting();
 
@@ -4077,15 +4171,11 @@ export class WordDocumentProcessor {
             run.setFont(styleToApply.fontFamily);
           }
 
-          // Preserve bold if:
-          // 1. The style has preserveBold=true, OR
-          // 2. The paragraph has no explicit style AND run is already bold
-          // Use DIRECT formatting only (not getEffectiveBold) to avoid preserving table conditional formatting
-          // This matches docxmlater's applyStyles() behavior which only preserves explicitly set bold
-          const runBold = runFormatting.bold;
-          const shouldPreserveBold =
-            styleToApply.preserveBold ||
-            (hasNoExplicitStyle && runBold);
+          // Preserve bold based on the user's preserveBold setting for this style.
+          // When preserveBold=true (default for Normal), existing bold is kept.
+          // When preserveBold=false, bold is set to the style's configured value.
+          // This applies consistently to Normal, NormalWeb, and undefined-style paragraphs.
+          const shouldPreserveBold = styleToApply.preserveBold;
 
           if (!shouldPreserveBold) {
             run.setBold(styleToApply.bold);
@@ -6841,66 +6931,194 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Ensure blank lines after complete list sequences
+   * Ensure blank lines after complete list sequences (with edge case handling).
    *
-   * Detects end of bullet/numbered list sequences and inserts blank paragraphs
-   * after them for proper spacing. Only adds ONE blank line per complete sequence,
-   * not after individual list items.
+   * Orchestrator: processes table cells (cell-scoped) and body paragraphs separately
+   * to respect table cell boundaries.
+   *
+   * Edge case rules:
+   * - ADD blank line when un-indented non-list text follows a list
+   * - SKIP if next paragraph is indented (continuation text); keep scanning until un-indented found
+   * - SKIP if list is the last paragraph in its scope (table cell or document)
+   * - SKIP if next paragraph is a small image (<100x100px) and NOT indented
+   * - If blank already exists, mark preserved + set Normal style (don't duplicate)
+   * - ADD blank line before headings, images, hyperlinks, TOC entries following a list
    *
    * @param doc - Document to process
    * @returns Number of blank lines inserted
    */
   private async ensureBlankLinesAfterLists(doc: Document): Promise<number> {
-    let blankLinesAdded = 0;
-    const paragraphs = doc.getAllParagraphs();
+    let totalAdded = 0;
 
-    this.log.debug(`Checking ${paragraphs.length} paragraphs for list sequence endings...`);
+    this.log.debug("=== ENSURING BLANK LINES AFTER LIST SEQUENCES ===");
 
-    for (let i = 0; i < paragraphs.length - 1; i++) {
-      const currentPara = paragraphs[i];
-      const nextPara = paragraphs[i + 1];
-
-      // Check if current paragraph is a list item
-      const currentNumbering = currentPara.getNumbering();
-      if (!currentNumbering) {
-        continue; // Not a list item, skip
-      }
-
-      // Check if next paragraph is also a list item
-      const nextNumbering = nextPara?.getNumbering();
-
-      // End of list detected: current has numbering, next doesn't
-      if (!nextNumbering) {
-        this.log.debug(`Found end of list sequence at paragraph ${i}`);
-
-        // Check if there's already a blank line after the list
-        const paraAfterList = paragraphs[i + 1];
-        if (paraAfterList && this.isParagraphTrulyEmpty(paraAfterList)) {
-          // Blank line exists - just mark it as preserved and set Normal style
-          paraAfterList.setPreserved(true);
-          paraAfterList.setStyle("Normal");
-          paraAfterList.setSpaceAfter(120); // 6pt spacing
-          this.log.debug(`Marked existing blank line as preserved at paragraph ${i + 1}`);
-        } else {
-          // No blank line - insert one
-          const blankPara = doc.createParagraph("");
-          blankPara.setStyle("Normal");
-          blankPara.setPreserved(true);
-          blankPara.setSpaceAfter(120); // 6pt spacing per spec
-
-          // Insert after the current list item (at position i + 1)
-          doc.insertParagraphAt(i + 1, blankPara);
-          blankLinesAdded++;
-
-          this.log.debug(`Inserted blank line after list sequence at position ${i + 1}`);
-
-          // Skip the newly inserted paragraph in next iteration
-          i++;
+    // Scope A: Process each table cell's paragraphs in isolation
+    for (const table of doc.getAllTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          const cellParagraphs = cell.getParagraphs();
+          const added = this.ensureBlankLinesAfterListsInScope(doc, cellParagraphs, "table-cell", cell);
+          totalAdded += added;
         }
       }
     }
 
-    this.log.info(`Processed list sequences: added ${blankLinesAdded} blank lines`);
+    // Scope B: Process body-level paragraphs (excluding table content)
+    // Build a set of paragraphs that are inside tables so we can skip them
+    const tableParagraphSet = new Set<Paragraph>();
+    for (const table of doc.getAllTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          for (const para of cell.getParagraphs()) {
+            tableParagraphSet.add(para);
+          }
+        }
+      }
+    }
+
+    const allParagraphs = doc.getAllParagraphs();
+    const bodyParagraphs: Paragraph[] = [];
+    for (const para of allParagraphs) {
+      if (!tableParagraphSet.has(para)) {
+        bodyParagraphs.push(para);
+      }
+    }
+
+    if (bodyParagraphs.length > 0) {
+      const added = this.ensureBlankLinesAfterListsInScope(doc, bodyParagraphs, "body");
+      totalAdded += added;
+    }
+
+    this.log.info(`Processed list sequences: added ${totalAdded} blank lines after lists`);
+    return totalAdded;
+  }
+
+  /**
+   * Process a scoped array of paragraphs to ensure blank lines after list sequences.
+   *
+   * @param doc - Document (needed for creating/inserting paragraphs and checking small images)
+   * @param paragraphs - Array of paragraphs within a single scope (one table cell or body)
+   * @param scopeLabel - Label for logging ("table-cell" or "body")
+   * @returns Number of blank lines inserted
+   */
+  private ensureBlankLinesAfterListsInScope(
+    doc: Document,
+    paragraphs: Paragraph[],
+    scopeLabel: string,
+    cell?: TableCell
+  ): number {
+    let blankLinesAdded = 0;
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      const currentPara = paragraphs[i];
+
+      // Check if current paragraph is a list item
+      const currentNumbering = currentPara.getNumbering();
+      if (!currentNumbering) continue;
+
+      // Check if next paragraph is also a list item
+      const nextIdx = i + 1;
+      if (nextIdx >= paragraphs.length) {
+        // Case 3/11: List item is the last paragraph in this scope — SKIP
+        continue;
+      }
+
+      const nextPara = paragraphs[nextIdx];
+      const nextNumbering = nextPara.getNumbering();
+      if (nextNumbering) continue; // Still in a list sequence
+
+      // End of list detected: current has numbering, next doesn't
+      this.log.debug(`[${scopeLabel}] Found end of list at paragraph ${i}`);
+
+      // Case 5/10: Check if there's already a blank/empty paragraph after the list
+      if (this.isParagraphTrulyEmpty(nextPara)) {
+        // Mark existing blank as preserved and set Normal style
+        nextPara.setPreserved(true);
+        nextPara.setStyle("Normal");
+        nextPara.setSpaceAfter(120); // 6pt spacing
+        this.log.debug(`[${scopeLabel}] Marked existing blank as preserved at para ${nextIdx}`);
+        // Skip this blank paragraph so we don't re-process it
+        i = nextIdx;
+        continue;
+      }
+
+      // Case 2/2b: Check if next paragraph is indented (continuation text)
+      const nextFormatting = nextPara.getFormatting();
+      const nextLeftIndent = nextFormatting.indentation?.left || 0;
+
+      if (nextLeftIndent > 0) {
+        // Indented text = continuation — SKIP, but scan forward for un-indented
+        this.log.debug(`[${scopeLabel}] Next para is indented (${nextLeftIndent}tw) — skipping (continuation)`);
+
+        // Scan forward past all indented paragraphs
+        let scanIdx = nextIdx + 1;
+        while (scanIdx < paragraphs.length) {
+          const scanPara = paragraphs[scanIdx];
+          const scanNumbering = scanPara.getNumbering();
+          if (scanNumbering) {
+            // Hit another list item — stop scanning, no blank line needed
+            break;
+          }
+          const scanFormatting = scanPara.getFormatting();
+          const scanLeftIndent = scanFormatting.indentation?.left || 0;
+          if (scanLeftIndent > 0) {
+            // Still indented — keep scanning
+            scanIdx++;
+            continue;
+          }
+          // Found un-indented paragraph — need blank line before it
+          // But first check if it's the last in scope, or already blank
+          if (this.isParagraphTrulyEmpty(scanPara)) {
+            scanPara.setPreserved(true);
+            scanPara.setStyle("Normal");
+            scanPara.setSpaceAfter(120);
+            this.log.debug(`[${scopeLabel}] Marked existing blank before un-indented text as preserved at ${scanIdx}`);
+          } else {
+            // Insert blank line before this un-indented paragraph
+            const blankPara = doc.createParagraph("");
+            blankPara.setStyle("Normal");
+            blankPara.setPreserved(true);
+            blankPara.setSpaceAfter(120);
+            if (cell) {
+              cell.addParagraphAt(scanIdx, blankPara);
+            } else {
+              doc.insertParagraphAt(scanIdx, blankPara);
+            }
+            blankLinesAdded++;
+            this.log.debug(`[${scopeLabel}] Inserted blank line before un-indented text at ${scanIdx}`);
+          }
+          break;
+        }
+        // Jump past the indented chain
+        i = scanIdx - 1;
+        continue;
+      }
+
+      // Case 14: Check if next paragraph is a small image (emoji-like) and NOT indented
+      const hasSmallImage = doc.isSmallImageParagraph(nextPara);
+      if (hasSmallImage && nextLeftIndent === 0) {
+        this.log.debug(`[${scopeLabel}] Next para is small image (not indented) — skipping`);
+        continue;
+      }
+
+      // Cases 1, 6, 7, 9, 12, 13, 16: Un-indented non-list content follows — ADD blank line
+      const blankPara = doc.createParagraph("");
+      blankPara.setStyle("Normal");
+      blankPara.setPreserved(true);
+      blankPara.setSpaceAfter(120); // 6pt spacing
+
+      if (cell) {
+        cell.addParagraphAt(nextIdx, blankPara);
+      } else {
+        doc.insertParagraphAt(nextIdx, blankPara);
+      }
+      blankLinesAdded++;
+      this.log.debug(`[${scopeLabel}] Inserted blank line after list at position ${nextIdx}`);
+
+      // Skip the newly inserted paragraph in next iteration
+      i = nextIdx;
+    }
+
     return blankLinesAdded;
   }
 

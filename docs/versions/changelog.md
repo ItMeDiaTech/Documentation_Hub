@@ -5,9 +5,35 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.2.35
-**docxmlater Framework Version:** 9.5.33
+**Current App Version:** 5.2.39
+**docxmlater Framework Version:** 9.5.34
 **Status:** Production Ready
+
+---
+
+## [5.2.39] - 2026-01-29
+
+### Fixed
+
+- **List Blank Lines in Table Cells**: `ensureBlankLinesAfterListsInScope` was inserting blank paragraphs into the document body instead of the table cell; now uses `cell.addParagraphAt()` for table-cell scopes
+- **Heading Detection False Positives**: Removed `detectHeadingLevel()` for unstyled paragraphs — it produced false positives for table cell paragraphs with `outlineLevel` set without being actual headings
+- **Processing Options Backfill**: Updated default-enabled option IDs to match renamed options (e.g., `apply-doc-styles` → `validate-document-styles`, `standardize-cell-borders` → `standardize-table-borders`)
+
+### Added
+
+- **Word Compatibility Mode Detection**: Documents created in Word 2003/2007/2010 compatibility mode are now detected and rejected with a user-friendly conversion guide (purple badge, step-by-step instructions, retry button)
+- **NormalWeb Style Handling**: `NormalWeb` style is now treated identically to Normal — paragraphs with this style receive Normal formatting and are reassigned to Normal
+- **Color Utility Functions**: Added `adjustLightness`, `parseHex`, `toHex` helpers in `colorConvert.ts`
+- **Landscape Margins Option**: `set-landscape-margins` added to default-enabled processing options
+- **Blank Lines After List Sequences**: New `ensureBlankLinesAfterLists` pass adds structural blank lines after list items that are followed by non-list content (table-cell and body scopes)
+
+### Improved
+
+- **Analytics Page**: Sticky header section for better scroll experience
+- **List Indentation Defaults**: Updated to 0.5" base with 0.5" increments per level (was 0.25" base)
+- **Theme & Styling**: Theme context and global CSS refinements
+- **Dependency Updates**:
+  - docxmlater: 9.5.33 → 9.5.34
 
 ---
 

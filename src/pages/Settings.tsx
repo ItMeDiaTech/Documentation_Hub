@@ -1102,7 +1102,7 @@ export function Settings() {
                     >
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                         {[
-                          { key: 'primary', label: 'Primary', color: customPrimaryColor, setter: setCustomPrimaryColor },
+                          { key: 'primary', label: 'Primary', color: customPrimaryColor, setter: setCustomPrimaryColor, showTextHint: true },
                           { key: 'background', label: 'Background', color: customBackgroundColor, setter: setCustomBackgroundColor, showTextHint: true },
                           { key: 'header', label: 'Header', color: customHeaderColor, setter: setCustomHeaderColor, showTextHint: true },
                           { key: 'sidebar', label: 'Sidebar', color: customSidebarColor, setter: setCustomSidebarColor, showTextHint: true },

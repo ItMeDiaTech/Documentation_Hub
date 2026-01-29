@@ -219,6 +219,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
     'remove-headers-footers',
     'add-document-warning',
     'validate-header2-tables',
+    'set-landscape-margins',
     'list-indentation',
     'bullet-uniformity',
     'normalize-table-lists',
@@ -333,27 +334,31 @@ const ensureSessionStyles = (session: Session): Session => {
 const ensureProcessingOptions = (session: Session): Session => {
   // List of all options that should be enabled by default
   // Must match defaultOptions in ProcessingOptions.tsx where enabled: true
+  // IMPORTANT: These IDs must exactly match the option IDs in ProcessingOptions.tsx
+  // This list is used to backfill existing sessions with newly added default-enabled options
   const defaultEnabledOptionIds = [
     'remove-italics',
     'normalize-dashes',
-    'apply-doc-styles',
-    'update-hyperlink-titles',
-    'top-of-document',
-    'table-of-contents',
-    'thesource-hyperlinks',
-    'thesource-content-ids',
+    'validate-document-styles',
+    'replace-outdated-titles',
+    'update-top-hyperlinks',
+    'update-toc-hyperlinks',
+    'force-remove-heading1-toc',
+    'fix-internal-hyperlinks',
+    'fix-content-ids',
     'center-border-images',
     'remove-whitespace',
     'remove-paragraph-lines',
     'remove-headers-footers',
     'add-document-warning',
     'validate-header2-tables',
+    'set-landscape-margins',
     'list-indentation',
     'bullet-uniformity',
     'normalize-table-lists',
     'smart-tables',
     'adjust-table-padding',
-    'standardize-cell-borders',
+    'standardize-table-borders',
   ];
 
   const currentEnabled = session.processingOptions?.enabledOperations || [];
@@ -1676,7 +1681,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                                 ? 'file_locked'
                                 : result.errorMessages?.some((msg) => msg.toLowerCase().includes('timeout'))
                                   ? 'api_timeout'
-                                  : 'general')
+                                  : result.errorMessages?.some((msg) =>
+                                      msg.toLowerCase().includes('compatibility_mode') ||
+                                      msg.toLowerCase().includes('outdated functions'))
+                                    ? 'word_compatibility'
+                                    : 'general')
                             : undefined,
                           // Store pre-existing revisions (from before DocHub processing)
                           previousRevisions: result.previousRevisions,
@@ -1783,7 +1792,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                             ? 'file_locked'
                             : (error instanceof Error && error.message.toLowerCase().includes('timeout'))
                               ? 'api_timeout'
-                              : 'general',
+                              : (error instanceof Error && (
+                                  error.message.toLowerCase().includes('compatibility_mode') ||
+                                  error.message.toLowerCase().includes('outdated functions')))
+                                ? 'word_compatibility'
+                                : 'general',
                         }
                       : d
                   ),

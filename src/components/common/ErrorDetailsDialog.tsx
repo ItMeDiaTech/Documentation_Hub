@@ -9,7 +9,7 @@ export interface ErrorDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   documentName: string;
   errors: string[];
-  errorType?: 'file_locked' | 'api_timeout' | 'general';
+  errorType?: 'file_locked' | 'api_timeout' | 'word_compatibility' | 'general';
   processedAt?: Date;
 }
 
@@ -70,6 +70,10 @@ export function ErrorDetailsDialog({
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">
                 API Timeout
               </span>
+            ) : errorType === 'word_compatibility' ? (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
+                Compatibility Mode
+              </span>
             ) : (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
                 Error
@@ -107,6 +111,31 @@ export function ErrorDetailsDialog({
             <div className="mb-4 p-3 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
               <p className="text-sm text-orange-800 dark:text-orange-200">
                 <strong>Tip:</strong> The Power Automate service timed out. Please wait a moment and try again.
+              </p>
+            </div>
+          )}
+
+          {/* Helpful Tip for Word Compatibility Mode */}
+          {errorType === 'word_compatibility' && (
+            <div className="mb-4 p-3 rounded-md bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+              <p className="text-sm text-purple-800 dark:text-purple-200 mb-2">
+                <strong>How to Convert Your Document:</strong>
+              </p>
+              <p className="text-sm text-purple-700 dark:text-purple-300 mb-2">
+                It appears the Word document you are trying to process was using outdated functions
+                from an old Word version. Please convert the file by following these steps:
+              </p>
+              <ol className="text-sm text-purple-700 dark:text-purple-300 list-decimal list-inside space-y-1">
+                <li>Open the document in Microsoft Word</li>
+                <li>Click on the word <strong>&quot;Compatibility&quot;</strong> in the Title Bar</li>
+                <li>Click <strong>&quot;Convert&quot;</strong></li>
+                <li>Save and close the document</li>
+                <li>Return here and click <strong>Retry</strong></li>
+              </ol>
+              <p className="text-xs text-purple-600 dark:text-purple-400 mt-3 italic">
+                Be cautious: Even Word&apos;s own conversion methods aren&apos;t always accurate, so some
+                odd formatting may occur as a result. Thoroughly compare the original to the
+                processed file to ensure everything aligns with our Documentation Standards.
               </p>
             </div>
           )}
