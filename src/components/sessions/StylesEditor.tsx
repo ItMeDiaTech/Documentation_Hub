@@ -140,12 +140,15 @@ const lineSpacingOptions = [
 // Text indent: symbol indent + 0.25" hanging indent
 // NOTE: Levels are 0-based (0-8) per DOCX standard
 // NOTE: Using Unicode bullets instead of Wingdings private-use characters for reliable rendering
+// IMPORTANT: These values must match createDefaultListBulletSettings() in SessionContext.tsx
+// Symbol indent: 0.5" base with 0.5" increments per level
+// Text indent: symbol indent + 0.25" hanging indent
 const defaultIndentationLevels: IndentationLevel[] = [
-  { level: 0, symbolIndent: 0.25, textIndent: 0.5, bulletChar: '•', numberedFormat: '1.' },
-  { level: 1, symbolIndent: 0.5, textIndent: 0.75, bulletChar: '○', numberedFormat: 'a.' },
-  { level: 2, symbolIndent: 0.75, textIndent: 1.0, bulletChar: '•', numberedFormat: 'i.' },
-  { level: 3, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: '1)' },
-  { level: 4, symbolIndent: 1.25, textIndent: 1.5, bulletChar: '•', numberedFormat: 'a)' },
+  { level: 0, symbolIndent: 0.5, textIndent: 0.75, bulletChar: '•', numberedFormat: '1.' },
+  { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
+  { level: 2, symbolIndent: 1.5, textIndent: 1.75, bulletChar: '•', numberedFormat: 'i.' },
+  { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },
+  { level: 4, symbolIndent: 2.5, textIndent: 2.75, bulletChar: '•', numberedFormat: 'a)' },
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {

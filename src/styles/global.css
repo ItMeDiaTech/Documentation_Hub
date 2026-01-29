@@ -271,10 +271,26 @@
     color: hsl(var(--custom-sidebar-text)) !important;
   }
 
-  /* Let active and hover states keep their semantic colors */
-  [data-custom-colors='true'] .sidebar-bg .bg-primary,
-  [data-custom-colors='true'] .sidebar-bg .bg-primary * {
+  /* Let active states keep their semantic colors - ensure all text is visible */
+  /* Doubled attribute selector bumps specificity to (0,5,1), beating the span:not() rule above at (0,4,1) */
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary span,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary div,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary div span,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary button,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary span,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary div,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary svg {
     color: hsl(var(--custom-primary-text)) !important;
+  }
+
+  /* SVG stroke override for Lucide icons inside active sidebar items */
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary svg,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary svg *,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary svg,
+  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary svg * {
+    color: hsl(var(--custom-primary-text)) !important;
+    stroke: hsl(var(--custom-primary-text)) !important;
   }
 
   /* Apply subtle secondary text color to muted elements */
@@ -342,6 +358,23 @@
   [data-custom-colors='true'] .text-primary-foreground svg * {
     color: hsl(var(--custom-primary-text)) !important;
     stroke: hsl(var(--custom-primary-text)) !important;
+  }
+
+  /* ========================================
+     READABLE PRIMARY ACCENT COLOR
+     ======================================== */
+  /* Override standalone text-primary (accent text/icons on page background) to use
+     the readable version that guarantees 3:1 contrast against the background.
+     This does NOT affect bg-primary (backgrounds keep the user's chosen color).
+     --custom-primary-readable is auto-calculated in ThemeContext. */
+  [data-custom-colors='true'] .text-primary {
+    color: hsl(var(--custom-primary-readable)) !important;
+  }
+
+  [data-custom-colors='true'] .text-primary svg,
+  [data-custom-colors='true'] svg.text-primary {
+    color: hsl(var(--custom-primary-readable)) !important;
+    stroke: hsl(var(--custom-primary-readable)) !important;
   }
 
   /* ========================================

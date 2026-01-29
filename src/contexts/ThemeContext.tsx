@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { hexToHSL, getContrastTextColor, getSecondaryTextColor } from '@/utils/colorConvert';
+import { hexToHSL, getContrastTextColor, getSecondaryTextColor, ensureReadablePrimary } from '@/utils/colorConvert';
 import { logger } from '@/utils/logger';
 
 type Theme = 'light' | 'dark' | 'system';
@@ -230,10 +230,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const sidebarTextColor = getContrastTextColor(customSidebarColor);
         const primaryTextColor = getContrastTextColor(customPrimaryColor); // For checkmarks!
         const secondaryFontColor = getSecondaryTextColor(foregroundColor); // Subtle variation of primary text!
+        // Readable primary: ensures text-primary (accent icons/badges) is visible against the background
+        // E.g., if primary is white and background is white, this darkens the primary for text usage
+        const primaryReadableColor = ensureReadablePrimary(customPrimaryColor, customBackgroundColor);
 
         // Convert and apply all custom colors
         root.style.setProperty('--custom-primary', hexToHSL(customPrimaryColor));
         root.style.setProperty('--custom-primary-text', hexToHSL(primaryTextColor)); // For checkmarks!
+        root.style.setProperty('--custom-primary-readable', hexToHSL(primaryReadableColor)); // For text-primary accent usage!
         root.style.setProperty('--custom-background', hexToHSL(customBackgroundColor));
         root.style.setProperty('--custom-foreground', hexToHSL(foregroundColor)); // Auto-calculated!
         root.style.setProperty('--custom-header', hexToHSL(customHeaderColor));
@@ -262,6 +266,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.removeAttribute('data-custom-colors');
       root.style.removeProperty('--custom-primary');
       root.style.removeProperty('--custom-primary-text');
+      root.style.removeProperty('--custom-primary-readable');
       root.style.removeProperty('--custom-background');
       root.style.removeProperty('--custom-foreground');
       root.style.removeProperty('--custom-header');

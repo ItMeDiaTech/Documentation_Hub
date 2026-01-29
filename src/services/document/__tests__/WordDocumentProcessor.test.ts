@@ -25,6 +25,9 @@ jest.mock('fs', () => ({
     stat: jest.fn(),
     copyFile: jest.fn(),
     writeFile: jest.fn(),
+    readFile: jest.fn(),
+    mkdir: jest.fn(),
+    readdir: jest.fn(),
   },
 }));
 
@@ -40,15 +43,95 @@ describe('WordDocumentProcessor', () => {
     // Initialize processor
     processor = new WordDocumentProcessor();
 
-    // Create mock document
+    // Create comprehensive mock document that supports the full processing pipeline.
+    // processDocument calls 60+ methods on doc — this mock provides sensible defaults.
+    const mockNumberingManager = {
+      getAbstractNumbering: jest.fn().mockReturnValue(null),
+      getAllNumberingInstances: jest.fn().mockReturnValue([]),
+    };
+    const mockRevisionManager = {
+      acceptAll: jest.fn(),
+      getRevisions: jest.fn().mockReturnValue([]),
+    };
+    const mockBookmarkManager = {
+      getBookmarks: jest.fn().mockReturnValue([]),
+    };
+    const mockZipHandler = {
+      getFile: jest.fn().mockReturnValue(null),
+      setFile: jest.fn(),
+    };
+    const mockCleanupResult = {
+      hyperlinksDefragmented: 0,
+      numberingRemoved: 0,
+      relationshipsRemoved: 0,
+    };
+
     mockDoc = {
-      getParagraphs: jest.fn().mockReturnValue([]),
-      getTables: jest.fn().mockReturnValue([]),
+      // I/O & State
+      getRawXml: jest.fn().mockReturnValue(''),
+      getPart: jest.fn().mockReturnValue(''),
+      setPart: jest.fn(),
       save: jest.fn().mockResolvedValue(undefined),
       toBuffer: jest.fn().mockResolvedValue(Buffer.from('test')),
-      createParagraph: jest.fn(),
+      dispose: jest.fn(),
+      // Paragraphs
+      getParagraphs: jest.fn().mockReturnValue([]),
+      getAllParagraphs: jest.fn().mockReturnValue([]),
+      createParagraph: jest.fn().mockReturnValue({
+        setStyle: jest.fn(),
+        setPreserved: jest.fn(),
+        setSpaceAfter: jest.fn(),
+      }),
+      insertParagraphAt: jest.fn(),
+      removeParagraph: jest.fn(),
+      // Tables
+      getAllTables: jest.fn().mockReturnValue([]),
+      getTables: jest.fn().mockReturnValue([]),
+      getBodyElements: jest.fn().mockReturnValue([]),
+      borderAndCenterLargeImages: jest.fn().mockReturnValue(0),
+      // TOC
+      getTableOfContentsElements: jest.fn().mockReturnValue([]),
+      rebuildTOCs: jest.fn().mockReturnValue([]),
+      removeTocAt: jest.fn(),
+      // Headers/Footers
+      removeAllHeadersFooters: jest.fn().mockReturnValue(0),
+      // Track Changes
+      enableTrackChanges: jest.fn(),
+      disableTrackChanges: jest.fn(),
+      setAcceptRevisionsBeforeSave: jest.fn(),
+      isTrackChangesEnabled: jest.fn().mockReturnValue(false),
+      getRevisionManager: jest.fn().mockReturnValue(mockRevisionManager),
+      // Styles
       addStyle: jest.fn(),
+      getStyles: jest.fn().mockReturnValue([]),
+      applyH1: jest.fn().mockReturnValue(0),
+      applyH2: jest.fn().mockReturnValue(0),
+      applyH3: jest.fn().mockReturnValue(0),
+      applyStylesFromObjects: jest.fn(),
+      // Hyperlinks & Bookmarks
+      defragmentHyperlinks: jest.fn().mockReturnValue(0),
       getHyperlinks: jest.fn().mockReturnValue([]),
+      updateAllHyperlinkColors: jest.fn().mockReturnValue(0),
+      hasBookmark: jest.fn().mockReturnValue(false),
+      createHeadingBookmark: jest.fn(),
+      addTopBookmark: jest.fn(),
+      getBookmarkManager: jest.fn().mockReturnValue(mockBookmarkManager),
+      // Text Replacement
+      replaceFormattedText: jest.fn().mockReturnValue(0),
+      // Lists
+      normalizeTableLists: jest.fn().mockReturnValue({ tablesProcessed: 0, listsConverted: 0 }),
+      removeBlanksBetweenListItems: jest.fn().mockReturnValue(0),
+      removeExtraBlankParagraphs: jest.fn().mockReturnValue({ removed: 0, added: 0, total: 0, preserved: 0 }),
+      ensureBlankLinesAfter1x1Tables: jest.fn().mockReturnValue({ tablesProcessed: 0, blankLinesAdded: 0, existingLinesMarked: 0 }),
+      standardizeNumberedListPrefixes: jest.fn().mockReturnValue(0),
+      getNumberingManager: jest.fn().mockReturnValue(mockNumberingManager),
+      // Images
+      isSmallImageParagraph: jest.fn().mockReturnValue(false),
+      // Page Setup
+      setPageOrientation: jest.fn(),
+      setMargins: jest.fn(),
+      // Archive
+      getZipHandler: jest.fn().mockReturnValue(mockZipHandler),
     } as unknown as jest.Mocked<Document>;
 
     // Setup Document.load mock
@@ -56,14 +139,19 @@ describe('WordDocumentProcessor', () => {
 
     // Setup DocXMLaterProcessor mock
     mockDocXMLater = (processor as any).docXMLater;
-    mockDocXMLater.extractHyperlinks = jest.fn().mockResolvedValue([]);
+    if (mockDocXMLater) {
+      mockDocXMLater.extractHyperlinks = jest.fn().mockResolvedValue([]);
+    }
 
-    // Setup fs mocks
+    // Setup fs mocks — fs is imported as `promises` from 'fs'
     (fs.stat as jest.Mock).mockResolvedValue({
       size: 1024 * 1024, // 1MB
     });
     (fs.copyFile as jest.Mock).mockResolvedValue(undefined);
     (fs.writeFile as jest.Mock).mockResolvedValue(undefined);
+    (fs.readFile as unknown as jest.Mock).mockResolvedValue(Buffer.from('test'));
+    (fs.mkdir as unknown as jest.Mock).mockResolvedValue(undefined);
+    (fs.readdir as unknown as jest.Mock).mockResolvedValue([]);
   });
 
   describe('Document Loading and Validation', () => {
@@ -73,9 +161,10 @@ describe('WordDocumentProcessor', () => {
 
       const result = await processor.processDocument(filePath, options);
 
+      // Show actual errors in assertion diff if processing fails
+      expect(result.errorMessages).toEqual([]);
       expect(result.success).toBe(true);
-      // Updated: Document.load now called with strictParsing: false for robustness
-      expect(Document.load).toHaveBeenCalledWith(filePath, { strictParsing: false });
+      expect(Document.load).toHaveBeenCalledWith(filePath, { strictParsing: false, revisionHandling: 'preserve' });
       expect(fs.stat).toHaveBeenCalledWith(filePath);
     });
 
@@ -107,7 +196,7 @@ describe('WordDocumentProcessor', () => {
       expect(fs.copyFile).toHaveBeenCalled();
       const backupCall = (fs.copyFile as jest.Mock).mock.calls[0];
       expect(backupCall[0]).toBe(filePath);
-      expect(backupCall[1]).toContain('.backup.');
+      expect(backupCall[1]).toContain('Backup');
     });
 
     it('should restore from backup on error', async () => {

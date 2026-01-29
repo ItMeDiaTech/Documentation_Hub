@@ -206,3 +206,101 @@ export function getSecondaryTextColor(primaryTextColor: string): string {
     return '#4D4D4D'; // Safe fallback
   }
 }
+
+/**
+ * Parse a hex color string into R, G, B components (0-255)
+ * @param hex Hex color string (e.g., '#FFFFFF' or 'FFFFFF')
+ * @returns Object with r, g, b values (0-255)
+ */
+function parseHex(hex: string): { r: number; g: number; b: number } {
+  hex = hex.replace(/^#/, '');
+  return {
+    r: parseInt(hex.substring(0, 2), 16),
+    g: parseInt(hex.substring(2, 4), 16),
+    b: parseInt(hex.substring(4, 6), 16),
+  };
+}
+
+/**
+ * Convert R, G, B components (0-255) to a hex color string
+ */
+function toHex(r: number, g: number, b: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return `#${clamp(r).toString(16).padStart(2, '0')}${clamp(g).toString(16).padStart(2, '0')}${clamp(b).toString(16).padStart(2, '0')}`;
+}
+
+/**
+ * Adjust a color's lightness by mixing it toward black (darken) or white (lighten).
+ * @param hex The color to adjust
+ * @param factor Amount to adjust (0 = no change, 1 = fully black/white)
+ * @param direction 'darken' or 'lighten'
+ * @returns Adjusted hex color
+ */
+function adjustLightness(hex: string, factor: number, direction: 'darken' | 'lighten'): string {
+  const { r, g, b } = parseHex(hex);
+  const target = direction === 'darken' ? 0 : 255;
+  return toHex(
+    r + (target - r) * factor,
+    g + (target - g) * factor,
+    b + (target - b) * factor
+  );
+}
+
+/**
+ * Calculate the WCAG contrast ratio between two colors.
+ * @returns Contrast ratio (1:1 to 21:1)
+ */
+export function getContrastRatio(hex1: string, hex2: string): number {
+  const lum1 = calculateLuminance(hex1);
+  const lum2 = calculateLuminance(hex2);
+  const lighter = Math.max(lum1, lum2);
+  const darker = Math.min(lum1, lum2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Ensure a primary accent color is readable when used as text against the background.
+ * If the contrast ratio is too low (e.g., white primary on white background),
+ * the color is progressively darkened or lightened until it meets a 3:1 contrast ratio.
+ *
+ * This does NOT affect bg-primary (backgrounds keep the user's chosen color).
+ * It only affects text-primary (standalone accent text/icons on the page background).
+ *
+ * @param primaryHex The user's chosen primary color
+ * @param backgroundHex The user's chosen background color
+ * @returns A hex color that maintains the primary hue but is readable against the background
+ */
+export function ensureReadablePrimary(primaryHex: string, backgroundHex: string): string {
+  try {
+    if (!primaryHex || !backgroundHex) {
+      logger.error('[ColorConvert] Invalid inputs for ensureReadablePrimary:', { primaryHex, backgroundHex });
+      return primaryHex || '#3B82F6'; // Fallback to default blue
+    }
+
+    const contrastRatio = getContrastRatio(primaryHex, backgroundHex);
+
+    // WCAG AA large text / UI components require 3:1 minimum
+    if (contrastRatio >= 3) {
+      return primaryHex; // Already readable — no adjustment needed
+    }
+
+    // Determine direction: darken primary on light backgrounds, lighten on dark
+    const bgLum = calculateLuminance(backgroundHex);
+    const direction: 'darken' | 'lighten' = bgLum > 0.5 ? 'darken' : 'lighten';
+
+    // Progressively adjust until we hit 3:1 contrast (step in 5% increments)
+    for (let step = 0.05; step <= 1.0; step += 0.05) {
+      const adjusted = adjustLightness(primaryHex, step, direction);
+      const newRatio = getContrastRatio(adjusted, backgroundHex);
+      if (newRatio >= 3) {
+        return adjusted;
+      }
+    }
+
+    // If we couldn't reach 3:1 even at maximum adjustment, use black or white
+    return bgLum > 0.5 ? '#000000' : '#FFFFFF';
+  } catch (error) {
+    logger.error('[ColorConvert] Error in ensureReadablePrimary:', error);
+    return primaryHex || '#3B82F6';
+  }
+}

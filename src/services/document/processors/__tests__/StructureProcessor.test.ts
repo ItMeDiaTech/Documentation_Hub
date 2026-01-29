@@ -10,6 +10,20 @@ import { Document, Paragraph, Run, Hyperlink, Image } from 'docxmlater';
 // Mock docxmlater
 jest.mock('docxmlater');
 
+// Setup Paragraph.create to return a usable mock paragraph
+function createMockWarningParagraph(): any {
+  return {
+    setAlignment: jest.fn(),
+    setSpaceBefore: jest.fn(),
+    setSpaceAfter: jest.fn(),
+    getRuns: jest.fn().mockReturnValue([{
+      setItalic: jest.fn(),
+      setFont: jest.fn(),
+      setSize: jest.fn(),
+    }]),
+  };
+}
+
 describe('StructureProcessor', () => {
   let processor: StructureProcessor;
   let mockDoc: jest.Mocked<Document>;
@@ -17,6 +31,9 @@ describe('StructureProcessor', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     processor = new StructureProcessor();
+
+    // Setup Paragraph.create static method to return mock paragraphs
+    (Paragraph.create as jest.Mock) = jest.fn().mockImplementation(() => createMockWarningParagraph());
 
     mockDoc = {
       getAllParagraphs: jest.fn().mockReturnValue([]),

@@ -38,7 +38,17 @@ describe('TableProcessor', () => {
     });
 
     it('should apply Header2 shading to 1x1 tables', async () => {
-      const mockCell = createMockCell('FFFFFF');
+      // Cell has Heading2 style paragraph — triggers Header2 shading
+      const mockH2Paragraph = createMockParagraph('Heading2');
+      const mockCell = {
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([mockH2Paragraph]),
+        getFormatting: jest.fn().mockReturnValue({ shading: { fill: 'FFFFFF' } }),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('Section Header'),
+      } as unknown as jest.Mocked<TableCell>;
       const mockRow = createMockRow([mockCell]);
       const mockTable = createMockTable([mockRow]); // 1x1 table
 
@@ -180,6 +190,9 @@ function createMockCell(shading: string): jest.Mocked<TableCell> {
     setShading: jest.fn(),
     getParagraphs: jest.fn().mockReturnValue([mockParagraph]),
     getFormatting: jest.fn().mockReturnValue({ shading: { fill: shading } }),
+    setAllRunsFont: jest.fn(),
+    setAllRunsSize: jest.fn(),
+    getText: jest.fn().mockReturnValue('Sample text'),
   } as unknown as jest.Mocked<TableCell>;
 }
 
@@ -189,6 +202,9 @@ function createMockCellWithParagraphs(paragraphs: any[]): jest.Mocked<TableCell>
     setShading: jest.fn(),
     getParagraphs: jest.fn().mockReturnValue(paragraphs),
     getFormatting: jest.fn().mockReturnValue({}),
+    setAllRunsFont: jest.fn(),
+    setAllRunsSize: jest.fn(),
+    getText: jest.fn().mockReturnValue('Sample text'),
   } as unknown as jest.Mocked<TableCell>;
 }
 
@@ -209,6 +225,12 @@ function createMockParagraph(style: string): jest.Mocked<Paragraph> {
     getStyle: jest.fn().mockReturnValue(style),
     getText: jest.fn().mockReturnValue('Sample text'),
     getRuns: jest.fn().mockReturnValue([]),
+    getNumbering: jest.fn().mockReturnValue(null),
+    getContent: jest.fn().mockReturnValue([]),
+    setAlignment: jest.fn(),
+    setSpaceBefore: jest.fn(),
+    setSpaceAfter: jest.fn(),
+    setLineSpacing: jest.fn(),
   } as unknown as jest.Mocked<Paragraph>;
 }
 
@@ -217,6 +239,12 @@ function createMockParagraphWithRuns(runs: any[]): jest.Mocked<Paragraph> {
     getStyle: jest.fn().mockReturnValue('Normal'),
     getText: jest.fn().mockReturnValue('Sample text'),
     getRuns: jest.fn().mockReturnValue(runs),
+    getNumbering: jest.fn().mockReturnValue(null),
+    getContent: jest.fn().mockReturnValue([]),
+    setAlignment: jest.fn(),
+    setSpaceBefore: jest.fn(),
+    setSpaceAfter: jest.fn(),
+    setLineSpacing: jest.fn(),
   } as unknown as jest.Mocked<Paragraph>;
 }
 
@@ -226,5 +254,6 @@ function createMockRun(bold: boolean): jest.Mocked<Run> {
     getFormatting: jest.fn().mockReturnValue({ bold }),
     setFont: jest.fn(),
     setSize: jest.fn(),
+    setBold: jest.fn(),
   } as unknown as jest.Mocked<Run>;
 }

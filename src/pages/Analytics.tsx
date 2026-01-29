@@ -179,63 +179,66 @@ export const Analytics = memo(function Analytics() {
       animate="visible"
       className="p-6 space-y-6 max-w-[1400px] mx-auto"
     >
-      {/* Header */}
-      <motion.div variants={itemVariants} className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold mb-1 flex items-center gap-2">
-              <BarChart3 className="w-8 h-8" />
-              Analytics
-            </h1>
-            <p className="text-muted-foreground">Track performance and insights</p>
-          </div>
-          <div className="h-12 w-px bg-border" />
-          {hoveredData ? (
-            <div className="text-base font-medium flex items-center gap-4">
-              <span className="text-muted-foreground">{hoveredData.date}:</span>
-              {hoveredData.Documents !== undefined && (
-                <span className="text-green-500">Docs: {hoveredData.Documents}</span>
-              )}
-              {hoveredData.Hyperlinks !== undefined && (
-                <span className="text-blue-500">Links: {hoveredData.Hyperlinks}</span>
-              )}
-              {hoveredData.Feedback !== undefined && (
-                <span className="text-purple-500">Feedback: {hoveredData.Feedback}</span>
-              )}
-              {hoveredData['Time (min)'] !== undefined && (
-                <span className="text-orange-500">Time: {hoveredData['Time (min)']}m</span>
-              )}
+      {/* Sticky Header Section - includes title and stats */}
+      <div className="sticky top-0 z-10 bg-background -mx-6 px-6 pb-4 border-b border-border/50">
+        {/* Header */}
+        <motion.div variants={itemVariants} className="flex items-center justify-between pt-0 pb-4">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-3xl font-bold mb-1 flex items-center gap-2">
+                <BarChart3 className="w-8 h-8" />
+                Analytics
+              </h1>
+              <p className="text-muted-foreground">Track performance and insights</p>
             </div>
-          ) : (
-            <span className="text-muted-foreground italic text-sm">Hover over charts for details</span>
-          )}
-        </div>
-      </motion.div>
+            <div className="h-12 w-px bg-border" />
+            {hoveredData ? (
+              <div className="text-base font-medium flex items-center gap-4">
+                <span className="text-muted-foreground">{hoveredData.date}:</span>
+                {hoveredData.Documents !== undefined && (
+                  <span className="text-green-500">Docs: {hoveredData.Documents}</span>
+                )}
+                {hoveredData.Hyperlinks !== undefined && (
+                  <span className="text-blue-500">Links: {hoveredData.Hyperlinks}</span>
+                )}
+                {hoveredData.Feedback !== undefined && (
+                  <span className="text-purple-500">Feedback: {hoveredData.Feedback}</span>
+                )}
+                {hoveredData['Time (min)'] !== undefined && (
+                  <span className="text-orange-500">Time: {hoveredData['Time (min)']}m</span>
+                )}
+              </div>
+            ) : (
+              <span className="text-muted-foreground italic text-sm">Hover over charts for details</span>
+            )}
+          </div>
+        </motion.div>
 
-      {/* Stats Summary - Sticky */}
-      <motion.div
-        variants={itemVariants}
-        className="sticky top-0 z-10 bg-background py-4 -mt-4 -mx-6 px-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 border-b border-border/50"
-      >
-        {statsSummary.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <Card key={stat.title} className="border-border/50">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-foreground mb-1">{stat.title}</p>
-                    <p className="text-2xl font-bold">{stat.value}</p>
+        {/* Stats Summary */}
+        <motion.div
+          variants={itemVariants}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+        >
+          {statsSummary.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={stat.title} className="border-border/50">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-foreground mb-1">{stat.title}</p>
+                      <p className="text-2xl font-bold">{stat.value}</p>
+                    </div>
+                    <div className={cn('p-3 rounded-lg', stat.bgColor)}>
+                      <Icon className={cn('w-6 h-6', stat.color)} />
+                    </div>
                   </div>
-                  <div className={cn('p-3 rounded-lg', stat.bgColor)}>
-                    <Icon className={cn('w-6 h-6', stat.color)} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </motion.div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </motion.div>
+      </div>
 
       {/* View Mode Selector */}
       <motion.div variants={itemVariants} className="flex gap-2">

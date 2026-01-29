@@ -804,9 +804,11 @@ export function CurrentSession() {
                                 ? "Close File Before Processing"
                                 : doc.errorType === 'api_timeout'
                                   ? "Power Automate Timeout"
-                                  : "Error"}
+                                  : doc.errorType === 'word_compatibility'
+                                    ? "Convert File in Word"
+                                    : "Error"}
                             </button>
-                            {(doc.errorType === 'file_locked' || doc.errorType === 'api_timeout') && (
+                            {(doc.errorType === 'file_locked' || doc.errorType === 'api_timeout' || doc.errorType === 'word_compatibility') && (
                               <Button
                                 size="xs"
                                 onClick={() => handleProcessDocument(doc.id)}
