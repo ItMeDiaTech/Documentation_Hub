@@ -94,7 +94,6 @@ Changelog and version-specific documentation.
 - Contributing guidelines
 
 **Personal Documentation** (gitignored):
-- CLAUDE.md files (AI assistant context)
 - TODO.md, NOTES.md, SCRATCH.md
 - Personal status tracking
 - Developer-specific workspace files
@@ -113,4 +112,4 @@ When adding new documentation:
 ## Maintenance History
 
 - **2025-10-19**: Initial documentation structure created to organize scattered markdown files
-- **2025-11-25**: Major cleanup - removed duplicate user guides, reorganized analysis/implementation files, moved test files to scripts/, removed personal AI assistant files from root
+- **2025-11-25**: Major cleanup - removed duplicate user guides, reorganized analysis/implementation files, moved test files to scripts/, removed personal workspace files from root
