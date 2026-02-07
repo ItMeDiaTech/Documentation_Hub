@@ -27,7 +27,7 @@ The following files/directories are automatically excluded:
 
 - `node_modules/`, `dist/`, `dist-electron/`, `release/`
 - `*.log`, `log.txt`, `*.docx` test files
-- Personal/AI files: `.claude/`, `**/TODO.md`, `**/NOTES.md`
+- Personal files: `**/TODO.md`, `**/NOTES.md`
 - Development files: `config/`, `data/`, test scripts
 - Build artifacts: `*.exe`, coverage reports
 

@@ -119,7 +119,6 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
   // Content Structure Group
   // ═══════════════════════════════════════════════════════════
   if (enabled.has('remove-paragraph-lines')) flags.removeParagraphLines = true;
-  if (enabled.has('preserve-user-blank-structures')) flags.preserveUserBlankStructures = true;
   if (enabled.has('remove-headers-footers')) flags.removeHeadersFooters = true;
   if (enabled.has('add-document-warning')) flags.addDocumentWarning = true;
   if (enabled.has('center-border-images')) flags.centerAndBorderImages = true;
@@ -215,11 +214,6 @@ export function sessionToProcessorOptions(session: Session): WordProcessingOptio
   // Enable auto-operations based on configuration
   if (options.smartTables) {
     options.tableUniformity = true;
-  }
-
-  // Set preservation flags for blank lines
-  if (enabledOps.includes('validate-header2-tables')) {
-    options.preserveBlankLinesAfterHeader2Tables = true;
   }
 
   return options;

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils, shell } from 'electron';
+import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron';
 import type {
   HyperlinkProcessingOptions,
   BatchProcessingOptions,
@@ -290,10 +290,28 @@ const electronAPI = {
   autoDetectCertificates: () => ipcRenderer.invoke('auto-detect-certificates'),
   removeCertificate: (certPath: string) => ipcRenderer.invoke('remove-certificate', certPath),
   testGitHubConnection: () => ipcRenderer.invoke('test-github-connection'),
-  openExternal: (url: string) => shell.openExternal(url),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
 
-  // Event system helpers
+  // Event system helpers (SECURITY: restricted to allowed channels only)
   on: (channel: string, callback: (...args: any[]) => void) => {
+    const allowedChannels = [
+      'window-maximized', 'window-unmaximized',
+      'window-fullscreen', 'window-unfullscreen',
+      'window-always-on-top-changed',
+      'hyperlink:batch-progress',
+      'dictionary:sync-progress', 'dictionary:sync-complete',
+      'update-checking', 'update-available', 'update-not-available',
+      'update-error', 'update-download-progress', 'update-downloaded',
+      'update-fallback-mode', 'update-extracting', 'update-status',
+      'update-manual-download',
+      'debug-network-request', 'debug-cert-error',
+      'debug-network-error', 'debug-tls-error',
+      'certificate-check-complete', 'certificate-configured',
+    ];
+    if (!allowedChannels.includes(channel)) {
+      console.error(`[Preload] Blocked IPC listener on disallowed channel: ${channel}`);
+      return () => {}; // no-op unsubscribe
+    }
     const subscription = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);
     ipcRenderer.on(channel, subscription);
     return () => ipcRenderer.removeListener(channel, subscription);
@@ -302,6 +320,22 @@ const electronAPI = {
     channel: string,
     callback: (event: IpcRendererEvent, ...args: any[]) => void
   ) => {
+    // Same allowlist as on() — only permitted channels can be unsubscribed
+    const allowedChannels = [
+      'window-maximized', 'window-unmaximized',
+      'window-fullscreen', 'window-unfullscreen',
+      'window-always-on-top-changed',
+      'hyperlink:batch-progress',
+      'dictionary:sync-progress', 'dictionary:sync-complete',
+      'update-checking', 'update-available', 'update-not-available',
+      'update-error', 'update-download-progress', 'update-downloaded',
+      'update-fallback-mode', 'update-extracting', 'update-status',
+      'update-manual-download',
+      'debug-network-request', 'debug-cert-error',
+      'debug-network-error', 'debug-tls-error',
+      'certificate-check-complete', 'certificate-configured',
+    ];
+    if (!allowedChannels.includes(channel)) return;
     ipcRenderer.removeListener(channel, callback);
   },
 

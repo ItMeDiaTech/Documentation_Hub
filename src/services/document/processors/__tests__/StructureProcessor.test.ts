@@ -4,104 +4,44 @@
  * Tests blank paragraph removal, structure operations, and document warnings.
  */
 
+import { vi, describe, it, expect, beforeEach, type Mocked } from 'vitest';
 import { StructureProcessor } from '../StructureProcessor';
 import { Document, Paragraph, Run, Hyperlink, Image } from 'docxmlater';
 
 // Mock docxmlater
-jest.mock('docxmlater');
+vi.mock('docxmlater');
 
 // Setup Paragraph.create to return a usable mock paragraph
 function createMockWarningParagraph(): any {
   return {
-    setAlignment: jest.fn(),
-    setSpaceBefore: jest.fn(),
-    setSpaceAfter: jest.fn(),
-    getRuns: jest.fn().mockReturnValue([{
-      setItalic: jest.fn(),
-      setFont: jest.fn(),
-      setSize: jest.fn(),
+    setAlignment: vi.fn(),
+    setSpaceBefore: vi.fn(),
+    setSpaceAfter: vi.fn(),
+    getRuns: vi.fn().mockReturnValue([{
+      setItalic: vi.fn(),
+      setFont: vi.fn(),
+      setSize: vi.fn(),
     }]),
   };
 }
 
 describe('StructureProcessor', () => {
   let processor: StructureProcessor;
-  let mockDoc: jest.Mocked<Document>;
+  let mockDoc: Mocked<Document>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     processor = new StructureProcessor();
 
     // Setup Paragraph.create static method to return mock paragraphs
-    (Paragraph.create as jest.Mock) = jest.fn().mockImplementation(() => createMockWarningParagraph());
+    (Paragraph.create as ReturnType<typeof vi.fn>) = vi.fn().mockImplementation(() => createMockWarningParagraph());
 
     mockDoc = {
-      getAllParagraphs: jest.fn().mockReturnValue([]),
-      removeExtraBlankParagraphs: jest.fn().mockReturnValue({ removed: 0, added: 0, total: 0, preserved: 0 }),
-      ensureBlankLinesAfter1x1Tables: jest.fn().mockReturnValue({
-        tablesProcessed: 0,
-        blankLinesAdded: 0,
-        existingLinesMarked: 0,
-      }),
-      removeAllHeadersFooters: jest.fn().mockReturnValue(0),
-      addParagraph: jest.fn().mockReturnThis(),
-    } as unknown as jest.Mocked<Document>;
-  });
+      getAllParagraphs: vi.fn().mockReturnValue([]),
+      removeAllHeadersFooters: vi.fn().mockReturnValue(0),
+      addParagraph: vi.fn().mockReturnThis(),
+    } as unknown as Mocked<Document>;
 
-  describe('removeExtraBlankParagraphs', () => {
-    it('should call document method with default options', async () => {
-      mockDoc.removeExtraBlankParagraphs.mockReturnValue({ removed: 5, added: 2, total: 7, preserved: 0 });
-
-      const result = await processor.removeExtraBlankParagraphs(mockDoc);
-
-      expect(result.removed).toBe(5);
-      expect(result.added).toBe(2);
-      expect(mockDoc.removeExtraBlankParagraphs).toHaveBeenCalledWith({
-        addStructureBlankLines: true,
-      });
-    });
-
-    it('should disable structure blank lines when specified', async () => {
-      await processor.removeExtraBlankParagraphs(mockDoc, false);
-
-      expect(mockDoc.removeExtraBlankParagraphs).toHaveBeenCalledWith({
-        addStructureBlankLines: false,
-      });
-    });
-  });
-
-  describe('ensureBlankLinesAfter1x1Tables', () => {
-    it('should process 1x1 tables with default options', async () => {
-      mockDoc.ensureBlankLinesAfter1x1Tables.mockReturnValue({
-        tablesProcessed: 3,
-        blankLinesAdded: 2,
-        existingLinesMarked: 1,
-      });
-
-      const result = await processor.ensureBlankLinesAfter1x1Tables(mockDoc);
-
-      expect(result.tablesProcessed).toBe(3);
-      expect(result.blankLinesAdded).toBe(2);
-      expect(mockDoc.ensureBlankLinesAfter1x1Tables).toHaveBeenCalledWith({
-        spacingAfter: 120,
-        markAsPreserved: true,
-        style: 'Normal',
-      });
-    });
-
-    it('should use custom spacing options', async () => {
-      await processor.ensureBlankLinesAfter1x1Tables(mockDoc, {
-        spacingAfter: 240,
-        markAsPreserved: false,
-        style: 'BodyText',
-      });
-
-      expect(mockDoc.ensureBlankLinesAfter1x1Tables).toHaveBeenCalledWith({
-        spacingAfter: 240,
-        markAsPreserved: false,
-        style: 'BodyText',
-      });
-    });
   });
 
   describe('removeExtraWhitespace', () => {
@@ -135,6 +75,65 @@ describe('StructureProcessor', () => {
       const count = await processor.removeExtraWhitespace(mockDoc);
 
       expect(count).toBe(0);
+    });
+
+    it('should strip leading spaces from first run of paragraph', async () => {
+      const mockRun = createMockRun('   Hello world');
+      const mockParagraph = createMockParagraphWithRuns([mockRun]);
+      mockDoc.getAllParagraphs.mockReturnValue([mockParagraph]);
+
+      const count = await processor.removeExtraWhitespace(mockDoc);
+
+      expect(count).toBe(1);
+      expect(mockRun.setText).toHaveBeenCalledWith('Hello world');
+    });
+
+    it('should strip leading spaces across whitespace-only first run', async () => {
+      const mockRun0 = createMockRun('   ');
+      const mockRun1 = createMockRun(' Content');
+      const mockParagraph = createMockParagraphWithRuns([mockRun0, mockRun1]);
+      mockDoc.getAllParagraphs.mockReturnValue([mockParagraph]);
+
+      const count = await processor.removeExtraWhitespace(mockDoc);
+
+      expect(count).toBe(2);
+      expect(mockRun0.setText).toHaveBeenCalledWith('');
+      expect(mockRun1.setText).toHaveBeenCalledWith('Content');
+    });
+
+    it('should not strip leading tabs from paragraph start', async () => {
+      const mockRun = createMockRun('\tHello world');
+      const mockParagraph = createMockParagraphWithRuns([mockRun]);
+      mockDoc.getAllParagraphs.mockReturnValue([mockParagraph]);
+
+      const count = await processor.removeExtraWhitespace(mockDoc);
+
+      expect(count).toBe(0);
+      expect(mockRun.setText).not.toHaveBeenCalled();
+    });
+
+    it('should not strip leading spaces from mid-paragraph runs', async () => {
+      const mockRun0 = createMockRun('Hello');
+      const mockRun1 = createMockRun('   world');
+      const mockParagraph = createMockParagraphWithRuns([mockRun0, mockRun1]);
+      mockDoc.getAllParagraphs.mockReturnValue([mockParagraph]);
+
+      const count = await processor.removeExtraWhitespace(mockDoc);
+
+      expect(count).toBe(1);
+      expect(mockRun0.setText).not.toHaveBeenCalled();
+      expect(mockRun1.setText).toHaveBeenCalledWith(' world');
+    });
+
+    it('should strip leading spaces and collapse multiple spaces', async () => {
+      const mockRun = createMockRun('   Hello   world');
+      const mockParagraph = createMockParagraphWithRuns([mockRun]);
+      mockDoc.getAllParagraphs.mockReturnValue([mockParagraph]);
+
+      const count = await processor.removeExtraWhitespace(mockDoc);
+
+      expect(count).toBe(1);
+      expect(mockRun.setText).toHaveBeenCalledWith('Hello world');
     });
   });
 
@@ -209,8 +208,8 @@ describe('StructureProcessor', () => {
   describe('isParagraphTrulyEmpty', () => {
     it('should identify empty paragraphs', () => {
       const mockParagraph = {
-        getNumbering: jest.fn().mockReturnValue(null),
-        getContent: jest.fn().mockReturnValue([]),
+        getNumbering: vi.fn().mockReturnValue(null),
+        getContent: vi.fn().mockReturnValue([]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -220,8 +219,8 @@ describe('StructureProcessor', () => {
 
     it('should not mark list items as empty', () => {
       const mockParagraph = {
-        getNumbering: jest.fn().mockReturnValue({ level: 0 }),
-        getContent: jest.fn().mockReturnValue([]),
+        getNumbering: vi.fn().mockReturnValue({ level: 0 }),
+        getContent: vi.fn().mockReturnValue([]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -232,8 +231,8 @@ describe('StructureProcessor', () => {
     it('should not mark paragraphs with hyperlinks as empty', () => {
       const mockHyperlink = Object.create(Hyperlink.prototype);
       const mockParagraph = {
-        getNumbering: jest.fn().mockReturnValue(null),
-        getContent: jest.fn().mockReturnValue([mockHyperlink]),
+        getNumbering: vi.fn().mockReturnValue(null),
+        getContent: vi.fn().mockReturnValue([mockHyperlink]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -244,8 +243,8 @@ describe('StructureProcessor', () => {
     it('should not mark paragraphs with images as empty', () => {
       const mockImage = Object.create(Image.prototype);
       const mockParagraph = {
-        getNumbering: jest.fn().mockReturnValue(null),
-        getContent: jest.fn().mockReturnValue([mockImage]),
+        getNumbering: vi.fn().mockReturnValue(null),
+        getContent: vi.fn().mockReturnValue([mockImage]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -254,12 +253,12 @@ describe('StructureProcessor', () => {
     });
 
     it('should identify paragraphs with only empty runs as empty', () => {
-      const mockRun = { getText: jest.fn().mockReturnValue('   ') };
+      const mockRun = { getText: vi.fn().mockReturnValue('   ') };
       Object.setPrototypeOf(mockRun, Run.prototype);
 
       const mockParagraph = {
-        getNumbering: jest.fn().mockReturnValue(null),
-        getContent: jest.fn().mockReturnValue([mockRun]),
+        getNumbering: vi.fn().mockReturnValue(null),
+        getContent: vi.fn().mockReturnValue([mockRun]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -302,50 +301,50 @@ describe('StructureProcessor', () => {
 
 // Helper functions
 
-function createMockRun(text: string): jest.Mocked<Run> {
+function createMockRun(text: string): Mocked<Run> {
   return {
-    getText: jest.fn().mockReturnValue(text),
-    setText: jest.fn(),
-    getFormatting: jest.fn().mockReturnValue({}),
-    setItalic: jest.fn(),
-  } as unknown as jest.Mocked<Run>;
+    getText: vi.fn().mockReturnValue(text),
+    setText: vi.fn(),
+    getFormatting: vi.fn().mockReturnValue({}),
+    setItalic: vi.fn(),
+  } as unknown as Mocked<Run>;
 }
 
-function createMockFormattedRun(bold: boolean, italic: boolean): jest.Mocked<Run> {
+function createMockFormattedRun(bold: boolean, italic: boolean): Mocked<Run> {
   return {
-    getText: jest.fn().mockReturnValue('Text'),
-    setText: jest.fn(),
-    getFormatting: jest.fn().mockReturnValue({ bold, italic }),
-    setItalic: jest.fn(),
-  } as unknown as jest.Mocked<Run>;
+    getText: vi.fn().mockReturnValue('Text'),
+    setText: vi.fn(),
+    getFormatting: vi.fn().mockReturnValue({ bold, italic }),
+    setItalic: vi.fn(),
+  } as unknown as Mocked<Run>;
 }
 
-function createMockParagraphWithRuns(runs: any[]): jest.Mocked<Paragraph> {
+function createMockParagraphWithRuns(runs: any[]): Mocked<Paragraph> {
   return {
-    getRuns: jest.fn().mockReturnValue(runs),
-    getNumbering: jest.fn().mockReturnValue(null),
-    getContent: jest.fn().mockReturnValue(runs),
-    getText: jest.fn().mockReturnValue(''),
-    getStyle: jest.fn().mockReturnValue('Normal'),
-  } as unknown as jest.Mocked<Paragraph>;
+    getRuns: vi.fn().mockReturnValue(runs),
+    getNumbering: vi.fn().mockReturnValue(null),
+    getContent: vi.fn().mockReturnValue(runs),
+    getText: vi.fn().mockReturnValue(''),
+    getStyle: vi.fn().mockReturnValue('Normal'),
+  } as unknown as Mocked<Paragraph>;
 }
 
-function createMockTextParagraph(text: string): jest.Mocked<Paragraph> {
+function createMockTextParagraph(text: string): Mocked<Paragraph> {
   return {
-    getRuns: jest.fn().mockReturnValue([]),
-    getNumbering: jest.fn().mockReturnValue(null),
-    getContent: jest.fn().mockReturnValue([]),
-    getText: jest.fn().mockReturnValue(text),
-    getStyle: jest.fn().mockReturnValue('Normal'),
-  } as unknown as jest.Mocked<Paragraph>;
+    getRuns: vi.fn().mockReturnValue([]),
+    getNumbering: vi.fn().mockReturnValue(null),
+    getContent: vi.fn().mockReturnValue([]),
+    getText: vi.fn().mockReturnValue(text),
+    getStyle: vi.fn().mockReturnValue('Normal'),
+  } as unknown as Mocked<Paragraph>;
 }
 
-function createMockStyledParagraph(style: string, text: string): jest.Mocked<Paragraph> {
+function createMockStyledParagraph(style: string, text: string): Mocked<Paragraph> {
   return {
-    getRuns: jest.fn().mockReturnValue([]),
-    getNumbering: jest.fn().mockReturnValue(null),
-    getContent: jest.fn().mockReturnValue([]),
-    getText: jest.fn().mockReturnValue(text),
-    getStyle: jest.fn().mockReturnValue(style),
-  } as unknown as jest.Mocked<Paragraph>;
+    getRuns: vi.fn().mockReturnValue([]),
+    getNumbering: vi.fn().mockReturnValue(null),
+    getContent: vi.fn().mockReturnValue([]),
+    getText: vi.fn().mockReturnValue(text),
+    getStyle: vi.fn().mockReturnValue(style),
+  } as unknown as Mocked<Paragraph>;
 }

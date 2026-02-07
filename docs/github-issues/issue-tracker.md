@@ -41,7 +41,7 @@ This document tracks the status of all predictive analysis issues submitted to G
 - **Timeline:** Already happening on every cold start
 - **Effort:** 2 hours
 - **Status:** Open
-- **Trigger Comment:** Added @claude research request
+- **Trigger Comment:** Added research request
 
 **Problem:** Three separate `app.whenReady()` handlers run in parallel with no execution order guarantee.
 
@@ -63,7 +63,7 @@ This document tracks the status of all predictive analysis issues submitted to G
 - **Timeline:** Already happening, worse as database grows
 - **Effort:** 4 hours
 - **Status:** Open
-- **Trigger Comment:** Added @claude research request
+- **Trigger Comment:** Added research request
 
 **Problem:** Four nested context providers execute synchronous initialization in render path, blocking React.
 
@@ -87,7 +87,7 @@ This document tracks the status of all predictive analysis issues submitted to G
 - **Timeline:** 2-4 weeks → slowdown; 1-2 months → crashes
 - **Effort:** 3 hours
 - **Status:** Open
-- **Trigger Comment:** Added @claude research request
+- **Trigger Comment:** Added research request
 
 **Problem:** GlobalStatsProvider creates its own IndexedDB connection instead of using ConnectionPool.
 
@@ -110,7 +110,7 @@ This document tracks the status of all predictive analysis issues submitted to G
 - **Timeline:** 4-6 weeks → slowdown; 2-3 months → critical
 - **Effort:** 6 hours
 - **Status:** Open
-- **Trigger Comment:** Added @claude research request
+- **Trigger Comment:** Added research request
 
 **Problem:** Every 3 seconds, ALL sessions saved to IndexedDB, triggering expensive cleanup.
 
@@ -132,7 +132,7 @@ This document tracks the status of all predictive analysis issues submitted to G
 - **Timeline:** 1-2 weeks (when user enters invalid color)
 - **Effort:** 2 hours
 - **Status:** Open
-- **Trigger Comment:** Added @claude research request
+- **Trigger Comment:** Added research request
 
 **Problem:** setState called inside useEffect error handler creates infinite re-render loop.
 
@@ -154,7 +154,7 @@ This document tracks the status of all predictive analysis issues submitted to G
 - **Timeline:** Already happening
 - **Effort:** 30 minutes
 - **Status:** Open
-- **Trigger Comment:** Added @claude research request
+- **Trigger Comment:** Added research request
 
 **Problem:** Main window visible immediately before React loads, showing black screen.
 
@@ -174,7 +174,7 @@ This document tracks the status of all predictive analysis issues submitted to G
 - **Timeline:** Already happening for proxy users
 - **Effort:** 1 hour
 - **Status:** Open
-- **Trigger Comment:** Added @claude research request
+- **Trigger Comment:** Added research request
 
 **Problem:** Certificate check and auto-updater initialize independently, causing race condition.
 
@@ -265,7 +265,7 @@ This document should be updated when:
 
 ## Notes
 
-- All issues include `@claude` trigger comments to initiate automated research
+- All issues include trigger comments to initiate automated research
 - Research scratchpad contains full technical analysis for all issues
 - Each issue has detailed acceptance criteria and testing strategies
 - Effort estimates are conservative and include testing time

@@ -235,5 +235,3 @@ When creating each issue:
 ---
 
 **Created:** 2025-11-13
-**Analyzer:** Claude (Sonnet 4.5)
-**Session:** 011CV5bvYLndiBd6RVaRDnD1

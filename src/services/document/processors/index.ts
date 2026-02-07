@@ -17,7 +17,7 @@ export { HyperlinkProcessor, hyperlinkProcessor } from "./HyperlinkProcessor";
 export type { UrlUpdateResult, HyperlinkProcessingResult, HyperlinkProcessingOptions } from "./HyperlinkProcessor";
 
 export { TableProcessor, tableProcessor } from "./TableProcessor";
-export type { TableShadingSettings, TableFormattingResult, Header2TableValidationResult } from "./TableProcessor";
+export type { TableShadingSettings, TableFormattingResult, Header2TableValidationResult, HLPTableAnalysis, HLPVariant, HLPTableProcessingResult } from "./TableProcessor";
 
 export { ListProcessor, listProcessor } from "./ListProcessor";
 export type { ListIndentationLevel, ListBulletSettings, ListProcessingResult } from "./ListProcessor";
@@ -26,4 +26,3 @@ export { StyleProcessor, styleProcessor } from "./StyleProcessor";
 export type { SessionStyle, StyleApplicationResult } from "./StyleProcessor";
 
 export { StructureProcessor, structureProcessor } from "./StructureProcessor";
-export type { ParagraphRemovalResult, BlankLineResult } from "./StructureProcessor";

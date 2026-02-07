@@ -141,14 +141,14 @@ const lineSpacingOptions = [
 // NOTE: Levels are 0-based (0-8) per DOCX standard
 // NOTE: Using Unicode bullets instead of Wingdings private-use characters for reliable rendering
 // IMPORTANT: These values must match createDefaultListBulletSettings() in SessionContext.tsx
-// Symbol indent: 0.5" base with 0.5" increments per level
-// Text indent: symbol indent + 0.25" hanging indent
+// Cascading indentation: slider sets L0 symbol indent (default 0.25")
+// Each level: text indent = symbol indent + 0.25", next symbol = prev text + 0.25"
 const defaultIndentationLevels: IndentationLevel[] = [
-  { level: 0, symbolIndent: 0.5, textIndent: 0.75, bulletChar: '•', numberedFormat: '1.' },
-  { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },
-  { level: 2, symbolIndent: 1.5, textIndent: 1.75, bulletChar: '•', numberedFormat: 'i.' },
-  { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },
-  { level: 4, symbolIndent: 2.5, textIndent: 2.75, bulletChar: '•', numberedFormat: 'a)' },
+  { level: 0, symbolIndent: 0.25, textIndent: 0.50, bulletChar: '•', numberedFormat: '1.' },
+  { level: 1, symbolIndent: 0.75, textIndent: 1.00, bulletChar: '○', numberedFormat: 'a.' },
+  { level: 2, symbolIndent: 1.25, textIndent: 1.50, bulletChar: '•', numberedFormat: 'i.' },
+  { level: 3, symbolIndent: 1.75, textIndent: 2.00, bulletChar: '○', numberedFormat: '1)' },
+  { level: 4, symbolIndent: 2.25, textIndent: 2.50, bulletChar: '•', numberedFormat: 'a)' },
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {
@@ -815,53 +815,30 @@ export const StylesEditor = memo(function StylesEditor({
                 Symbol Position Increment
               </label>
               <span className="text-sm font-medium tabular-nums">
-                {(listBulletSettings.indentationLevels[0]?.symbolIndent || 0.5).toFixed(2)}"
+                {(listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25).toFixed(2)}"
               </span>
             </div>
             <input
               type="range"
-              value={listBulletSettings.indentationLevels[0]?.symbolIndent || 0.5}
+              value={listBulletSettings.indentationLevels[0]?.symbolIndent || 0.25}
               onChange={(e) => {
-                const increment = Number(e.target.value);
+                const startIndent = Number(e.target.value); // Slider sets L0 symbol indent
                 const hangingIndent = 0.25; // Fixed hanging indent
-                // Default pattern: closed, open, closed, open, closed
-                const newLevels: IndentationLevel[] = [
-                  {
-                    level: 0,
-                    symbolIndent: increment * 1,
-                    textIndent: increment * 1 + hangingIndent,
-                    bulletChar: listBulletSettings.indentationLevels[0]?.bulletChar || '•',
-                    numberedFormat: '1.',
-                  },
-                  {
-                    level: 1,
-                    symbolIndent: increment * 2,
-                    textIndent: increment * 2 + hangingIndent,
-                    bulletChar: listBulletSettings.indentationLevels[1]?.bulletChar || '○',
-                    numberedFormat: 'a.',
-                  },
-                  {
-                    level: 2,
-                    symbolIndent: increment * 3,
-                    textIndent: increment * 3 + hangingIndent,
-                    bulletChar: listBulletSettings.indentationLevels[2]?.bulletChar || '•',
-                    numberedFormat: 'i.',
-                  },
-                  {
-                    level: 3,
-                    symbolIndent: increment * 4,
-                    textIndent: increment * 4 + hangingIndent,
-                    bulletChar: listBulletSettings.indentationLevels[3]?.bulletChar || '○',
-                    numberedFormat: '1)',
-                  },
-                  {
-                    level: 4,
-                    symbolIndent: increment * 5,
-                    textIndent: increment * 5 + hangingIndent,
-                    bulletChar: listBulletSettings.indentationLevels[4]?.bulletChar || '•',
-                    numberedFormat: 'a)',
-                  },
-                ];
+                const numberedFormats = ['1.', 'a.', 'i.', '1)', 'a)'];
+                // Cascading: each level's text = symbol + 0.25", next symbol = prev text + 0.25"
+                const newLevels: IndentationLevel[] = [];
+                let currentSymbol = startIndent;
+                for (let i = 0; i < 5; i++) {
+                  const currentText = currentSymbol + hangingIndent;
+                  newLevels.push({
+                    level: i,
+                    symbolIndent: currentSymbol,
+                    textIndent: currentText,
+                    bulletChar: listBulletSettings.indentationLevels[i]?.bulletChar || (i % 2 === 0 ? '•' : '○'),
+                    numberedFormat: numberedFormats[i],
+                  });
+                  currentSymbol = currentText + hangingIndent;
+                }
                 // Only update local state for visual feedback during drag
                 setListBulletSettings({ ...listBulletSettings, indentationLevels: newLevels });
               }}

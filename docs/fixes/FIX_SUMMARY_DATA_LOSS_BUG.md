@@ -355,6 +355,5 @@ This fix addresses a critical data loss vulnerability in the `removeExtraParagra
 
 ---
 
-**Fix implemented by**: Claude Code
 **Date**: October 24, 2025
 **Status**: ✅ COMPLETE AND VERIFIED

@@ -491,7 +491,7 @@ Configuration is in `typedoc.json`:
 - **[Type Definitions](./TYPE_DEFINITIONS.md)** - TypeScript types guide
 - **[docxmlater Library](https://github.com/ItMeDiaTech/docXMLater)** - Underlying DOCX library
 - **[Main README](../../README.md)** - Project overview
-- **[CLAUDE.md](../../CLAUDE.md)** - Development guidelines
+
 
 ---
 

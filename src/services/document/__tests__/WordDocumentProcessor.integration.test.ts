@@ -7,6 +7,7 @@
  * Coverage target: 90%+ of WordDocumentProcessor.ts
  */
 
+import { vi, describe, it, expect, beforeEach, type Mocked } from 'vitest';
 import {
   WordDocumentProcessor,
   WordProcessingOptions,
@@ -18,32 +19,32 @@ import * as path from 'path';
 import { hyperlinkService } from '../../HyperlinkService';
 
 // Mock ONLY external dependencies, NOT docxmlater
-jest.mock('../../HyperlinkService');
-jest.mock('@/utils/MemoryMonitor', () => ({
+vi.mock('../../HyperlinkService');
+vi.mock('@/utils/MemoryMonitor', () => ({
   MemoryMonitor: {
-    checkMemory: jest.fn(),
-    forceGarbageCollection: jest.fn(),
-    logMemoryUsage: jest.fn(),
-    compareCheckpoints: jest.fn(),
-    getMemoryStats: jest.fn().mockReturnValue({
+    checkMemory: vi.fn(),
+    forceGarbageCollection: vi.fn(),
+    logMemoryUsage: vi.fn(),
+    compareCheckpoints: vi.fn(),
+    getMemoryStats: vi.fn().mockReturnValue({
       heapUsed: 100,
       heapTotal: 200,
       rss: 300,
     }),
   },
 }));
-jest.mock('@/utils/logger', () => ({
+vi.mock('@/utils/logger', () => ({
   logger: {
-    namespace: jest.fn().mockReturnValue({
-      info: jest.fn(),
-      debug: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
+    namespace: vi.fn().mockReturnValue({
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
     }),
   },
-  startTimer: jest.fn().mockReturnValue({
-    end: jest.fn().mockReturnValue(0),
-    elapsed: jest.fn().mockReturnValue(0),
+  startTimer: vi.fn().mockReturnValue({
+    end: vi.fn().mockReturnValue(0),
+    elapsed: vi.fn().mockReturnValue(0),
   }),
   debugModes: {
     DOCUMENT_PROCESSING: 'debug:documentProcessing',
@@ -54,7 +55,7 @@ jest.mock('@/utils/logger', () => ({
     BACKUPS: 'debug:backups',
     LIST_PROCESSING: 'debug:listProcessing',
   },
-  isDebugEnabled: jest.fn().mockReturnValue(false),
+  isDebugEnabled: vi.fn().mockReturnValue(false),
 }));
 
 const fixturesDir = path.join(__dirname, 'fixtures');
@@ -63,7 +64,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
   let processor: WordDocumentProcessor;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     processor = new WordDocumentProcessor();
   });
 
@@ -89,7 +90,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     it('should reject files exceeding size limit', async () => {
       const filePath = path.join(fixturesDir, 'sample.docx');
 
-      jest.spyOn(fs, 'stat').mockResolvedValue({
+      vi.spyOn(fs, 'stat').mockResolvedValue({
         size: 200 * 1024 * 1024, // 200MB
       } as any);
 
@@ -103,7 +104,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       expect(result.errorMessages[0]).toContain('200.00MB');
 
       // Restore fs.stat
-      jest.restoreAllMocks();
+      vi.restoreAllMocks();
     });
 
     it('should handle corrupt DOCX files gracefully', async () => {
@@ -120,7 +121,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     it('should create backup before processing when requested', async () => {
       const filePath = path.join(fixturesDir, 'sample.docx');
 
-      const copyFileSpy = jest.spyOn(fs, 'copyFile').mockResolvedValue(undefined);
+      const copyFileSpy = vi.spyOn(fs, 'copyFile').mockResolvedValue(undefined);
 
       const result = await processor.processDocument(filePath, {
         createBackup: true,
@@ -132,7 +133,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       expect(backupPath).toContain('Backup');
       expect(result.backupPath).toBeDefined();
 
-      jest.restoreAllMocks();
+      vi.restoreAllMocks();
     });
 
     it('should handle file not found errors', async () => {
@@ -359,7 +360,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
         path.join(fixturesDir, 'hyperlinks.docx'),
       ];
 
-      const progressCallback = jest.fn();
+      const progressCallback = vi.fn();
 
       await processor.batchProcess(files, {}, 1, progressCallback);
 
@@ -390,7 +391,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       const files = Array(15).fill(path.join(fixturesDir, 'sample.docx'));
 
       // Mock global.gc
-      global.gc = jest.fn();
+      global.gc = vi.fn();
 
       await processor.batchProcess(files, {}, 3);
 
@@ -430,7 +431,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
         },
       };
 
-      (hyperlinkService.processHyperlinksWithApi as jest.Mock).mockResolvedValue(mockApiResponse);
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof vi.fn>).mockResolvedValue(mockApiResponse);
 
       const result = await processor.processDocument(filePath, {
         apiEndpoint: 'https://api.example.com',
@@ -448,7 +449,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     it('should handle API failures gracefully', async () => {
       const filePath = path.join(fixturesDir, 'theSource.docx');
 
-      (hyperlinkService.processHyperlinksWithApi as jest.Mock).mockResolvedValue({
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof vi.fn>).mockResolvedValue({
         success: false,
         error: 'API timeout',
       });

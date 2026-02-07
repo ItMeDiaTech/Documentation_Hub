@@ -9,7 +9,7 @@
  * - Style definition management
  */
 
-import { Document, Paragraph, Run, Style, pointsToTwips, isRevision } from "docxmlater";
+import { Document, Hyperlink, Paragraph, Run, Style, pointsToTwips, isRevision } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("StyleProcessor");
@@ -201,13 +201,33 @@ export class StyleProcessor {
       }
     }
 
+    // Build a set of runs that belong to real Hyperlink elements.
+    // para.getRuns() includes runs from Hyperlink children, so we must distinguish
+    // real hyperlink runs from false-hyperlink runs (runs with Hyperlink character
+    // style that are NOT inside a w:hyperlink element).
+    const realHyperlinkRuns = new Set<Run>();
+    for (const item of para.getContent()) {
+      if (item instanceof Hyperlink) {
+        const hRun = item.getRun();
+        if (hRun) realHyperlinkRuns.add(hRun);
+      }
+    }
+
     // Apply text formatting to all runs
     const runs = para.getRuns();
     for (const run of runs) {
-      // Skip hyperlink-styled runs to preserve their formatting (blue color, underline)
-      // Without this, hyperlinks become black text and lose clickability in Word
-      if (typeof run.isHyperlinkStyled === 'function' && run.isHyperlinkStyled()) {
+      // Skip runs from real Hyperlink elements — preserve their formatting
+      if (realHyperlinkRuns.has(run)) {
         continue;
+      }
+      // If the run has Hyperlink character style but is NOT a real hyperlink,
+      // strip the false character style so it gets proper paragraph formatting
+      if (typeof run.isHyperlinkStyled === 'function' && run.isHyperlinkStyled()) {
+        run.setCharacterStyle(undefined as unknown as string);
+        log.debug(
+          `[FalseHyperlink] Stripped Hyperlink character style from run: ` +
+          `"${run.getText()?.substring(0, 40) || ''}"`
+        );
       }
 
       run.setFont(style.fontFamily);

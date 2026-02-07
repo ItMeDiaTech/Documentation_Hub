@@ -10,27 +10,10 @@
  * - Document warnings
  */
 
-import { Document, Paragraph, Run, Hyperlink, Image } from "docxmlater";
+import { Document, Paragraph, Run, Hyperlink, Image, ImageRun } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("StructureProcessor");
-
-/**
- * Result of paragraph removal operation
- */
-export interface ParagraphRemovalResult {
-  removed: number;
-  added: number;
-}
-
-/**
- * Result of blank line insertion
- */
-export interface BlankLineResult {
-  tablesProcessed: number;
-  blankLinesAdded: number;
-  existingLinesMarked: number;
-}
 
 /**
  * Structure processing service
@@ -39,53 +22,8 @@ export class StructureProcessor {
   private readonly DEBUG = process.env.NODE_ENV !== "production";
 
   /**
-   * Remove extra blank paragraphs using docxmlater's built-in method
-   */
-  async removeExtraBlankParagraphs(
-    doc: Document,
-    addStructureBlankLines: boolean = true
-  ): Promise<ParagraphRemovalResult> {
-    log.debug("Removing extra blank paragraphs using framework method");
-
-    const result = doc.removeExtraBlankParagraphs({
-      addStructureBlankLines,
-    });
-
-    log.info(
-      `Removed ${result.removed} blank paragraphs, added ${result.added} structure lines`
-    );
-
-    return result;
-  }
-
-  /**
-   * Ensure blank lines after 1x1 tables
-   */
-  async ensureBlankLinesAfter1x1Tables(
-    doc: Document,
-    options: {
-      spacingAfter?: number;
-      markAsPreserved?: boolean;
-      style?: string;
-    } = {}
-  ): Promise<BlankLineResult> {
-    const result = doc.ensureBlankLinesAfter1x1Tables({
-      spacingAfter: options.spacingAfter ?? 120,
-      markAsPreserved: options.markAsPreserved ?? true,
-      style: options.style ?? "Normal",
-    });
-
-    log.info(
-      `Processed ${result.tablesProcessed} 1x1 tables: ` +
-        `Added ${result.blankLinesAdded} blank lines, ` +
-        `Marked ${result.existingLinesMarked} existing as preserved`
-    );
-
-    return result;
-  }
-
-  /**
-   * Remove extra whitespace from text runs, including cross-run double spaces
+   * Remove extra whitespace from text runs - Collapse multiple spaces to single space,
+   * strip leading spaces from paragraphs, and handle cross-run double spaces.
    */
   async removeExtraWhitespace(doc: Document): Promise<number> {
     let cleanedCount = 0;
@@ -93,15 +31,34 @@ export class StructureProcessor {
 
     for (const para of paragraphs) {
       const runs = para.getRuns();
+      let seenTextInParagraph = false;
 
       for (let i = 0; i < runs.length; i++) {
         const run = runs[i];
         const text = run.getText();
-        if (!text) continue;
+        if (!text) {
+          // ImageRuns have no text but ARE visible content —
+          // text after them is not at paragraph start and its leading
+          // space must be preserved (e.g., image + " CC: your supervisor...")
+          if (run instanceof ImageRun) {
+            seenTextInParagraph = true;
+          }
+          continue;
+        }
 
         // Step 1: Collapse multiple consecutive SPACES only
         // Preserve tabs (\t) and newlines (\n) as they represent intentional formatting (<w:tab/> and <w:br/>)
         let cleaned = text.replace(/ {2,}/g, " ");
+
+        // Step 1.5: Strip leading spaces from paragraph start
+        // Word uses setLeftIndent() for proper indentation, not literal spaces
+        // Only strip space characters (U+0020), NOT tabs or other whitespace
+        if (!seenTextInParagraph) {
+          cleaned = cleaned.replace(/^ +/, "");
+          if (cleaned.length > 0) {
+            seenTextInParagraph = true;
+          }
+        }
 
         // Step 2: Trim trailing space if next run starts with space (cross-run double space)
         if (i < runs.length - 1) {

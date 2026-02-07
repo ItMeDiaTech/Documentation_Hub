@@ -599,10 +599,6 @@ Contributions are welcome! Please follow these guidelines:
 
 ## Security
 
-### Reporting Vulnerabilities
-
-If you discover a security vulnerability, please email security@example.com instead of using the issue tracker.
-
 ### Security Measures
 
 - Automatic security updates
@@ -632,7 +628,6 @@ Built with these excellent open-source projects:
 
 - **Issues:** [GitHub Issues](https://github.com/ItMeDiaTech/Documentation_Hub/issues)
 - **Discussions:** [GitHub Discussions](https://github.com/ItMeDiaTech/Documentation_Hub/discussions)
-- **Email:** support@example.com
 
 ## Changelog
 

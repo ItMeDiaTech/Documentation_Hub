@@ -294,6 +294,9 @@ docs/archive/
 /analyze-*.js
 /debug-*.js
 /compare-*.js
+/diagnose-*.js
+/inspect-*.js
+/process-*.js
 /trace-*.js
 
 # Extracted DOCX folders (unzipped for debugging)

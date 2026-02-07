@@ -275,7 +275,7 @@ textNode['#text'] = newValue;
 
 ````
 
-#### Task 2.2: Update src/services/CLAUDE.md
+#### Task 2.2: Update src/services documentation
 - **Risk Level:** 🟢 LOW
 - **Complexity:** LOW
 - **Steps:**
@@ -283,7 +283,7 @@ textNode['#text'] = newValue;
   2. Add warning about attribute accessors
   3. Reference OOXML_HYPERLINK_ARCHITECTURE.md
 - **Files to modify:**
-  - `src/services/CLAUDE.md`
+  - `src/services/` documentation
 
 **New Section to Add:**
 
@@ -358,7 +358,7 @@ const xmlParser = new XMLParser({
    - Add "Code Smell Detection" section
    - Add before/after examples
 
-2. **Update src/services/CLAUDE.md**
+2. **Update src/services documentation**
    - Document parser configuration
    - Add warning about accessors
 
@@ -424,7 +424,7 @@ const xmlParser = new XMLParser({
 2. **After changes:** Commit with descriptive message
 
    ```bash
-   git add src/services/DocumentProcessingService.ts OOXML_HYPERLINK_ARCHITECTURE.md src/services/CLAUDE.md
+   git add src/services/DocumentProcessingService.ts OOXML_HYPERLINK_ARCHITECTURE.md
    git commit -m "Fix OOXML XML attribute accessors to match parser config"
    ```
 
@@ -466,7 +466,7 @@ const xmlParser = new XMLParser({
 
 - ✏️ `src/services/DocumentProcessingService.ts` (16 line changes)
 - ✏️ `OOXML_HYPERLINK_ARCHITECTURE.md` (new section added)
-- ✏️ `src/services/CLAUDE.md` (new warning added)
+- ✏️ `src/services/` documentation updated
 
 ### Reference Files (Read-Only)
 
@@ -489,7 +489,7 @@ const xmlParser = new XMLParser({
 4. ✅ **Run validation** (TypeScript: 0 errors, Build: PASS)
 5. ✅ **Execute Phase 2** (Utility functions already existed)
 6. ✅ **Execute Phase 3** (Documentation updated - OOXML_HYPERLINK_ARCHITECTURE.md)
-7. ✅ **Update src/services/CLAUDE.md** (Task 2.2 - COMPLETE, lines 46-130)
+7. ✅ **Update src/services documentation** (Task 2.2 - COMPLETE)
 8. ⏳ **Manual testing** (Recommended: Test with real .docx containing hyperlinks)
 9. ⏳ **Commit changes** with descriptive message (if not already committed)
 
@@ -517,4 +517,4 @@ All refactoring objectives achieved. Ready for manual testing and git commit.
 ---
 
 _Refactoring Plan Created: 2025-10-16T22:30:00Z_
-_References: OOXML_HYPERLINK_ARCHITECTURE.md, DocumentProcessingService.ts, CLAUDE.md (types/)_
+_References: OOXML_HYPERLINK_ARCHITECTURE.md, DocumentProcessingService.ts_

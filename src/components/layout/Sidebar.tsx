@@ -182,15 +182,24 @@ export const Sidebar = memo(function Sidebar() {
             </AnimatePresence>
           </div>
           {item.closeable && !collapsed && (
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={(e) => {
                 e.stopPropagation();
                 item.onClose?.();
               }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  item.onClose?.();
+                }
+              }}
               className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-background/20 pointer-events-none group-hover:pointer-events-auto"
             >
               <X className="w-3 h-3" />
-            </button>
+            </div>
           )}
           {item.badge && !collapsed && (
             <span className="ml-auto px-1.5 py-0.5 text-xs bg-destructive text-destructive-foreground rounded-full">

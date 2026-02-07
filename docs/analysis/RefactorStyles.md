@@ -771,7 +771,7 @@ standardizeListPrefixFormatting: true, // Always enabled
 
 #### Phase 4-5 Documentation Missing
 
-docXMLater README.md and CLAUDE.md lag significantly:
+docXMLater README.md documentation lags significantly:
 
 **Update Priority:**
 

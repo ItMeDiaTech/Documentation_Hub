@@ -9,7 +9,7 @@
  * - Table shading color configuration
  */
 
-import { Document, Table, Paragraph, ImageRun, Image, pointsToTwips } from "docxmlater";
+import { Document, Table, Paragraph, ImageRun, Image, pointsToTwips, inchesToTwips } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("TableProcessor");
@@ -22,11 +22,31 @@ const HLP_TIPS_COLOR = 'FFF2CC';    // Light yellow tips column
 const HLP_BORDER_SIZE = 18;         // 2.25pt in eighths of a point
 
 /**
+ * HLP table layout variant
+ */
+export type HLPVariant = 'single-column' | 'two-column';
+
+/**
+ * Detailed HLP table analysis result
+ */
+export interface HLPTableAnalysis {
+  isHLP: boolean;
+  variant: HLPVariant | null;
+  columnCount: number;
+  rowCount: number;
+  hasTipsColumn: boolean;
+  headerText: string;
+  headerCellSpan: number;
+}
+
+/**
  * Result of HLP table processing
  */
 export interface HLPTableProcessingResult {
   tablesFound: number;
   headersStyled: number;
+  singleColumnTables: number;
+  twoColumnTables: number;
 }
 
 /**
@@ -55,6 +75,12 @@ export interface TableShadingSettings {
   paddingOtherBottom?: number; // default: 0
   paddingOtherLeft?: number; // default: 0.08
   paddingOtherRight?: number; // default: 0.08
+  // List indentation levels for HLP table content (from session ListBulletSettings)
+  listIndentationLevels?: Array<{
+    level: number;
+    symbolIndent: number; // inches
+    textIndent: number;   // inches
+  }>;
 }
 
 /**
@@ -79,6 +105,28 @@ export interface Header2TableValidationResult {
  */
 export class TableProcessor {
   private readonly DEBUG = process.env.NODE_ENV !== "production";
+
+  /** Colors used by HLP tables — preserved during table uniformity operations. */
+  private static readonly HLP_PRESERVED_COLORS = [HLP_HEADER_COLOR, HLP_TIPS_COLOR];
+
+  /**
+   * Apply Normal-style spacing settings to a paragraph.
+   * Shared by table uniformity (header rows, shaded cells) and HLP content formatting.
+   */
+  private applyNormalSpacing(
+    para: Paragraph,
+    settings?: { normalSpaceBefore?: number; normalSpaceAfter?: number; normalLineSpacing?: number }
+  ): void {
+    if (settings?.normalSpaceBefore !== undefined) {
+      para.setSpaceBefore(pointsToTwips(settings.normalSpaceBefore));
+    }
+    if (settings?.normalSpaceAfter !== undefined) {
+      para.setSpaceAfter(pointsToTwips(settings.normalSpaceAfter));
+    }
+    if (settings?.normalLineSpacing !== undefined) {
+      para.setLineSpacing(pointsToTwips(settings.normalLineSpacing * 12));
+    }
+  }
 
   /**
    * Recursively search XMLElement tree for w:shd element and extract val attribute
@@ -250,7 +298,7 @@ export class TableProcessor {
     cell: ReturnType<ReturnType<Table["getRows"]>[number]["getCells"]>[number]
   ): boolean {
     const paragraphs = cell.getParagraphs();
-    log.info(`cellContainsAnyList: checking ${paragraphs.length} paragraphs`);
+    log.debug(`cellContainsAnyList: checking ${paragraphs.length} paragraphs`);
 
     for (let i = 0; i < paragraphs.length; i++) {
       const para = paragraphs[i];
@@ -259,24 +307,24 @@ export class TableProcessor {
 
       // Method 1: Check Word list formatting via getNumbering()
       if (numbering && numbering.numId) {
-        log.info(`  Para ${i}: FOUND LIST via getNumbering() numId=${numbering.numId}, text="${text.substring(0, 40)}..."`);
+        log.debug(`  Para ${i}: FOUND LIST via getNumbering() numId=${numbering.numId}, text="${text.substring(0, 40)}..."`);
         return true;
       }
 
       // Method 2: Check Word list formatting via hasNumbering() (handles edge cases)
       if (typeof para.hasNumbering === 'function' && para.hasNumbering()) {
-        log.info(`  Para ${i}: FOUND LIST via hasNumbering(), text="${text.substring(0, 40)}..."`);
+        log.debug(`  Para ${i}: FOUND LIST via hasNumbering(), text="${text.substring(0, 40)}..."`);
         return true;
       }
 
       // Method 3: Check for typed list prefixes (fallback)
       if (this.hasTypedListPrefix(text)) {
-        log.info(`  Para ${i}: FOUND LIST via typed prefix, text="${text.substring(0, 40)}..."`);
+        log.debug(`  Para ${i}: FOUND LIST via typed prefix, text="${text.substring(0, 40)}..."`);
         return true;
       }
     }
 
-    log.info(`  -> NO LISTS FOUND in ${paragraphs.length} paragraphs`);
+    log.debug(`  -> NO LISTS FOUND in ${paragraphs.length} paragraphs`);
     return false;
   }
 
@@ -292,10 +340,10 @@ export class TableProcessor {
   ): boolean {
     const lineCount = this.countCellTextLines(cell);
     if (lineCount > 2) {
-      log.info(`should1x1TableBeExcluded: ${lineCount} lines (>2) -> EXCLUDED`);
+      log.debug(`should1x1TableBeExcluded: ${lineCount} lines (>2) -> EXCLUDED`);
       return true;
     }
-    log.info(`should1x1TableBeExcluded: ${lineCount} lines (<=2) -> NOT EXCLUDED`);
+    log.debug(`should1x1TableBeExcluded: ${lineCount} lines (<=2) -> NOT EXCLUDED`);
     return false;
   }
 
@@ -322,11 +370,18 @@ export class TableProcessor {
 
     log.info(`Processing ${tables.length} tables for uniformity`);
     log.debug(`Shading colors: Header2=${header2Shading}, Other=${otherShading}`);
-    log.info(`[DEBUG] preserveBold=${preserveBold} (from shadingSettings?.preserveBold=${shadingSettings?.preserveBold})`);
+    log.debug(`preserveBold=${preserveBold} (from shadingSettings?.preserveBold=${shadingSettings?.preserveBold})`);
 
     let tableIndex = 0;
     for (const table of tables) {
       try {
+        // Skip floating tables and tables containing nested tables
+        if (this.shouldSkipTable(table)) {
+          log.debug(`[Table ${tableIndex}] Skipping floating/nested table`);
+          tableIndex++;
+          continue;
+        }
+
         const rows = table.getRows();
         const rowCount = rows.length;
 
@@ -349,9 +404,6 @@ export class TableProcessor {
             if (this.should1x1TableBeExcluded(singleCell)) {
               const lineCount = this.countCellTextLines(singleCell);
               log.debug(`[Table ${tableIndex}] 1x1 table: Skipping styling (${lineCount} lines)`);
-
-              // Clear existing shading from excluded tables
-              singleCell.setShading({ fill: 'auto' });
 
               tablesProcessed++;
               tableIndex++;
@@ -394,9 +446,8 @@ export class TableProcessor {
               const { hasShading, fill: existingFill } = this.getResolvedCellShading(cell, table, doc, { tableIndex, rowIndex, cellIndex });
 
               if (isFirstRow) {
-                // Check if header row has special shading that should be preserved (orange/yellow)
-                const preservedColors = ["FFC000", "FFF2CC"];
-                const shouldPreserveShading = hasShading && existingFill && preservedColors.includes(existingFill.toUpperCase());
+                // Check if header row has special shading that should be preserved (HLP orange/yellow)
+                const shouldPreserveShading = hasShading && existingFill && TableProcessor.HLP_PRESERVED_COLORS.includes(existingFill.toUpperCase());
 
                 if (shouldPreserveShading) {
                   log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Preserving original shading #${existingFill}`);
@@ -421,22 +472,12 @@ export class TableProcessor {
                   if (!isListItem) {
                     para.setAlignment("center");
                   }
-                  // Apply Normal style spacing from user settings
-                  if (shadingSettings?.normalSpaceBefore !== undefined) {
-                    para.setSpaceBefore(pointsToTwips(shadingSettings.normalSpaceBefore));
-                  }
-                  if (shadingSettings?.normalSpaceAfter !== undefined) {
-                    para.setSpaceAfter(pointsToTwips(shadingSettings.normalSpaceAfter));
-                  }
-                  if (shadingSettings?.normalLineSpacing !== undefined) {
-                    para.setLineSpacing(pointsToTwips(shadingSettings.normalLineSpacing * 12));
-                  }
+                  this.applyNormalSpacing(para, shadingSettings);
                 }
               } else if (hasShading) {
                 // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
-                // EXCEPTION: Preserve special shading colors (orange #FFC000, light yellow #FFF2CC)
-                const preservedColors = ["FFC000", "FFF2CC"];
-                const shouldPreserveShading = existingFill && preservedColors.includes(existingFill.toUpperCase());
+                // EXCEPTION: Preserve HLP table shading colors (orange/yellow)
+                const shouldPreserveShading = existingFill && TableProcessor.HLP_PRESERVED_COLORS.includes(existingFill.toUpperCase());
 
                 if (shouldPreserveShading) {
                   log.debug(`[Table ${tableIndex}] DATA cell (${rowIndex},${cellIndex}): Preserving original shading #${existingFill}`);
@@ -461,16 +502,7 @@ export class TableProcessor {
                   if (!isListItem) {
                     para.setAlignment("center");
                   }
-                  // Apply Normal style spacing from user settings
-                  if (shadingSettings?.normalSpaceBefore !== undefined) {
-                    para.setSpaceBefore(pointsToTwips(shadingSettings.normalSpaceBefore));
-                  }
-                  if (shadingSettings?.normalSpaceAfter !== undefined) {
-                    para.setSpaceAfter(pointsToTwips(shadingSettings.normalSpaceAfter));
-                  }
-                  if (shadingSettings?.normalLineSpacing !== undefined) {
-                    para.setLineSpacing(pointsToTwips(shadingSettings.normalLineSpacing * 12));
-                  }
+                  this.applyNormalSpacing(para, shadingSettings);
                 }
               } else {
                 // DATA ROW WITHOUT SHADING: Preserve original formatting
@@ -527,6 +559,12 @@ export class TableProcessor {
 
     for (const table of tables) {
       try {
+        // Skip floating tables and tables containing nested tables
+        if (this.shouldSkipTable(table)) {
+          log.debug(`Skipping floating/nested table in smart formatting`);
+          continue;
+        }
+
         const rows = table.getRows();
         if (rows.length === 0) continue;
 
@@ -590,6 +628,12 @@ export class TableProcessor {
     const affectedCells: string[] = [];
 
     for (const table of tables) {
+      // Skip floating tables and tables containing nested tables
+      if (this.shouldSkipTable(table)) {
+        log.debug(`Skipping floating/nested table in Header2 validation`);
+        continue;
+      }
+
       const rows = table.getRows();
 
       for (const row of rows) {
@@ -657,6 +701,8 @@ export class TableProcessor {
   detect1x1Tables(doc: Document): Table[] {
     const tables = doc.getTables();
     return tables.filter((table) => {
+      // Skip floating tables and tables containing nested tables
+      if (this.shouldSkipTable(table)) return false;
       const rows = table.getRows();
       return rows.length === 1 && rows[0].getCells().length === 1;
     });
@@ -694,6 +740,12 @@ export class TableProcessor {
 
     for (const table of tables) {
       try {
+        // Skip floating tables and tables containing nested tables
+        if (this.shouldSkipTable(table)) {
+          log.debug(`Skipping floating/nested table in numeric centering`);
+          continue;
+        }
+
         const rows = table.getRows();
 
         // Skip 1x1 tables (usually headers)
@@ -782,6 +834,9 @@ export class TableProcessor {
 
     for (const table of tables) {
       try {
+        // Skip floating tables and tables containing nested tables
+        if (this.shouldSkipTable(table)) continue;
+
         for (const row of table.getRows()) {
           const formatting = row.getFormatting();
           // Remove specified height - let row auto-size
@@ -803,13 +858,6 @@ export class TableProcessor {
   }
 
   /**
-   * Convert inches to twips (1 inch = 1440 twips)
-   */
-  private inchesToTwips(inches: number): number {
-    return Math.round(inches * 1440);
-  }
-
-  /**
    * Standardize cell margins and enable text wrapping on all table cells.
    * Sets 0" top/bottom margins, 0.08" left/right margins, and enables text wrapping.
    *
@@ -825,6 +873,9 @@ export class TableProcessor {
 
     for (const table of tables) {
       try {
+        // Skip floating tables and tables containing nested tables
+        if (this.shouldSkipTable(table)) continue;
+
         for (const row of table.getRows()) {
           for (const cell of row.getCells()) {
             // Set standard margins: 0" top/bottom, 0.08" left/right
@@ -883,6 +934,9 @@ export class TableProcessor {
 
     for (const table of tables) {
       try {
+        // Skip floating tables and tables containing nested tables
+        if (this.shouldSkipTable(table)) continue;
+
         const rows = table.getRows();
         if (rows.length === 0) {
           emptyTablesSkipped++;
@@ -899,10 +953,10 @@ export class TableProcessor {
         const right = is1x1Table ? padding1x1Right : paddingOtherRight;
 
         // Convert inches to twips
-        const topTwips = this.inchesToTwips(top);
-        const bottomTwips = this.inchesToTwips(bottom);
-        const leftTwips = this.inchesToTwips(left);
-        const rightTwips = this.inchesToTwips(right);
+        const topTwips = inchesToTwips(top);
+        const bottomTwips = inchesToTwips(bottom);
+        const leftTwips = inchesToTwips(left);
+        const rightTwips = inchesToTwips(right);
 
         for (const row of rows) {
           for (const cell of row.getCells()) {
@@ -949,6 +1003,9 @@ export class TableProcessor {
 
     for (const table of tables) {
       try {
+        // Skip floating tables and tables containing nested tables
+        if (this.shouldSkipTable(table)) continue;
+
         const rows = table.getRows();
         if (rows.length < 2) continue; // Need header + at least one data row
 
@@ -981,11 +1038,23 @@ export class TableProcessor {
 
         if (!hasNumericContent) continue;
 
-        // Set first column width to 1 inch
+        // Set first column width to 1 inch (grid-level)
         table.setColumnWidth(0, STEP_COLUMN_WIDTH);
+
+        // Also update individual cell widths (tcW) for column 0 in all rows.
+        // Word uses tcW to determine the actual rendered column width,
+        // overriding tblGrid/gridCol when present. Without this, cells retain
+        // their original wider tcW values from the source document.
+        for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+          const cell = table.getCell(rowIndex, 0);
+          if (cell && cell.getColumnSpan() <= 1) {
+            cell.setWidthType(STEP_COLUMN_WIDTH, "dxa");
+          }
+        }
+
         adjustedCount++;
 
-        log.debug(`Set Step column width to 1 inch for table`);
+        log.debug(`Set Step column width to 1 inch for table (grid + cell widths)`);
       } catch (error) {
         log.warn(`Failed to apply Step column width: ${error}`);
       }
@@ -1011,6 +1080,9 @@ export class TableProcessor {
 
     for (const table of tables) {
       try {
+        // Skip floating tables and tables containing nested tables
+        if (this.shouldSkipTable(table)) continue;
+
         const rows = table.getRows();
 
         // Only process 1x1 tables
@@ -1023,10 +1095,6 @@ export class TableProcessor {
         // Skip excluded 1x1 tables (>2 lines of text)
         if (this.should1x1TableBeExcluded(cell)) {
           log.debug(`Skipping Heading 2 style for 1x1 table (>2 lines)`);
-
-          // Clear existing shading from excluded tables
-          cell.setShading({ fill: 'auto' });
-
           continue;
         }
 
@@ -1059,44 +1127,114 @@ export class TableProcessor {
   // ═══════════════════════════════════════════════════════════
 
   /**
+   * Analyze a table to determine if it is an HLP (High Level Process) table
+   * and classify its variant (single-column or two-column with tips).
+   *
+   * Detection signals:
+   * - Gate check: First row, first cell must have FFC000 (orange) shading
+   * - Minimum 2 rows (header + at least 1 data row)
+   * - Variant determined by column count in data rows
+   * - Tips column detected by FFF2CC shading in last cell of data rows
+   *
+   * @param table - Table to analyze
+   * @returns Full analysis including variant, column count, tips detection
+   */
+  analyzeHLPTable(table: Table): HLPTableAnalysis {
+    const defaultResult: HLPTableAnalysis = {
+      isHLP: false, variant: null, columnCount: 0, rowCount: 0,
+      hasTipsColumn: false, headerText: '', headerCellSpan: 1,
+    };
+
+    const rows = table.getRows();
+    if (rows.length < 2) return defaultResult; // Need header + at least 1 data row
+
+    const firstRow = rows[0];
+    const firstRowCells = firstRow.getCells();
+    if (firstRowCells.length === 0) return defaultResult;
+
+    const firstCell = firstRowCells[0];
+    const formatting = firstCell.getFormatting();
+    const fill = formatting.shading?.fill?.toUpperCase();
+
+    // Gate check: Must have FFC000 header shading
+    if (fill !== HLP_HEADER_COLOR) return defaultResult;
+
+    const headerText = firstCell.getText().trim();
+    const headerCellSpan = firstCell.getColumnSpan() || 1;
+
+    // Determine column count from data rows (more reliable than header row)
+    const dataRow = rows[1];
+    const dataRowCells = dataRow.getCells();
+    const columnCount = dataRowCells.length;
+
+    // Detect tips column: check if any data row has FFF2CC in the last cell
+    let hasTipsColumn = false;
+    if (columnCount >= 2) {
+      for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i].getCells();
+        const lastCell = cells[cells.length - 1];
+        if (lastCell) {
+          const cellFill = lastCell.getFormatting().shading?.fill?.toUpperCase();
+          if (cellFill === HLP_TIPS_COLOR) {
+            hasTipsColumn = true;
+            break;
+          }
+        }
+      }
+    }
+
+    const variant: HLPVariant = columnCount <= 1 ? 'single-column' : 'two-column';
+
+    return {
+      isHLP: true,
+      variant,
+      columnCount,
+      rowCount: rows.length,
+      hasTipsColumn,
+      headerText,
+      headerCellSpan,
+    };
+  }
+
+  /**
    * Detect if a table is an HLP (High Level Process) table.
-   * HLP tables are identified by having a first row with FFC000 (orange) shading.
+   * Delegates to analyzeHLPTable() for backward compatibility.
    *
    * @param table - Table to check
    * @returns true if table is an HLP table
    */
   isHLPTable(table: Table): boolean {
-    const rows = table.getRows();
-    if (rows.length === 0) return false;
-
-    const firstRow = rows[0];
-    const cells = firstRow.getCells();
-    if (cells.length === 0) return false;
-
-    const firstCell = cells[0];
-    const formatting = firstCell.getFormatting();
-    const fill = formatting.shading?.fill?.toUpperCase();
-
-    return fill === HLP_HEADER_COLOR;
+    return this.analyzeHLPTable(table).isHLP;
   }
 
   /**
-   * Apply HLP-specific table-level borders.
-   * - Outer borders: 2.25pt orange (#FFC000)
-   * - Inside Horizontal: None
-   * - Inside Vertical: 2.25pt orange (#FFC000)
+   * Apply HLP-specific table-level borders, variant-aware.
    *
-   * @param table - HLP table to format
+   * Single-column: Table-level borders on all 4 sides, no inside borders.
+   * Two-column: Clear table-level borders (cell-level borders handle it).
    */
-  private applyHLPTableBorders(table: Table): void {
-    table.setBorders({
-      top: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
-      bottom: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
-      left: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
-      right: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
-      insideH: { style: 'none', size: 0, color: 'auto' },
-      insideV: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
-    });
+  private applyHLPTableBorders(table: Table, analysis: HLPTableAnalysis): void {
+    if (analysis.variant === 'single-column') {
+      // Option_2 pattern: table-level borders on all 4 sides
+      table.setBorders({
+        top: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+        bottom: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+        left: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+        right: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+        insideH: { style: 'none', size: 0, color: 'auto' },
+        insideV: { style: 'none', size: 0, color: 'auto' },
+      });
+    } else {
+      // Option_1 pattern: no table-level borders; cell-level borders handle everything
+      table.setBorders({
+        top: { style: 'none', size: 0, color: 'auto' },
+        bottom: { style: 'none', size: 0, color: 'auto' },
+        left: { style: 'none', size: 0, color: 'auto' },
+        right: { style: 'none', size: 0, color: 'auto' },
+        insideH: { style: 'none', size: 0, color: 'auto' },
+        insideV: { style: 'none', size: 0, color: 'auto' },
+      });
+    }
   }
 
   /**
@@ -1123,50 +1261,253 @@ export class TableProcessor {
   }
 
   /**
-   * Apply HLP-specific cell-level borders for data rows.
-   * Creates seamless appearance between left column and tips column.
-   *
-   * - Left column cells: Only left outer border
-   * - Right column cells (tips with FFF2CC): No left border, right outer border
-   * - Last row: Bottom border on all cells
-   *
-   * @param table - HLP table to format
+   * Apply formatting to the HLP header row cells (shading, margins, cell borders).
    */
-  private applyHLPCellBorders(table: Table): void {
+  private applyHLPHeaderCellFormatting(table: Table, analysis: HLPTableAnalysis): void {
     const rows = table.getRows();
+    if (rows.length === 0) return;
 
-    // Skip header row (index 0), process data rows only
+    const headerRow = rows[0];
+    for (const cell of headerRow.getCells()) {
+      // Ensure FFC000 shading
+      cell.setShading({ fill: HLP_HEADER_COLOR });
+
+      // Set cell margins: top=0, bottom=0
+      cell.setMargins({ top: 0, bottom: 0, left: 115, right: 115 });
+
+      // For two-column variant, apply cell-level borders on header
+      if (analysis.variant === 'two-column') {
+        cell.setBorders({
+          top: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+          left: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+          right: { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR },
+          bottom: { style: 'none', size: 0, color: 'auto' },
+        });
+      }
+    }
+  }
+
+  /**
+   * Apply HLP-specific cell-level borders for data rows, variant-aware.
+   *
+   * Single-column: Clear cell-level borders (table borders handle it).
+   * Two-column: Left column gets left border, right gets right, last row gets bottom.
+   */
+  private applyHLPCellBorders(table: Table, analysis: HLPTableAnalysis): void {
+    const rows = table.getRows();
+    const noBorder = { style: 'none' as const, size: 0, color: 'auto' };
+
+    if (analysis.variant === 'single-column') {
+      // Clear any cell-level borders on data rows
+      for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+        for (const cell of rows[rowIndex].getCells()) {
+          cell.setBorders({ top: noBorder, bottom: noBorder, left: noBorder, right: noBorder });
+        }
+      }
+      return;
+    }
+
+    // Two-column variant: cell-level borders for seamless appearance
     for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
       const row = rows[rowIndex];
       const cells = row.getCells();
       const isLastRow = rowIndex === rows.length - 1;
+      const orangeBorder = { style: 'single' as const, size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR };
 
       for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
         const cell = cells[cellIndex];
         const isLeftColumn = cellIndex === 0;
         const isRightColumn = cellIndex === cells.length - 1;
 
-        // Check if this cell has FFF2CC (tips) shading
-        const formatting = cell.getFormatting();
-        const fill = formatting.shading?.fill?.toUpperCase();
-        const isTipsCell = fill === HLP_TIPS_COLOR;
-
         cell.setBorders({
-          top: { style: 'none', size: 0, color: 'auto' },
-          left: isLeftColumn
-            ? { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR }
-            : { style: 'none', size: 0, color: 'auto' },
-          right: isRightColumn
-            ? { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR }
-            : { style: 'none', size: 0, color: 'auto' },
-          bottom: isLastRow
-            ? { style: 'single', size: HLP_BORDER_SIZE, color: HLP_HEADER_COLOR }
-            : { style: 'none', size: 0, color: 'auto' },
+          top: noBorder,
+          left: isLeftColumn ? orangeBorder : noBorder,
+          right: isRightColumn ? orangeBorder : noBorder,
+          bottom: isLastRow ? orangeBorder : noBorder,
         });
+      }
+    }
+  }
 
-        if (isTipsCell) {
-          log.debug(`HLP tips cell (${rowIndex},${cellIndex}): removed left border`);
+  /**
+   * Ensure tips column cells have FFF2CC shading in two-column variant.
+   */
+  private applyHLPTipsColumnShading(table: Table, analysis: HLPTableAnalysis): void {
+    if (!analysis.hasTipsColumn || analysis.variant !== 'two-column') return;
+
+    const rows = table.getRows();
+    for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+      const cells = rows[rowIndex].getCells();
+      const lastCell = cells[cells.length - 1];
+      if (lastCell) {
+        lastCell.setShading({ fill: HLP_TIPS_COLOR });
+      }
+    }
+  }
+
+  /**
+   * Apply text formatting to HLP table content: font/size from session settings,
+   * bold on list items, blue (#0000FF) + underline on hyperlinks.
+   *
+   * Content column (left / only column):
+   * - P[0] (main action item): heading2 font/size, bold, explicit numbering + level-0 indent
+   * - P[1+] (numbered sub-items): normal font/size, level-based indent
+   * - Hyperlinks: blue color + single underline
+   *
+   * Tips column (right, FFF2CC):
+   * - P[0] (label): normal font/size, bold
+   * - P[1+] (body): normal font/size
+   * - Hyperlinks: blue color + single underline
+   */
+  private applyHLPContentFormatting(
+    table: Table,
+    analysis: HLPTableAnalysis,
+    settings?: TableShadingSettings,
+  ): void {
+    const normalFont = settings?.normalFontFamily ?? 'Verdana';
+    const normalSize = settings?.normalFontSize ?? 12;
+    const h2Font = settings?.heading2FontFamily ?? 'Verdana';
+    const h2Size = settings?.heading2FontSize ?? 14;
+
+    const rows = table.getRows();
+
+    // Discover the numId used by numbered sub-items in this table.
+    // P[0] main items inherit numbering from ListParagraph style (getNumbering() returns null),
+    // but sub-items have explicit numbering we can reference.
+    let discoveredNumId: number | null = null;
+    for (let ri = 1; ri < rows.length && discoveredNumId === null; ri++) {
+      const cells = rows[ri].getCells();
+      const contentCell = cells[0];
+      if (!contentCell) continue;
+      for (const p of contentCell.getParagraphs()) {
+        const num = p.getNumbering();
+        if (num && num.numId) {
+          discoveredNumId = num.numId;
+          break;
         }
+      }
+    }
+
+    for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+      const cells = rows[rowIndex].getCells();
+
+      for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
+        const cell = cells[cellIndex];
+        const isTipsCell = analysis.hasTipsColumn && cellIndex === cells.length - 1 && analysis.variant === 'two-column';
+        const paras = cell.getParagraphs();
+
+        for (let pIdx = 0; pIdx < paras.length; pIdx++) {
+          const para = paras[pIdx];
+
+          // Determine font/size for this paragraph
+          const isMainActionItem = pIdx === 0 && !isTipsCell;
+          const font = isMainActionItem ? h2Font : normalFont;
+          const size = isMainActionItem ? h2Size : normalSize;
+
+          const numberingBefore = para.getNumbering();
+          const paraStyle = para.getStyle();
+
+          // Save indentation before any modifications — docxmlater setters
+          // can drop <w:ind> when regenerating <w:pPr>.
+          const savedLeftIndent = para.getLeftIndent();
+
+          // Fix ListParagraph paragraphs without numbering: docxmlater's
+          // validateNumberingReferences() strips numId=0 on save, causing
+          // the ListParagraph style's default numbering (numId=33) to show.
+          // Switch these paragraphs to Normal style and preserve indentation.
+          if (paraStyle === 'ListParagraph' && !numberingBefore) {
+            para.setStyle('Normal');
+            if (savedLeftIndent) {
+              para.setLeftIndent(savedLeftIndent);
+            }
+          }
+
+          // For P[0] main action items that were ListParagraph: set explicit numbering
+          // so they retain decimal numbering (1. 2. 3.) despite being converted to Normal.
+          if (isMainActionItem && paraStyle === 'ListParagraph' && !numberingBefore && discoveredNumId !== null) {
+            para.setNumbering(discoveredNumId, 0);
+          }
+
+          // Apply font/size to all runs
+          for (const run of para.getRuns()) {
+            const runFmt = run.getFormatting();
+
+            // Clear Hyperlink character style: HLP main action items (P[0]) have
+            // charStyle=Hyperlink with color=auto + underline=none overrides.
+            // These are placeholders for future hyperlinks but should render as
+            // normal black text. Clearing the charStyle removes the blue/underline
+            // inheritance so setFont/setSize/setBold don't cause color bleed.
+            if (runFmt.characterStyle === 'Hyperlink') {
+              run.setCharacterStyle(undefined as unknown as string);
+            }
+
+            run.setFont(font);
+            run.setSize(size);
+
+            // Bold: only main action items (P[0] in content cells).
+            // Tips column: only P[0] (label) gets bold.
+            if (isMainActionItem) {
+              run.setBold(true);
+            } else if (isTipsCell && pIdx === 0) {
+              run.setBold(true);
+            }
+          }
+
+          this.applyNormalSpacing(para, settings);
+
+          // Apply list indentation from session settings
+          const indentLevels = settings?.listIndentationLevels;
+          if (indentLevels) {
+            const numbering = para.getNumbering();
+            if (numbering) {
+              const level = numbering.level || 0;
+              const indentSetting = indentLevels.find(l => l.level === level);
+              if (indentSetting && indentSetting.symbolIndent < indentSetting.textIndent) {
+                para.setLeftIndent(inchesToTwips(indentSetting.textIndent));
+                para.setFirstLineIndent(-inchesToTwips(indentSetting.textIndent - indentSetting.symbolIndent));
+              }
+            }
+          }
+
+          // Restore indentation for non-numbered paragraphs if it was dropped by setters
+          if (!para.getNumbering() && savedLeftIndent && !para.getLeftIndent()) {
+            para.setLeftIndent(savedLeftIndent);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Fix paragraphs immediately after an HLP table that would inherit
+   * the table's numbering sequence via ListParagraph's default numPr.
+   *
+   * Without this, a ListParagraph paragraph after a 6-item HLP table
+   * shows "7." because it shares the same numId as the table's items.
+   */
+  private fixPostHLPTableNumbering(doc: Document, table: Table): void {
+    const bodyElements = doc.getBodyElements();
+    const tableIdx = bodyElements.indexOf(table);
+    if (tableIdx < 0 || tableIdx >= bodyElements.length - 1) return;
+
+    // Check the next few body elements after the table
+    for (let i = tableIdx + 1; i < bodyElements.length && i <= tableIdx + 3; i++) {
+      const element = bodyElements[i];
+      // Stop at next table (duck-type check: tables have getRows)
+      if (typeof (element as any).getRows === 'function') break;
+      // Check if this is a paragraph (duck-type: has getStyle and getRuns)
+      if (typeof (element as any).getStyle === 'function' && typeof (element as any).getRuns === 'function') {
+        const para = element as Paragraph;
+        const style = para.getStyle();
+        const numbering = para.getNumbering();
+        // ListParagraph with no explicit numbering inherits default numPr
+        if (style === 'ListParagraph' && !numbering) {
+          para.setStyle('Normal');
+          log.debug(`Fixed post-HLP ListParagraph → Normal at body index ${i}`);
+        }
+        // If we hit a paragraph with actual content, stop looking
+        const text = para.getRuns().map((r: any) => r.getText()).join('').trim();
+        if (text.length > 0) break;
       }
     }
   }
@@ -1176,46 +1517,97 @@ export class TableProcessor {
    *
    * HLP tables are detected by FFC000 shading in the first row.
    * Special formatting applied:
-   * - Outer borders: 2.25pt orange (#FFC000)
-   * - No internal horizontal borders
-   * - Internal vertical borders: 2.25pt orange
-   * - Header row: Heading 2 style
-   * - Cell-level borders for seamless appearance
+   * - Variant-aware borders (table-level for single-column, cell-level for two-column)
+   * - Header row: Heading 2 style with FFC000 shading
+   * - Content formatting: bold list items, blue hyperlinks, session fonts/sizes
+   * - Tips column: FFF2CC shading preserved
    *
    * Note: FFC000 and FFF2CC colors are already preserved by existing
    * preservedColors logic in applyTableUniformity().
    *
    * @param doc - Document to process
+   * @param settings - Optional table shading settings for font/size configuration
    * @returns Processing results
    */
-  async processHLPTables(doc: Document): Promise<HLPTableProcessingResult> {
+  async processHLPTables(doc: Document, settings?: TableShadingSettings): Promise<HLPTableProcessingResult> {
     const tables = doc.getTables();
     let tablesFound = 0;
     let headersStyled = 0;
+    let singleColumnTables = 0;
+    let twoColumnTables = 0;
 
     for (const table of tables) {
-      if (!this.isHLPTable(table)) {
-        continue;
-      }
+      // Skip floating tables and tables containing nested tables
+      if (this.shouldSkipTable(table)) continue;
+
+      const analysis = this.analyzeHLPTable(table);
+      if (!analysis.isHLP) continue;
 
       tablesFound++;
-      log.debug(`Processing HLP table #${tablesFound}`);
+      log.debug(`Processing HLP table #${tablesFound} (variant: ${analysis.variant}, ` +
+        `${analysis.columnCount} cols, ${analysis.rowCount} rows, tips: ${analysis.hasTipsColumn})`);
 
-      // Apply HLP table-level borders
-      this.applyHLPTableBorders(table);
+      if (analysis.variant === 'single-column') singleColumnTables++;
+      else twoColumnTables++;
 
-      // Apply Heading 2 style to header row
+      // 1. Apply table-level borders (variant-aware)
+      this.applyHLPTableBorders(table, analysis);
+
+      // 2. Apply Heading 2 style to header row paragraphs
       headersStyled += this.applyHLPHeaderStyle(table);
 
-      // Apply cell-level borders for data rows
-      this.applyHLPCellBorders(table);
+      // 3. Apply header cell formatting (shading, margins, cell borders)
+      this.applyHLPHeaderCellFormatting(table, analysis);
+
+      // 4. Apply cell-level borders for data rows (variant-aware)
+      this.applyHLPCellBorders(table, analysis);
+
+      // 5. Ensure tips column shading is correct
+      this.applyHLPTipsColumnShading(table, analysis);
+
+      // 6. Apply text formatting (fonts, bold, hyperlink colors)
+      this.applyHLPContentFormatting(table, analysis, settings);
+
+      // 7. Fix post-table paragraphs: ListParagraph paragraphs immediately
+      // after the HLP table inherit the style's default numId and continue
+      // the table's numbering sequence (producing a phantom "7." etc.).
+      // Convert them to Normal to break the numbering chain.
+      this.fixPostHLPTableNumbering(doc, table);
     }
 
     if (tablesFound > 0) {
-      log.info(`HLP table processing complete: ${tablesFound} tables, ${headersStyled} headers styled`);
+      log.info(`HLP table processing complete: ${tablesFound} tables ` +
+        `(${singleColumnTables} single-column, ${twoColumnTables} two-column), ` +
+        `${headersStyled} headers styled`);
     }
 
-    return { tablesFound, headersStyled };
+    return { tablesFound, headersStyled, singleColumnTables, twoColumnTables };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Floating / Nested Table Guard
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Returns true if the table should be skipped by the processing pipeline.
+   * Floating tables (w:tblpPr) and tables containing nested tables are
+   * passed through unmodified to avoid corrupting complex structures.
+   *
+   * @param table - Table to check
+   * @returns true if the table is floating or contains nested tables
+   */
+  shouldSkipTable(table: Table): boolean {
+    // 1. Floating table check — has positioning properties (w:tblpPr)
+    if (table.isFloating()) return true;
+
+    // 2. Nested table check — any cell contains a child table
+    for (const row of table.getRows()) {
+      for (const cell of row.getCells()) {
+        if (cell.hasNestedTables()) return true;
+      }
+    }
+
+    return false;
   }
 }
 

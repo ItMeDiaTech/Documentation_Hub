@@ -112,6 +112,7 @@ export interface DisplayInfo {
   label: string;
   bounds: { x: number; y: number; width: number; height: number };
   workArea: { x: number; y: number; width: number; height: number };
+  scaleFactor: number;
   isPrimary: boolean;
 }
 

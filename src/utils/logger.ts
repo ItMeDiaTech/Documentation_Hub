@@ -55,6 +55,18 @@ const isMainProcess = !isRenderer;
 
 // Only configure electron-log if we're in the main process
 if (isMainProcess) {
+  // Prevent EPIPE crashes when stdout/stderr pipes are closed (e.g., during shutdown)
+  if (process.stdout && typeof process.stdout.on === 'function') {
+    process.stdout.on('error', (err: any) => {
+      if (err?.code === 'EPIPE') return;
+    });
+  }
+  if (process.stderr && typeof process.stderr.on === 'function') {
+    process.stderr.on('error', (err: any) => {
+      if (err?.code === 'EPIPE') return;
+    });
+  }
+
   if (electronLog.transports?.file) {
     electronLog.transports.file.level = 'info';
     electronLog.transports.file.maxSize = 5 * 1024 * 1024; // 5MB per file
@@ -67,6 +79,19 @@ if (isMainProcess) {
 
   if (electronLog.transports?.console) {
     electronLog.transports.console.level = isDevelopment ? 'debug' : 'warn';
+
+    // Wrap console transport writeFn to suppress EPIPE errors
+    const originalWriteFn = electronLog.transports.console.writeFn;
+    if (typeof originalWriteFn === 'function') {
+      electronLog.transports.console.writeFn = function (...args: any[]) {
+        try {
+          return originalWriteFn.apply(this, args as [any]);
+        } catch (err: any) {
+          if (err?.code === 'EPIPE') return;
+          throw err;
+        }
+      };
+    }
 
     // Console configuration (development only)
     if (isDevelopment) {
@@ -120,7 +145,10 @@ function sanitizeLogData(data: any): any {
     let sanitized = data;
 
     // Redact Windows file paths (C:\Users\..., D:\Documents\..., etc.)
-    sanitized = sanitized.replace(/[A-Z]:\\[\w\s\-.()]+/gi, '[REDACTED_PATH]');
+    sanitized = sanitized.replace(/[A-Z]:\\[^\s"'<>|*?]+/gi, '[REDACTED_PATH]');
+
+    // Redact UNC paths (\\server\share\...)
+    sanitized = sanitized.replace(/\\\\[^\s"'<>|*?]+/g, '[REDACTED_PATH]');
 
     // Redact Unix file paths (/home/..., /Users/..., /var/..., etc.)
     sanitized = sanitized.replace(/\/(home|Users|var|tmp|opt)\/[\w\s\-./]+/gi, '[REDACTED_PATH]');
@@ -152,15 +180,22 @@ function sanitizeLogData(data: any): any {
       'path',
       'fullPath',
       'token',
+      'accessToken',
+      'refreshToken',
       'apiKey',
       'password',
       'secret',
+      'clientSecret',
       'authorization',
+      'bearer',
       'cookie',
       'sessionId',
       'userId',
       'email',
       'username',
+      'connectionString',
+      'privateKey',
+      'credential',
     ];
 
     for (const [key, value] of Object.entries(data)) {
@@ -279,10 +314,12 @@ function createScopedLogger(scope: string) {
      */
     verbose(message: string, ...args: any[]): void {
       if (isDevelopment && !isTest) {
+        const sanitizedArgs = args.map(sanitizeLogData);
+        const sanitizedMessage = sanitizeLogData(message);
         if (scopedLog) {
-          scopedLog.verbose(message, ...args);
+          scopedLog.verbose(sanitizedMessage, ...sanitizedArgs);
         } else {
-          console.log(`[${scope}] [VERBOSE] ${message}`, ...args);
+          console.log(`[${scope}] [VERBOSE] ${sanitizedMessage}`, ...sanitizedArgs);
         }
       }
     },
@@ -293,10 +330,12 @@ function createScopedLogger(scope: string) {
      */
     silly(message: string, ...args: any[]): void {
       if (isDevelopment && !isTest) {
+        const sanitizedArgs = args.map(sanitizeLogData);
+        const sanitizedMessage = sanitizeLogData(message);
         if (scopedLog) {
-          scopedLog.silly(message, ...args);
+          scopedLog.silly(sanitizedMessage, ...sanitizedArgs);
         } else {
-          console.log(`[${scope}] [SILLY] ${message}`, ...args);
+          console.log(`[${scope}] [SILLY] ${sanitizedMessage}`, ...sanitizedArgs);
         }
       }
     },

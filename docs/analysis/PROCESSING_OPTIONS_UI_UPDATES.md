@@ -28,6 +28,7 @@ Updated all Processing Options labels to be more user-friendly and reorganized o
 | Old Label                         | New Label                     | Option ID                  | Notes                           |
 | --------------------------------- | ----------------------------- | -------------------------- | ------------------------------- |
 | Remove Italics                    | **Remove All Italics**        | `remove-italics`           | Clarified scope                 |
+| -                                 | **Standardize Dashes**        | `normalize-dashes`         | New: converts en/em-dashes to hyphens |
 | Smart Spacing Normalization (New) | **Standardize Spacing**       | `normalize-spacing`        | Simplified name                 |
 | -                                 | **Outdated Titles**           | `replace-outdated-titles`  | ✨ MOVED from Hyperlinks        |
 | -                                 | **Apply User Defined Styles** | `validate-document-styles` | ✨ MOVED from Content Structure |
@@ -140,9 +141,10 @@ Updated all Processing Options labels to be more user-friendly and reorganized o
 - Remove Italics
 - Smart Spacing Normalization (New)
 
-**After (4 options)**:
+**After (5 options)**:
 
 - Remove All Italics
+- Standardize Dashes ← new
 - Standardize Spacing
 - Outdated Titles ← moved from Hyperlinks
 - Apply User Defined Styles ← moved from Content Structure

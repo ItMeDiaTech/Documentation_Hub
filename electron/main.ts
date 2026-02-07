@@ -37,6 +37,116 @@ log.info(`Platform: ${process.platform} ${process.arch}`);
 log.info("========================================");
 
 // ============================================================================
+// Shared IPC Path Validation
+// ============================================================================
+/**
+ * Validates a file path received via IPC to prevent path traversal attacks.
+ * Options allow requiring specific extensions or file existence.
+ */
+function validateIpcPath(
+  filePath: string,
+  options: { requireExists?: boolean; allowedExtensions?: string[]; mustBeFile?: boolean } = {}
+): string {
+  if (!filePath || typeof filePath !== "string") {
+    throw new Error("No file path provided");
+  }
+
+  // SECURITY: Check for path traversal attempts before normalization
+  if (filePath.includes("..")) {
+    throw new Error('Path traversal detected - relative paths with ".." are not allowed');
+  }
+
+  // Normalize path
+  const normalizedPath = path.resolve(filePath);
+
+  // SECURITY: Double-check after normalization (defense in depth)
+  if (normalizedPath.includes("..")) {
+    throw new Error("Path traversal detected after normalization");
+  }
+
+  // Validate extension if required
+  if (options.allowedExtensions && options.allowedExtensions.length > 0) {
+    const ext = path.extname(normalizedPath).toLowerCase();
+    if (!options.allowedExtensions.includes(ext)) {
+      throw new Error(`Unsupported file type: ${ext}. Allowed: ${options.allowedExtensions.join(", ")}`);
+    }
+  }
+
+  // Validate existence if required
+  if (options.requireExists) {
+    if (!fs.existsSync(normalizedPath)) {
+      throw new Error(`File not found: ${normalizedPath}`);
+    }
+    if (options.mustBeFile) {
+      const stats = fs.statSync(normalizedPath);
+      if (!stats.isFile()) {
+        throw new Error("Path is not a file");
+      }
+    }
+  }
+
+  return normalizedPath;
+}
+
+// ============================================================================
+// Shared API URL Validation (SSRF Prevention)
+// ============================================================================
+/**
+ * Validates an API URL to prevent SSRF attacks. Only allows HTTPS requests
+ * to known Power Automate / Azure Logic Apps domains.
+ */
+function validateApiUrl(url: string): URL {
+  if (!url || typeof url !== "string") {
+    throw new Error("No API URL provided");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Invalid API URL");
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error("API URL must use HTTPS");
+  }
+
+  // Only allow Power Automate / Logic Apps endpoints
+  const allowedDomains = [
+    "logic.azure.com",
+    "prod-00.logic.azure.com",
+    "azure-api.net",
+    "azure.com",
+    "powerplatform.com",
+    "api.powerplatform.com",
+    "flow.microsoft.com",
+  ];
+
+  const hostname = parsed.hostname.toLowerCase();
+  const isAllowed = allowedDomains.some(
+    (domain) => hostname === domain || hostname.endsWith("." + domain)
+  );
+
+  if (!isAllowed) {
+    throw new Error(
+      `API URL domain "${hostname}" is not in the allowed list. ` +
+      `Only Power Automate / Azure Logic Apps endpoints are permitted.`
+    );
+  }
+
+  // Block private/internal IP ranges
+  const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (ipv4Match) {
+    throw new Error("API URL must not point to an IP address");
+  }
+  if (hostname === "localhost" || hostname === "[::1]" || hostname.endsWith(".local")) {
+    throw new Error("API URL must not point to a local address");
+  }
+
+  return parsed;
+}
+
+// ============================================================================
 // Memory Configuration (MUST be before app.ready)
 // ============================================================================
 log.info("Configuring memory and heap size...");
@@ -279,13 +389,28 @@ if (!isDev) {
 }
 
 // Handle certificate errors globally
+// SECURITY: Only trust certificates from corporate proxy/Zscaler interceptors.
+// We do NOT blindly trust all certificates for known domains — that would disable
+// TLS verification and allow MITM attacks. Instead, we only allow known proxy-related
+// certificate errors (self-signed root CA from corporate proxy) for specific hosts.
 app.on("certificate-error", (event, webContents, url, error, certificate, callback) => {
-  log.warn("[Certificate Error]", { url, error });
+  log.warn("[Certificate Error]", { url, error: String(error) });
 
-  // Prevent the default behavior
-  event.preventDefault();
+  // Only consider overriding for specific, known corporate proxy certificate errors
+  // "net::ERR_CERT_AUTHORITY_INVALID" is the typical Zscaler/corporate proxy error
+  const proxyRelatedErrors = [
+    "net::ERR_CERT_AUTHORITY_INVALID",
+  ];
 
-  // Trust certificates for known hosts (GitHub, Azure, Microsoft)
+  if (!proxyRelatedErrors.includes(String(error))) {
+    // For all other certificate errors (expired, wrong host, revoked, etc.),
+    // reject immediately — these indicate real problems, not proxy interception
+    log.warn(`[Certificate Error] Rejecting: ${error} is not a proxy-related error`);
+    callback(false);
+    return;
+  }
+
+  // Only allow override for known Microsoft/GitHub service hosts
   const trustedHosts = [
     "github.com",
     "githubusercontent.com",
@@ -300,10 +425,12 @@ app.on("certificate-error", (event, webContents, url, error, certificate, callba
     "powerplatform.com",
     "api.powerplatform.com",
   ];
+
+  event.preventDefault();
   const urlHost = new URL(url).hostname.toLowerCase();
 
-  if (trustedHosts.some((host) => urlHost.includes(host))) {
-    log.info(`[Certificate Error] Trusting certificate for known host: ${urlHost}`);
+  if (trustedHosts.some((host) => urlHost === host || urlHost.endsWith('.' + host))) {
+    log.info(`[Certificate Error] Allowing proxy CA override for known host: ${urlHost}`);
     callback(true);
   } else {
     log.warn(`[Certificate Error] Rejecting certificate for unknown host: ${urlHost}`);
@@ -601,6 +728,9 @@ class HyperlinkIPCHandler {
     // Validate PowerAutomate API endpoint using net.request (respects proxy/Zscaler)
     ipcMain.handle("hyperlink:validate-api", async (event, request) => {
       try {
+        // SECURITY: Validate URL against domain allowlist to prevent SSRF
+        validateApiUrl(request.apiUrl);
+
         const startTime = performance.now();
 
         return new Promise((resolve) => {
@@ -621,7 +751,7 @@ class HyperlinkIPCHandler {
           netRequest.on("response", (response) => {
             clearTimeout(timeout);
             const responseTime = performance.now() - startTime;
-            const isValid = response.statusCode >= 200 && response.statusCode < 400 || response.statusCode === 405;
+            const isValid = (response.statusCode >= 200 && response.statusCode < 400) || response.statusCode === 405;
             resolve({
               isValid,
               message: isValid
@@ -663,6 +793,9 @@ class HyperlinkIPCHandler {
       };
       timeout?: number;
     }) => {
+      // SECURITY: Validate URL against domain allowlist to prevent SSRF
+      validateApiUrl(request.apiUrl);
+
       const timeoutMs = request.timeout || 30000;
       const jsonPayload = JSON.stringify(request.payload);
       const startTime = Date.now();
@@ -682,8 +815,14 @@ class HyperlinkIPCHandler {
       log.info(`[API Call]   User-Agent: DocHub/1.0`);
       log.info(`[API Call]   Accept: application/json`);
       log.info(`[API Call] Payload:`);
-      // Log payload with proper formatting
-      const payloadFormatted = JSON.stringify(request.payload, null, 2);
+      // Log payload with PII fields redacted
+      const redactedPayload = {
+        ...request.payload,
+        First_Name: "[REDACTED]",
+        Last_Name: "[REDACTED]",
+        Email: "[REDACTED]",
+      };
+      const payloadFormatted = JSON.stringify(redactedPayload, null, 2);
       payloadFormatted.split('\n').forEach(line => {
         log.info(`[API Call]   ${line}`);
       });
@@ -1013,19 +1152,12 @@ ipcMain.handle("select-documents", async () => {
 });
 
 // Show file in folder
-ipcMain.handle("show-in-folder", async (...[, path]: [Electron.IpcMainInvokeEvent, string]) => {
-  if (!path) {
-    throw new Error("No path provided");
-  }
-
+ipcMain.handle("show-in-folder", async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
   try {
-    // Check if file exists
-    if (!fs.existsSync(path)) {
-      throw new Error(`File not found: ${path}`);
-    }
+    const validatedPath = validateIpcPath(filePath, { requireExists: true });
 
     // Show the file in the system file explorer
-    shell.showItemInFolder(path);
+    shell.showItemInFolder(validatedPath);
   } catch (error) {
     log.error("Error showing file in folder:", error);
     throw error;
@@ -1033,52 +1165,58 @@ ipcMain.handle("show-in-folder", async (...[, path]: [Electron.IpcMainInvokeEven
 });
 
 // Open document in default application (Microsoft Word for .docx)
-ipcMain.handle("open-document", async (...[, path]: [Electron.IpcMainInvokeEvent, string]) => {
-  if (!path) {
-    throw new Error("No path provided");
-  }
-
+ipcMain.handle("open-document", async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
   try {
-    // Security: Check if file exists
-    if (!fs.existsSync(path)) {
-      throw new Error(`File not found: ${path}`);
-    }
-
-    // Security: Validate file extension (only allow .docx files)
-    const fileExtension = path.toLowerCase().split(".").pop();
-    if (fileExtension !== "docx") {
-      throw new Error(`Unsupported file type: .${fileExtension}. Only .docx files can be opened.`);
-    }
+    const validatedPath = validateIpcPath(filePath, {
+      requireExists: true,
+      mustBeFile: true,
+      allowedExtensions: [".docx"],
+    });
 
     // Open the document in its default application
-    const errorMessage = await shell.openPath(path);
+    const errorMessage = await shell.openPath(validatedPath);
 
     // shell.openPath returns an empty string on success, or an error message on failure
     if (errorMessage) {
       throw new Error(`Failed to open document: ${errorMessage}`);
     }
 
-    log.info(`✅ Successfully opened document in default application: ${path}`);
+    log.info(`Successfully opened document in default application`);
   } catch (error) {
     log.error("Error opening document:", error);
     throw error;
   }
 });
 
-// Get file statistics (size, modified date, etc.)
-ipcMain.handle("get-file-stats", async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
-  if (!filePath) {
-    throw new Error("No file path provided");
+// Open external URL in default browser (SECURITY: https-only)
+ipcMain.handle("open-external", async (...[, url]: [Electron.IpcMainInvokeEvent, string]) => {
+  if (!url || typeof url !== "string") {
+    throw new Error("No URL provided");
   }
 
+  // SECURITY: Only allow https: and mailto: protocols to prevent file://, smb://, etc.
+  let parsed: URL;
   try {
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`File not found: ${filePath}`);
-    }
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Invalid URL");
+  }
+
+  const allowedProtocols = ["https:", "mailto:"];
+  if (!allowedProtocols.includes(parsed.protocol)) {
+    throw new Error(`Blocked protocol: ${parsed.protocol}. Only HTTPS and mailto links are allowed.`);
+  }
+
+  await shell.openExternal(url);
+});
+
+// Get file statistics (size, modified date, etc.)
+ipcMain.handle("get-file-stats", async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
+  try {
+    const validatedPath = validateIpcPath(filePath, { requireExists: true });
 
     // Get file stats
-    const stats = await fsPromises.stat(filePath);
+    const stats = await fsPromises.stat(validatedPath);
 
     return {
       size: stats.size,
@@ -1104,27 +1242,19 @@ ipcMain.handle(
     }
 
     try {
-      // Validate backup exists
-      if (!fs.existsSync(request.backupPath)) {
-        throw new Error(`Backup file not found: ${request.backupPath}`);
-      }
-
-      // Validate backup is a .docx file
-      if (!request.backupPath.toLowerCase().endsWith(".docx")) {
-        throw new Error("Backup file must be a .docx file");
-      }
-
-      // Validate target path
-      if (!request.targetPath.toLowerCase().endsWith(".docx")) {
-        throw new Error("Target file must be a .docx file");
-      }
+      const validatedBackup = validateIpcPath(request.backupPath, {
+        requireExists: true,
+        mustBeFile: true,
+        allowedExtensions: [".docx"],
+      });
+      const validatedTarget = validateIpcPath(request.targetPath, {
+        allowedExtensions: [".docx"],
+      });
 
       // Copy backup to target location, overwriting existing file
-      await fsPromises.copyFile(request.backupPath, request.targetPath);
+      await fsPromises.copyFile(validatedBackup, validatedTarget);
 
-      log.info(
-        `[Restore] Successfully restored ${request.targetPath} from backup ${request.backupPath}`
-      );
+      log.info("[Restore] Successfully restored document from backup");
     } catch (error) {
       log.error("Error restoring from backup:", error);
       throw error;
@@ -1156,22 +1286,19 @@ ipcMain.handle("process-document", async (...[, path]: [Electron.IpcMainInvokeEv
 ipcMain.handle(
   "file:read-buffer",
   async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
-    if (!filePath) {
-      throw new Error("No file path provided");
-    }
-
     try {
-      // Validate file exists
-      if (!fs.existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`);
-      }
+      const validatedPath = validateIpcPath(filePath, {
+        requireExists: true,
+        mustBeFile: true,
+        allowedExtensions: [".docx"],
+      });
 
       // Read file as buffer
-      const buffer = await fsPromises.readFile(filePath);
+      const buffer = await fsPromises.readFile(validatedPath);
       // Return as ArrayBuffer (Uint8Array is transferable via IPC)
       return buffer;
     } catch (error) {
-      console.error("[IPC] Error reading file as buffer:", error);
+      log.error("[IPC] Error reading file as buffer:", error);
       throw error;
     }
   }
@@ -1297,7 +1424,10 @@ ipcMain.handle(
   "save-export-data",
   async (...[, request]: [Electron.IpcMainInvokeEvent, { filePath: string; data: any }]) => {
     try {
-      await fsPromises.writeFile(request.filePath, JSON.stringify(request.data, null, 2), "utf-8");
+      const validatedPath = validateIpcPath(request.filePath, {
+        allowedExtensions: [".json"],
+      });
+      await fsPromises.writeFile(validatedPath, JSON.stringify(request.data, null, 2), "utf-8");
       return { success: true };
     } catch (error) {
       log.error("Error saving export data:", error);
@@ -1798,6 +1928,7 @@ ipcMain.handle("display:get-all-displays", () => {
     label: d.id === primaryDisplay.id ? "Primary" : `Display ${index + 1}`,
     bounds: d.bounds,
     workArea: d.workArea,
+    scaleFactor: d.scaleFactor,
     isPrimary: d.id === primaryDisplay.id,
   }));
 });
@@ -1928,6 +2059,7 @@ ipcMain.handle(
         processedPath,
         monitor: monitorIndex,
         workArea: { x, y, width, height },
+        scaleFactor: targetDisplay.scaleFactor,
       });
 
       // Open both documents - they will open in Word
@@ -1958,13 +2090,10 @@ ipcMain.handle(
         const execPromise = util.promisify(exec);
 
         // Calculate window sizes with bounds for readability
+        // workArea dimensions are already in logical (DIP) pixels from Electron - no DPI scaling needed
         // Optimal document width is ~960px (readable on most screens)
         // Clamp to reasonable bounds: min 700px, max 1200px per window
-        const scaleFactor = targetDisplay.scaleFactor || 1;
-        const effectiveWidth = Math.floor(width / scaleFactor);
-
-        // For small screens, just split in half; for larger screens, cap at comfortable reading width
-        const halfWidth = Math.floor(effectiveWidth / 2);
+        const halfWidth = Math.floor(width / 2);
         const optimalWidth = 960;
         const maxWindowWidth = 1200;
         const minWindowWidth = 700;
@@ -1972,7 +2101,7 @@ ipcMain.handle(
         let windowWidth: number;
         if (halfWidth < minWindowWidth) {
           // Small screen: use half width even if cramped
-          windowWidth = Math.floor(width / 2);
+          windowWidth = halfWidth;
         } else if (halfWidth > maxWindowWidth) {
           // Large screen: cap at max comfortable width
           windowWidth = maxWindowWidth;
@@ -1990,10 +2119,14 @@ ipcMain.handle(
         const rightX = startX + windowWidth;
         const rightWidth = windowWidth;
 
+        log.info("[Display] Calculated window positions", {
+          leftX, leftWidth, rightX, rightWidth, windowHeight: height,
+        });
+
         // Extract filenames to match against window titles
         // Word titles include filename: "MyDoc.docx - Word"
-        const backupFilename = path.basename(backupPath).replace(/'/g, "''");
-        const processedFilename = path.basename(processedPath).replace(/'/g, "''");
+        const backupFilename = path.basename(backupPath);
+        const processedFilename = path.basename(processedPath);
 
         log.info("[Display] Looking for Word windows with filenames:", {
           backup: backupFilename,
@@ -2002,8 +2135,18 @@ ipcMain.handle(
 
         // PowerShell script to find and position Word windows BY FILENAME
         // This ensures backup (Original) goes LEFT and processed goes RIGHT
-        // Using -EncodedCommand with Base64 to preserve here-string syntax
+        // Filenames passed via environment variables to prevent injection
         const psScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class DpiAwareness {
+  [DllImport("user32.dll")]
+  public static extern bool SetProcessDPIAware();
+}
+"@
+[DpiAwareness]::SetProcessDPIAware()
+
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -2019,8 +2162,8 @@ public class Win32 {
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 }
 "@
-$backupFilename = '${backupFilename}'
-$processedFilename = '${processedFilename}'
+$backupFilename = $env:DOCHUB_BACKUP_FILENAME
+$processedFilename = $env:DOCHUB_PROCESSED_FILENAME
 
 $wordWindows = @()
 $callback = {
@@ -2063,6 +2206,11 @@ if ($processedWindow -ne $null) {
 
           await execPromise(`powershell -EncodedCommand ${encodedScript}`, {
             windowsHide: true,
+            env: {
+              ...process.env,
+              DOCHUB_BACKUP_FILENAME: backupFilename,
+              DOCHUB_PROCESSED_FILENAME: processedFilename,
+            },
           });
           log.info("[Display] Word windows positioned successfully (backup=left, processed=right)");
         } catch (psError) {
@@ -2109,15 +2257,13 @@ ipcMain.handle(
     let copied = 0;
     let skipped = 0;
 
+    const validatedDest = validateIpcPath(destinationFolder);
     for (const sourcePath of filePaths) {
       try {
-        if (!sourcePath || !fs.existsSync(sourcePath)) {
-          skipped++;
-          continue;
-        }
-        const fileName = path.basename(sourcePath);
-        const destPath = path.join(destinationFolder, fileName);
-        await fsPromises.copyFile(sourcePath, destPath);
+        const validatedSource = validateIpcPath(sourcePath, { requireExists: true, mustBeFile: true });
+        const fileName = path.basename(validatedSource);
+        const destPath = path.join(validatedDest, fileName);
+        await fsPromises.copyFile(validatedSource, destPath);
         copied++;
       } catch (error) {
         log.warn(`Failed to copy file ${sourcePath}:`, error);
@@ -2139,7 +2285,8 @@ ipcMain.handle("get-downloads-path", () => {
 ipcMain.handle(
   "create-folder",
   async (...[, folderPath]: [Electron.IpcMainInvokeEvent, string]) => {
-    await fsPromises.mkdir(folderPath, { recursive: true });
+    const validatedPath = validateIpcPath(folderPath);
+    await fsPromises.mkdir(validatedPath, { recursive: true });
     return true;
   }
 );
@@ -2154,12 +2301,11 @@ ipcMain.handle(
     ]
   ) => {
     const { sourcePath, destFolder } = request;
-    if (!sourcePath || !fs.existsSync(sourcePath)) {
-      throw new Error(`Source file not found: ${sourcePath}`);
-    }
-    const fileName = path.basename(sourcePath);
-    const destPath = path.join(destFolder, fileName);
-    await fsPromises.copyFile(sourcePath, destPath);
+    const validatedSource = validateIpcPath(sourcePath, { requireExists: true, mustBeFile: true });
+    const validatedDest = validateIpcPath(destFolder);
+    const fileName = path.basename(validatedSource);
+    const destPath = path.join(validatedDest, fileName);
+    await fsPromises.copyFile(validatedSource, destPath);
     return true;
   }
 );
@@ -2174,13 +2320,14 @@ ipcMain.handle(
     ]
   ) => {
     const { folderPath, zipName } = request;
+    const validatedFolder = validateIpcPath(folderPath);
     const AdmZip = require("adm-zip");
     const zip = new AdmZip();
-    zip.addLocalFolder(folderPath);
+    zip.addLocalFolder(validatedFolder);
     const zipPath = path.join(app.getPath("downloads"), zipName);
     zip.writeZip(zipPath);
     // Clean up the folder after zipping
-    await fsPromises.rm(folderPath, { recursive: true, force: true });
+    await fsPromises.rm(validatedFolder, { recursive: true, force: true });
     log.info(`Created report zip: ${zipPath}`);
     return zipPath;
   }
@@ -2197,15 +2344,12 @@ ipcMain.handle(
   ) => {
     const { subject, attachmentPath } = request;
 
-    // Escape single quotes for PowerShell
-    const escapedSubject = subject.replace(/'/g, "''");
-    const escapedPath = attachmentPath.replace(/\\/g, "\\\\").replace(/'/g, "''");
-
+    // Pass subject and path via environment variables to avoid PowerShell injection
     const psScript = `
       $outlook = New-Object -ComObject Outlook.Application
       $mail = $outlook.CreateItem(0)
-      $mail.Subject = '${escapedSubject}'
-      $mail.Attachments.Add('${escapedPath}')
+      $mail.Subject = $env:DOCHUB_EMAIL_SUBJECT
+      $mail.Attachments.Add($env:DOCHUB_ATTACHMENT_PATH)
       $mail.Display()
     `;
 
@@ -2214,11 +2358,15 @@ ipcMain.handle(
     const execPromise = util.promisify(exec);
 
     try {
-      // Use encoded command for safety with special characters
       const scriptBuffer = Buffer.from(psScript, "utf16le");
       const encodedScript = scriptBuffer.toString("base64");
       await execPromise(`powershell -EncodedCommand ${encodedScript}`, {
         windowsHide: true,
+        env: {
+          ...process.env,
+          DOCHUB_EMAIL_SUBJECT: subject,
+          DOCHUB_ATTACHMENT_PATH: attachmentPath,
+        },
       });
       log.info(`Opened Outlook with attachment: ${attachmentPath}`);
       return true;

@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
   LineChart,
@@ -73,6 +73,17 @@ export const Analytics = memo(function Analytics() {
 
   const { stats, getDailyHistory, getWeeklyHistory, getMonthlyHistory } =
     useGlobalStats();
+
+  // Handle chart hover via mouse events instead of state updates during render
+  const handleChartMouseMove = useCallback((state: any) => {
+    if (state?.activePayload?.[0]?.payload) {
+      setHoveredData(state.activePayload[0].payload);
+    }
+  }, []);
+
+  const handleChartMouseLeave = useCallback(() => {
+    setHoveredData(null);
+  }, []);
 
   // Prepare chart data based on view mode
   // PERFORMANCE FIX: Memoize chart data to prevent unnecessary recalculations
@@ -277,7 +288,7 @@ export const Analytics = memo(function Analytics() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData}>
+              <LineChart data={chartData} onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="date"
@@ -287,14 +298,7 @@ export const Analytics = memo(function Analytics() {
                   height={80}
                 />
                 <YAxis tick={{ fontSize: 12, fill: 'var(--color-foreground)' }} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload?.[0]?.payload) {
-                      setHoveredData(payload[0].payload);
-                    }
-                    return null;
-                  }}
-                />
+                <Tooltip content={() => null} />
                 <Legend />
                 <Line
                   type="monotone"
@@ -322,7 +326,7 @@ export const Analytics = memo(function Analytics() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData}>
+              <LineChart data={chartData} onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="date"
@@ -332,14 +336,7 @@ export const Analytics = memo(function Analytics() {
                   height={80}
                 />
                 <YAxis tick={{ fontSize: 12, fill: 'var(--color-foreground)' }} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload?.[0]?.payload) {
-                      setHoveredData(payload[0].payload);
-                    }
-                    return null;
-                  }}
-                />
+                <Tooltip content={() => null} />
                 <Legend />
                 <Line
                   type="monotone"
@@ -364,7 +361,7 @@ export const Analytics = memo(function Analytics() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData}>
+              <BarChart data={chartData} onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="date"
@@ -374,14 +371,7 @@ export const Analytics = memo(function Analytics() {
                   height={80}
                 />
                 <YAxis tick={{ fontSize: 12, fill: 'var(--color-foreground)' }} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload?.[0]?.payload) {
-                      setHoveredData(payload[0].payload);
-                    }
-                    return null;
-                  }}
-                />
+                <Tooltip content={() => null} />
                 <Legend />
                 <Bar dataKey="Feedback" fill="hsl(280, 100%, 70%)" />
                 <Bar dataKey="Time (min)" fill="hsl(25, 95%, 53%)" />

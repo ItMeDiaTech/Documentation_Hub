@@ -75,35 +75,17 @@ type SerializedSession = Omit<Session, 'createdAt' | 'lastModified' | 'closedAt'
  * Creates standard 5-level indentation configuration matching StylesEditor defaults
  * Used for new sessions and backfilling existing sessions without list settings
  *
- * Symbol indent: 0.5" base with 0.5" increments per level
- * Text indent: symbol indent + 0.25" hanging indent
+ * Cascading indentation: L0 symbol indent defaults to 0.25"
+ * Each level: text indent = symbol indent + 0.25", next symbol = prev text + 0.25"
  */
 const createDefaultListBulletSettings = (): ListBulletSettings => ({
   enabled: true,
   indentationLevels: [
-    {
-      level: 0,
-      symbolIndent: 0.5,
-      textIndent: 0.75,
-      bulletChar: '•',  // closed (filled)
-      numberedFormat: '1.',
-    },
-    { level: 1, symbolIndent: 1.0, textIndent: 1.25, bulletChar: '○', numberedFormat: 'a.' },  // open
-    {
-      level: 2,
-      symbolIndent: 1.5,
-      textIndent: 1.75,
-      bulletChar: '•',  // closed (filled)
-      numberedFormat: 'i.',
-    },
-    { level: 3, symbolIndent: 2.0, textIndent: 2.25, bulletChar: '○', numberedFormat: '1)' },  // open
-    {
-      level: 4,
-      symbolIndent: 2.5,
-      textIndent: 2.75,
-      bulletChar: '•',  // closed (filled)
-      numberedFormat: 'a)',
-    },
+    { level: 0, symbolIndent: 0.25, textIndent: 0.50, bulletChar: '•', numberedFormat: '1.' },
+    { level: 1, symbolIndent: 0.75, textIndent: 1.00, bulletChar: '○', numberedFormat: 'a.' },
+    { level: 2, symbolIndent: 1.25, textIndent: 1.50, bulletChar: '•', numberedFormat: 'i.' },
+    { level: 3, symbolIndent: 1.75, textIndent: 2.00, bulletChar: '○', numberedFormat: '1)' },
+    { level: 4, symbolIndent: 2.25, textIndent: 2.50, bulletChar: '•', numberedFormat: 'a)' },
   ],
 });
 
@@ -1277,6 +1259,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           preserveUserBlankStructures?: boolean;
           removeItalics?: boolean;
           preserveRedFont?: boolean;
+          normalizeDashes?: boolean;
           standardizeHyperlinkFormatting?: boolean;
           standardizeListPrefixFormatting?: boolean;
 
@@ -1400,14 +1383,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionToProcess.processingOptions?.enabledOperations?.includes('remove-whitespace'),
           removeParagraphLines:
             sessionToProcess.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
-          // Preserve blank lines after Header 2 tables ONLY when removing paragraph lines
-          // This ensures we don't accidentally remove spacing after Header 2 tables (docxmlater v1.16.0)
-          preserveBlankLinesAfterHeader2Tables:
-            sessionToProcess.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
-          preserveUserBlankStructures:
-            sessionToProcess.processingOptions?.enabledOperations?.includes('preserve-user-blank-structures'),
           removeItalics: sessionToProcess.processingOptions?.enabledOperations?.includes('remove-italics'),
           preserveRedFont: sessionToProcess.processingOptions?.enabledOperations?.includes('preserve-red-font'),
+          normalizeDashes: sessionToProcess.processingOptions?.enabledOperations?.includes('normalize-dashes'),
 
           // ALWAYS ENABLED: Standardize hyperlink formatting (remove bold/italic from all hyperlinks)
           // This is intentional and required for the work environment to maintain professional document standards.
