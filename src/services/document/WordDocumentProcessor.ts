@@ -6163,6 +6163,7 @@ export class WordDocumentProcessor {
 
     for (const table of tables) {
       if (table.isFloating()) continue;
+      if (tableProcessor.isHLPTable(table)) continue;
 
       const rows = table.getRows();
       if (rows.length < 2) continue;
@@ -6269,6 +6270,7 @@ export class WordDocumentProcessor {
 
     for (const table of tables) {
       if (table.isFloating()) continue;
+      if (tableProcessor.isHLPTable(table)) continue;
 
       const rows = table.getRows();
       if (rows.length < 2) continue;
@@ -6484,6 +6486,9 @@ export class WordDocumentProcessor {
     // Process all table cells
     const tables = doc.getAllTables();
     for (const table of tables) {
+      // Skip HLP tables — their content has dedicated processing
+      if (tableProcessor.isHLPTable(table)) continue;
+
       for (const row of table.getRows()) {
         for (const cell of row.getCells()) {
           const paragraphs = cell.getParagraphs();
