@@ -213,6 +213,8 @@ CLINE_SESSION_HOOK_SETUP.md
 
 # Personal configuration (Development only)
 .context7-demo.md
+Actions.md
+dev-app-update*
 
 # Temporary fix/import scripts
 fix-imports/
@@ -240,6 +242,9 @@ fix-imports/
 /FINAL_SOLUTION.md
 /EXECUTION_LOG_TEST_BASE.md
 /inspect-paragraph-xml.ts
+analyze*
+Changes_*
+compare-*
 
 # Local data and config
 config/
@@ -291,6 +296,8 @@ docs/archive/
 
 # Ad-hoc test/debug scripts (root level only)
 /test-*.js
+/test-*.ts
+/run-*.ts
 /analyze-*.js
 /debug-*.js
 /compare-*.js
@@ -299,9 +306,19 @@ docs/archive/
 /process-*.js
 /trace-*.js
 
+# Development planning and analysis docs (root level)
+/PDF_Implementation.md
+/shading-gaps.md
+docs/plans/
+
 # Extracted DOCX folders (unzipped for debugging)
 *_extracted/
 *_extract/
+temp_*/
+temp_*
+opt1_*
+opt2_*
+Corrupt*
 
 # Temp directories
 tmpclaude-*/
@@ -315,3 +332,5 @@ nul
 .prettierignore
 .prettierrc
 *.zip
+numbering_extract.txt
+.env.example

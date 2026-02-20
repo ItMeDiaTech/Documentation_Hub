@@ -83,7 +83,10 @@ export type ElectronAPI = {
   createFolder: (folderPath: string) => Promise<boolean>;
   copyFileToFolder: (sourcePath: string, destFolder: string) => Promise<boolean>;
   createReportZip: (folderPath: string, zipName: string) => Promise<string>;
-  openOutlookEmail: (subject: string, attachmentPath: string) => Promise<boolean>;
+  openOutlookEmail: (subject: string, attachmentPath: string) => Promise<{
+    success: boolean;
+    method: 'outlook' | 'mailto';
+  }>;
 
   // Document text extraction (for comparison views)
   extractDocumentText: (filePath: string) => Promise<{

@@ -144,10 +144,19 @@ export const Reporting = memo(function Reporting() {
       const subject =
         reportType === 'bug' ? 'Bug Report: Documentation Hub' : 'Kudos: Documentation Hub';
 
-      await window.electronAPI.openOutlookEmail(subject, zipPath);
+      const result = await window.electronAPI.openOutlookEmail(subject, zipPath);
       setProgress(100);
 
-      toast({ title: 'Email draft opened', variant: 'success' });
+      if (result.method === 'mailto' && zipPath) {
+        toast({
+          title: 'Email draft opened',
+          description: 'Please attach the ZIP file from the opened folder.',
+          variant: 'success',
+          duration: 6000,
+        });
+      } else {
+        toast({ title: 'Email draft opened', variant: 'success' });
+      }
     } catch (error) {
       logger.error('Failed to generate email:', error);
       toast({ title: 'Failed to generate email', variant: 'destructive' });

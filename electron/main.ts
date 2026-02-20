@@ -2089,40 +2089,6 @@ ipcMain.handle(
         const util = await import("util");
         const execPromise = util.promisify(exec);
 
-        // Calculate window sizes with bounds for readability
-        // workArea dimensions are already in logical (DIP) pixels from Electron - no DPI scaling needed
-        // Optimal document width is ~960px (readable on most screens)
-        // Clamp to reasonable bounds: min 700px, max 1200px per window
-        const halfWidth = Math.floor(width / 2);
-        const optimalWidth = 960;
-        const maxWindowWidth = 1200;
-        const minWindowWidth = 700;
-
-        let windowWidth: number;
-        if (halfWidth < minWindowWidth) {
-          // Small screen: use half width even if cramped
-          windowWidth = halfWidth;
-        } else if (halfWidth > maxWindowWidth) {
-          // Large screen: cap at max comfortable width
-          windowWidth = maxWindowWidth;
-        } else {
-          // Medium screen: use optimal width if it fits, otherwise half
-          windowWidth = Math.min(optimalWidth, halfWidth);
-        }
-
-        // Center the two windows on the display
-        const totalWidth = windowWidth * 2;
-        const startX = x + Math.floor((width - totalWidth) / 2);
-
-        const leftX = startX;
-        const leftWidth = windowWidth;
-        const rightX = startX + windowWidth;
-        const rightWidth = windowWidth;
-
-        log.info("[Display] Calculated window positions", {
-          leftX, leftWidth, rightX, rightWidth, windowHeight: height,
-        });
-
         // Extract filenames to match against window titles
         // Word titles include filename: "MyDoc.docx - Word"
         const backupFilename = path.basename(backupPath);
@@ -2134,23 +2100,37 @@ ipcMain.handle(
         });
 
         // PowerShell script to find and position Word windows BY FILENAME
-        // This ensures backup (Original) goes LEFT and processed goes RIGHT
-        // Filenames passed via environment variables to prevent injection
+        // Uses native .NET monitor enumeration to get coordinates in the same
+        // coordinate system as SetWindowPos — eliminates DIP-to-physical conversion
+        // issues on multi-monitor setups with different scale factors
         const psScript = `
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public class DpiAwareness {
+public class DpiHelper {
   [DllImport("user32.dll")]
   public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll", EntryPoint = "SetProcessDpiAwarenessContext")]
+  static extern int SetDpiAwarenessCtx(IntPtr value);
+  public static void SetBestDpiAwareness() {
+    try {
+      // Per-Monitor DPI Aware V2 (Windows 10 1703+)
+      SetDpiAwarenessCtx(new IntPtr(-4));
+    } catch {
+      // Fallback to system-level DPI awareness on older Windows
+      SetProcessDPIAware();
+    }
+  }
 }
 "@
-[DpiAwareness]::SetProcessDPIAware()
+[DpiHelper]::SetBestDpiAwareness()
 
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class Win32 {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct POINT { public int X; public int Y; }
   [DllImport("user32.dll")]
   public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
   [DllImport("user32.dll")]
@@ -2159,9 +2139,58 @@ public class Win32 {
   public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
   [DllImport("user32.dll")]
   public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")]
+  public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+  [DllImport("shcore.dll")]
+  public static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 }
 "@
+
+Add-Type -AssemblyName System.Windows.Forms
+
+# Get target monitor natively — coordinates match SetWindowPos coordinate system
+$monitorIndex = [int]$env:DOCHUB_MONITOR_INDEX
+$screens = [System.Windows.Forms.Screen]::AllScreens
+if ($monitorIndex -lt 0 -or $monitorIndex -ge $screens.Length) { $monitorIndex = 0 }
+$targetScreen = $screens[$monitorIndex]
+$wa = $targetScreen.WorkingArea
+
+$x = $wa.X
+$y = $wa.Y
+$width = $wa.Width
+$height = $wa.Height
+
+# Get the target monitor's DPI to scale sizing constants from logical to physical
+$pt = New-Object Win32+POINT
+$pt.X = $wa.X + 1
+$pt.Y = $wa.Y + 1
+$hMonitor = [Win32]::MonitorFromPoint($pt, 2)
+$dpiX = [uint32]0
+$dpiY = [uint32]0
+[Win32]::GetDpiForMonitor($hMonitor, 0, [ref]$dpiX, [ref]$dpiY) | Out-Null
+$scaleFactor = if ($dpiX -gt 0) { $dpiX / 96.0 } else { 1.0 }
+
+# Scale sizing constants from logical (96 DPI) values to physical pixels
+$halfWidth = [Math]::Floor($width / 2)
+$optimalWidth = [Math]::Round(960 * $scaleFactor)
+$maxWindowWidth = [Math]::Round(1200 * $scaleFactor)
+$minWindowWidth = [Math]::Round(700 * $scaleFactor)
+
+if ($halfWidth -lt $minWindowWidth) {
+  $windowWidth = $halfWidth
+} elseif ($halfWidth -gt $maxWindowWidth) {
+  $windowWidth = $maxWindowWidth
+} else {
+  $windowWidth = [Math]::Min($optimalWidth, $halfWidth)
+}
+
+# Center the two windows on the display
+$totalWidth = $windowWidth * 2
+$startX = $x + [Math]::Floor(($width - $totalWidth) / 2)
+$leftX = $startX
+$rightX = $startX + $windowWidth
+
 $backupFilename = $env:DOCHUB_BACKUP_FILENAME
 $processedFilename = $env:DOCHUB_PROCESSED_FILENAME
 
@@ -2191,11 +2220,11 @@ foreach ($win in $wordWindows) {
 }
 
 if ($backupWindow -ne $null) {
-  [Win32]::SetWindowPos($backupWindow.hWnd, [IntPtr]::Zero, ${leftX}, ${y}, ${leftWidth}, ${height}, 0x0040) | Out-Null
+  [Win32]::SetWindowPos($backupWindow.hWnd, [IntPtr]::Zero, $leftX, $y, $windowWidth, $height, 0x0040) | Out-Null
 }
 
 if ($processedWindow -ne $null) {
-  [Win32]::SetWindowPos($processedWindow.hWnd, [IntPtr]::Zero, ${rightX}, ${y}, ${rightWidth}, ${height}, 0x0040) | Out-Null
+  [Win32]::SetWindowPos($processedWindow.hWnd, [IntPtr]::Zero, $rightX, $y, $windowWidth, $height, 0x0040) | Out-Null
 }
 `;
 
@@ -2204,14 +2233,18 @@ if ($processedWindow -ne $null) {
           const scriptBuffer = Buffer.from(psScript, "utf16le");
           const encodedScript = scriptBuffer.toString("base64");
 
-          await execPromise(`powershell -EncodedCommand ${encodedScript}`, {
+          const psResult = await execPromise(`powershell -EncodedCommand ${encodedScript}`, {
             windowsHide: true,
             env: {
               ...process.env,
+              DOCHUB_MONITOR_INDEX: monitorIndex.toString(),
               DOCHUB_BACKUP_FILENAME: backupFilename,
               DOCHUB_PROCESSED_FILENAME: processedFilename,
             },
           });
+          if (psResult.stderr) {
+            log.warn("[Display] PowerShell warnings:", psResult.stderr);
+          }
           log.info("[Display] Word windows positioned successfully (backup=left, processed=right)");
         } catch (psError) {
           // Non-fatal - windows opened but positioning may have failed
@@ -2333,7 +2366,7 @@ ipcMain.handle(
   }
 );
 
-// Open Outlook with attachment
+// Open email client with attachment (Classic Outlook COM → mailto fallback)
 ipcMain.handle(
   "open-outlook-email",
   async (
@@ -2344,12 +2377,14 @@ ipcMain.handle(
   ) => {
     const { subject, attachmentPath } = request;
 
-    // Pass subject and path via environment variables to avoid PowerShell injection
+    // Phase 1: Try Classic Outlook via COM automation
     const psScript = `
       $outlook = New-Object -ComObject Outlook.Application
       $mail = $outlook.CreateItem(0)
       $mail.Subject = $env:DOCHUB_EMAIL_SUBJECT
-      $mail.Attachments.Add($env:DOCHUB_ATTACHMENT_PATH)
+      if ($env:DOCHUB_ATTACHMENT_PATH) {
+        $mail.Attachments.Add($env:DOCHUB_ATTACHMENT_PATH)
+      }
       $mail.Display()
     `;
 
@@ -2369,10 +2404,24 @@ ipcMain.handle(
         },
       });
       log.info(`Opened Outlook with attachment: ${attachmentPath}`);
-      return true;
-    } catch (error) {
-      log.error("Failed to open Outlook:", error);
-      throw error;
+      return { success: true, method: "outlook" as const };
+    } catch (comError) {
+      log.warn("Classic Outlook COM not available, falling back to mailto:", comError);
+    }
+
+    // Phase 2: Fallback to mailto + Explorer
+    try {
+      await shell.openExternal(`mailto:?subject=${encodeURIComponent(subject)}`);
+
+      if (attachmentPath && fs.existsSync(attachmentPath)) {
+        shell.showItemInFolder(attachmentPath);
+      }
+
+      log.info(`Opened mailto fallback for subject: ${subject}`);
+      return { success: true, method: "mailto" as const };
+    } catch (mailtoError) {
+      log.error("Failed to open email client:", mailtoError);
+      throw mailtoError;
     }
   }
 );

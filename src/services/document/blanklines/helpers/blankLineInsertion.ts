@@ -13,7 +13,13 @@ import { isParagraphBlank } from "./paragraphChecks";
 export function createBlankParagraph(options: BlankLineOptions): Paragraph {
   const blankPara = Paragraph.create();
   blankPara.setStyle(options.style);
+  if (options.spacingBefore !== undefined) {
+    blankPara.setSpaceBefore(options.spacingBefore);
+  }
   blankPara.setSpaceAfter(options.spacingAfter);
+  if (options.lineSpacing !== undefined) {
+    blankPara.setLineSpacing(options.lineSpacing);
+  }
   if (options.markAsPreserved) {
     blankPara.setPreserved(true);
   }

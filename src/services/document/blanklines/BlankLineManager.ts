@@ -40,11 +40,19 @@ import type { BlankLineOptions } from "./types";
 
 const log = logger.namespace("BlankLineManager");
 
-const BLANK_LINE_OPTIONS: BlankLineOptions = {
-  spacingAfter: 120,
-  markAsPreserved: true,
-  style: "Normal",
-};
+function buildBlankLineOptions(
+  normalStyle?: BlankLineProcessingOptions['normalStyleFormatting']
+): BlankLineOptions {
+  return {
+    spacingAfter: normalStyle?.spaceAfter ?? 120,
+    spacingBefore: normalStyle?.spaceBefore,
+    lineSpacing: normalStyle?.lineSpacing,
+    fontSize: normalStyle?.fontSize,
+    fontFamily: normalStyle?.fontFamily,
+    markAsPreserved: true,
+    style: "Normal",
+  };
+}
 
 export class BlankLineManager {
   /**
@@ -63,6 +71,8 @@ export class BlankLineManager {
       indentationFixed: 0,
     };
 
+    const blankOpts = buildBlankLineOptions(options.normalStyleFormatting);
+
     // Step 1: Remove SDT wrappers
     clearCustom(doc);
 
@@ -75,12 +85,12 @@ export class BlankLineManager {
     result.removed += this.applyRemovalRulesCells(doc);
 
     // Step 3: Apply addition rules (walk body + cells, add blanks where rules match)
-    result.added += this.applyAdditionRulesBody(doc, options);
-    result.added += this.applyAdditionRulesCells(doc, options);
+    result.added += this.applyAdditionRulesBody(doc, options, blankOpts);
+    result.added += this.applyAdditionRulesCells(doc, options, blankOpts);
 
     // Step 4: Apply preservation fallback (keep original blanks where no rule matched)
-    result.preserved += this.applyPreservationFallbackBody(doc, snapshot);
-    result.preserved += this.applyPreservationFallbackCells(doc, snapshot);
+    result.preserved += this.applyPreservationFallbackBody(doc, snapshot, blankOpts);
+    result.preserved += this.applyPreservationFallbackCells(doc, snapshot, blankOpts);
 
     // Step 5: Apply indentation rules
     result.indentationFixed = applyIndentationRules(doc, options);
@@ -90,7 +100,7 @@ export class BlankLineManager {
     result.removed += dedupRemoved;
 
     // Step 7: Normalize all blank line styles to Normal
-    this.normalizeBlankLineStyles(doc);
+    this.normalizeBlankLineStyles(doc, blankOpts);
 
     log.info(
       `Rule engine complete: ${result.removed} removed, ${result.added} added, ` +
@@ -171,7 +181,8 @@ export class BlankLineManager {
    */
   private applyAdditionRulesBody(
     doc: Document,
-    options: BlankLineProcessingOptions
+    options: BlankLineProcessingOptions,
+    blankOpts: BlankLineOptions
   ): number {
     let added = 0;
 
@@ -181,11 +192,21 @@ export class BlankLineManager {
       const matchedRule = this.findMatchingRule(additionRules, ctx, "body");
 
       if (matchedRule) {
+        // Clear indentation from navigation hyperlink paragraphs
+        if (matchedRule.id === "add-above-top-of-doc-hyperlink") {
+          const targetPara = ctx.nextElement;
+          if (targetPara instanceof Paragraph) {
+            const indent = targetPara.getFormatting()?.indentation?.left;
+            if (indent && indent > 0) {
+              targetPara.setLeftIndent(0);
+            }
+          }
+        }
+
         // Determine if this rule wants a blank BEFORE the next element or AFTER the current
         const isBefore =
           matchedRule.id === "add-above-top-of-doc-hyperlink" ||
           matchedRule.id === "add-above-warning" ||
-          matchedRule.id === "add-above-return-to-hlp" ||
           matchedRule.id === "add-before-first-1x1-table";
 
         if (isBefore) {
@@ -197,7 +218,7 @@ export class BlankLineManager {
             if (nextEl instanceof Paragraph && isParagraphBlank(nextEl)) {
               continue; // Already a blank
             }
-            const blankPara = createBlankParagraph(BLANK_LINE_OPTIONS);
+            const blankPara = createBlankParagraph(blankOpts);
             doc.insertBodyElementAt(nextIdx, blankPara);
             added++;
             i++; // Skip past inserted blank
@@ -211,7 +232,7 @@ export class BlankLineManager {
               continue; // Already a blank
             }
           }
-          const blankPara = createBlankParagraph(BLANK_LINE_OPTIONS);
+          const blankPara = createBlankParagraph(blankOpts);
           doc.insertBodyElementAt(i + 1, blankPara);
           added++;
           i++; // Skip past inserted blank
@@ -226,10 +247,17 @@ export class BlankLineManager {
           if (!isImageSmall(image) && i > 0) {
             const prevEl = doc.getBodyElementAt(i - 1);
             if (!(prevEl instanceof Paragraph && isParagraphBlank(prevEl))) {
-              const blankPara = createBlankParagraph(BLANK_LINE_OPTIONS);
-              doc.insertBodyElementAt(i, blankPara);
-              added++;
-              i++; // Skip past inserted blank
+              // Don't add blank above image if previous is centered text
+              const isCenteredText =
+                prevEl instanceof Paragraph &&
+                prevEl.getAlignment() === "center" &&
+                !!prevEl.getText()?.trim();
+              if (!isCenteredText) {
+                const blankPara = createBlankParagraph(blankOpts);
+                doc.insertBodyElementAt(i, blankPara);
+                added++;
+                i++; // Skip past inserted blank
+              }
             }
           }
         }
@@ -244,7 +272,8 @@ export class BlankLineManager {
    */
   private applyAdditionRulesCells(
     doc: Document,
-    options: BlankLineProcessingOptions
+    options: BlankLineProcessingOptions,
+    blankOpts: BlankLineOptions
   ): number {
     let added = 0;
 
@@ -270,7 +299,7 @@ export class BlankLineManager {
               const nextPara = paras[ci + 1];
               if (nextPara && isParagraphBlank(nextPara)) continue; // Already has blank
 
-              const blankPara = createBlankParagraph(BLANK_LINE_OPTIONS);
+              const blankPara = createBlankParagraph(blankOpts);
               cell.addParagraphAt(ci + 1, blankPara);
               added++;
               ci++; // Skip past inserted blank
@@ -291,7 +320,8 @@ export class BlankLineManager {
    */
   private applyPreservationFallbackBody(
     doc: Document,
-    snapshot: BlankLineSnapshot
+    snapshot: BlankLineSnapshot,
+    blankOpts: BlankLineOptions
   ): number {
     let preserved = 0;
 
@@ -308,7 +338,7 @@ export class BlankLineManager {
         if (removalMatch) continue;
 
         // No rule matched and original had a blank - preserve it
-        const blankPara = createBlankParagraph(BLANK_LINE_OPTIONS);
+        const blankPara = createBlankParagraph(blankOpts);
         doc.insertBodyElementAt(i + 1, blankPara);
         preserved++;
         i++; // Skip past inserted blank
@@ -323,7 +353,8 @@ export class BlankLineManager {
    */
   private applyPreservationFallbackCells(
     doc: Document,
-    snapshot: BlankLineSnapshot
+    snapshot: BlankLineSnapshot,
+    blankOpts: BlankLineOptions
   ): number {
     let preserved = 0;
     let tableIndex = 0;
@@ -364,7 +395,13 @@ export class BlankLineManager {
               // Don't preserve blank at very end of cell
               if (ci + 1 >= paras.length - 1) continue;
 
-              const blankPara = createBlankParagraph(BLANK_LINE_OPTIONS);
+              // Check if a removal rule would remove this blank
+              const removalMatch = this.findMatchingCellRemovalForPosition(
+                doc, cell, paras, ci, ci + 1, table
+              );
+              if (removalMatch) continue;
+
+              const blankPara = createBlankParagraph(blankOpts);
               cell.addParagraphAt(ci + 1, blankPara);
               preserved++;
               ci++;
@@ -412,6 +449,37 @@ export class BlankLineManager {
   }
 
   /**
+   * Check if any removal rule would match a hypothetical blank at a cell position.
+   */
+  private findMatchingCellRemovalForPosition(
+    doc: Document,
+    cell: TableCell,
+    paras: Paragraph[],
+    prevIndex: number,
+    nextIndex: number,
+    parentTable: Table
+  ): BlankLineRule | null {
+    const ctx: RuleContext = {
+      doc,
+      currentIndex: prevIndex + 1,
+      currentElement: Paragraph.create(), // Simulate a blank paragraph
+      prevElement: prevIndex >= 0 ? paras[prevIndex] : undefined,
+      nextElement: nextIndex < paras.length ? paras[nextIndex] : undefined,
+      scope: "cell",
+      cell,
+      cellParagraphs: paras,
+      cellParaIndex: prevIndex + 1,
+      parentTable,
+    };
+
+    for (const rule of removalRules) {
+      if (rule.scope !== "cell" && rule.scope !== "both") continue;
+      if (rule.matches(ctx)) return rule;
+    }
+    return null;
+  }
+
+  /**
    * Remove adjacent blank paragraphs (dedup safety net).
    */
   private dedup(doc: Document): number {
@@ -441,6 +509,7 @@ export class BlankLineManager {
         for (const cell of row.getCells()) {
           let paras = cell.getParagraphs();
 
+          // Remove adjacent blanks
           for (let ci = paras.length - 1; ci > 0; ci--) {
             if (paras.length <= 1) break;
 
@@ -452,6 +521,13 @@ export class BlankLineManager {
               removed++;
               paras = cell.getParagraphs();
             }
+          }
+
+          // Remove trailing blanks (no blank between last visual element and cell end)
+          while (paras.length > 1 && isParagraphBlank(paras[paras.length - 1])) {
+            cell.removeParagraph(paras.length - 1);
+            removed++;
+            paras = cell.getParagraphs();
           }
         }
       }
@@ -465,15 +541,33 @@ export class BlankLineManager {
   }
 
   /**
-   * Ensure all blank paragraphs have Normal style with standard spacing.
+   * Ensure all blank paragraphs have Normal style with correct formatting.
    */
-  private normalizeBlankLineStyles(doc: Document): void {
+  private normalizeBlankLineStyles(doc: Document, opts: BlankLineOptions): void {
+    const applyFormatting = (para: Paragraph) => {
+      para.setStyle(opts.style);
+      if (opts.spacingBefore !== undefined) {
+        para.setSpaceBefore(opts.spacingBefore);
+      }
+      para.setSpaceAfter(opts.spacingAfter);
+      if (opts.lineSpacing !== undefined) {
+        para.setLineSpacing(opts.lineSpacing);
+      }
+      // Apply font/size to existing runs (paragraph mark formatting)
+      if (opts.fontSize || opts.fontFamily) {
+        const runs = para.getRuns();
+        for (const run of runs) {
+          if (opts.fontSize) run.setSize(opts.fontSize);
+          if (opts.fontFamily) run.setFont(opts.fontFamily);
+        }
+      }
+    };
+
     // Body
     for (let i = 0; i < doc.getBodyElementCount(); i++) {
       const element = doc.getBodyElementAt(i);
       if (element instanceof Paragraph && isParagraphBlank(element)) {
-        element.setStyle("Normal");
-        element.setSpaceAfter(120);
+        applyFormatting(element);
       }
     }
 
@@ -483,8 +577,7 @@ export class BlankLineManager {
         for (const cell of row.getCells()) {
           for (const para of cell.getParagraphs()) {
             if (isParagraphBlank(para)) {
-              para.setStyle("Normal");
-              para.setSpaceAfter(120);
+              applyFormatting(para);
             }
           }
         }

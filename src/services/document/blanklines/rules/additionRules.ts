@@ -8,9 +8,9 @@
  * should exist at the position AFTER the current element.
  */
 
-import { Paragraph, Table, Hyperlink, Style } from "docxmlater";
+import { Paragraph, Table } from "docxmlater";
 import type { BlankLineRule, RuleContext } from "./ruleTypes";
-import { isParagraphBlank, isTocParagraph, startsWithBoldColon, getEffectiveLeftIndent } from "../helpers/paragraphChecks";
+import { isParagraphBlank, isTocParagraph, startsWithBoldColon, getEffectiveLeftIndent, hasNavigationHyperlink } from "../helpers/paragraphChecks";
 import { getImageRunFromParagraph, isImageSmall, isSmallImageParagraph } from "../helpers/imageChecks";
 
 /**
@@ -193,7 +193,7 @@ export const boldColonNoIndentAfterRule: BlankLineRule = {
 };
 
 /**
- * Add blank line ABOVE "Top of Document" / "Top of the Document" hyperlink.
+ * Add blank line ABOVE navigation hyperlinks (text starts with "Top of" or "Return to").
  */
 export const aboveTopOfDocHyperlinkRule: BlankLineRule = {
   id: "add-above-top-of-doc-hyperlink",
@@ -202,21 +202,7 @@ export const aboveTopOfDocHyperlinkRule: BlankLineRule = {
   matches(ctx: RuleContext): boolean {
     if (ctx.scope !== "body") return false;
     if (!(ctx.nextElement instanceof Paragraph)) return false;
-
-    // Check if next element contains a "Top of Document" hyperlink
-    const content = ctx.nextElement.getContent();
-    if (!content) return false;
-
-    for (const item of content) {
-      if (item instanceof Hyperlink) {
-        const text = item.getText().toLowerCase();
-        if (text === "top of document" || text === "top of the document") {
-          // Current element should not already be a blank (handled by engine dedup)
-          return true;
-        }
-      }
-    }
-    return false;
+    return hasNavigationHyperlink(ctx.nextElement);
   },
 };
 
@@ -235,6 +221,12 @@ export const afterListItemsRule: BlankLineRule = {
     if (ctx.nextElement instanceof Paragraph) {
       // If next is also a list item, don't add blank
       if (ctx.nextElement.getNumbering()) return false;
+
+      // If next is a centered image, always add blank
+      if (ctx.nextElement.getAlignment() === "center") {
+        const imageRun = getImageRunFromParagraph(ctx.nextElement);
+        if (imageRun) return true;
+      }
 
       // If next is indented text, don't add blank
       // Use getEffectiveLeftIndent to also check style-inherited indentation
@@ -307,34 +299,6 @@ export const aboveWarningRule: BlankLineRule = {
 };
 
 /**
- * Add blank line above "Return to HLP" hyperlinks.
- */
-export const aboveReturnToHLPRule: BlankLineRule = {
-  id: "add-above-return-to-hlp",
-  action: "add",
-  scope: "body",
-  matches(ctx: RuleContext): boolean {
-    if (ctx.scope !== "body") return false;
-
-    // Check if next element contains a "Return to HLP" hyperlink
-    if (!(ctx.nextElement instanceof Paragraph)) return false;
-
-    const content = ctx.nextElement.getContent();
-    if (!content) return false;
-
-    for (const item of content) {
-      if (item instanceof Hyperlink) {
-        const text = item.getText().toLowerCase();
-        if (text === "return to hlp") {
-          return true;
-        }
-      }
-    }
-    return false;
-  },
-};
-
-/**
  * All addition rules in evaluation order.
  */
 export const additionRules: BlankLineRule[] = [
@@ -348,5 +312,4 @@ export const additionRules: BlankLineRule[] = [
   afterListItemsRule,
   aboveAndBelowLargeImagesRule,
   aboveWarningRule,
-  aboveReturnToHLPRule,
 ];

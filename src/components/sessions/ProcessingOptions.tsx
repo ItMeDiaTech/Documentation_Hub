@@ -27,6 +27,7 @@ const optionDescriptions: Record<string, string> = {
   'preserve-red-font': 'Prevents changes to text that is colored red',
   'replace-outdated-titles': 'Updates a hyperlink\'s display text to match the title within theSource if different',
   'validate-document-styles': 'Applies your custom style settings from the Styles tab',
+  'correct-misapplied-styles': 'Fixes paragraphs with incorrectly applied TOC or Hyperlink styles so they receive proper formatting',
 
   // Links & Navigation
   'update-top-hyperlinks': 'Adds or updates links that jump to the document start',
@@ -60,6 +61,7 @@ export const defaultOptions: ProcessingOption[] = [
   { id: 'preserve-red-font', label: 'Keep Red Text', group: 'text', enabled: false },
   { id: 'replace-outdated-titles', label: 'Update theSource Link Titles', group: 'hyperlinks', enabled: true },
   { id: 'validate-document-styles', label: 'Apply Custom Styles', group: 'text', enabled: true },
+  { id: 'correct-misapplied-styles', label: 'Fix Misapplied Styles', group: 'text', enabled: true },
 
   // Links & Navigation Group
   { id: 'update-top-hyperlinks', label: '"Top of Document" Hyperlinks', group: 'hyperlinks', enabled: true },

@@ -35,8 +35,9 @@ import {
   normalizeOrphanListLevelsInTable,
   stripTypedPrefix,
   detectTypedPrefix,
+  detectListType,
 } from "@/services/document/list";
-import type { ParagraphContent, TableCell } from "docxmlater";
+import type { ParagraphContent, RunFormatting, TableCell } from "docxmlater";
 import type { RevisionHandlingMode } from "@/types/session";
 // Note: Run, Hyperlink, ImageRun imported for type checking in isParagraphTrulyEmpty()
 import {
@@ -56,7 +57,9 @@ import * as path from "path";
 import { hyperlinkService } from "../HyperlinkService";
 import type { HyperlinkApiResponse } from "@/types/hyperlink";
 import { DocXMLaterProcessor } from "./DocXMLaterProcessor";
-import { blankLineManager, isSmallImageParagraph, removeSmallIndents } from "./blanklines";
+import { blankLineManager, removeSmallIndents } from "./blanklines";
+import { normalizeRunWhitespace } from "./helpers/whitespace";
+import { cropEmbeddedImageBorders } from "./helpers/ImageBorderCropper";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
 import { DocumentSnapshotService } from "./DocumentSnapshotService";
@@ -115,6 +118,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   normalizeDashes?: boolean; // normalize-dashes: Replace en-dashes (U+2013) and em-dashes (U+2014) with hyphens (U+002D)
   standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
   standardizeListPrefixFormatting?: boolean; // standardize-list-prefix-formatting: Apply consistent Verdana 12pt black formatting to all list symbols/numbers
+  correctMisappliedStyles?: boolean; // correct-misapplied-styles: Fix paragraphs with incorrectly applied TOC or Hyperlink paragraph styles
 
   // ═══════════════════════════════════════════════════════════
   // Content Structure Options (ProcessingOptions group: 'structure')
@@ -320,6 +324,10 @@ export class WordDocumentProcessor {
 
   // AbstractNumIds used in HLP tables — protected from format/indentation overrides
   private _hlpAbstractNumIds = new Set<number>();
+
+  // Per-paragraph numbering snapshot taken BEFORE applyStyles() — restored in processHLPTables()
+  // to undo any ilvl/numId corruption caused by list processing or style application.
+  private _hlpSavedNumbering = new Map<Paragraph, { numId: number; level: number; leftIndent?: number }>();
 
   // DEPRECATED v1.16.0: Header 2 table detection (replaced with 1x1 table dimension check)
   // Kept for potential future use: stored Header 2 table indices during style application
@@ -775,6 +783,16 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
+      // SANITIZE WEB SETTINGS
+      // Remove bloated w:divs from web paste operations that can cause
+      // Word to freeze during layout. Resets to minimal template.
+      // ═══════════════════════════════════════════════════════════
+      const sanitizedDivs = doc.sanitizeWebSettings();
+      if (sanitizedDivs > 0) {
+        this.log.info(`Sanitized webSettings.xml: removed ${sanitizedDivs} web div(s)`);
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // CAPTURE PRE-EXISTING TRACKED CHANGES
       // These are changes that existed in the document BEFORE DocHub processing
       // Must be done BEFORE enabling track changes (which adds DocHub's author)
@@ -896,6 +914,7 @@ export class WordDocumentProcessor {
         author: authorName,
         trackFormatting: true,
         showInsertionsAndDeletions: true,
+        clearExistingPropertyChanges: false,
       });
       this.log.info(`Track changes enabled with author: ${authorName}`);
 
@@ -1392,6 +1411,7 @@ export class WordDocumentProcessor {
           author: authorName,
           trackFormatting: true,
           showInsertionsAndDeletions: true,
+          clearExistingPropertyChanges: false,
         });
         this.log.info(`Cleaned whitespace in ${whitespaceCleaned} runs`);
 
@@ -1454,19 +1474,133 @@ export class WordDocumentProcessor {
         });
       }
 
-      if (options.standardizeListPrefixFormatting) {
-        this.log.debug("=== STANDARDIZING LIST PREFIX FORMATTING ===");
-        const listPrefixesStandardized = await this.standardizeListPrefixFormatting(doc);
-        this.log.info(`Standardized formatting for ${listPrefixesStandardized} list prefix levels`);
+      // Collect abstractNumIds used in HLP tables BEFORE list processing.
+      // These are protected from format/indentation overrides in bullet/numbered uniformity
+      // and from standardizeListPrefixFormatting() to preserve original Symbol font + sizes.
+      // Also cache HLP table detection before applyStyles() overwrites FFC000 shading.
+      this._hlpAbstractNumIds.clear();
+      this._hlpSavedNumbering.clear();
+      tableProcessor.cacheHLPTables(doc.getTables());
+      {
+        const manager = doc.getNumberingManager();
+        for (const table of doc.getTables()) {
+          if (!tableProcessor.isHLPTable(table)) continue;
+          for (const row of table.getRows()) {
+            for (const cell of row.getCells()) {
+              for (const para of cell.getParagraphs()) {
+                const numbering = para.getNumbering();
+                if (numbering && numbering.numId !== undefined) {
+                  if (numbering.numId > 0) {
+                    const instance = manager.getNumberingInstance(numbering.numId);
+                    if (instance) {
+                      this._hlpAbstractNumIds.add(instance.getAbstractNumId());
+                    }
+                  }
+                  // Snapshot per-paragraph numbering (numId + ilvl) BEFORE any processing.
+                  // This is restored in processHLPTables() to undo corruption from
+                  // applyStyles(), list normalization, or other pipeline steps.
+                  // numId=0 paragraphs are saved too — they represent explicitly
+                  // suppressed numbering (e.g. "Note:" paragraphs in HLP tables).
+                  this._hlpSavedNumbering.set(para, {
+                    numId: numbering.numId,
+                    level: numbering.level ?? 0,
+                    leftIndent: para.getLeftIndent(),
+                  });
+                } else if (para.isNumberingSuppressed()) {
+                  // numId=0 in original XML — explicitly suppressed numbering.
+                  this._hlpSavedNumbering.set(para, {
+                    numId: 0,
+                    level: 0,
+                    leftIndent: para.getLeftIndent(),
+                  });
+                } else if (para.getStyle() === 'ListParagraph' || para.getStyle() === 'List Paragraph') {
+                  // ListParagraph with truly no numbering — inherits from style
+                  this._hlpSavedNumbering.set(para, {
+                    numId: -1,
+                    level: 0,
+                    leftIndent: para.getLeftIndent(),
+                  });
+                }
+              }
+            }
+          }
+        }
+        if (this._hlpAbstractNumIds.size > 0) {
+          this.log.debug(`Collected ${this._hlpAbstractNumIds.size} HLP abstractNumIds for protection: [${[...this._hlpAbstractNumIds].join(', ')}]`);
+        }
+        if (this._hlpSavedNumbering.size > 0) {
+          this.log.debug(`Saved numbering for ${this._hlpSavedNumbering.size} HLP paragraphs`);
+        }
+      }
 
-        // Track list prefix formatting standardization
-        if (listPrefixesStandardized > 0) {
+      // NOTE: standardizeListPrefixFormatting() runs AFTER all list processing
+      // (after standardizeNumberingColors) so it catches ALL abstractNum definitions
+      // including those created by ListNormalizer and convertTypedPrefixesWithContext.
+
+      if (options.correctMisappliedStyles) {
+        this.log.debug("=== CORRECTING MISAPPLIED PARAGRAPH STYLES ===");
+        const misappliedCorrected = this.correctMisappliedParagraphStyles(doc);
+        this.log.info(`Corrected ${misappliedCorrected} misapplied paragraph styles`);
+
+        if (misappliedCorrected > 0) {
           result.changes?.push({
             type: 'style',
-            category: 'structure',
-            description: 'Standardized list prefix formatting (Verdana 12pt black)',
-            count: listPrefixesStandardized,
+            category: 'style_application',
+            description: 'Corrected misapplied TOC/Hyperlink paragraph styles to Normal or ListParagraph',
+            count: misappliedCorrected,
           });
+        }
+      }
+
+      // Convert NormalWeb → Normal EARLY, before any style application.
+      // This ensures all downstream processing (assignStylesToDocument, finalizeParagraphSpacing,
+      // table uniformity, list normalization, etc.) sees "Normal" consistently.
+      {
+        let normalWebConverted = 0;
+        for (const para of doc.getAllParagraphs()) {
+          if (para.getStyle() === 'NormalWeb') {
+            para.setStyle('Normal');
+            normalWebConverted++;
+          }
+        }
+        if (normalWebConverted > 0) {
+          this.log.info(`Converted ${normalWebConverted} NormalWeb paragraphs to Normal (pre-style-application)`);
+        }
+      }
+
+      // Convert Table Grid → Normal (or Heading 2 for 1x1 tables) EARLY.
+      // "Table Grid" is a table style sometimes misapplied as a paragraph style;
+      // normalizing it here ensures downstream processing sees proper styles.
+      {
+        // Collect paragraphs inside 1x1 tables (these become Heading 2)
+        const paragraphsIn1x1 = new Set<Paragraph>();
+        for (const table of doc.getTables()) {
+          const rows = table.getRows();
+          if (rows.length === 1 && rows[0].getCells().length === 1) {
+            for (const para of rows[0].getCells()[0].getParagraphs()) {
+              paragraphsIn1x1.add(para);
+            }
+          }
+        }
+
+        let tableGridToNormal = 0;
+        let tableGridToHeading2 = 0;
+        for (const para of doc.getAllParagraphs()) {
+          const style = para.getStyle();
+          if (style === 'TableGrid' || style === 'Table Grid') {
+            if (paragraphsIn1x1.has(para)) {
+              para.setStyle('Heading2');
+              tableGridToHeading2++;
+            } else {
+              para.setStyle('Normal');
+              tableGridToNormal++;
+            }
+          }
+        }
+        if (tableGridToNormal + tableGridToHeading2 > 0) {
+          this.log.info(
+            `Converted Table Grid paragraphs: ${tableGridToNormal} → Normal, ${tableGridToHeading2} → Heading 2 (pre-style-application)`
+          );
         }
       }
 
@@ -1485,6 +1619,10 @@ export class WordDocumentProcessor {
       }
 
       if (options.assignStyles && options.styles && options.styles.length > 0) {
+        // Disable tracking during style application — clearing of redundant direct
+        // formatting and style overrides should not appear as tracked changes
+        doc.disableTrackChanges();
+
         this.log.debug(
           "=== ASSIGNING STYLES (USING DOCXMLATER applyStyles) ==="
         );
@@ -1523,6 +1661,14 @@ export class WordDocumentProcessor {
             ),
             0)
           : doc.applyH3();
+
+        // Re-enable tracking after style application
+        doc.enableTrackChanges({
+          author: authorName,
+          trackFormatting: true,
+          showInsertionsAndDeletions: true,
+          clearExistingPropertyChanges: false,
+        });
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -1628,6 +1774,20 @@ export class WordDocumentProcessor {
         }
       }
 
+      // Standardize "Return to" hyperlinks: remove indentation and right-align.
+      // This runs AFTER all style processing (applyCustomStylesFromUI, validateDocumentStyles,
+      // validateHeader2TableFormatting) so that the right-alignment is not overwritten by
+      // Normal style application which resets alignment to "left".
+      const returnToLinksFixed = this.standardizeReturnToHyperlinks(doc);
+      if (returnToLinksFixed > 0) {
+        result.changes?.push({
+          type: 'hyperlink',
+          category: 'structure',
+          description: 'Standardized "Return to" hyperlinks (indent removed, right-aligned)',
+          count: returnToLinksFixed,
+        });
+      }
+
       if (options.addDocumentWarning) {
         this.log.debug("=== ADDING/UPDATING DOCUMENT WARNING ===");
         await this.addOrUpdateDocumentWarning(doc);
@@ -1641,6 +1801,19 @@ export class WordDocumentProcessor {
       }
 
       if (options.centerAndBorderImages) {
+        // Detect and crop embedded borders from screen captures before applying new borders
+        this.log.debug("=== CROPPING EMBEDDED IMAGE BORDERS ===");
+        const cropResult = await cropEmbeddedImageBorders(doc, this.log);
+        if (cropResult.croppedCount > 0) {
+          this.log.info(`Cropped embedded borders from ${cropResult.croppedCount} images`);
+          result.changes?.push({
+            type: 'structure',
+            category: 'structure',
+            description: 'Cropped embedded borders from screen-captured images',
+            count: cropResult.croppedCount,
+          });
+        }
+
         this.log.debug("=== CENTERING AND BORDERING IMAGES ===");
         // Centers and borders images where either dimension > 1 inch (96px at 96 DPI)
         const borderWidth = options.tableShadingSettings?.imageBorderWidth ?? 1.0;
@@ -1658,18 +1831,47 @@ export class WordDocumentProcessor {
         }
       }
 
-      if (options.removeHeadersFooters) {
-        this.log.debug("=== REMOVING HEADERS/FOOTERS ===");
-        const headersFootersRemoved = doc.removeAllHeadersFooters();
-        this.log.info(`Removed ${headersFootersRemoved} headers/footers from document`);
+      // === IMAGE COMPRESSION (always-on) ===
+      this.log.debug("=== OPTIMIZING IMAGES ===");
+      const imageOptResult = await doc.optimizeImages();
+      if (imageOptResult.optimizedCount > 0) {
+        const savedKB = (imageOptResult.totalSavedBytes / 1024).toFixed(1);
+        this.log.info(`Optimized ${imageOptResult.optimizedCount} images, saved ${savedKB} KB`);
+        result.changes?.push({
+          type: 'structure',
+          category: 'structure',
+          description: 'Compressed images',
+          count: imageOptResult.optimizedCount,
+        });
+      } else {
+        this.log.info('No images needed optimization');
+      }
 
-        // Track header/footer removal
-        if (headersFootersRemoved > 0) {
+      if (options.removeHeadersFooters) {
+        this.log.debug("=== CLEARING HEADERS/FOOTERS ===");
+        const headersFootersCleared = doc.clearAllHeaderFooterContent();
+        this.log.info(`Cleared content from ${headersFootersCleared} headers/footers`);
+
+        // Also clear footnotes and endnotes
+        const footnoteCount = doc.getFootnoteManager().getCount();
+        const endnoteCount = doc.getEndnoteManager().getCount();
+        if (footnoteCount > 0) {
+          doc.clearFootnotes();
+          this.log.info(`Cleared ${footnoteCount} footnotes`);
+        }
+        if (endnoteCount > 0) {
+          doc.clearEndnotes();
+          this.log.info(`Cleared ${endnoteCount} endnotes`);
+        }
+
+        // Track changes
+        const totalCleared = headersFootersCleared + footnoteCount + endnoteCount;
+        if (totalCleared > 0) {
           result.changes?.push({
             type: 'structure',
             category: 'structure',
-            description: 'Removed headers and footers',
-            count: headersFootersRemoved,
+            description: 'Cleared headers, footers, footnotes, and endnotes',
+            count: totalCleared,
           });
         }
       }
@@ -1677,33 +1879,6 @@ export class WordDocumentProcessor {
       // Detect whether any numbered list needs wider hanging indent (10+ items at level 0)
       // Must run before all list processing so the flag is available in every indent code path
       this.needsWiderHangingIndent = this.detectNeedsWiderHangingIndent(doc);
-
-      // Collect abstractNumIds used in HLP tables BEFORE list processing.
-      // These are protected from format/indentation overrides in bullet/numbered uniformity
-      // to preserve the original HLP numbering structure (e.g., lowerLetter sub-items).
-      this._hlpAbstractNumIds.clear();
-      {
-        const manager = doc.getNumberingManager();
-        for (const table of doc.getTables()) {
-          if (!tableProcessor.isHLPTable(table)) continue;
-          for (const row of table.getRows()) {
-            for (const cell of row.getCells()) {
-              for (const para of cell.getParagraphs()) {
-                const numbering = para.getNumbering();
-                if (numbering && numbering.numId) {
-                  const instance = manager.getNumberingInstance(numbering.numId);
-                  if (instance) {
-                    this._hlpAbstractNumIds.add(instance.getAbstractNumId());
-                  }
-                }
-              }
-            }
-          }
-        }
-        if (this._hlpAbstractNumIds.size > 0) {
-          this.log.debug(`Collected ${this._hlpAbstractNumIds.size} HLP abstractNumIds for protection: [${[...this._hlpAbstractNumIds].join(', ')}]`);
-        }
-      }
 
       // LISTS & TABLES GROUP
       // First, normalize typed list prefixes to proper Word lists
@@ -1807,6 +1982,17 @@ export class WordDocumentProcessor {
           this.log.info(`Normalized ${orphanLevelsFixed} orphan list levels in table cells`);
         }
         this.debugCaptureListState(doc, 'AFTER normalizeOrphanListLevelsInTable');
+      }
+
+      // Collapse non-contiguous level gaps (e.g., 0→1→3→4 becomes 0→1→2→3)
+      if (options.listBulletSettings?.enabled || options.bulletUniformity) {
+        this.debugCaptureListState(doc, 'BEFORE normalizeLevelGaps');
+        this.log.debug("=== NORMALIZING LIST LEVEL GAPS ===");
+        const gapsFixed = this.normalizeLevelGaps(doc);
+        if (gapsFixed > 0) {
+          this.log.info(`Collapsed ${gapsFixed} level gaps in list sequences`);
+        }
+        this.debugCaptureListState(doc, 'AFTER normalizeLevelGaps');
       }
 
       if (options.listBulletSettings?.enabled) {
@@ -1961,6 +2147,25 @@ export class WordDocumentProcessor {
         }
       }
 
+      // Standardize list prefix formatting AFTER all list processing is complete.
+      // This ensures ALL abstractNum definitions (including those created by
+      // ListNormalizer, convertTypedPrefixesWithContext, and applyBulletUniformity)
+      // have bold cleared and numbered levels standardized to Verdana 12pt black.
+      if (options.standardizeListPrefixFormatting) {
+        this.log.debug("=== STANDARDIZING LIST PREFIX FORMATTING ===");
+        const listPrefixesStandardized = await this.standardizeListPrefixFormatting(doc);
+        this.log.info(`Standardized formatting for ${listPrefixesStandardized} list prefix levels`);
+
+        if (listPrefixesStandardized > 0) {
+          result.changes?.push({
+            type: 'style',
+            category: 'structure',
+            description: 'Standardized list prefix formatting (Verdana 12pt black, no bold)',
+            count: listPrefixesStandardized,
+          });
+        }
+      }
+
       // ═══════════════════════════════════════════════════════════
       // RULE-BASED BLANK LINE PROCESSING
       // Runs AFTER all list normalization, indentation, and bullet uniformity
@@ -1980,9 +2185,17 @@ export class WordDocumentProcessor {
         // Disable track changes - blank line operations should not appear as tracked changes
         doc.disableTrackChanges();
 
+        const normalStyle = options.styles?.find((s: any) => s.id === 'normal');
         const blankLineResult = blankLineManager.processBlankLines(doc, blankLineSnapshot, {
           stopBoldColonAfterHeading: "Related Documents",
           listBulletSettings: options.listBulletSettings,
+          normalStyleFormatting: normalStyle ? {
+            spaceBefore: pointsToTwips(normalStyle.spaceBefore),
+            spaceAfter: pointsToTwips(normalStyle.spaceAfter),
+            lineSpacing: pointsToTwips(normalStyle.lineSpacing * 12),
+            fontSize: normalStyle.fontSize,
+            fontFamily: normalStyle.fontFamily,
+          } : undefined,
         });
 
         // Re-enable track changes
@@ -1990,6 +2203,7 @@ export class WordDocumentProcessor {
           author: authorName,
           trackFormatting: true,
           showInsertionsAndDeletions: true,
+          clearExistingPropertyChanges: false,
         });
 
         this.log.info(
@@ -2146,7 +2360,13 @@ export class WordDocumentProcessor {
         normalLineSpacing: hlpNormalStyle?.lineSpacing ?? 1.0,
         listIndentationLevels: options.listBulletSettings?.indentationLevels,
       };
-      const hlpResult = await tableProcessor.processHLPTables(doc, hlpSettings);
+      const hlpResult = await tableProcessor.processHLPTables(
+        doc,
+        hlpSettings,
+        this._hlpSavedNumbering.size > 0 ? this._hlpSavedNumbering : undefined,
+      );
+      this._hlpSavedNumbering.clear();
+      tableProcessor.clearHLPTableCache();
 
       if (hlpResult.tablesFound > 0) {
         this.log.info(`Processed ${hlpResult.tablesFound} HLP tables (${hlpResult.singleColumnTables} single-col, ${hlpResult.twoColumnTables} two-col), ${hlpResult.headersStyled} headers styled`);
@@ -2317,10 +2537,9 @@ export class WordDocumentProcessor {
         // IMPORTANT: Flush pending changes BEFORE extracting changelog
         // Pending changes (font, color, etc.) are only added to RevisionManager when flushed
         // Without this, ChangelogGenerator.fromDocument() returns empty because changes are still pending
-        if (typeof (doc as any).flushPendingChanges === 'function') {
-          const flushed = (doc as any).flushPendingChanges();
-          this.log.debug(`Flushed ${flushed?.length || 0} pending changes to RevisionManager`);
-        }
+        // Cast needed: TS 5.9 control flow loses Document narrowing inside nested try blocks
+        const flushed = (doc as any).flushPendingChanges();
+        this.log.debug(`Flushed ${flushed?.length || 0} pending changes to RevisionManager`);
 
         // Cast to ChangeEntry[] from session.ts to support extended types (hyperlink)
         const changelogEntries = ChangelogGenerator.fromDocument(doc) as ChangeEntry[];
@@ -2424,6 +2643,16 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
+      // DISABLE TRACKING FOR POST-EXTRACTION OPERATIONS
+      // All tracked changes have been captured by ChangelogGenerator above.
+      // Remaining operations (auto-accept, cleanup, orientation, margins, TOC rebuild)
+      // are structural/layout changes that should NOT appear as tracked changes.
+      // Without this, Word's Review panel shows changes the app UI doesn't display.
+      // ═══════════════════════════════════════════════════════════
+      doc.disableTrackChanges();
+      this.log.debug("Track changes disabled after changelog extraction - post-extraction operations will not be tracked");
+
+      // ═══════════════════════════════════════════════════════════
       // OPTIONALLY AUTO-ACCEPT REVISIONS
       // If autoAcceptRevisions is true, accept ALL tracked changes
       // (both pre-existing and DocHub processing changes)
@@ -2448,14 +2677,9 @@ export class WordDocumentProcessor {
 
           // NOW accept all revisions (including the ones just flushed by disableTrackChanges)
           // This handles all revision types: w:ins, w:del, w:pPrChange, w:rPrChange, etc.
-          if (typeof (doc as any).acceptAllRevisions === 'function') {
-            await (doc as any).acceptAllRevisions();
-            this.log.info("Accepted all revisions via Document.acceptAllRevisions()");
-          } else {
-            // Fallback: try setAcceptRevisionsBeforeSave if direct methods not available
-            this.log.warn("Direct acceptance method not available, using setAcceptRevisionsBeforeSave fallback");
-            doc.setAcceptRevisionsBeforeSave(true);
-          }
+          // Cast needed: TS 5.9 control flow loses Document narrowing inside nested try blocks
+          await (doc as any).acceptAllRevisions();
+          this.log.info("Accepted all revisions via Document.acceptAllRevisions()");
 
           // Count total expected revisions (pre-existing + DocHub)
           const preExistingCount = result.previousRevisions?.entries.length || 0;
@@ -2493,7 +2717,7 @@ export class WordDocumentProcessor {
         const cleanup = new CleanupHelper(doc);
         const cleanupReport = cleanup.run({
           defragmentHyperlinks: true,
-          cleanupNumbering: true,
+          cleanupNumbering: false,
           cleanupRelationships: true,
         });
         if (cleanupReport.hyperlinksDefragmented > 0 || cleanupReport.numberingRemoved > 0 || cleanupReport.relationshipsRemoved > 0) {
@@ -2502,6 +2726,51 @@ export class WordDocumentProcessor {
       } catch (cleanupError) {
         this.log.debug("Cleanup completed with warnings:", cleanupError);
         // Non-fatal - continue with save
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // DOCUMENT SANITIZATION - Prevent Word freezes/crashes
+      //
+      // Fixes two common bloat sources in loaded documents:
+      // 1. Nested INCLUDEPICTURE fields (Outlook copy-paste bug) —
+      //    each forward/reply wraps images in a new field layer;
+      //    Word recursively resolves these, freezing at high depth
+      // 2. Orphan RSIDs — editing sessions accumulate thousands of
+      //    revision session IDs in settings.xml that are never
+      //    referenced in document.xml
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== DOCUMENT SANITIZATION ===");
+      try {
+        doc.flattenFieldCodes();
+        doc.stripOrphanRSIDs();
+
+        // Clear direct spacing from styled paragraphs at the raw XML level.
+        // Model-based clearing (finalizeParagraphSpacing) is ineffective when
+        // flattenFieldCodes() sets skipDocumentXmlRegeneration = true.
+        doc.clearDirectSpacingForStyles([
+          'Normal',
+          'Heading1', 'Heading 1',
+          'Heading2', 'Heading 2',
+          'Heading3', 'Heading 3',
+          'ListParagraph', 'List Paragraph',
+        ]);
+
+        this.log.info("Document sanitization enabled (INCLUDEPICTURE flatten + orphan RSID strip + direct spacing clear)");
+      } catch (sanitizeError) {
+        this.log.debug("Sanitization setup completed with warnings:", sanitizeError);
+        // Non-fatal - continue with save
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // FINAL PARAGRAPH SPACING NORMALIZATION
+      // Ensure every paragraph's spacing matches the UI-configured style.
+      // Runs AFTER all processing (table uniformity, list normalization,
+      // blank lines, HLP formatting) so spacing can't be overwritten.
+      // ═══════════════════════════════════════════════════════════
+      if (options.assignStyles && options.styles?.length) {
+        this.log.debug("=== FINALIZING PARAGRAPH SPACING ===");
+        const spacingCount = this.finalizeParagraphSpacing(doc, options.styles);
+        this.log.info(`Finalized paragraph spacing on ${spacingCount} paragraphs`);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -2534,6 +2803,9 @@ export class WordDocumentProcessor {
           bottom: 1440,
           left: 1440,
           right: 1440,
+          header: 720,
+          footer: 720,
+          gutter: 0,
         });
 
         this.log.info('Set document to landscape orientation with 1" margins');
@@ -2558,6 +2830,41 @@ export class WordDocumentProcessor {
         }
       } catch (error) {
         this.log.debug("No TOC to rebuild or rebuild failed:", error);
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // NUMBERING CLEANUP
+      // Remove orphaned numbering definitions and deduplicate identical ones.
+      // Must run AFTER all list modifications (bullet/numbered uniformity,
+      // tab stop removal, color standardization, prefix formatting) but BEFORE save.
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== CLEANING UP NUMBERING DEFINITIONS ===");
+      try {
+        // Phase 1: Remove numbering definitions not referenced by any paragraph
+        doc.cleanupUnusedNumbering();
+        const mgr = doc.getNumberingManager();
+        this.log.debug(`After cleanup: ${mgr.getAbstractNumberingCount()} abstractNums, ${mgr.getInstanceCount()} instances`);
+
+        // Phase 2: Consolidate duplicate abstractNums with identical fingerprints
+        // Protect HLP abstractNums from consolidation (they may have special formatting)
+        const consolidateResult = doc.consolidateNumbering({
+          protectedAbstractNumIds: this._hlpAbstractNumIds,
+        });
+        if (consolidateResult.abstractNumsRemoved > 0) {
+          this.log.info(
+            `Consolidated numbering: removed ${consolidateResult.abstractNumsRemoved} duplicate abstractNums, ` +
+            `remapped ${consolidateResult.instancesRemapped} instances across ${consolidateResult.groupsConsolidated} group(s)`
+          );
+        }
+
+        // Safety net: fix any paragraph numId references pointing to now-deleted definitions
+        const orphanedRefs = doc.validateNumberingReferences();
+        if (orphanedRefs > 0) {
+          this.log.info(`Fixed ${orphanedRefs} orphaned numId reference(s)`);
+        }
+      } catch (cleanupError) {
+        // Non-fatal — log and continue to save
+        this.log.warn("Numbering cleanup failed (non-fatal):", cleanupError);
       }
 
       await doc.save(filePath);
@@ -2649,6 +2956,8 @@ export class WordDocumentProcessor {
       this.needsWiderHangingIndent = false;
       this._rowNumberAbstractNumIds.clear();
       this._hlpAbstractNumIds.clear();
+      this._hlpSavedNumbering.clear();
+      tableProcessor.clearHLPTableCache();
 
       // Clean up resources
       if (doc) {
@@ -3164,59 +3473,7 @@ export class WordDocumentProcessor {
         continue;
       }
 
-      const runs = para.getRuns();
-      let seenTextInParagraph = false;
-
-      for (let i = 0; i < runs.length; i++) {
-        const run = runs[i];
-        const text = run.getText();
-        if (!text) {
-          // ImageRuns have no text but ARE visible content —
-          // text after them is not at paragraph start and its leading
-          // space must be preserved (e.g., image + " CC: your supervisor...")
-          if (run instanceof ImageRun) {
-            seenTextInParagraph = true;
-          }
-          continue;
-        }
-
-        // Step 1: Collapse multiple consecutive SPACES only
-        // Preserve tabs (\t) and newlines (\n) as they represent intentional formatting (<w:tab/> and <w:br/>)
-        let cleaned = text.replace(/ {2,}/g, " ");
-
-        // Step 1.5: Strip leading spaces from paragraph start
-        // Word uses setLeftIndent() for proper indentation, not literal spaces
-        // Only strip space characters (U+0020), NOT tabs or other whitespace
-        if (!seenTextInParagraph) {
-          cleaned = cleaned.replace(/^ +/, "");
-          if (cleaned.length > 0) {
-            seenTextInParagraph = true;
-          }
-        }
-
-        // Step 2: Trim trailing space if next run starts with space (cross-run double space)
-        if (i < runs.length - 1) {
-          const nextRun = runs[i + 1];
-          const nextText = nextRun?.getText() || "";
-          if (cleaned.endsWith(" ") && nextText.startsWith(" ")) {
-            cleaned = cleaned.trimEnd();
-          }
-        }
-
-        // Step 3: Trim leading space if previous run ends with space (cross-run double space)
-        if (i > 0) {
-          const prevRun = runs[i - 1];
-          const prevText = prevRun?.getText() || "";
-          if (cleaned.startsWith(" ") && prevText.endsWith(" ")) {
-            cleaned = cleaned.trimStart();
-          }
-        }
-
-        if (cleaned !== text) {
-          run.setText(cleaned);
-          cleanedCount++;
-        }
-      }
+      cleanedCount += normalizeRunWhitespace(para.getRuns());
     }
 
     return cleanedCount;
@@ -3252,6 +3509,174 @@ export class WordDocumentProcessor {
     } catch {
       return false; // Safe default - don't skip if we can't check
     }
+  }
+
+  /**
+   * Build a set of paragraphs that belong to real TOC regions.
+   *
+   * Uses four-phase detection:
+   * 1. ComplexField-anchored TOCs (paragraphs with TOC field instructions + subsequent TOC entries)
+   * 2. Contiguous TOC-styled groups (2+ consecutive paragraphs with TOC styles)
+   * 3. Field content fallback (TOC-styled paragraphs with complex field content, e.g. SDT-wrapped)
+   * 4. TOCHeading adjacency (TOCHeading paragraphs adjacent to a real TOC paragraph)
+   */
+  private buildRealTocParagraphSet(doc: Document): Set<Paragraph> {
+    const realTocParagraphs = new Set<Paragraph>();
+    const bodyElements = doc.getBodyElements();
+
+    const isTocStyle = (style: string): boolean => /^toc/i.test(style);
+
+    // Phase 1: ComplexField-anchored TOCs
+    // Walk body elements; when a paragraph contains a ComplexField with TOC instruction,
+    // mark it and subsequent TOC-content paragraphs.
+    for (let i = 0; i < bodyElements.length; i++) {
+      const element = bodyElements[i];
+      if (!(element instanceof Paragraph)) continue;
+
+      const content = element.getContent();
+      let hasTocField = false;
+      for (const item of content) {
+        if (item instanceof ComplexField) {
+          const instruction = item.getInstruction();
+          if (instruction && instruction.trim().toUpperCase().startsWith('TOC')) {
+            hasTocField = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasTocField) continue;
+
+      // Mark the TOC field paragraph itself
+      realTocParagraphs.add(element);
+      this.log.debug(`[RealTOC] Phase 1: TOC field paragraph at body index ${i}: "${element.getText().substring(0, 60)}"`);
+
+      // Mark subsequent paragraphs that are part of this TOC
+      for (let j = i + 1; j < bodyElements.length; j++) {
+        const nextEl = bodyElements[j];
+        if (!(nextEl instanceof Paragraph)) break;
+
+        const nextStyle = nextEl.getStyle() || '';
+        const nextText = nextEl.getText().trim();
+        const hasField = this.hasComplexFieldContent(nextEl);
+
+        // TOC entries have TOC styles, field content, or are empty spacer paragraphs
+        if (isTocStyle(nextStyle) || hasField || nextText === '') {
+          realTocParagraphs.add(nextEl);
+        } else {
+          break; // End of TOC region
+        }
+      }
+    }
+
+    // Phase 2: Contiguous TOC-styled groups
+    // If 2+ consecutive body-level paragraphs have TOC styles, treat as a real manual TOC block.
+    let groupStart = -1;
+    const groupParagraphs: Paragraph[] = [];
+
+    for (let i = 0; i <= bodyElements.length; i++) {
+      const element = i < bodyElements.length ? bodyElements[i] : null;
+      const isParagraphWithTocStyle =
+        element instanceof Paragraph && isTocStyle(element.getStyle() || '');
+
+      if (isParagraphWithTocStyle) {
+        if (groupStart === -1) groupStart = i;
+        groupParagraphs.push(element as Paragraph);
+      } else {
+        // End of group — mark if 2+ consecutive
+        if (groupParagraphs.length >= 2) {
+          for (const p of groupParagraphs) {
+            if (!realTocParagraphs.has(p)) {
+              realTocParagraphs.add(p);
+              this.log.debug(`[RealTOC] Phase 2: Contiguous group member starting at body index ${groupStart}: "${p.getText().substring(0, 60)}"`);
+            }
+          }
+        }
+        groupStart = -1;
+        groupParagraphs.length = 0;
+      }
+    }
+
+    // Phase 3: Field content fallback
+    // Catch SDT-wrapped TOC paragraphs not visible in getBodyElements()
+    for (const para of doc.getAllParagraphs()) {
+      const style = para.getStyle() || '';
+      if (isTocStyle(style) && this.hasComplexFieldContent(para) && !realTocParagraphs.has(para)) {
+        realTocParagraphs.add(para);
+        this.log.debug(`[RealTOC] Phase 3: Field content fallback: "${para.getText().substring(0, 60)}"`);
+      }
+    }
+
+    // Phase 4: TOCHeading adjacency
+    // Include TOCHeading paragraphs that are adjacent to a real TOC paragraph
+    for (let i = 0; i < bodyElements.length; i++) {
+      const element = bodyElements[i];
+      if (!(element instanceof Paragraph)) continue;
+
+      const style = element.getStyle() || '';
+      if (style !== 'TOCHeading') continue;
+      if (realTocParagraphs.has(element)) continue;
+
+      // Check previous body element
+      const prev = i > 0 ? bodyElements[i - 1] : null;
+      const next = i < bodyElements.length - 1 ? bodyElements[i + 1] : null;
+
+      const prevIsRealToc = prev instanceof Paragraph && realTocParagraphs.has(prev);
+      const nextIsRealToc = next instanceof Paragraph && realTocParagraphs.has(next);
+
+      if (prevIsRealToc || nextIsRealToc) {
+        realTocParagraphs.add(element);
+        this.log.debug(`[RealTOC] Phase 4: TOCHeading adjacent to real TOC at body index ${i}: "${element.getText().substring(0, 60)}"`);
+      }
+    }
+
+    this.log.debug(`[RealTOC] Total real TOC paragraphs identified: ${realTocParagraphs.size}`);
+    return realTocParagraphs;
+  }
+
+  /**
+   * Correct paragraphs that have incorrectly applied TOC or Hyperlink paragraph styles.
+   *
+   * TOC styles (TOC, TOC1-TOC9, TOCHeading) on paragraphs outside real TOC regions,
+   * and Hyperlink/FollowedHyperlink paragraph styles (which are character styles in
+   * standard Word) are corrected to Normal or ListParagraph based on content analysis.
+   */
+  private correctMisappliedParagraphStyles(doc: Document): number {
+    const realTocParagraphs = this.buildRealTocParagraphSet(doc);
+    let correctedCount = 0;
+
+    for (const para of doc.getAllParagraphs()) {
+      const style = para.getStyle();
+      if (!style) continue;
+
+      const styleLower = style.toLowerCase();
+      let isMisapplied = false;
+
+      // Check for misapplied TOC styles (not in a real TOC region)
+      if (styleLower.startsWith('toc') && !realTocParagraphs.has(para)) {
+        isMisapplied = true;
+      }
+
+      // Check for Hyperlink/FollowedHyperlink paragraph styles (always misapplied — these are character styles)
+      // Do NOT touch "TopHyperlink" — it's a legitimate custom paragraph style used by the processor
+      if (style === 'Hyperlink' || style === 'FollowedHyperlink') {
+        isMisapplied = true;
+      }
+
+      if (!isMisapplied) continue;
+
+      // Determine target style based on list detection
+      const listInfo = detectListType(para);
+      const newStyle = listInfo.category !== 'none' ? 'ListParagraph' : 'Normal';
+
+      const textPreview = para.getText().substring(0, 80);
+      this.log.debug(`[MisappliedStyle] Correcting "${style}" → "${newStyle}": "${textPreview}"`);
+
+      para.setStyle(newStyle);
+      correctedCount++;
+    }
+
+    return correctedCount;
   }
 
   /**
@@ -3570,6 +3995,55 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Standardize "Return to" hyperlinks (e.g. "Return to HLP", "Return to TOC").
+   *
+   * 1. Remove any left/first-line indentation on the containing paragraph.
+   * 2. Right-align the containing paragraph.
+   *
+   * Handles hyperlinks in body paragraphs and table cells.
+   *
+   * @param doc - Document to process
+   * @returns Number of hyperlinks standardized
+   */
+  private standardizeReturnToHyperlinks(doc: Document): number {
+    let standardized = 0;
+
+    const paragraphs = doc.getAllParagraphs();
+
+    for (const para of paragraphs) {
+      const content = para.getContent();
+      let foundReturnTo = false;
+
+      for (const item of content) {
+        try {
+          if (item instanceof Hyperlink) {
+            const text = sanitizeHyperlinkText(item.getText()).trim();
+            if (text.toLowerCase().startsWith("return to")) {
+              foundReturnTo = true;
+            }
+          }
+        } catch (error) {
+          this.log.warn(`Failed to process Return to hyperlink: ${error}`);
+        }
+      }
+
+      if (foundReturnTo) {
+        // Remove indentation before right-aligning
+        para.setLeftIndent(0);
+        para.setFirstLineIndent(0);
+        para.setAlignment("right");
+        standardized++;
+      }
+    }
+
+    if (standardized > 0) {
+      this.log.info(`Standardized ${standardized} "Return to" hyperlinks (indent removed + right-aligned)`);
+    }
+
+    return standardized;
+  }
+
+  /**
    * Apply standard formatting to a hyperlink
    *
    * Standard format: Verdana 12pt, Blue (#0000FF), Underlined, no bold/italic
@@ -3764,18 +4238,47 @@ export class WordDocumentProcessor {
       this.log.debug(`Found ${allAbstract.length} abstract numbering definitions to process`);
 
       for (const abstractNum of allAbstract) {
+        // Skip HLP table numbering — preserve original Symbol font + sizes
+        if (this._hlpAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
+        // Skip row-number column numbering — intentionally bold (set by formatStepNumberColumns)
+        if (this._rowNumberAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
+
         const levels = abstractNum.getAllLevels();
 
         for (const level of levels) {
-          // Standardize all list prefix formatting to Verdana 12pt black
-          level.setFont("Verdana");
-          level.setFontSize(24);      // 12pt = 24 half-points
-          level.setColor("000000");   // Black
+          if (level.getFormat() === "bullet") {
+            // Bullet levels: ensure font matches character to prevent unidentified symbols.
+            // PUA characters (e.g., \uF0B7) require specific fonts (Symbol, Wingdings, etc.)
+            // This is a safety net for levels that applyBulletUniformity() may have skipped
+            // (HLP-shared abstractNums) or where font was lost during XML parsing.
+            this.ensureBulletFontMatch(level);
+            level.setBold(false);
+            this.patchLevelBoldOff(level); // Explicit <w:b w:val="0"/> to prevent bold inheritance
+          } else {
+            // Numbered levels: full standardization to Verdana 12pt black
+            level.setFont("Verdana");
+            level.setFontSize(24);      // 12pt = 24 half-points
+            level.setColor("000000");   // Black
+            level.setBold(false);       // Prefixes must never be bold
+            this.patchLevelBoldOff(level); // Explicit <w:b w:val="0"/> to prevent bold inheritance
+          }
 
           standardizedCount++;
           this.log.debug(
-            `Standardized list level ${level.getLevel()} in abstractNum ${abstractNum.getAbstractNumId()}: Verdana 12pt black`
+            `Standardized list level ${level.getLevel()} in abstractNum ${abstractNum.getAbstractNumId()}: ${level.getFormat() === "bullet" ? "bold cleared" : "Verdana 12pt black"}`
           );
+        }
+      }
+
+      // Also ensure HLP bullet levels have correct fonts.
+      // HLP levels are skipped above to preserve their formatting, but font
+      // correctness is a rendering requirement, not a formatting preference.
+      for (const abstractNum of allAbstract) {
+        if (!this._hlpAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
+        for (const level of abstractNum.getAllLevels()) {
+          if (level.getFormat() === "bullet") {
+            this.ensureBulletFontMatch(level);
+          }
         }
       }
 
@@ -3791,6 +4294,53 @@ export class WordDocumentProcessor {
     } catch (error) {
       this.log.error(`Error standardizing list prefix formatting: ${error}`);
       throw error;
+    }
+  }
+
+  /**
+   * Monkey-patch a NumberingLevel's toXML() to inject <w:b w:val="0"/>
+   * into the level's <w:rPr>. This works around a docxmlater limitation
+   * where setBold(false) produces no XML output instead of the explicit
+   * <w:b w:val="0"/> needed to prevent bold inheritance from context.
+   */
+  private patchLevelBoldOff(level: unknown): void {
+    const lvl = level as { toXML: () => any };
+    const origToXML = lvl.toXML.bind(lvl);
+    lvl.toXML = function () {
+      const xml = origToXML();
+      if (xml && Array.isArray(xml.children)) {
+        for (const child of xml.children) {
+          if (typeof child === 'object' && child.name === 'w:rPr') {
+            if (!Array.isArray(child.children)) child.children = [];
+            child.children.push({ name: 'w:b', attributes: { 'w:val': '0' } });
+            child.children.push({ name: 'w:bCs', attributes: { 'w:val': '0' } });
+            break;
+          }
+        }
+      }
+      return xml;
+    };
+  }
+
+  /**
+   * Ensure a bullet level's font can render its character.
+   * PUA characters require specific fonts — mismatches cause "unidentified symbol" boxes.
+   */
+  private ensureBulletFontMatch(level: unknown): void {
+    const lvl = level as { getProperties: () => { text: string; font: string }; setFont: (f: string) => void };
+    const props = lvl.getProperties();
+    const text = props.text;
+    const font = props.font;
+
+    if (text === "\uF0B7" && font !== "Symbol") {
+      this.log.debug(`Fixing bullet font: char=\\uF0B7 font="${font}" → "Symbol"`);
+      lvl.setFont("Symbol");
+    } else if (text === "\uF0A7" && font !== "Wingdings") {
+      this.log.debug(`Fixing bullet font: char=\\uF0A7 font="${font}" → "Wingdings"`);
+      lvl.setFont("Wingdings");
+    } else if ((text === "o" || text === "\u006F") && font !== "Courier New") {
+      this.log.debug(`Fixing bullet font: char="o" font="${font}" → "Courier New"`);
+      lvl.setFont("Courier New");
     }
   }
 
@@ -3948,11 +4498,9 @@ export class WordDocumentProcessor {
       } else if ((currentStyle === "ListParagraph" || currentStyle === "List Paragraph") && listParagraphStyle) {
         // Preserve List Paragraph - apply user's List Paragraph formatting
         styleToApply = listParagraphStyle;
-      } else if ((currentStyle === "Normal" || currentStyle === "NormalWeb") && normalStyle && para.getText()?.trim()) {
-        // Apply Normal formatting to paragraphs with Normal or NormalWeb style.
-        // NormalWeb is treated identically to Normal — its style will be reassigned below.
+      } else if (currentStyle === "Normal" && normalStyle) {
         styleToApply = normalStyle;
-      } else if ((!currentStyle || currentStyle === "") && para.getText()?.trim()) {
+      } else if (!currentStyle || currentStyle === "") {
         // Paragraphs without an explicit style get Normal formatting.
         // NOTE: detectHeadingLevel() was previously used here but produced false positives
         // for table cell paragraphs that have outlineLevel set without being actual headings.
@@ -3966,11 +4514,6 @@ export class WordDocumentProcessor {
       // This preserves special styles that shouldn't be overwritten
 
       if (styleToApply) {
-        // Convert NormalWeb to Normal style so the paragraph inherits Normal's style definition
-        if (currentStyle === "NormalWeb") {
-          para.setStyle("Normal");
-        }
-
         // Apply paragraph formatting
         const formatting = para.getFormatting();
 
@@ -3993,10 +4536,15 @@ export class WordDocumentProcessor {
             `(style: ${styleToApply.id}, explicitStyle: ${explicitStyle || 'none'})`);
         }
 
-        para.setSpaceBefore(pointsToTwips(styleToApply.spaceBefore));
-        para.setSpaceAfter(pointsToTwips(styleToApply.spaceAfter));
-        if (styleToApply.lineSpacing) {
-          para.setLineSpacing(pointsToTwips(styleToApply.lineSpacing * 12)); // Convert line spacing multiplier
+        // Spacing is handled by style definitions (via doc.applyStyles()) for paragraphs
+        // with explicit styles. Only set direct spacing on unstyled paragraphs that can't
+        // inherit from a style definition.
+        if (hasNoExplicitStyle) {
+          para.setSpaceBefore(pointsToTwips(styleToApply.spaceBefore));
+          para.setSpaceAfter(pointsToTwips(styleToApply.spaceAfter));
+          if (styleToApply.lineSpacing) {
+            para.setLineSpacing(pointsToTwips(styleToApply.lineSpacing * 12));
+          }
         }
 
         // Apply text formatting to all runs in paragraph, including those inside revisions
@@ -4019,27 +4567,36 @@ export class WordDocumentProcessor {
 
           const runFormatting = run.getFormatting();
 
-          // Preserve font size if paragraph has no explicit style AND run has direct size set
-          // This handles title paragraphs with direct formatting (e.g., 18pt bold) that shouldn't be overwritten
-          const runSize = runFormatting.size;
-          const shouldPreserveSize = hasNoExplicitStyle && runSize !== undefined;
+          // For paragraphs with explicit styles, font/size/color are handled by style
+          // definitions (via doc.applyStyles()). Only set direct formatting on unstyled
+          // paragraphs or when preservation logic requires it.
+          if (hasNoExplicitStyle) {
+            // Preserve font size if run has direct size set (e.g., 18pt bold title)
+            const runSize = runFormatting.size;
+            if (runSize === undefined) {
+              run.setSize(styleToApply.fontSize);
+            }
 
-          if (!shouldPreserveSize) {
-            run.setSize(styleToApply.fontSize);
-          }
+            // Preserve font if run has direct font set
+            const runFont = runFormatting.font;
+            if (runFont === undefined) {
+              run.setFont(styleToApply.fontFamily);
+            }
 
-          // Preserve font if paragraph has no explicit style AND run has direct font set
-          const runFont = runFormatting.font;
-          const shouldPreserveFont = hasNoExplicitStyle && runFont !== undefined;
-
-          if (!shouldPreserveFont) {
-            run.setFont(styleToApply.fontFamily);
+            // Set color (with white/red font preservation)
+            const currentColor = runFormatting.color?.toUpperCase();
+            const isWhiteFont = currentColor === 'FFFFFF';
+            const isRedFont = currentColor === 'FF0000';
+            const isNormalOrListStyle = styleToApply.id === 'normal' || styleToApply.id === 'listParagraph';
+            if (!isWhiteFont && !(isRedFont && preserveRedFont && isNormalOrListStyle)) {
+              run.setColor(styleToApply.color.replace("#", ""));
+            }
           }
 
           // Preserve bold based on the user's preserveBold setting for this style.
           // When preserveBold=true (default for Normal), existing bold is kept.
           // When preserveBold=false, bold is set to the style's configured value.
-          // This applies consistently to Normal, NormalWeb, and undefined-style paragraphs.
+          // This applies consistently to Normal and undefined-style paragraphs.
           const shouldPreserveBold = styleToApply.preserveBold;
 
           if (!shouldPreserveBold) {
@@ -4052,15 +4609,45 @@ export class WordDocumentProcessor {
           if (!styleToApply.preserveUnderline) {
             run.setUnderline(styleToApply.underline ? "single" : false);
           }
-          // Preserve white font - don't change color if run is white (FFFFFF)
-          // Preserve red font (#FF0000) if option enabled AND this is Normal or List Paragraph style
-          const currentColor = runFormatting.color?.toUpperCase();
-          const isWhiteFont = currentColor === 'FFFFFF';
-          const isRedFont = currentColor === 'FF0000';
-          const isNormalOrListStyle = styleToApply.id === 'normal' || styleToApply.id === 'listParagraph';
 
-          if (!isWhiteFont && !(isRedFont && preserveRedFont && isNormalOrListStyle)) {
-            run.setColor(styleToApply.color.replace("#", ""));
+          // For styled paragraphs, preserve white/red font (doc.applyStyles handles font/size/color)
+          if (!hasNoExplicitStyle) {
+            const currentColor = runFormatting.color?.toUpperCase();
+            const isWhiteFont = currentColor === 'FFFFFF';
+            const isRedFont = currentColor === 'FF0000';
+            const isNormalOrListStyle = styleToApply.id === 'normal' || styleToApply.id === 'listParagraph';
+
+            // Only override color for white/red font preservation when needed
+            if (isWhiteFont) {
+              // White font was potentially cleared by doc.applyStyles() — restore it
+              run.setColor('FFFFFF');
+            } else if (isRedFont && preserveRedFont && isNormalOrListStyle) {
+              // Red font preservation — restore it
+              run.setColor('FF0000');
+            }
+          }
+
+          // Clear redundant direct formatting that matches the style definition.
+          // This allows runs to inherit from the style, so future style changes
+          // propagate automatically. Only for paragraphs with explicit styles —
+          // unstyled paragraphs need direct formatting since they don't reference a style.
+          if (!hasNoExplicitStyle) {
+            const styleRunFormatting: Partial<RunFormatting> = {
+              font: styleToApply.fontFamily,
+              size: styleToApply.fontSize,
+              color: styleToApply.color.replace("#", ""),
+            };
+            // Only include bold/italic/underline in clearing when NOT preserved
+            if (!styleToApply.preserveBold) {
+              styleRunFormatting.bold = styleToApply.bold;
+            }
+            if (!styleToApply.preserveItalic) {
+              styleRunFormatting.italic = styleToApply.italic;
+            }
+            if (!styleToApply.preserveUnderline) {
+              styleRunFormatting.underline = styleToApply.underline ? "single" : false;
+            }
+            run.clearMatchingFormatting(styleRunFormatting);
           }
         }
 
@@ -4069,6 +4656,69 @@ export class WordDocumentProcessor {
     }
 
     return appliedCount;
+  }
+
+  /**
+   * Final pass: ensure every paragraph's spacing matches the UI-configured style.
+   * Runs AFTER all processing (table uniformity, list normalization, blank lines,
+   * HLP formatting, etc.) to guarantee spacing isn't overwritten by earlier steps.
+   * For paragraphs with explicit styles, spacing is set in the style definition
+   * (via doc.applyStyles()), so we only set direct spacing on unstyled paragraphs
+   * to avoid direct formatting overriding style-based values.
+   */
+  private finalizeParagraphSpacing(
+    doc: Document,
+    styles: SessionStyle[]
+  ): number {
+    const header1 = styles.find(s => s.id === 'header1');
+    const header2 = styles.find(s => s.id === 'header2');
+    const header3 = styles.find(s => s.id === 'header3');
+    const normal = styles.find(s => s.id === 'normal');
+    const listParagraph = styles.find(s => s.id === 'listParagraph');
+
+    let count = 0;
+    for (const para of doc.getAllParagraphs()) {
+      // Skip TOC and complex field paragraphs
+      if (this.hasComplexFieldContent(para)) continue;
+      const style = para.getStyle() || '';
+      if (style.startsWith('TOC') && style !== 'TOCHeading') continue;
+
+      // Determine target style config based on paragraph's Word style
+      let target: SessionStyle | undefined;
+      let hasExplicitStyle = true;
+      if (style === 'Heading1' || style === 'Heading 1') target = header1;
+      else if (style === 'Heading2' || style === 'Heading 2') target = header2;
+      else if (style === 'Heading3' || style === 'Heading 3') target = header3;
+      else if (style === 'ListParagraph' || style === 'List Paragraph') target = listParagraph;
+      else if (style === 'Normal') target = normal;
+      else if (!style) {
+        target = normal;
+        hasExplicitStyle = false;
+      }
+
+      if (!target) continue;
+
+      // For styled paragraphs, spacing comes from the style definition — clear any
+      // direct spacing so the style value takes effect (OOXML: direct > style).
+      // For unstyled paragraphs, set all spacing as direct formatting.
+      if (!hasExplicitStyle) {
+        para.setSpaceBefore(pointsToTwips(target.spaceBefore));
+        para.setSpaceAfter(pointsToTwips(target.spaceAfter));
+        if (target.lineSpacing) {
+          para.setLineSpacing(pointsToTwips(target.lineSpacing * 12));
+        }
+      } else {
+        // Clear direct spacing so the style definition takes effect.
+        // Direct spacing overrides style spacing per OOXML precedence rules,
+        // so any leftover direct formatting from the original document must be removed.
+        para.clearSpacing();
+      }
+      if (target.noSpaceBetweenSame !== undefined) {
+        para.setContextualSpacing(target.noSpaceBetweenSame);
+      }
+      count++;
+    }
+    return count;
   }
 
   /**
@@ -4131,11 +4781,19 @@ export class WordDocumentProcessor {
       };
 
       // Add indentation if present (for List Paragraph style)
+      // Maps firstLine to hanging indent (standard for list bullets/numbers).
+      // Validates that hanging does not exceed left to prevent negative bullet positions.
       if (style.indentation) {
-        paragraphFormatting.indentation = {
-          left: pointsToTwips((style.indentation.left ?? 0.25) * 72),
-          firstLine: pointsToTwips((style.indentation.firstLine ?? 0.5) * 72),
-        };
+        paragraphFormatting.indentation = {};
+        if (style.indentation.left !== undefined) {
+          paragraphFormatting.indentation.left = pointsToTwips(style.indentation.left * 72);
+        }
+        if (style.indentation.firstLine !== undefined) {
+          const hangingTwips = pointsToTwips(style.indentation.firstLine * 72);
+          const leftTwips = paragraphFormatting.indentation.left ?? 0;
+          // Cap hanging to left — hanging > left produces negative bullet position
+          paragraphFormatting.indentation.hanging = Math.min(hangingTwips, leftTwips);
+        }
       }
 
       // Add contextualSpacing if present (for List Paragraph style)
@@ -4282,6 +4940,15 @@ export class WordDocumentProcessor {
             outlineLevel, // Required for TOC functionality
           },
         });
+
+        // ListParagraph style definition contains critical numPr (e.g. numId=33) that
+        // Style.create() can't replicate. Replacing it strips numPr, breaking numbering
+        // inheritance for HLP table paragraphs. Skip the style replacement — formatting
+        // is still applied to individual paragraphs by applyStyles() run-level processing.
+        if (wordStyleId === 'ListParagraph') {
+          this.log.debug('Skipping addStyle for ListParagraph (preserving numPr in style definition)');
+          continue;
+        }
 
         doc.addStyle(styleObj);
         this.log.info(`✓ Updated style definition: ${wordStyleId} (${sessionStyle.fontFamily} ${sessionStyle.fontSize}pt)`);
@@ -4506,7 +5173,7 @@ export class WordDocumentProcessor {
           this.log.debug(`Skipping Header 2 validation for excluded 1x1 table`);
 
           // Clear existing shading from excluded tables
-          singleCell.setShading({ fill: 'auto' });
+          singleCell.setShading({ fill: 'auto', pattern: "clear", color: "auto" });
 
           continue;
         }
@@ -4611,7 +5278,7 @@ export class WordDocumentProcessor {
                 // Use user's header2Shading color from tableShadingSettings (fallback to BFBFBF if not set)
                 const shadingColor =
                   tableShadingSettings?.header2Shading?.replace("#", "") || "BFBFBF";
-                cell.setShading({ fill: shadingColor });
+                cell.setShading({ fill: shadingColor, pattern: "clear", color: "auto" });
                 cellNeedsUpdate = true;
                 this.log.debug(`Applied Header 2 cell shading (#${shadingColor}) to 1x1 table`);
               }
@@ -4985,15 +5652,11 @@ export class WordDocumentProcessor {
             // Use indent relative to cell baseline to ignore structural positioning
             const existingLeftIndent = rawLeftIndent - cellBaselineIndent;
 
-            // Check if paragraph contains a small image (like emoji < 100x100px)
-            const hasSmallImage = isSmallImageParagraph(para);
-
-            // Apply indentation if:
-            // 1. Paragraph has indentation beyond the cell baseline (genuine content indent), OR
-            // 2. Paragraph contains a small image (emoji+text paragraphs within list context need indenting)
-            if (existingLeftIndent > 0 || hasSmallImage) {
+            // Apply indentation if paragraph has indentation beyond the cell baseline (genuine content indent)
+            if (existingLeftIndent > 0) {
               // Get cell width and margins to calculate safe indent
-              const cellWidth = cell.getWidth(); // twips, or undefined
+              // Default to 2880tw (2") for auto-width cells where getWidth() is undefined
+              const cellWidth = cell.getWidth() ?? 2880;
               const cellMargins = cell.getMargins();
               const leftMargin = cellMargins?.left || 0;
               const rightMargin = cellMargins?.right || 0;
@@ -5002,49 +5665,48 @@ export class WordDocumentProcessor {
               let targetIndent = activeContext.textIndentTwips + cellBaselineIndent;
 
               // Respect cell boundary: cap indent based on available width
-              if (cellWidth !== undefined && cellWidth > 0) {
-                const availableWidth = cellWidth - leftMargin - rightMargin;
+              const availableWidth = cellWidth - leftMargin - rightMargin;
 
-                // Skip indent entirely for very narrow cells (< 3 inches)
-                // Indentation in narrow cells causes text clipping
-                const NARROW_CELL_THRESHOLD = 4320; // 3 inches
-                if (availableWidth < NARROW_CELL_THRESHOLD) {
-                  this.log.debug(
-                    `  Skipping indent for narrow cell (available: ${availableWidth}tw < ${NARROW_CELL_THRESHOLD}tw threshold)`
-                  );
-                  continue;
-                }
+              // Skip indent entirely for very narrow cells (< 2 inches)
+              // Indentation in narrow cells causes text clipping
+              const NARROW_CELL_THRESHOLD = 2880; // 2 inches
+              if (availableWidth < NARROW_CELL_THRESHOLD) {
+                this.log.debug(
+                  `  Skipping indent for narrow cell (available: ${availableWidth}tw < ${NARROW_CELL_THRESHOLD}tw threshold)`
+                );
+                continue;
+              }
 
-                // Ensure at least 2 inches (2880 twips) remains for text content
-                const MIN_TEXT_SPACE = 2880;
-                const maxSafeIndent = Math.max(0, availableWidth - MIN_TEXT_SPACE);
+              // Ensure at least 2 inches (2880 twips) remains for text content
+              const MIN_TEXT_SPACE = 2880;
+              const maxSafeIndent = Math.max(0, availableWidth - MIN_TEXT_SPACE);
 
-                // Skip if calculated indent would be negligible (< 0.25 inches)
-                if (maxSafeIndent < 360) {
-                  this.log.debug(
-                    `  Skipping indent - maxSafeIndent too small (${maxSafeIndent}tw < 360tw)`
-                  );
-                  continue;
-                }
+              // Skip if calculated indent would be negligible (< 0.25 inches)
+              if (maxSafeIndent < 360) {
+                this.log.debug(
+                  `  Skipping indent - maxSafeIndent too small (${maxSafeIndent}tw < 360tw)`
+                );
+                continue;
+              }
 
-                if (targetIndent > maxSafeIndent) {
-                  // Cap indent at safe maximum, or keep existing if it's smaller
-                  targetIndent = existingLeftIndent > 0
-                    ? Math.min(rawLeftIndent, maxSafeIndent)
-                    : maxSafeIndent;
-                  this.log.debug(
-                    `  Capped indent to ${targetIndent} twips (cell: ${cellWidth}, margins: L${leftMargin}/R${rightMargin}, available: ${availableWidth})`
-                  );
-                }
+              // Always cap indent at safe maximum
+              if (targetIndent > maxSafeIndent) {
+                targetIndent = existingLeftIndent > 0
+                  ? Math.min(rawLeftIndent, maxSafeIndent)
+                  : maxSafeIndent;
+                this.log.debug(
+                  `  Capped indent to ${targetIndent} twips (cell: ${cellWidth}, margins: L${leftMargin}/R${rightMargin}, available: ${availableWidth})`
+                );
               }
 
               para.setLeftIndent(targetIndent);
+              para.setHangingIndent(0);
               para.setFirstLineIndent(0);
 
               this.log.debug(
                 `  Table cell continuation: para ${i}, numId=${activeContext.numId}, ` +
                 `level=${activeContext.level}, indent=${targetIndent}twips ` +
-                `(was ${rawLeftIndent}, baseline=${cellBaselineIndent}, hasSmallImage=${hasSmallImage})`
+                `(was ${rawLeftIndent}, baseline=${cellBaselineIndent})`
               );
               indentedCount++;
             }
@@ -5120,6 +5782,7 @@ export class WordDocumentProcessor {
 
         // Apply the list's textIndent as the paragraph's left indent
         currentPara.setLeftIndent(textIndentTwips);
+        currentPara.setHangingIndent(0);
         currentPara.setFirstLineIndent(0);
 
         const source = actualIndent !== undefined ? 'numbering.xml' : 'UI settings';
@@ -5133,6 +5796,7 @@ export class WordDocumentProcessor {
       // Case 2: Previous is an indented non-list paragraph - match its indent
       else if (previousLeftIndent > 0) {
         currentPara.setLeftIndent(previousLeftIndent);
+        currentPara.setHangingIndent(0);
         currentPara.setFirstLineIndent(0);
 
         this.log.debug(
@@ -5282,11 +5946,29 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Get the effective visual indentation for a list item.
+   * Returns paragraph-level indent if set, otherwise the numbering definition's
+   * leftIndent for the item's current ilvl.
+   */
+  private getEffectiveListIndent(doc: Document, para: Paragraph, numbering: { numId: number; level: number }): number {
+    const formatting = para.getFormatting();
+    const paraLeft = formatting.indentation?.left || 0;
+    if (paraLeft > 0) return paraLeft;
+
+    // Fall back to numbering definition indent
+    const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
+    return numDefIndent ?? 0;
+  }
+
+  /**
    * Normalize list levels based on visual indentation
    *
-   * Some documents have bullets where all items have w:ilvl="0" (level 0) but some have
-   * additional paragraph-level indentation (w:ind w:left) that makes them appear indented.
+   * Some documents have bullets where all items have w:ilvl="0" (level 0) but their
+   * numbering definition places them at deeper indentation (e.g., left=1080 with open circle).
    * This method detects such items and updates their w:ilvl to match the visual indentation.
+   *
+   * Uses effective indentation (paragraph-level or numbering definition) to determine
+   * the actual visual position, then matches against textIndent thresholds.
    *
    * This must be called BEFORE applyBulletUniformity() so that when styles are applied,
    * the paragraphs already have the correct levels.
@@ -5307,249 +5989,96 @@ export class WordDocumentProcessor {
   ): Promise<number> {
     let normalized = 0;
 
-    // Build threshold ranges from user settings (convert inches to twips)
-    const thresholds = this.buildIndentationThresholds(settings.indentationLevels);
+    // Build textIndent-based thresholds for matching effective indentation to levels.
+    // Numbering definition leftIndent represents text position (matching textIndent),
+    // NOT symbol position. With symbolIndent thresholds, standard ilvl=0 (720tw) would
+    // wrongly map to L1. With textIndent thresholds (L0=[0,1080)), 720 correctly maps to L0.
+    const textThresholds = this.buildTextIndentThresholds(settings.indentationLevels);
 
     this.log.debug("=== NORMALIZING LIST LEVELS FROM INDENTATION ===");
-    this.log.debug(`  Built ${thresholds.length} indentation thresholds:`);
-    thresholds.forEach((t) => {
+    this.log.debug(`  Built ${textThresholds.length} text-indent thresholds:`);
+    textThresholds.forEach((t) => {
       this.log.debug(`    Level ${t.level}: ${t.minTwips} - ${t.maxTwips} twips`);
     });
 
-    // Process table cells - check for existing hierarchy before normalizing
-    for (const table of doc.getAllTables()) {
-      for (const row of table.getRows()) {
-        for (const cell of row.getCells()) {
-          const paragraphs = cell.getParagraphs();
-
-          // Check if cell already has multi-level hierarchy
-          const levels = new Set<number>();
-          for (const para of paragraphs) {
-            const numbering = para.getNumbering();
-            if (numbering) levels.add(numbering.level);
-          }
-
-          // Log multi-level hierarchy but still normalize — levels assigned by
-          // hand-typed prefix conversion may not match visual indentation.
-          // The normalization below uses relative indentation from baseline to
-          // assign correct levels regardless of what was set during conversion.
-          if (levels.size > 1) {
-            this.log.debug(
-              `  Cell has ${levels.size}-level hierarchy (levels: ${Array.from(levels).join(', ')}) — will validate against visual indentation`
-            );
-          }
-
-          // First pass: collect list items and find minimum indentation
-          // This establishes a baseline so items are normalized relative to each other,
-          // not against absolute thresholds (which may not account for cell padding)
-          const listItems: Array<{
-            para: typeof paragraphs[0];
-            numbering: NonNullable<ReturnType<typeof paragraphs[0]['getNumbering']>>;
-            leftTwips: number;
-          }> = [];
-          let minIndent = Infinity;
-
-          for (const para of paragraphs) {
-            const numbering = para.getNumbering();
-            if (!numbering) continue;
-
-            const formatting = para.getFormatting();
-            const leftTwips = formatting.indentation?.left || 0;
-
-            listItems.push({ para, numbering, leftTwips });
-            if (leftTwips < minIndent) {
-              minIndent = leftTwips;
-            }
-          }
-
-          // Skip if no list items
-          if (listItems.length === 0 || minIndent === Infinity) {
-            continue;
-          }
-
-          // Use minimum indent as baseline for level 0 (accounts for cell padding)
-          const baselineOffset = minIndent > 0 ? minIndent : 0;
-
-          // Second pass: normalize levels using relative indentation
-          for (const { para, numbering, leftTwips } of listItems) {
-            // Calculate relative indentation from the cell's baseline
-            const relativeIndent = leftTwips - baselineOffset;
-
-            // DEBUG: Log detailed info for each item BEFORE any changes
-            if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-              const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
-              const textSnippet = para.getText().substring(0, 35).replace(/\n/g, ' ');
-              this.log.debug(
-                `  [TABLE ITEM] "${textSnippet}..." ` +
-                  `origLevel=${numbering.level}, paraLeft=${leftTwips}tw, ` +
-                  `numDefIndent=${numDefIndent ?? 'N/A'}tw, ` +
-                  `baseline=${baselineOffset}tw, relativeIndent=${relativeIndent}tw`
-              );
-            }
-
-            // Items at the baseline (relative indent = 0) should only be normalized to level 0
-            // if they don't have a valid numbering definition indentation for their current level
-            if (relativeIndent === 0) {
-              if (numbering.level > 0) {
-                // Check if the numbering definition provides indentation for this level
-                const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
-
-                // If numbering definition has valid indentation for this level, respect it
-                if (numDefIndent !== undefined && numDefIndent > 0) {
-                  // Item has legitimate ilvl with numbering definition indentation - skip
-                  if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-                    this.log.debug(
-                      `    -> PRESERVING level ${numbering.level} (numDefIndent=${numDefIndent}tw provides visual indent)`
-                    );
-                  }
-                  continue;
-                }
-
-                // No valid numbering definition indentation - normalize to level 0
-                if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-                  this.log.debug(
-                    `    -> CHANGING from level ${numbering.level} to 0 (no numDefIndent, at baseline)`
-                  );
-                }
-                this.log.debug(
-                  `  Normalizing baseline item: left=${leftTwips} twips (baseline), ` +
-                    `current level=${numbering.level}, inferred level=0`
-                );
-                para.setNumbering(numbering.numId, 0);
-                normalized++;
-              }
-              continue;
-            }
-
-            const inferredLevel = this.inferLevelFromIndentation(relativeIndent, thresholds);
-
-            if (inferredLevel !== numbering.level) {
-              if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-                this.log.debug(
-                  `    -> CHANGING from level ${numbering.level} to ${inferredLevel} (threshold match)`
-                );
-              }
-              this.log.debug(
-                `  Normalizing paragraph: left=${leftTwips} twips (relative=${relativeIndent}), ` +
-                  `current level=${numbering.level}, inferred level=${inferredLevel}`
-              );
-              para.setNumbering(numbering.numId, inferredLevel);
-              normalized++;
-            }
-          }
-        }
-      }
-    }
+    // Table cell list levels are NOT processed here — ListNormalizer is the
+    // authoritative source for table cell levels. It preserves original ilvl,
+    // applies levelShift for orphan normalization, and creates numIds with user
+    // indentation settings. Re-inferring levels here from the new numDef
+    // indentation would undo ListNormalizer's correct assignments.
 
     // Process body-level paragraphs (outside tables)
-    // Group by numId to apply relative indentation within each list
+    // Group by numId and only adjust items in groups where ALL items share the same level
+    // (indicating flat ilvl values that need indentation-based inference).
+    // Groups with mixed levels already have correct multi-level structure — trust them.
     const bodyParagraphs = doc.getParagraphs();
-    const listGroups = new Map<
-      number,
-      Array<{
-        para: typeof bodyParagraphs[0];
-        numbering: NonNullable<ReturnType<typeof bodyParagraphs[0]['getNumbering']>>;
-        leftTwips: number;
-      }>
-    >();
+    const manager = doc.getNumberingManager();
 
-    // First pass: group list items by numId
+    // Collect and group body list paragraphs by numId
+    const bodyNumIdGroups = new Map<number, Array<{
+      para: typeof bodyParagraphs[0];
+      numbering: NonNullable<ReturnType<typeof bodyParagraphs[0]['getNumbering']>>;
+    }>>();
+
     for (const para of bodyParagraphs) {
       const numbering = para.getNumbering();
       if (!numbering) continue;
 
-      const formatting = para.getFormatting();
-      const leftTwips = formatting.indentation?.left || 0;
+      // Skip HLP table numbering
+      try {
+        const instance = manager.getInstance(numbering.numId);
+        if (instance && this._hlpAbstractNumIds.has(instance.getAbstractNumId())) continue;
+      } catch { /* proceed if check fails */ }
 
-      if (!listGroups.has(numbering.numId)) {
-        listGroups.set(numbering.numId, []);
+      // Skip row-number column numbering
+      try {
+        const instance = manager.getInstance(numbering.numId);
+        if (instance && this._rowNumberAbstractNumIds.has(instance.getAbstractNumId())) continue;
+      } catch { /* proceed if check fails */ }
+
+      if (!bodyNumIdGroups.has(numbering.numId)) {
+        bodyNumIdGroups.set(numbering.numId, []);
       }
-      listGroups.get(numbering.numId)!.push({ para, numbering, leftTwips });
+      bodyNumIdGroups.get(numbering.numId)!.push({ para, numbering });
     }
 
-    // Second pass: normalize each list group using relative indentation
-    for (const [numId, items] of listGroups) {
-      // Find minimum indentation in this list group
-      let minIndent = Infinity;
-      for (const { leftTwips } of items) {
-        if (leftTwips < minIndent) {
-          minIndent = leftTwips;
-        }
+    // Process each numId group
+    for (const [numId, items] of bodyNumIdGroups) {
+      // Check if all items share the same level
+      const uniqueLevels = new Set(items.map(i => i.numbering.level));
+      if (uniqueLevels.size > 1) {
+        // Multi-level structure — trust original levels
+        this.log.debug(`  Skipping body numId ${numId}: already has multi-level structure (levels: ${[...uniqueLevels].join(', ')})`);
+        continue;
       }
 
-      // Skip if no valid minimum
-      if (minIndent === Infinity) continue;
+      // All items at the same level — apply threshold inference
+      for (const { para, numbering } of items) {
+        const effectiveIndent = this.getEffectiveListIndent(doc, para, numbering);
 
-      // Log multi-level hierarchy but still normalize — levels from
-      // hand-typed prefix conversion may not match visual indentation.
-      const levels = new Set(items.map((item) => item.numbering.level));
-      if (levels.size > 1) {
-        this.log.debug(
-          `  Body list (numId=${numId}) has ${levels.size}-level hierarchy — will validate against visual indentation`
-        );
-      }
-
-      // Use minimum indent as baseline
-      const baselineOffset = minIndent > 0 ? minIndent : 0;
-
-      for (const { para, numbering, leftTwips } of items) {
-        const relativeIndent = leftTwips - baselineOffset;
-
-        // Get numbering definition indentation (needed for both debug logging and fix logic)
-        const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
-
-        // DEBUG: Log detailed info for each item BEFORE any changes
         if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+          const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
+          const paraLeft = para.getFormatting().indentation?.left || 0;
           const textSnippet = para.getText().substring(0, 35).replace(/\n/g, ' ');
           this.log.debug(
             `  [BODY ITEM] "${textSnippet}..." ` +
-              `origLevel=${numbering.level}, paraLeft=${leftTwips}tw, ` +
+              `origLevel=${numbering.level}, paraLeft=${paraLeft}tw, ` +
               `numDefIndent=${numDefIndent ?? 'N/A'}tw, ` +
-              `baseline=${baselineOffset}tw, relativeIndent=${relativeIndent}tw`
+              `effectiveIndent=${effectiveIndent}tw`
           );
         }
 
-        // Items at the baseline (relative indent = 0) should only be normalized to level 0
-        // if they don't have a valid numbering definition indentation for their current level
-        if (relativeIndent === 0) {
-          if (numbering.level > 0) {
-            // If numbering definition has valid indentation for this level, respect it
-            if (numDefIndent !== undefined && numDefIndent > 0) {
-              // Item has legitimate ilvl with numbering definition indentation - skip
-              if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-                this.log.debug(
-                  `    -> PRESERVING level ${numbering.level} (numDefIndent=${numDefIndent}tw provides visual indent)`
-                );
-              }
-              continue;
-            }
-
-            // No valid numbering definition indentation - normalize to level 0
-            if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-              this.log.debug(
-                `    -> CHANGING from level ${numbering.level} to 0 (no numDefIndent, at baseline)`
-              );
-            }
-            this.log.debug(
-              `  Normalizing body baseline item: left=${leftTwips} twips (baseline), ` +
-                `current level=${numbering.level}, inferred level=0`
-            );
-            para.setNumbering(numbering.numId, 0);
-            normalized++;
-          }
-          continue;
-        }
-
-        const inferredLevel = this.inferLevelFromIndentation(relativeIndent, thresholds);
+        // Match effective indent against absolute textIndent thresholds
+        const inferredLevel = this.inferLevelFromIndentation(effectiveIndent, textThresholds);
 
         if (inferredLevel !== numbering.level) {
           if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
             this.log.debug(
-              `    -> CHANGING from level ${numbering.level} to ${inferredLevel} (threshold match)`
+              `    -> CHANGING from level ${numbering.level} to ${inferredLevel} (textIndent threshold match)`
             );
           }
           this.log.debug(
-            `  Normalizing body paragraph: left=${leftTwips} twips (relative=${relativeIndent}), ` +
+            `  Normalizing body paragraph: effectiveIndent=${effectiveIndent}tw, ` +
               `current level=${numbering.level}, inferred level=${inferredLevel}`
           );
           para.setNumbering(numbering.numId, inferredLevel);
@@ -5603,6 +6132,44 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Build indentation thresholds using textIndent values instead of symbolIndent.
+   *
+   * Numbering definition leftIndent represents text position (matching textIndent),
+   * not symbol position. Standard ilvl=0 has leftIndent=720tw. With symbolIndent
+   * thresholds (L0=[0,720)), 720 maps to L1 — wrong. With textIndent thresholds
+   * (L0=[0,1080)), 720 maps to L0 — correct.
+   */
+  private buildTextIndentThresholds(
+    levels: Array<{ textIndent: number }>
+  ): Array<{ level: number; minTwips: number; maxTwips: number }> {
+    const thresholds: Array<{ level: number; minTwips: number; maxTwips: number }> = [];
+
+    for (let i = 0; i < levels.length; i++) {
+      const currentTwips = Math.round(levels[i].textIndent * 1440);
+      const nextTwips =
+        i < levels.length - 1
+          ? Math.round(levels[i + 1].textIndent * 1440)
+          : currentTwips + 720;
+
+      const midpointToNext = Math.round((currentTwips + nextTwips) / 2);
+      const prevTwips = i > 0 ? Math.round(levels[i - 1].textIndent * 1440) : 0;
+      const midpointFromPrev = i > 0 ? Math.round((prevTwips + currentTwips) / 2) : 0;
+
+      thresholds.push({
+        level: i,
+        minTwips: midpointFromPrev,
+        maxTwips: midpointToNext,
+      });
+    }
+
+    if (thresholds.length > 0) {
+      thresholds[thresholds.length - 1].maxTwips = 999999;
+    }
+
+    return thresholds;
+  }
+
+  /**
    * Infer the appropriate list level from paragraph indentation
    *
    * @param leftTwips - Paragraph's left indentation in twips
@@ -5620,6 +6187,140 @@ export class WordDocumentProcessor {
     }
     // Default to level 0 if no match (shouldn't happen with proper thresholds)
     return 0;
+  }
+
+  /**
+   * Normalize level gaps in list item sequences.
+   *
+   * After other normalization steps, some sequences may have non-contiguous levels
+   * (e.g., 0→1→3→4, skipping level 2). This collapses the gaps to produce
+   * contiguous levels (0→1→2→3) while preserving the relative ordering.
+   *
+   * Processes both table cells and body paragraph sequences grouped by numId.
+   *
+   * @param doc - The document to process
+   * @returns Number of paragraphs whose level was adjusted
+   */
+  private normalizeLevelGaps(doc: Document): number {
+    let normalized = 0;
+    const manager = doc.getNumberingManager();
+
+    // Process table cells
+    for (const table of doc.getAllTables()) {
+      if (tableProcessor.isHLPTable(table)) continue;
+
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          const paragraphs = cell.getParagraphs();
+          const listItems: Array<{
+            para: typeof paragraphs[0];
+            numbering: NonNullable<ReturnType<typeof paragraphs[0]['getNumbering']>>;
+          }> = [];
+
+          for (const para of paragraphs) {
+            const numbering = para.getNumbering();
+            if (!numbering) continue;
+
+            // Skip HLP and row-number protected items
+            try {
+              const instance = manager.getInstance(numbering.numId);
+              if (instance) {
+                if (this._hlpAbstractNumIds.has(instance.getAbstractNumId())) continue;
+                if (this._rowNumberAbstractNumIds.has(instance.getAbstractNumId())) continue;
+              }
+            } catch { /* proceed */ }
+
+            listItems.push({ para, numbering });
+          }
+
+          if (listItems.length < 2) continue;
+          normalized += this.collapseLevelGapsInGroup(listItems);
+        }
+      }
+    }
+
+    // Process body paragraphs — group by numId
+    const bodyParagraphs = doc.getParagraphs();
+    const bodyGroups = new Map<number, Array<{
+      para: typeof bodyParagraphs[0];
+      numbering: NonNullable<ReturnType<typeof bodyParagraphs[0]['getNumbering']>>;
+    }>>();
+
+    for (const para of bodyParagraphs) {
+      const numbering = para.getNumbering();
+      if (!numbering) continue;
+
+      // Skip HLP and row-number protected items
+      try {
+        const instance = manager.getInstance(numbering.numId);
+        if (instance) {
+          if (this._hlpAbstractNumIds.has(instance.getAbstractNumId())) continue;
+          if (this._rowNumberAbstractNumIds.has(instance.getAbstractNumId())) continue;
+        }
+      } catch { /* proceed */ }
+
+      if (!bodyGroups.has(numbering.numId)) {
+        bodyGroups.set(numbering.numId, []);
+      }
+      bodyGroups.get(numbering.numId)!.push({ para, numbering });
+    }
+
+    for (const [, items] of bodyGroups) {
+      if (items.length < 2) continue;
+      normalized += this.collapseLevelGapsInGroup(items);
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Collapse non-contiguous level gaps within a group of list items.
+   * E.g., levels {0, 1, 3, 4} → {0, 1, 2, 3} (gap at 2 collapsed).
+   * Only collapses gaps; never reorders items.
+   */
+  private collapseLevelGapsInGroup(
+    items: Array<{
+      para: { getNumbering(): { numId: number; level: number } | undefined; setNumbering(numId: number, level: number): void };
+      numbering: { numId: number; level: number };
+    }>
+  ): number {
+    // Collect unique used levels sorted ascending
+    const usedLevels = [...new Set(items.map(i => i.numbering.level))].sort((a, b) => a - b);
+
+    if (usedLevels.length < 2) return 0;
+
+    // Check for gaps: are levels non-contiguous?
+    let hasGaps = false;
+    for (let i = 1; i < usedLevels.length; i++) {
+      if (usedLevels[i] - usedLevels[i - 1] > 1) {
+        hasGaps = true;
+        break;
+      }
+    }
+
+    if (!hasGaps) return 0;
+
+    // Build mapping: original level → collapsed contiguous level
+    // Start from the base level (usedLevels[0]) and assign consecutive values
+    const levelMap = new Map<number, number>();
+    usedLevels.forEach((level, index) => {
+      levelMap.set(level, usedLevels[0] + index);
+    });
+
+    this.log.debug(
+      `  Collapsing level gaps: [${usedLevels.join(', ')}] → [${usedLevels.map((_, i) => usedLevels[0] + i).join(', ')}]`
+    );
+
+    let changed = 0;
+    for (const { para, numbering } of items) {
+      const newLevel = levelMap.get(numbering.level);
+      if (newLevel !== undefined && newLevel !== numbering.level) {
+        para.setNumbering(numbering.numId, newLevel);
+        changed++;
+      }
+    }
+
+    return changed;
   }
 
   /**
@@ -5645,6 +6346,13 @@ export class WordDocumentProcessor {
 
     this.log.debug("=== DEBUG: BULLET UNIFORMITY EXECUTION ===");
     this.log.debug(`  Creating ${settings.indentationLevels.length} bullet list levels`);
+
+    // Trace indentation config values for debugging level 0 mismatch issues
+    this.log.info(
+      `Bullet uniformity config: ${settings.indentationLevels.map((l, i) =>
+        `L${i}(sym=${l.symbolIndent}", txt=${l.textIndent}")`
+      ).join(', ')}`
+    );
 
     // DIAGNOSTIC: Log what UI is passing for bullet characters
     this.log.debug("Bullet configuration from UI:");
@@ -5779,6 +6487,11 @@ export class WordDocumentProcessor {
               const hangingTwips = textTwips - symbolTwips;
               level.setLeftIndent(textTwips);      // Text starts at textIndent
               level.setHangingIndent(hangingTwips); // Number hangs back by (textIndent - symbolIndent)
+
+              this.log.info(
+                `Level ${levelIndex}: config symbol=${levelConfig.symbolIndent}", text=${levelConfig.textIndent}" ` +
+                `→ left=${textTwips}tw, hanging=${hangingTwips}tw, bullet@${textTwips - hangingTwips}tw (${((textTwips - hangingTwips) / 1440).toFixed(2)}")`
+              );
             }
 
             isModified = true;
@@ -5792,6 +6505,9 @@ export class WordDocumentProcessor {
         }
 
         if (isModified) {
+          // Re-register with the manager to mark as modified —
+          // level setters (setLeftIndent, setHangingIndent, etc.) don't notify the NumberingManager
+          manager.addAbstractNumbering(abstractNum);
           existingListsUpdated++;
         }
       }
@@ -6124,6 +6840,10 @@ export class WordDocumentProcessor {
             );
           }
         }
+
+        // Re-register with the manager to mark as modified —
+        // level setters (setLeftIndent, setHangingIndent, etc.) don't notify the NumberingManager
+        manager.addAbstractNumbering(abstractNum);
       }
 
       if (formatsConverted > 0) {
@@ -6340,15 +7060,25 @@ export class WordDocumentProcessor {
 
             const level = abstractNum.getLevel(0);
             if (level) {
-              level.setFormat('decimal');
-              level.setText('%1');
-              level.setLeftIndent(0);
-              level.setHangingIndent(0);
-              level.setFont(normalStyle.fontFamily);
-              level.setFontSize(normalStyle.fontSize * 2); // half-points
-              level.setBold(true);
-              level.setColor('000000');
+              abstractNum.removeLevel(0);
+              abstractNum.addLevel(NumberingLevel.create({
+                level: 0,
+                format: 'decimal',
+                text: '%1',
+                alignment: 'center',
+                leftIndent: 0,
+                hangingIndent: 0,
+                suffix: 'nothing',
+                font: normalStyle.fontFamily,
+                fontSize: normalStyle.fontSize * 2, // half-points
+                bold: true,
+                color: '000000',
+              }));
             }
+
+            // Re-register with the manager to mark as modified —
+            // removeLevel/addLevel don't notify the NumberingManager
+            manager.addAbstractNumbering(abstractNum);
 
             // Track for protection against downstream overrides
             this._rowNumberAbstractNumIds.add(abstractNumId);
@@ -6357,10 +7087,12 @@ export class WordDocumentProcessor {
           // Format each matched paragraph
           for (const para of matchingParas) {
             para.setAlignment('center');
-            para.setLeftIndent(0);
-            para.setFirstLineIndent(0);
             para.setSpaceBefore(pointsToTwips(normalStyle.spaceBefore));
             para.setSpaceAfter(pointsToTwips(normalStyle.spaceAfter));
+            // Set indentation AFTER spacing — spacing setters can drop <w:ind>
+            para.setLeftIndent(0);
+            para.setFirstLineIndent(0);
+            para.setHangingIndent(0);
 
             // Format runs if any exist
             for (const run of para.getRuns()) {
@@ -6701,13 +7433,44 @@ export class WordDocumentProcessor {
         }
 
         // 6. Get or create numId (reuse within consecutive sequences at same type/level)
+        // Also track the detected format so we can apply the correct numbering format
+        const detectedFormat = detection.format; // e.g., 'upperLetter', 'lowerLetter', 'lowerRoman', 'decimal'
         let numId: number;
         if (seqType === targetType && seqLevel === targetLevel && seqNumId !== null) {
           numId = seqNumId;
         } else {
-          numId = targetType === 'bullet'
-            ? manager.createBulletList()
-            : manager.createNumberedList();
+          if (targetType === 'bullet') {
+            numId = manager.createBulletList();
+          } else {
+            numId = manager.createNumberedList();
+            // Apply the correct numbering format from the detected prefix type
+            // This ensures "A." creates an upperLetter list, not a decimal list
+            if (detectedFormat && detectedFormat !== 'decimal') {
+              try {
+                const instance = manager.getInstance(numId);
+                if (instance) {
+                  const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+                  if (abstractNum) {
+                    const level = abstractNum.getLevel(targetLevel);
+                    if (level) {
+                      const format = this.parseNumberedFormat(
+                        detectedFormat === 'upperLetter' ? 'A' :
+                        detectedFormat === 'lowerLetter' ? 'a' :
+                        detectedFormat === 'lowerRoman' ? 'i' :
+                        detectedFormat === 'upperRoman' ? 'I' : '1'
+                      );
+                      level.setFormat(format);
+                      // Set text template: %1. for level 0, %2. for level 1, etc.
+                      const separator = detection.prefix?.includes(')') ? ')' : '.';
+                      level.setText(`%${targetLevel + 1}${separator}`);
+                    }
+                  }
+                }
+              } catch (fmtError) {
+                this.log.warn(`Failed to apply format ${detectedFormat} to numId ${numId}: ${fmtError}`);
+              }
+            }
+          }
           applyIndentation(numId);
           seqNumId = numId;
           seqType = targetType;
@@ -6863,89 +7626,44 @@ export class WordDocumentProcessor {
         const isBulletList = dominantFormat === "bullet";
         const numberedFormats = ["decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"];
 
-        // Analyze all levels to check for mixed formats
-        let hasNonConformingLevels = false;
-        for (let i = 1; i < 9; i++) {
+        // Collect all level formats to determine if this is intentionally mixed
+        const levelFormats: Array<{ level: number; format: string }> = [];
+        for (let i = 0; i < 9; i++) {
           const level = abstractNum.getLevel(i);
-          if (!level) continue;
-
-          const currentFormat = level.getFormat();
-          if (isBulletList && currentFormat !== "bullet" && numberedFormats.includes(currentFormat)) {
-            hasNonConformingLevels = true;
-            break;
-          } else if (!isBulletList && currentFormat === "bullet") {
-            hasNonConformingLevels = true;
-            break;
+          if (level) {
+            levelFormats.push({ level: i, format: level.getFormat() });
           }
         }
 
-        if (!hasNonConformingLevels) continue;
-
-        this.log.debug(
-          `  Found mixed format abstractNum (level0=${dominantFormat}), converting levels...`
+        // Check if this is a standard multilevel list pattern (intentionally mixed).
+        // Standard patterns use different formats at different levels:
+        //   - Bullet at level 0 + numbered (letter/roman) at deeper levels
+        //   - Numbered (decimal) at level 0 + bullet at deeper levels
+        //   - Numbered hierarchy: decimal→letter→roman
+        // These should be PRESERVED, not flattened to uniform format.
+        const hasAnyMix = levelFormats.some(lf =>
+          (isBulletList && lf.format !== "bullet" && numberedFormats.includes(lf.format)) ||
+          (!isBulletList && lf.format === "bullet")
         );
 
-        // Convert non-conforming levels
-        for (let i = 1; i < 9; i++) {
-          const level = abstractNum.getLevel(i);
-          if (!level) continue;
+        if (!hasAnyMix) continue;
 
-          const currentFormat = level.getFormat();
-          const configLevel = settings.indentationLevels[i];
+        // Determine if the mix is a standard multilevel pattern
+        // Standard: different formats at consecutive levels (intentional hierarchy)
+        // Anomalous: same level having inconsistent format (rare, likely corruption)
+        // For now, preserve ALL mixed formats — documents with intentional mixed
+        // hierarchies (bullet→letter, numbered→bullet sub-items) are far more common
+        // than truly corrupted format mixes.
+        this.log.debug(
+          `  AbstractNum has mixed formats (level0=${dominantFormat}) — preserving intentional hierarchy`
+        );
 
-          if (isBulletList && currentFormat !== "bullet" && numberedFormats.includes(currentFormat)) {
-            // Convert numbered level to bullet
-            level.setFormat("bullet");
-
-            // Apply UI-configured bullet character
-            const bulletChar = configLevel?.bulletChar || settings.indentationLevels[0]?.bulletChar || "●";
-            const mapping = getBulletMapping(bulletChar);
-            level.setText(mapping.char);
-            level.setFont(mapping.font);
-            level.setFontSize(24); // 12pt
-            level.setColor("000000");
-
-            // Apply UI-configured indentation
-            if (configLevel) {
-              const symbolTwips = Math.round(configLevel.symbolIndent * 1440);
-              const extraTwips = this.getExtraHangingTwips();
-              const textTwips = Math.round(configLevel.textIndent * 1440) + extraTwips;
-              level.setLeftIndent(textTwips);
-              level.setHangingIndent(textTwips - symbolTwips);
-            }
-
-            converted++;
-            this.log.debug(
-              `    Level ${i}: ${currentFormat} -> bullet (char="${bulletChar}")`
-            );
-          } else if (!isBulletList && currentFormat === "bullet") {
-            // Convert bullet level to numbered
-            // Use format family from level 0 to determine fallback (upper vs lower)
-            const fallbackFormat = this.getFormatFallbackString(dominantFormat);
-            const numberedFormat = this.parseNumberedFormat(
-              configLevel?.numberedFormat || fallbackFormat
-            );
-            level.setFormat(numberedFormat);
-            level.setText(`%${i + 1}.`);
-            level.setFont("Verdana");
-            level.setFontSize(24); // 12pt
-            level.setColor("000000");
-
-            // Apply UI-configured indentation
-            if (configLevel) {
-              const symbolTwips = Math.round(configLevel.symbolIndent * 1440);
-              const extraTwips = this.getExtraHangingTwips();
-              const textTwips = Math.round(configLevel.textIndent * 1440) + extraTwips;
-              level.setLeftIndent(textTwips);
-              level.setHangingIndent(textTwips - symbolTwips);
-            }
-
-            converted++;
-            this.log.debug(
-              `    Level ${i}: bullet -> ${numberedFormat}`
-            );
-          }
-        }
+        // DO NOT convert levels — preserve the original mixed format structure.
+        // The old behavior destroyed intentional hierarchies like:
+        //   • For Retail Overrides:
+        //      a. Step one
+        //         i. Sub-step
+        // by converting everything to bullets or everything to numbered.
       }
 
       if (converted > 0) {
@@ -7346,21 +8064,69 @@ export class WordDocumentProcessor {
       normalLineSpacing: normalLineSpacing,
     });
 
-    // Update table style definitions in styles.xml to match the user's configured shading
-    // This ensures cells using table styles (like GridTable4-Accent3) get consistent shading
-    // Common table style shading colors that need to be updated:
-    const shadingUpdates = [
-      { old: "A5A5A5", new: header2Color }, // Header/accent cells
-      { old: "C0C0C0", new: header2Color }, // Header cells
-      { old: "D9D9D9", new: otherColor },   // Data cells
-      { old: "E7E6E6", new: otherColor },   // Light data cells
-    ];
+    // Update table style definitions in styles.xml to match the user's configured shading.
+    // Dynamically extracts ALL shading colors from table styles rather than using a hardcoded
+    // list — any cell already shaded by a table style will get the user's configured color.
+    //
+    // IMPORTANT: doc.updateTableStyleShading() uses setStylesXml() which gets overwritten
+    // during save by mergeStylesWithOriginal() (which starts from _originalStylesXml).
+    // To persist changes, we apply replacements directly to _originalStylesXml so the
+    // merge base already has the updated shading colors.
+    const docAny = doc as any;
+    const stylesXml: string = doc.getStylesXml();
     let styleUpdates = 0;
-    for (const update of shadingUpdates) {
-      styleUpdates += doc.updateTableStyleShading(update.old, update.new);
+
+    if (stylesXml) {
+      // Extract ALL unique shading fill colors from table-type styles
+      const tableStyleShadingColors = new Set<string>();
+      const tableStyleRegex = /<w:style[^>]*w:type=["']table["'][^>]*>[\s\S]*?<\/w:style>/gi;
+      const fillRegex = /w:fill=["']([A-Fa-f0-9]{6})["']/g;
+
+      // Colors to never replace (white, HLP-reserved)
+      const preservedColors = new Set(["FFFFFF", "FFC000", "FFF2CC"]);
+
+      let styleMatch;
+      while ((styleMatch = tableStyleRegex.exec(stylesXml)) !== null) {
+        let fillMatch;
+        while ((fillMatch = fillRegex.exec(styleMatch[0])) !== null) {
+          const color = fillMatch[1].toUpperCase();
+          if (!preservedColors.has(color)) {
+            tableStyleShadingColors.add(color);
+          }
+        }
+        fillRegex.lastIndex = 0; // Reset for next table style
+      }
+
+      if (tableStyleShadingColors.size > 0) {
+        this.log.debug(
+          `Found ${tableStyleShadingColors.size} shading colors in table styles: ${[...tableStyleShadingColors].join(", ")}`
+        );
+
+        for (const oldColor of tableStyleShadingColors) {
+          // Map to user's configured color — all non-white table style shading
+          // becomes otherShading since header rows get direct shading anyway
+          const newColor = otherColor.toUpperCase();
+          if (oldColor === newColor) continue;
+
+          styleUpdates += doc.updateTableStyleShading(oldColor, newColor);
+
+          // Also apply to _originalStylesXml so changes survive mergeStylesWithOriginal()
+          if (docAny._originalStylesXml) {
+            const fillPattern = new RegExp(
+              `(w:fill=["'])${oldColor}(["'])`,
+              "gi"
+            );
+            docAny._originalStylesXml = docAny._originalStylesXml.replace(
+              fillPattern,
+              `$1${newColor}$2`
+            );
+          }
+        }
+      }
     }
+
     if (styleUpdates > 0) {
-      this.log.debug(`Updated ${styleUpdates} shading definitions in styles.xml`);
+      this.log.debug(`Updated ${styleUpdates} shading definitions in table styles`);
     }
 
     this.log.debug(`Applied table uniformity to ${result.tablesProcessed} tables`);
@@ -7409,70 +8175,14 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Search for CELL-LEVEL shading pattern in XMLElement tree
-   * This is needed because docxmlater doesn't expose pattern shading for table cells
-   *
-   * IMPORTANT: Only detects shading in w:tcPr (cell properties).
-   * Stops recursion at:
-   * - w:tbl (nested tables)
-   * - w:pPr (paragraph properties - paragraph shading is not cell shading)
-   * - w:rPr (run properties - text highlighting is not cell shading)
-   *
-   * @param element - XMLElement object from cell.toXML()
-   * @returns The shading pattern value (e.g., "pct12", "solid") or undefined
-   */
-  private findShadingPatternInXML(element: unknown): string | undefined {
-    if (!element || typeof element !== "object") return undefined;
-
-    const el = element as {
-      name?: string;
-      attributes?: Record<string, string | number | boolean | undefined>;
-      children?: unknown[];
-    };
-
-    // STOP recursion at nested tables - don't look inside them
-    // This prevents detecting shading from nested table cells as the parent cell's shading
-    if (el.name === "w:tbl") {
-      return undefined;
-    }
-
-    // STOP recursion at paragraph properties - don't check w:pPr > w:shd
-    // Paragraph shading is not the same as cell shading
-    if (el.name === "w:pPr") {
-      return undefined;
-    }
-
-    // STOP recursion at run properties - don't check w:rPr > w:shd
-    // Run shading/highlighting is not the same as cell shading
-    if (el.name === "w:rPr") {
-      return undefined;
-    }
-
-    // Check if this element is w:shd (only cell-level w:tcPr > w:shd at this point)
-    if (el.name === "w:shd" && el.attributes?.val) {
-      return String(el.attributes.val);
-    }
-
-    // Search children recursively (but won't enter nested tables now)
-    if (Array.isArray(el.children)) {
-      for (const child of el.children) {
-        if (typeof child === "object") {
-          const found = this.findShadingPatternInXML(child);
-          if (found) return found;
-        }
-      }
-    }
-
-    return undefined;
-  }
-
-  /**
    * Detect if a cell has visual shading from any source
    *
-   * Checks multiple sources to determine if a cell appears shaded:
-   * 1. Direct cell shading fill color
-   * 2. Pattern shading (w:shd val attribute like "pct50", "solid") via raw XML
-   * 3. Table style inheritance (cell shading from table style)
+   * Checks direct cell-level shading (from w:tcPr) to determine if a cell appears shaded:
+   * 1. Direct cell shading fill color (non-white, non-auto)
+   * 2. Direct cell pattern shading (non-clear, non-nil patterns like pct50, solid, diagStripe)
+   *
+   * Does NOT check table style inheritance — that was intentionally removed to prevent
+   * applySmartTableFormatting() from incorrectly formatting cells with conditional style shading.
    *
    * @returns Object with hasShading boolean and optional fill color
    */
@@ -7489,10 +8199,13 @@ export class WordDocumentProcessor {
       return { hasShading: true, fill: directFill };
     }
 
-    // 2. Pattern shading detection REMOVED
-    // The pattern shading check was detecting table style conditional patterns
-    // (pct12 for banded rows, etc.) as visual shading, causing uniformity to be applied
-    // to cells that had no direct user-applied shading.
+    // 2. Check direct cell pattern shading (e.g., pct50, solid, diagStripe)
+    // Uses docxmlater's proper API — only detects direct cell shading from w:tcPr,
+    // NOT inherited table style conditionals (banded rows, firstCol, etc.)
+    const pattern = formatting.shading?.pattern;
+    if (pattern && pattern !== "clear" && pattern !== "nil") {
+      return { hasShading: true, fill: directFill };
+    }
 
     // 3. Table style inheritance check REMOVED
     // Previously this checked table style for inherited cell shading, but now that
@@ -7685,6 +8398,9 @@ export class WordDocumentProcessor {
           continue;
         }
 
+        // Skip HLP tables — handled by processHLPTables()
+        if (tableProcessor.isHLPTable(table)) continue;
+
         const rowCount = table.getRowCount();
         const columnCount = table.getColumnCount();
 
@@ -7707,7 +8423,7 @@ export class WordDocumentProcessor {
               this.log.debug(`Skipping 1x1 table styling (${lineCount} lines)`);
 
               // Clear existing shading from excluded tables
-              singleCell.setShading({ fill: 'auto' });
+              singleCell.setShading({ fill: 'auto', pattern: "clear", color: "auto" });
 
               // Still apply cell margins even for excluded tables
               singleCell.setMargins(cellMargins);
@@ -7725,7 +8441,7 @@ export class WordDocumentProcessor {
 
             // Only apply shading if cell has existing shading OR Heading 2 style
             if (hasShading || hasHeading2Style) {
-              singleCell.setShading({ fill: header2Color });
+              singleCell.setShading({ fill: header2Color, pattern: "clear", color: "auto" });
 
               // Apply Heading 2 font/size and bold formatting
               for (const para of singleCell.getParagraphs()) {
@@ -7774,7 +8490,7 @@ export class WordDocumentProcessor {
                 this.log.debug(
                   `  → Shading HEADER cell (${rowIndex},${cellIndex}) with #${otherColor}`
                 );
-                cell.setShading({ fill: otherColor });
+                cell.setShading({ fill: otherColor, pattern: "clear", color: "auto" });
 
                 // Set all text in the header to bold (unless preserveBold is enabled)
                 for (const para of cell.getParagraphs()) {
@@ -7793,7 +8509,7 @@ export class WordDocumentProcessor {
                 this.log.debug(
                   `  → Shading DATA cell (${rowIndex},${cellIndex}) with #${otherColor} (original: ${originalColor || "pattern/style"})`
                 );
-                cell.setShading({ fill: otherColor });
+                cell.setShading({ fill: otherColor, pattern: "clear", color: "auto" });
 
                 // Set all text in shaded data cells to bold (unless preserveBold is enabled)
                 for (const para of cell.getParagraphs()) {
@@ -7933,7 +8649,16 @@ export class WordDocumentProcessor {
       }
 
       // Use docxmlater's built-in getText() method
-      return para.getText() || "";
+      const text = para.getText() || "";
+      if (text) return text;
+
+      // Fallback: extract text from runs inside revision elements (w:ins, w:del)
+      // This handles paragraphs with unaccepted tracked changes where getText() returns empty
+      if (para instanceof Paragraph) {
+        const runs = this.getAllRunsFromParagraph(para);
+        return runs.map(r => r.getText() || "").join("");
+      }
+      return "";
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       this.log.warn(`Failed to extract text from paragraph: ${errorMsg}`);
@@ -8509,7 +9234,9 @@ export class WordDocumentProcessor {
     ];
 
     for (let i = 0; i < paragraphs.length; i++) {
-      const text = this.getParagraphText(paragraphs[i]).toLowerCase();
+      const text = this.getParagraphText(paragraphs[i])
+        .replace(/[\u00A0\u2002\u2003\u2009\u200B]/g, ' ')
+        .toLowerCase();
 
       // Check for exact disclaimer lines first
       const matchesLine1 = text.includes(disclaimerLine1Pattern);
@@ -8522,6 +9249,8 @@ export class WordDocumentProcessor {
         this.log.debug(`Found existing disclaimer paragraph at index ${i}: "${text.substring(0, 50)}..."`);
       }
     }
+
+    this.log.debug(`Disclaimer detection: scanned ${paragraphs.length} paragraphs, found ${existingWarningIndices.length} match(es)`);
 
     // Step 2: Remove existing disclaimer paragraphs if found
     if (existingWarningIndices.length > 0) {
@@ -8589,8 +9318,9 @@ export class WordDocumentProcessor {
     para1.setSpaceBefore(pointsToTwips(3));
     para1.setSpaceAfter(pointsToTwips(3));
 
-    // Format runs in first paragraph
-    const runs1 = para1.getRuns();
+    // Format runs in first paragraph (use getAllRunsFromParagraph to reach runs inside w:ins revision wrappers)
+    const runs1 = this.getAllRunsFromParagraph(para1);
+    this.log.debug(`Warning line 1: ${runs1.length} runs to format`);
     for (const run of runs1) {
       run.setFont("Verdana");
       run.setSize(8);
@@ -8605,8 +9335,9 @@ export class WordDocumentProcessor {
     para2.setSpaceBefore(pointsToTwips(3));
     para2.setSpaceAfter(pointsToTwips(3));
 
-    // Format runs in second paragraph (bold)
-    const runs2 = para2.getRuns();
+    // Format runs in second paragraph (bold) — use getAllRunsFromParagraph for w:ins revision wrappers
+    const runs2 = this.getAllRunsFromParagraph(para2);
+    this.log.debug(`Warning line 2: ${runs2.length} runs to format`);
     for (const run of runs2) {
       run.setFont("Verdana");
       run.setSize(8);

@@ -84,8 +84,8 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
     { level: 0, symbolIndent: 0.25, textIndent: 0.50, bulletChar: '•', numberedFormat: '1.' },
     { level: 1, symbolIndent: 0.75, textIndent: 1.00, bulletChar: '○', numberedFormat: 'a.' },
     { level: 2, symbolIndent: 1.25, textIndent: 1.50, bulletChar: '•', numberedFormat: 'i.' },
-    { level: 3, symbolIndent: 1.75, textIndent: 2.00, bulletChar: '○', numberedFormat: '1)' },
-    { level: 4, symbolIndent: 2.25, textIndent: 2.50, bulletChar: '•', numberedFormat: 'a)' },
+    { level: 3, symbolIndent: 1.75, textIndent: 2.00, bulletChar: '○', numberedFormat: 'A.' },
+    { level: 4, symbolIndent: 2.25, textIndent: 2.50, bulletChar: '•', numberedFormat: 'I.' },
   ],
 });
 
@@ -172,7 +172,9 @@ const DEFAULT_SESSION_STYLES: SessionStyle[] = [
     lineSpacing: 1.0,
     color: '#000000',
     noSpaceBetweenSame: true,
-    indentation: { left: 0.25, firstLine: 0.5 },
+    // Indentation removed: numbering level definitions (symbolIndent/textIndent sliders)
+    // control list indentation via numbering.xml. Adding style-level indentation here
+    // creates conflicting w:ind in styles.xml that can produce negative bullet positions.
   },
 ];
 
@@ -208,6 +210,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
     'smart-tables',
     'adjust-table-padding',
     'standardize-table-borders',
+    'correct-misapplied-styles',
   ],
 };
 
@@ -341,6 +344,7 @@ const ensureProcessingOptions = (session: Session): Session => {
     'smart-tables',
     'adjust-table-padding',
     'standardize-table-borders',
+    'correct-misapplied-styles',
   ];
 
   const currentEnabled = session.processingOptions?.enabledOperations || [];
@@ -1262,6 +1266,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           normalizeDashes?: boolean;
           standardizeHyperlinkFormatting?: boolean;
           standardizeListPrefixFormatting?: boolean;
+          correctMisappliedStyles?: boolean;
 
           // Content Structure Options
           assignStyles?: boolean;
@@ -1395,6 +1400,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           // ALWAYS ENABLED: Standardize list prefix formatting (Verdana 12pt black for all lists)
           // This ensures all bullet points and numbered list symbols have consistent professional formatting.
           standardizeListPrefixFormatting: true,
+
+          // Correct misapplied TOC/Hyperlink paragraph styles (user-togglable)
+          correctMisappliedStyles:
+            sessionToProcess.processingOptions?.enabledOperations?.includes('correct-misapplied-styles'),
 
           // Content Structure Options (ALWAYS ENABLED - automatic processing)
           // These operations are now always applied when processing documents

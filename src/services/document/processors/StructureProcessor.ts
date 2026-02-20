@@ -4,13 +4,12 @@
  * Handles:
  * - Blank paragraph removal
  * - Structure blank line insertion (after lists, tables)
- * - Whitespace normalization
  * - Italic formatting removal
  * - Headers and footers removal
  * - Document warnings
  */
 
-import { Document, Paragraph, Run, Hyperlink, Image, ImageRun } from "docxmlater";
+import { Document, Paragraph, Run, Hyperlink, Image } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("StructureProcessor");
@@ -20,74 +19,6 @@ const log = logger.namespace("StructureProcessor");
  */
 export class StructureProcessor {
   private readonly DEBUG = process.env.NODE_ENV !== "production";
-
-  /**
-   * Remove extra whitespace from text runs - Collapse multiple spaces to single space,
-   * strip leading spaces from paragraphs, and handle cross-run double spaces.
-   */
-  async removeExtraWhitespace(doc: Document): Promise<number> {
-    let cleanedCount = 0;
-    const paragraphs = doc.getAllParagraphs();
-
-    for (const para of paragraphs) {
-      const runs = para.getRuns();
-      let seenTextInParagraph = false;
-
-      for (let i = 0; i < runs.length; i++) {
-        const run = runs[i];
-        const text = run.getText();
-        if (!text) {
-          // ImageRuns have no text but ARE visible content —
-          // text after them is not at paragraph start and its leading
-          // space must be preserved (e.g., image + " CC: your supervisor...")
-          if (run instanceof ImageRun) {
-            seenTextInParagraph = true;
-          }
-          continue;
-        }
-
-        // Step 1: Collapse multiple consecutive SPACES only
-        // Preserve tabs (\t) and newlines (\n) as they represent intentional formatting (<w:tab/> and <w:br/>)
-        let cleaned = text.replace(/ {2,}/g, " ");
-
-        // Step 1.5: Strip leading spaces from paragraph start
-        // Word uses setLeftIndent() for proper indentation, not literal spaces
-        // Only strip space characters (U+0020), NOT tabs or other whitespace
-        if (!seenTextInParagraph) {
-          cleaned = cleaned.replace(/^ +/, "");
-          if (cleaned.length > 0) {
-            seenTextInParagraph = true;
-          }
-        }
-
-        // Step 2: Trim trailing space if next run starts with space (cross-run double space)
-        if (i < runs.length - 1) {
-          const nextRun = runs[i + 1];
-          const nextText = nextRun?.getText() || "";
-          if (cleaned.endsWith(" ") && nextText.startsWith(" ")) {
-            cleaned = cleaned.trimEnd();
-          }
-        }
-
-        // Step 3: Trim leading space if previous run ends with space (cross-run double space)
-        if (i > 0) {
-          const prevRun = runs[i - 1];
-          const prevText = prevRun?.getText() || "";
-          if (cleaned.startsWith(" ") && prevText.endsWith(" ")) {
-            cleaned = cleaned.trimStart();
-          }
-        }
-
-        if (cleaned !== text) {
-          run.setText(cleaned);
-          cleanedCount++;
-        }
-      }
-    }
-
-    log.info(`Cleaned whitespace in ${cleanedCount} runs`);
-    return cleanedCount;
-  }
 
   /**
    * Remove italic formatting from all text runs

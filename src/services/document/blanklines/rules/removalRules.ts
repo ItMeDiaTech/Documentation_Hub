@@ -5,9 +5,9 @@
  * of addition rules or preservation fallback.
  */
 
-import { Paragraph, Table, Hyperlink } from "docxmlater";
+import { Paragraph, Table } from "docxmlater";
 import type { BlankLineRule, RuleContext } from "./ruleTypes";
-import { isParagraphBlank, getEffectiveLeftIndent } from "../helpers/paragraphChecks";
+import { isParagraphBlank, getEffectiveLeftIndent, hasNavigationHyperlink } from "../helpers/paragraphChecks";
 import { isSmallImageParagraph, getImageRunFromParagraph, isImageSmall } from "../helpers/imageChecks";
 import { tableHasNestedContent } from "../helpers/tableGuards";
 
@@ -126,6 +126,12 @@ export const listItemToIndentedContentRule: BlankLineRule = {
       // Next is a list item
       if (ctx.nextElement.getNumbering()) return true;
 
+      // Don't remove blank before centered images
+      if (ctx.nextElement.getAlignment() === "center") {
+        const imageRun = getImageRunFromParagraph(ctx.nextElement);
+        if (imageRun) return false;
+      }
+
       // Next is indented text (check both direct and style-inherited indentation)
       const nextIndent = getEffectiveLeftIndent(ctx.nextElement, ctx.doc);
       if (nextIndent > 0) return true;
@@ -216,7 +222,7 @@ export const boldColonToIndentedRule: BlankLineRule = {
 };
 
 /**
- * Remove blank line BELOW "Top of Document" / "Top of the Document" hyperlink.
+ * Remove blank line BELOW navigation hyperlinks (text starts with "Top of" or "Return to").
  */
 export const afterTopOfDocHyperlinkRule: BlankLineRule = {
   id: "remove-after-top-of-doc-hyperlink",
@@ -226,22 +232,8 @@ export const afterTopOfDocHyperlinkRule: BlankLineRule = {
     if (ctx.scope !== "body") return false;
     if (!(ctx.currentElement instanceof Paragraph)) return false;
     if (!isParagraphBlank(ctx.currentElement)) return false;
-
-    // Check if previous element contains a "Top of Document" hyperlink
     if (!(ctx.prevElement instanceof Paragraph)) return false;
-
-    const content = ctx.prevElement.getContent();
-    if (!content) return false;
-
-    for (const item of content) {
-      if (item instanceof Hyperlink) {
-        const text = item.getText().toLowerCase();
-        if (text === "top of document" || text === "top of the document") {
-          return true;
-        }
-      }
-    }
-    return false;
+    return hasNavigationHyperlink(ctx.prevElement);
   },
 };
 
@@ -327,6 +319,32 @@ export const largeImageLastInCellRule: BlankLineRule = {
 };
 
 /**
+ * Remove blank line between centered text and a following image paragraph.
+ * e.g., "AETNA:" (centered) → blank → image → remove the blank.
+ */
+export const centeredTextToImageRule: BlankLineRule = {
+  id: "remove-centered-text-to-image",
+  action: "remove",
+  scope: "both",
+  matches(ctx: RuleContext): boolean {
+    if (!(ctx.currentElement instanceof Paragraph)) return false;
+    if (!isParagraphBlank(ctx.currentElement)) return false;
+
+    // Previous must be centered text paragraph
+    if (!(ctx.prevElement instanceof Paragraph)) return false;
+    if (ctx.prevElement.getAlignment() !== "center") return false;
+    if (!ctx.prevElement.getText()?.trim()) return false;
+
+    // Next must be a paragraph containing an image
+    if (!(ctx.nextElement instanceof Paragraph)) return false;
+    const imageRun = getImageRunFromParagraph(ctx.nextElement);
+    if (!imageRun) return false;
+
+    return true;
+  },
+};
+
+/**
  * All removal rules in priority order.
  */
 export const removalRules: BlankLineRule[] = [
@@ -340,4 +358,5 @@ export const removalRules: BlankLineRule[] = [
   afterTopOfDocHyperlinkRule,
   lastLineInCellRule,
   largeImageLastInCellRule,
+  centeredTextToImageRule,
 ];

@@ -175,6 +175,25 @@ export function isTocParagraph(para: Paragraph): boolean {
 }
 
 /**
+ * Checks if a paragraph contains a navigation hyperlink
+ * (display text starts with "Top of" or "Return to", case insensitive).
+ */
+export function hasNavigationHyperlink(para: Paragraph): boolean {
+  const content = para.getContent();
+  if (!content) return false;
+
+  for (const item of content) {
+    if (item instanceof Hyperlink) {
+      const text = item.getText().toLowerCase().trim();
+      if (text.startsWith("top of") || text.startsWith("return to")) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Get the effective left indentation of a paragraph, resolving style-inherited
  * indentation when the paragraph has no direct indentation set.
  *

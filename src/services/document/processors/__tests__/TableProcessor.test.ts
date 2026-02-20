@@ -7,7 +7,7 @@
 import { vi, describe, it, expect, beforeEach, type Mocked } from 'vitest';
 import { TableProcessor } from '../TableProcessor';
 import type { HLPTableAnalysis } from '../TableProcessor';
-import { Document, Table, Paragraph, Run, Hyperlink, TableCell, TableRow, inchesToTwips } from 'docxmlater';
+import { Document, Table, Paragraph, Run, Hyperlink, PreservedElement, TableCell, TableRow, inchesToTwips } from 'docxmlater';
 
 // Mock docxmlater
 vi.mock('docxmlater');
@@ -64,7 +64,7 @@ describe('TableProcessor', () => {
       });
 
       expect(result.tablesProcessed).toBe(1);
-      expect(mockCell.setShading).toHaveBeenCalledWith({ fill: 'BFBFBF' });
+      expect(mockCell.setShading).toHaveBeenCalledWith({ fill: 'BFBFBF', pattern: 'clear', color: 'auto' });
     });
 
     it('should preserve cells without shading', async () => {
@@ -164,7 +164,7 @@ describe('TableProcessor', () => {
       const count = await processor.applySmartTableFormatting(mockDoc);
 
       expect(count).toBe(1);
-      expect(headerCell.setShading).toHaveBeenCalledWith({ fill: 'BFBFBF' });
+      expect(headerCell.setShading).toHaveBeenCalledWith({ fill: 'BFBFBF', pattern: 'clear', color: 'auto' });
     });
 
     it('should handle tables without header rows', async () => {
@@ -319,7 +319,14 @@ function createHLPDataCell(shading?: string): Mocked<TableCell> {
   const mainRun = createMockRun(true);
 
   const mainPara = createMockParagraphWithRuns([mainRun]);
-  mainPara.getNumbering.mockReturnValue(null);
+  // Level-0 items in HLP tables are ListParagraph without explicit numbering.
+  // The code converts them to Normal + explicit numbering via setNumbering().
+  mainPara.getStyle.mockReturnValue('ListParagraph');
+  let mainParaNumbering: { numId: number; level: number } | null = null;
+  mainPara.getNumbering.mockImplementation(() => mainParaNumbering);
+  mainPara.setNumbering.mockImplementation((numId: number, level: number) => {
+    mainParaNumbering = { numId, level };
+  });
 
   const numberedPara = createMockParagraphWithRuns([numberedRun]);
   numberedPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
@@ -401,6 +408,8 @@ describe('HLP Table Processing', () => {
       // getBodyElements returns same tables — fixPostHLPTableNumbering
       // is a no-op when there are no post-table paragraphs in the array
       getBodyElements: vi.fn().mockReturnValue([]),
+      // getNumberingManager — convertHLPBulletsToLettered gracefully handles null
+      getNumberingManager: vi.fn().mockReturnValue(null),
     } as unknown as Mocked<Document>;
   });
 
@@ -456,6 +465,19 @@ describe('HLP Table Processing', () => {
       const analysis = processor.analyzeHLPTable(table);
 
       expect(analysis.isHLP).toBe(false);
+    });
+
+    it('should reject tables with FFC000 shading but without "High Level Process" text', () => {
+      // A non-HLP table that happens to use FFC000 in its header cell
+      const headerCell = createHLPHeaderCell('Project Schedule');
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([createMockCell('FFFFFF')]);
+      const table = createMockTable([headerRow, dataRow]);
+
+      const analysis = processor.analyzeHLPTable(table);
+
+      expect(analysis.isHLP).toBe(false);
+      expect(analysis.variant).toBeNull();
     });
   });
 
@@ -565,15 +587,16 @@ describe('HLP Table Processing', () => {
       const mainPara = dataCell.getParagraphs()[0]; // P[0] = main action item
       const mainRuns = mainPara.getRuns();
 
-      expect(mainRuns[0].setFont).toHaveBeenCalledWith('Georgia');
-      expect(mainRuns[0].setSize).toHaveBeenCalledWith(16);
+      // Main action items use normalFont/normalSize (not heading2 font/size)
+      // heading2 settings only affect the header row, not content runs
+      expect(mainRuns[0].setFont).toHaveBeenCalledWith('Verdana');
+      expect(mainRuns[0].setSize).toHaveBeenCalledWith(12);
       expect(mainRuns[0].setBold).toHaveBeenCalledWith(true);
     });
 
-    it('should clear Hyperlink character style on styled runs', async () => {
-      // HLP P[0] runs have charStyle=Hyperlink (placeholders for future links)
-      // with color=auto + underline=none overrides. Clearing the charStyle
-      // removes the blue/underline inheritance entirely.
+    it('should clear Hyperlink character style and restore blue on all hyperlink runs', async () => {
+      // Any run with characterStyle=Hyperlink is a real hyperlink.
+      // Even internal bookmark hyperlinks with color=auto should get blue restored.
       const hyperlinkRun = createMockRun(true, 'Hyperlink');
       hyperlinkRun.getFormatting.mockReturnValue({
         bold: true,
@@ -612,10 +635,131 @@ describe('HLP Table Processing', () => {
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
 
-      // Should clear the Hyperlink charStyle to prevent blue/underline inheritance
+      // Should clear the Hyperlink charStyle to prevent font/size conflicts
       expect(hyperlinkRun.setCharacterStyle).toHaveBeenCalledWith(undefined);
-      // Should NOT need to manually set color — clearing the style is sufficient
-      expect(hyperlinkRun.setColor).not.toHaveBeenCalled();
+      // After clearing charStyle, setFont/setSize can drop run properties,
+      // so restoreHyperlink re-applies blue color and underline
+      expect(hyperlinkRun.setColor).toHaveBeenCalledWith('0000FF');
+      expect(hyperlinkRun.setUnderline).toHaveBeenCalledWith('single');
+    });
+
+    it('should restore blue+underline on internal bookmark hyperlinks (color=auto)', async () => {
+      // Internal bookmark hyperlinks have characterStyle=Hyperlink with color=auto.
+      // Previously these were treated as "placeholders" and NOT restored.
+      // Now all Hyperlink-styled runs get blue+underline restored.
+      const bookmarkRun = createMockRun(true, 'Hyperlink');
+      bookmarkRun.getFormatting.mockReturnValue({
+        bold: true,
+        characterStyle: 'Hyperlink',
+        color: 'auto',
+        underline: 'single',
+      });
+
+      const mainPara = createMockParagraphWithRuns([bookmarkRun], 'ListParagraph');
+      mainPara.getNumbering.mockReturnValue(null);
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([mainPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('Determine something'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+      await processor.processHLPTables(mockDoc);
+
+      // Even though color was 'auto', it should still get blue+underline restored
+      expect(bookmarkRun.setCharacterStyle).toHaveBeenCalledWith(undefined);
+      expect(bookmarkRun.setColor).toHaveBeenCalledWith('0000FF');
+      expect(bookmarkRun.setUnderline).toHaveBeenCalledWith('single');
+    });
+
+    it('should detect hyperlinks via paragraph content structure when characterStyle and color are missing', async () => {
+      // Simulate a hyperlink run whose characterStyle was cleared by
+      // standardizeHyperlinkFormatting() and whose blue color was dropped
+      // by assignStylesToDocument() calling setFont()/setSize().
+      // The run has no Hyperlink characterStyle and no blue color — only
+      // its structural position inside a Hyperlink container identifies it.
+      const orphanedHyperlinkRun = createMockRun(false);
+      orphanedHyperlinkRun.getFormatting.mockReturnValue({
+        bold: false,
+        characterStyle: undefined,
+        color: '000000', // Black — not blue
+        underline: 'none',
+      });
+
+      // A direct paragraph run (not inside any container)
+      // Must pass instanceof Run check so it's added to directRuns set
+      const directRun = createMockRun(false);
+      Object.setPrototypeOf(directRun, Run.prototype);
+      directRun.getFormatting.mockReturnValue({
+        bold: false,
+        characterStyle: undefined,
+        color: '000000',
+      });
+
+      // Create a mock Hyperlink container that holds the orphanedHyperlinkRun
+      const mockHyperlink = {} as any;
+      Object.setPrototypeOf(mockHyperlink, Hyperlink.prototype);
+
+      // Paragraph content: directRun (direct child) + Hyperlink container
+      // para.getRuns() returns both runs (direct + hyperlink children)
+      const mainPara = createMockParagraph('ListParagraph');
+      mainPara.getContent.mockReturnValue([directRun, mockHyperlink]);
+      mainPara.getRuns.mockReturnValue([directRun, orphanedHyperlinkRun]);
+      mainPara.getNumbering.mockReturnValue(null);
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([mainPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('Text with link'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+      await processor.processHLPTables(mockDoc);
+
+      // The orphaned hyperlink run (not in directRuns, hasHyperlinkContainer=true)
+      // should be detected structurally and get blue+underline restored
+      expect(orphanedHyperlinkRun.setColor).toHaveBeenCalledWith('0000FF');
+      expect(orphanedHyperlinkRun.setUnderline).toHaveBeenCalledWith('single');
+
+      // The direct run should NOT get hyperlink formatting
+      expect(directRun.setColor).not.toHaveBeenCalledWith('0000FF');
     });
 
     it('should change ListParagraph to Normal for non-numbered paragraphs', async () => {
@@ -679,7 +823,7 @@ describe('HLP Table Processing', () => {
       // Tips cells should have setShading called with FFF2CC
       const dataRow = table.getRows()[1];
       const tipsCell = dataRow.getCells()[1];
-      expect(tipsCell.setShading).toHaveBeenCalledWith({ fill: 'FFF2CC' });
+      expect(tipsCell.setShading).toHaveBeenCalledWith({ fill: 'FFF2CC', pattern: 'clear', color: 'auto' });
     });
 
     it('should discover numId from sub-items and set explicit numbering on P[0]', async () => {
@@ -753,14 +897,16 @@ describe('HLP Table Processing', () => {
       expect(subPara.setFirstLineIndent).toHaveBeenCalledWith(-360);
     });
 
-    it('should skip floating tables', async () => {
+    it('should process floating HLP tables (not skip them)', async () => {
       const table = createMockHLPTable('single-column');
       table.isFloating.mockReturnValue(true);
       mockDoc.getTables.mockReturnValue([table]);
 
       const result = await processor.processHLPTables(mockDoc);
 
-      expect(result.tablesFound).toBe(0);
+      // Floating HLP tables should still be detected and processed —
+      // shouldSkipTable() is NOT applied to HLP detection/processing
+      expect(result.tablesFound).toBe(1);
     });
 
     it('should handle multiple HLP tables of different variants', async () => {
@@ -786,9 +932,9 @@ describe('HLP Table Processing', () => {
       const mainPara = dataCell.getParagraphs()[0];
       const mainRuns = mainPara.getRuns();
 
-      // Should use defaults: Verdana 14 for main item
+      // Should use defaults: Verdana 12 for main item (normalFont/normalSize)
       expect(mainRuns[0].setFont).toHaveBeenCalledWith('Verdana');
-      expect(mainRuns[0].setSize).toHaveBeenCalledWith(14);
+      expect(mainRuns[0].setSize).toHaveBeenCalledWith(12);
     });
 
     it('should fix post-table ListParagraph paragraphs to prevent phantom numbering', async () => {
@@ -821,6 +967,638 @@ describe('HLP Table Processing', () => {
 
       // Should NOT be converted — it has its own numbering
       expect(postTablePara.setStyle).not.toHaveBeenCalledWith('Normal');
+    });
+
+    it('should set setBold(false) on converted sub-item numbering levels', async () => {
+      // Create a mock numbering manager with bullet abstractNums
+      const mockLevel0 = {
+        getFormat: vi.fn().mockReturnValue('bullet'),
+        setFormat: vi.fn(),
+        setText: vi.fn(),
+        setFont: vi.fn(),
+        setFontSize: vi.fn(),
+        setColor: vi.fn(),
+        setBold: vi.fn(),
+        setLeftIndent: vi.fn(),
+        setHangingIndent: vi.fn(),
+        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
+      };
+      const mockLevel1 = {
+        getFormat: vi.fn().mockReturnValue('bullet'),
+        setFormat: vi.fn(),
+        setText: vi.fn(),
+        setFont: vi.fn(),
+        setFontSize: vi.fn(),
+        setColor: vi.fn(),
+        setBold: vi.fn(),
+        setLeftIndent: vi.fn(),
+        setHangingIndent: vi.fn(),
+        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
+      };
+      const mockLevel2 = {
+        getFormat: vi.fn().mockReturnValue('bullet'),
+        setFormat: vi.fn(),
+        setText: vi.fn(),
+        setFont: vi.fn(),
+        setFontSize: vi.fn(),
+        setColor: vi.fn(),
+        setBold: vi.fn(),
+        setLeftIndent: vi.fn(),
+        setHangingIndent: vi.fn(),
+        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
+      };
+
+      const mockAbstractNum = {
+        getLevel: vi.fn().mockImplementation((level: number) => {
+          if (level === 0) return mockLevel0;
+          if (level === 1) return mockLevel1;
+          if (level === 2) return mockLevel2;
+          return null;
+        }),
+      };
+
+      const mockInstance = {
+        getAbstractNumId: vi.fn().mockReturnValue(42),
+      };
+
+      const mockManager = {
+        getInstance: vi.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
+        createCustomList: vi.fn().mockReturnValue(0),
+      };
+
+      (mockDoc as any).getNumberingManager = vi.fn().mockReturnValue(mockManager);
+
+      // Build a table with a sub-item paragraph that has numbering
+      const subRun = createMockRun(false);
+      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      subPara.getNumbering.mockReturnValue({ numId: 7, level: 0 });
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([subPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+      await processor.processHLPTables(mockDoc);
+
+      // All three levels should have setBold(false) called
+      expect(mockLevel0.setBold).toHaveBeenCalledWith(false);
+      expect(mockLevel1.setBold).toHaveBeenCalledWith(false);
+      expect(mockLevel2.setBold).toHaveBeenCalledWith(false);
+    });
+
+    it('should patch converted level toXML to include <w:b w:val="0"/>', async () => {
+      // Create a mock level with a toXML() that returns an rPr child
+      const mockLevel0 = {
+        getFormat: vi.fn().mockReturnValue('bullet'),
+        setFormat: vi.fn(),
+        setText: vi.fn(),
+        setFont: vi.fn(),
+        setFontSize: vi.fn(),
+        setColor: vi.fn(),
+        setBold: vi.fn(),
+        setLeftIndent: vi.fn(),
+        setHangingIndent: vi.fn(),
+        toXML: vi.fn().mockReturnValue({
+          name: 'w:lvl',
+          children: [
+            { name: 'w:rPr', children: [{ name: 'w:rFonts', attributes: { 'w:ascii': 'Verdana' } }] },
+          ],
+        }),
+      };
+      const mockLevel1 = {
+        getFormat: vi.fn().mockReturnValue('bullet'),
+        setFormat: vi.fn(),
+        setText: vi.fn(),
+        setFont: vi.fn(),
+        setFontSize: vi.fn(),
+        setColor: vi.fn(),
+        setBold: vi.fn(),
+        setLeftIndent: vi.fn(),
+        setHangingIndent: vi.fn(),
+        toXML: vi.fn().mockReturnValue({
+          name: 'w:lvl',
+          children: [
+            { name: 'w:rPr', children: [] },
+          ],
+        }),
+      };
+      const mockLevel2 = {
+        getFormat: vi.fn().mockReturnValue('bullet'),
+        setFormat: vi.fn(),
+        setText: vi.fn(),
+        setFont: vi.fn(),
+        setFontSize: vi.fn(),
+        setColor: vi.fn(),
+        setBold: vi.fn(),
+        setLeftIndent: vi.fn(),
+        setHangingIndent: vi.fn(),
+        toXML: vi.fn().mockReturnValue({
+          name: 'w:lvl',
+          children: [
+            { name: 'w:rPr', children: [] },
+          ],
+        }),
+      };
+
+      const mockAbstractNum = {
+        getLevel: vi.fn().mockImplementation((level: number) => {
+          if (level === 0) return mockLevel0;
+          if (level === 1) return mockLevel1;
+          if (level === 2) return mockLevel2;
+          return null;
+        }),
+      };
+
+      const mockInstance = {
+        getAbstractNumId: vi.fn().mockReturnValue(99),
+      };
+
+      const mockManager = {
+        getInstance: vi.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
+        createCustomList: vi.fn().mockReturnValue(0),
+      };
+
+      (mockDoc as any).getNumberingManager = vi.fn().mockReturnValue(mockManager);
+
+      // Build a table with a sub-item paragraph that triggers bullet conversion
+      const subRun = createMockRun(false);
+      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      subPara.getNumbering.mockReturnValue({ numId: 7, level: 0 });
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([subPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+      await processor.processHLPTables(mockDoc);
+
+      // After processing, level0's toXML should be monkey-patched.
+      // Call it and verify the rPr now contains <w:b w:val="0"/> and <w:bCs w:val="0"/>
+      const xml0 = mockLevel0.toXML();
+      const rPr0 = xml0.children.find((c: any) => c.name === 'w:rPr');
+      expect(rPr0).toBeDefined();
+      const bElement = rPr0.children.find((c: any) => c.name === 'w:b');
+      const bCsElement = rPr0.children.find((c: any) => c.name === 'w:bCs');
+      expect(bElement).toEqual({ name: 'w:b', attributes: { 'w:val': '0' } });
+      expect(bCsElement).toEqual({ name: 'w:bCs', attributes: { 'w:val': '0' } });
+
+      // Verify level1 also got patched
+      const xml1 = mockLevel1.toXML();
+      const rPr1 = xml1.children.find((c: any) => c.name === 'w:rPr');
+      expect(rPr1.children.find((c: any) => c.name === 'w:b')).toEqual({ name: 'w:b', attributes: { 'w:val': '0' } });
+    });
+
+    it('should NOT insert blank line when previous paragraph is already blank', async () => {
+      // Simulate: blank paragraph already exists between two level-0 items.
+      // insertHLPBlankLines should skip insertion to avoid double blank lines.
+      const mainRun1 = createMockRun(true);
+      const para1 = createMockParagraphWithRuns([mainRun1], 'Normal');
+      let para1Numbering: { numId: number; level: number } | null = null;
+      para1.getNumbering.mockImplementation(() => para1Numbering);
+      para1.setNumbering.mockImplementation((numId: number, level: number) => {
+        para1Numbering = { numId, level };
+      });
+      para1.getStyle.mockReturnValue('ListParagraph');
+
+      // Blank paragraph between items (already converted to Normal in step 6)
+      const blankPara = createMockParagraph('Normal');
+      blankPara.getText.mockReturnValue('');
+      blankPara.getNumbering.mockReturnValue(null);
+
+      const mainRun2 = createMockRun(true);
+      const para2 = createMockParagraphWithRuns([mainRun2], 'Normal');
+      let para2Numbering: { numId: number; level: number } | null = null;
+      para2.getNumbering.mockImplementation(() => para2Numbering);
+      para2.setNumbering.mockImplementation((numId: number, level: number) => {
+        para2Numbering = { numId, level };
+      });
+      para2.getStyle.mockReturnValue('ListParagraph');
+
+      // The cell has addParagraphAt to track insertions
+      const addParagraphAtCalls: any[] = [];
+      const allParas = [para1, blankPara, para2];
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue(allParas),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('Item1\n\nItem2'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+        addParagraphAt: vi.fn().mockImplementation((idx: number, p: any) => {
+          addParagraphAtCalls.push({ idx, p });
+        }),
+      } as unknown as Mocked<TableCell>;
+
+      // Need a sub-item so discoverHLPMainNumId finds numId=33
+      const subRun = createMockRun(false);
+      const subPara = createMockParagraphWithRuns([subRun]);
+      subPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
+
+      const dataCell2 = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([subPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('a. sub'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+        addParagraphAt: vi.fn(),
+      } as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow1 = createMockRow([dataCell]);
+      const dataRow2 = createMockRow([dataCell2]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow1, dataRow2]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+      await processor.processHLPTables(mockDoc);
+
+      // No blank paragraphs should be inserted because one already exists
+      expect(dataCell.addParagraphAt).not.toHaveBeenCalled();
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // savedNumbering restoration tests (step 5.1)
+    // ═══════════════════════════════════════════════════════════
+
+    it('should restore corrupted numbering from savedNumbering map', async () => {
+      const subRun = createMockRun(false);
+      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      // Current numbering is corrupted (ilvl changed from 1 to 0)
+      subPara.getNumbering.mockReturnValue({ numId: 33, level: 0 });
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([subPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+
+      // Build savedNumbering map with original values
+      const savedNumbering = new Map<Paragraph, { numId: number; level: number }>();
+      savedNumbering.set(subPara as unknown as Paragraph, { numId: 33, level: 1 });
+
+      await processor.processHLPTables(mockDoc, undefined, savedNumbering);
+
+      // Restoration should call setNumbering with the saved values
+      expect(subPara.setNumbering).toHaveBeenCalledWith(33, 1);
+    });
+
+    it('should skip restoration when current numbering already matches saved values', async () => {
+      const subRun = createMockRun(false);
+      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      // Current numbering already matches saved (no corruption occurred)
+      subPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([subPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+
+      const savedNumbering = new Map<Paragraph, { numId: number; level: number }>();
+      savedNumbering.set(subPara as unknown as Paragraph, { numId: 33, level: 1 });
+
+      await processor.processHLPTables(mockDoc, undefined, savedNumbering);
+
+      // setNumbering should NOT be called since values already match
+      expect(subPara.setNumbering).not.toHaveBeenCalled();
+    });
+
+    it('should skip restoration entirely when savedNumbering is undefined', async () => {
+      const subRun = createMockRun(false);
+      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      subPara.getNumbering.mockReturnValue({ numId: 33, level: 0 });
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([subPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+
+      // Pass undefined (no savedNumbering) — should not attempt restoration
+      await processor.processHLPTables(mockDoc, undefined, undefined);
+
+      // setNumbering not called for restoration (may be called by content formatting)
+      // The key assertion: no restoration-specific setNumbering(33, 0→1) call
+      const setNumberingCalls = subPara.setNumbering.mock.calls;
+      const restorationCall = setNumberingCalls.find(
+        (args: any[]) => args[0] === 33 && args[1] === 1,
+      );
+      expect(restorationCall).toBeUndefined();
+    });
+
+    it('should only restore data row paragraphs (skip header row ri=0)', async () => {
+      const headerParaRun = createMockRun(true);
+      const headerPara = createMockParagraphWithRuns([headerParaRun], 'Heading2');
+      headerPara.getText.mockReturnValue('High Level Process');
+
+      const headerCell = {
+        getShading: vi.fn().mockReturnValue('FFC000'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([headerPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: { fill: 'FFC000' } }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('High Level Process'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const dataRun = createMockRun(false);
+      const dataPara = createMockParagraphWithRuns([dataRun], 'ListParagraph');
+      dataPara.getNumbering.mockReturnValue({ numId: 33, level: 0 });
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue([dataPara]),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('Item'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+
+      // Map includes BOTH header paragraph and data paragraph
+      const savedNumbering = new Map<Paragraph, { numId: number; level: number }>();
+      savedNumbering.set(headerPara as unknown as Paragraph, { numId: 33, level: 1 });
+      savedNumbering.set(dataPara as unknown as Paragraph, { numId: 33, level: 1 });
+
+      await processor.processHLPTables(mockDoc, undefined, savedNumbering);
+
+      // Header paragraph should NOT have restoration applied (ri=0 is skipped)
+      // Only check that headerPara.setNumbering was NOT called with the saved values
+      const headerCalls = headerPara.setNumbering.mock.calls.filter(
+        (args: any[]) => args[0] === 33 && args[1] === 1,
+      );
+      expect(headerCalls).toHaveLength(0);
+
+      // Data paragraph SHOULD have restoration applied
+      expect(dataPara.setNumbering).toHaveBeenCalledWith(33, 1);
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // discoverHLPMainNumId Pass 2 tests (all-sub-items scenario)
+    // ═══════════════════════════════════════════════════════════
+
+    it('should discover numId via Pass 2 when all paragraphs are sub-items (ilvl=1+)', async () => {
+      // All content paragraphs are sub-items at level 1 — no level-0 decimal exists.
+      // Pass 2 should return the most common numId among them.
+      const mockLevel0 = {
+        getFormat: vi.fn().mockReturnValue('decimal'),
+        setFormat: vi.fn(), setText: vi.fn(), setFont: vi.fn(),
+        setFontSize: vi.fn(), setColor: vi.fn(), setBold: vi.fn(),
+        setLeftIndent: vi.fn(), setHangingIndent: vi.fn(),
+        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [] }),
+      };
+      const mockAbstractNum = {
+        getLevel: vi.fn().mockImplementation((level: number) => level === 0 ? mockLevel0 : null),
+      };
+      const mockInstance = { getAbstractNumId: vi.fn().mockReturnValue(10) };
+      const mockManager = {
+        getInstance: vi.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
+        createCustomList: vi.fn().mockReturnValue(0),
+      };
+      (mockDoc as any).getNumberingManager = vi.fn().mockReturnValue(mockManager);
+
+      // Three sub-item paragraphs all at numId=33, level=1
+      const paras = [1, 2, 3].map(() => {
+        const run = createMockRun(false);
+        const p = createMockParagraphWithRuns([run], 'ListParagraph');
+        p.getNumbering.mockReturnValue({ numId: 33, level: 1 });
+        return p;
+      });
+
+      const dataCell = {
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue(paras),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('a. Sub1\nb. Sub2\nc. Sub3'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      } as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+      const result = await processor.processHLPTables(mockDoc);
+
+      // Should find the table and process it (numId=33 discovered via Pass 2)
+      expect(result.tablesFound).toBe(1);
+      // The paragraphs should get formatting applied (font/size on runs)
+      expect(paras[0].getRuns()[0].setFont).toHaveBeenCalled();
+    });
+
+    it('should discover the highest-count numId via Pass 2 when mixed numIds exist', async () => {
+      // Two paragraphs with numId=33 and one with numId=44 — should pick 33
+      const mockLevel0 = {
+        getFormat: vi.fn().mockReturnValue('lowerLetter'), // NOT decimal, so Pass 1 skips
+        setFormat: vi.fn(), setText: vi.fn(), setFont: vi.fn(),
+        setFontSize: vi.fn(), setColor: vi.fn(), setBold: vi.fn(),
+        setLeftIndent: vi.fn(), setHangingIndent: vi.fn(),
+        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [] }),
+      };
+      const mockAbstractNum = {
+        getLevel: vi.fn().mockImplementation((level: number) => level === 0 ? mockLevel0 : null),
+      };
+      const mockInstance = { getAbstractNumId: vi.fn().mockReturnValue(10) };
+      const mockManager = {
+        getInstance: vi.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
+        createCustomList: vi.fn().mockReturnValue(0),
+      };
+      (mockDoc as any).getNumberingManager = vi.fn().mockReturnValue(mockManager);
+
+      // Row 1: two paragraphs with numId=33
+      const para1 = createMockParagraphWithRuns([createMockRun(false)], 'ListParagraph');
+      para1.getNumbering.mockReturnValue({ numId: 33, level: 1 });
+      const para2 = createMockParagraphWithRuns([createMockRun(false)], 'ListParagraph');
+      para2.getNumbering.mockReturnValue({ numId: 33, level: 1 });
+
+      // Row 2: one paragraph with numId=44
+      const para3 = createMockParagraphWithRuns([createMockRun(false)], 'ListParagraph');
+      para3.getNumbering.mockReturnValue({ numId: 44, level: 1 });
+
+      const makeCell = (paras: any[]) => ({
+        getShading: vi.fn().mockReturnValue('FFFFFF'),
+        setShading: vi.fn(),
+        setBorders: vi.fn(),
+        setMargins: vi.fn(),
+        getParagraphs: vi.fn().mockReturnValue(paras),
+        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: vi.fn().mockReturnValue(1),
+        setAllRunsFont: vi.fn(),
+        setAllRunsSize: vi.fn(),
+        getText: vi.fn().mockReturnValue('sub items'),
+        hasNestedTables: vi.fn().mockReturnValue(false),
+      }) as unknown as Mocked<TableCell>;
+
+      const headerCell = createHLPHeaderCell();
+      const headerRow = createMockRow([headerCell]);
+      const dataRow1 = createMockRow([makeCell([para1, para2])]);
+      const dataRow2 = createMockRow([makeCell([para3])]);
+      const table = {
+        getRows: vi.fn().mockReturnValue([headerRow, dataRow1, dataRow2]),
+        getColumnCount: vi.fn().mockReturnValue(1),
+        isFloating: vi.fn().mockReturnValue(false),
+        setBorders: vi.fn(),
+      } as unknown as Mocked<Table>;
+
+      mockDoc.getTables.mockReturnValue([table]);
+      const result = await processor.processHLPTables(mockDoc);
+
+      // Should successfully process (no fallback list created)
+      expect(result.tablesFound).toBe(1);
+      // No createCustomList call since Pass 2 found numId=33
+      expect(mockManager.createCustomList).not.toHaveBeenCalled();
     });
   });
 });

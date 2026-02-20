@@ -9,7 +9,7 @@
  * - Table shading color configuration
  */
 
-import { Document, Table, Paragraph, ImageRun, Image, pointsToTwips, inchesToTwips } from "docxmlater";
+import { Document, Table, Paragraph, ImageRun, Image, Run, Hyperlink, PreservedElement, NumberingLevel, WORD_NATIVE_BULLETS, pointsToTwips, inchesToTwips } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("TableProcessor");
@@ -18,6 +18,7 @@ const log = logger.namespace("TableProcessor");
 // HLP (High Level Process) Table Constants
 // ═══════════════════════════════════════════════════════════
 const HLP_HEADER_COLOR = 'FFC000';  // Orange header shading
+const HLP_HEADER_TEXT = 'high level process';  // Case-insensitive match target
 const HLP_TIPS_COLOR = 'FFF2CC';    // Light yellow tips column
 const HLP_BORDER_SIZE = 18;         // 2.25pt in eighths of a point
 
@@ -109,6 +110,9 @@ export class TableProcessor {
   /** Colors used by HLP tables — preserved during table uniformity operations. */
   private static readonly HLP_PRESERVED_COLORS = [HLP_HEADER_COLOR, HLP_TIPS_COLOR];
 
+  /** Cached HLP table analysis results, populated before applyStyles() overwrites FFC000 shading. */
+  private _hlpTableCache: Map<Table, HLPTableAnalysis> | null = null;
+
   /**
    * Apply Normal-style spacing settings to a paragraph.
    * Shared by table uniformity (header rows, shaded cells) and HLP content formatting.
@@ -129,55 +133,14 @@ export class TableProcessor {
   }
 
   /**
-   * Recursively search XMLElement tree for w:shd element and extract val attribute
-   * This is needed because docxmlater doesn't expose pattern shading for table cells
-   *
-   * IMPORTANT: Stops recursion at nested tables (w:tbl) to avoid detecting shading
-   * from nested table cells as the parent cell's shading.
-   *
-   * @param element - XMLElement object from cell.toXML()
-   * @returns The shading pattern value (e.g., "pct12", "solid") or undefined
-   */
-  private findShadingPatternInXML(element: unknown): string | undefined {
-    if (!element || typeof element !== "object") return undefined;
-
-    const el = element as {
-      name?: string;
-      attributes?: Record<string, string | number | boolean | undefined>;
-      children?: unknown[];
-    };
-
-    // STOP recursion at nested tables - don't look inside them
-    // This prevents detecting shading from nested table cells as the parent cell's shading
-    if (el.name === "w:tbl") {
-      return undefined;
-    }
-
-    // Check if this element is w:shd
-    if (el.name === "w:shd" && el.attributes?.val) {
-      return String(el.attributes.val);
-    }
-
-    // Search children recursively (but won't enter nested tables now)
-    if (Array.isArray(el.children)) {
-      for (const child of el.children) {
-        if (typeof child === "object") {
-          const found = this.findShadingPatternInXML(child);
-          if (found) return found;
-        }
-      }
-    }
-
-    return undefined;
-  }
-
-  /**
    * Detect if a cell has visual shading from any source
    *
-   * Checks multiple sources to determine if a cell appears shaded:
-   * 1. Direct cell shading fill color
-   * 2. Pattern shading (w:shd val attribute like "pct50", "solid") via raw XML
-   * 3. Table style inheritance (cell shading from table style)
+   * Checks direct cell-level shading (from w:tcPr) to determine if a cell appears shaded:
+   * 1. Direct cell shading fill color (non-white, non-auto)
+   * 2. Direct cell pattern shading (non-clear, non-nil patterns like pct50, solid, diagStripe)
+   *
+   * Does NOT check table style inheritance — that was intentionally removed to prevent
+   * applyTableUniformity() from incorrectly formatting cells with conditional style shading.
    *
    * @returns Object with hasShading boolean and optional fill color
    */
@@ -209,11 +172,16 @@ export class TableProcessor {
       return { hasShading: true, fill: directFill };
     }
 
-    // 2. Pattern shading detection REMOVED
-    // The previous pattern shading check was detecting table style conditional patterns
-    // (pct12 for banded rows, etc.) as visual shading, causing uniformity to be applied
-    // to cells that had no direct user-applied shading.
-    // Now only explicit fill colors trigger uniformity processing.
+    // 2. Check direct cell pattern shading (e.g., pct50, solid, diagStripe)
+    // Uses docxmlater's proper API — only detects direct cell shading from w:tcPr,
+    // NOT inherited table style conditionals (banded rows, firstCol, etc.)
+    const pattern = formatting.shading?.pattern;
+    if (pattern && pattern !== "clear" && pattern !== "nil") {
+      if (debugContext) {
+        log.debug(`  → hasShading=TRUE (pattern: ${pattern})`);
+      }
+      return { hasShading: true, fill: directFill };
+    }
 
     // 3. Table style inheritance check REMOVED
     // Previously this checked table style for inherited cell shading, but now that
@@ -382,6 +350,13 @@ export class TableProcessor {
           continue;
         }
 
+        // Skip HLP tables — they have their own formatting in processHLPTables()
+        if (this.isHLPTable(table)) {
+          log.debug(`[Table ${tableIndex}] Skipping HLP table (handled by processHLPTables)`);
+          tableIndex++;
+          continue;
+        }
+
         const rows = table.getRows();
         const rowCount = rows.length;
 
@@ -420,7 +395,7 @@ export class TableProcessor {
 
             // Apply shading if EITHER has existing shading OR has Heading 2 style
             if (hasShading || hasHeading2Style) {
-              singleCell.setShading({ fill: header2Shading });
+              singleCell.setShading({ fill: header2Shading, pattern: "clear", color: "auto" });
               cellsRecolored++;
             }
 
@@ -446,17 +421,11 @@ export class TableProcessor {
               const { hasShading, fill: existingFill } = this.getResolvedCellShading(cell, table, doc, { tableIndex, rowIndex, cellIndex });
 
               if (isFirstRow) {
-                // Check if header row has special shading that should be preserved (HLP orange/yellow)
-                const shouldPreserveShading = hasShading && existingFill && TableProcessor.HLP_PRESERVED_COLORS.includes(existingFill.toUpperCase());
-
-                if (shouldPreserveShading) {
-                  log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Preserving original shading #${existingFill}`);
-                } else {
-                  // HEADER ROW: Apply "Other Table Shading" + bold + center
-                  log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true, center=true`);
-                  cell.setShading({ fill: otherShading });
-                  cellsRecolored++;
-                }
+                // HEADER ROW: ALWAYS apply "Other Table Shading" + bold + center
+                // (HLP tables are already skipped above, so no preservation check needed)
+                log.debug(`[Table ${tableIndex}] HEADER cell (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true, center=true`);
+                cell.setShading({ fill: otherShading, pattern: "clear", color: "auto" });
+                cellsRecolored++;
 
                 for (const para of cell.getParagraphs()) {
                   const isListItem = !!para.getNumbering();
@@ -483,7 +452,7 @@ export class TableProcessor {
                   log.debug(`[Table ${tableIndex}] DATA cell (${rowIndex},${cellIndex}): Preserving original shading #${existingFill}`);
                 } else {
                   log.debug(`[Table ${tableIndex}] DATA cell WITH shading (${rowIndex},${cellIndex}): Applying shading #${otherShading}, bold=true`);
-                  cell.setShading({ fill: otherShading });
+                  cell.setShading({ fill: otherShading, pattern: "clear", color: "auto" });
                   cellsRecolored++;
                 }
 
@@ -592,7 +561,7 @@ export class TableProcessor {
         if (isHeaderRow) {
           // Apply header row shading
           for (const cell of firstRowCells) {
-            cell.setShading({ fill: "BFBFBF" });
+            cell.setShading({ fill: "BFBFBF", pattern: "clear", color: "auto" });
           }
         }
 
@@ -745,6 +714,9 @@ export class TableProcessor {
           log.debug(`Skipping floating/nested table in numeric centering`);
           continue;
         }
+
+        // Skip HLP tables — handled by processHLPTables()
+        if (this.isHLPTable(table)) continue;
 
         const rows = table.getRows();
 
@@ -936,6 +908,9 @@ export class TableProcessor {
       try {
         // Skip floating tables and tables containing nested tables
         if (this.shouldSkipTable(table)) continue;
+
+        // Skip HLP tables — handled by processHLPTables()
+        if (this.isHLPTable(table)) continue;
 
         const rows = table.getRows();
         if (rows.length === 0) {
@@ -1139,7 +1114,55 @@ export class TableProcessor {
    * @param table - Table to analyze
    * @returns Full analysis including variant, column count, tips detection
    */
+  /**
+   * Cache-aware HLP table analysis.
+   * If the cache is populated (pre-applyStyles), returns cached results.
+   * Otherwise falls back to live analysis (for tests or pre-cache calls).
+   */
   analyzeHLPTable(table: Table): HLPTableAnalysis {
+    if (this._hlpTableCache) {
+      const cached = this._hlpTableCache.get(table);
+      if (cached) return cached;
+      // Table not in cache = was analyzed and didn't match
+      return {
+        isHLP: false, variant: null, columnCount: 0, rowCount: 0,
+        hasTipsColumn: false, headerText: '', headerCellSpan: 1,
+      };
+    }
+    return this._analyzeHLPTableLive(table);
+  }
+
+  /**
+   * Populate HLP table cache before applyStyles() overwrites FFC000 shading.
+   * Must be called while original document shading is still intact.
+   */
+  cacheHLPTables(tables: Table[]): void {
+    this._hlpTableCache = new Map();
+    for (const table of tables) {
+      // Don't apply shouldSkipTable() here — HLP tables may have nested content
+      // (e.g., SDTs or structured elements) that triggers the nested table check,
+      // or may be floating. HLP detection uses dual-check (FFC000 shading + "High
+      // Level Process" header text), which is safe to run on any table.
+      const analysis = this._analyzeHLPTableLive(table);
+      if (analysis.isHLP) {
+        this._hlpTableCache.set(table, analysis);
+      }
+    }
+    log.debug(`Cached ${this._hlpTableCache.size} HLP tables for detection`);
+  }
+
+  /**
+   * Clear the HLP table cache after processing completes.
+   */
+  clearHLPTableCache(): void {
+    this._hlpTableCache = null;
+  }
+
+  /**
+   * Live HLP table analysis — reads shading directly from the document XML.
+   * Used by cacheHLPTables() and as fallback when no cache is populated.
+   */
+  private _analyzeHLPTableLive(table: Table): HLPTableAnalysis {
     const defaultResult: HLPTableAnalysis = {
       isHLP: false, variant: null, columnCount: 0, rowCount: 0,
       hasTipsColumn: false, headerText: '', headerCellSpan: 1,
@@ -1159,7 +1182,10 @@ export class TableProcessor {
     // Gate check: Must have FFC000 header shading
     if (fill !== HLP_HEADER_COLOR) return defaultResult;
 
-    const headerText = firstCell.getText().trim();
+    const headerText = (firstCell.getText() ?? '').trim();
+
+    // Gate check: Header text must contain "High Level Process" (case-insensitive)
+    if (!headerText.toLowerCase().includes(HLP_HEADER_TEXT)) return defaultResult;
     const headerCellSpan = firstCell.getColumnSpan() || 1;
 
     // Determine column count from data rows (more reliable than header row)
@@ -1261,6 +1287,34 @@ export class TableProcessor {
   }
 
   /**
+   * Apply explicit run formatting to HLP header row paragraphs.
+   * Sets h2Font/h2Size/bold/center on all runs so the header looks correct
+   * regardless of Heading2 style definition.
+   */
+  private applyHLPHeaderRunFormatting(
+    table: Table,
+    settings?: TableShadingSettings,
+  ): void {
+    const h2Font = settings?.heading2FontFamily ?? 'Verdana';
+    const h2Size = settings?.heading2FontSize ?? 14;
+    const rows = table.getRows();
+    if (rows.length === 0) return;
+
+    const headerRow = rows[0];
+    for (const cell of headerRow.getCells()) {
+      for (const para of cell.getParagraphs()) {
+        para.setAlignment('left');
+        for (const run of para.getRuns()) {
+          run.setFont(h2Font);
+          run.setSize(h2Size);
+          run.setBold(true);
+        }
+        this.applyNormalSpacing(para, settings);
+      }
+    }
+  }
+
+  /**
    * Apply formatting to the HLP header row cells (shading, margins, cell borders).
    */
   private applyHLPHeaderCellFormatting(table: Table, analysis: HLPTableAnalysis): void {
@@ -1270,7 +1324,7 @@ export class TableProcessor {
     const headerRow = rows[0];
     for (const cell of headerRow.getCells()) {
       // Ensure FFC000 shading
-      cell.setShading({ fill: HLP_HEADER_COLOR });
+      cell.setShading({ fill: HLP_HEADER_COLOR, pattern: "clear", color: "auto" });
 
       // Set cell margins: top=0, bottom=0
       cell.setMargins({ top: 0, bottom: 0, left: 115, right: 115 });
@@ -1338,11 +1392,94 @@ export class TableProcessor {
     const rows = table.getRows();
     for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
       const cells = rows[rowIndex].getCells();
+      // Skip single-cell rows (full-width merged) — they aren't tips column rows
+      if (cells.length < 2) continue;
       const lastCell = cells[cells.length - 1];
-      if (lastCell) {
-        lastCell.setShading({ fill: HLP_TIPS_COLOR });
+      // Also skip if the last cell spans multiple columns (another merge pattern)
+      if (lastCell && lastCell.getColumnSpan() <= 1) {
+        lastCell.setShading({ fill: HLP_TIPS_COLOR, pattern: "clear", color: "auto" });
       }
     }
+  }
+
+  /**
+   * Discover the main numbered-list numId used by HLP content cells.
+   * This is the numId shared by all level-0 action items (1., 2., 3., etc.).
+   * Sub-items (a., b., c.) use their own separate abstractNums with different numIds.
+   *
+   * Only returns a numId if the paragraph is at level 0 AND the abstractNum's
+   * level 0 has decimal format. This prevents returning a sub-item numId
+   * (e.g., lowerLetter at level 0) which would corrupt main item formatting.
+   *
+   * @returns The numId of the first decimal level-0 paragraph found, or null
+   */
+  private discoverHLPMainNumId(table: Table, _analysis: HLPTableAnalysis, doc?: Document): number | null {
+    const manager = doc?.getNumberingManager();
+    const rows = table.getRows();
+
+    // Pass 1: Find a level-0 paragraph whose abstractNum level 0 is decimal (1., 2., 3.)
+    for (let ri = 1; ri < rows.length; ri++) {
+      const cells = rows[ri].getCells();
+      const contentCell = cells[0];
+      if (!contentCell) continue;
+      for (const p of contentCell.getParagraphs()) {
+        const num = p.getNumbering();
+        if (!num || !num.numId) continue;
+
+        if (manager) {
+          const level = num.level ?? 0;
+          if (level !== 0) {
+            continue;
+          }
+          const instance = manager.getInstance(num.numId);
+          if (instance) {
+            const absId = instance.getAbstractNumId();
+            const abstractNum = manager.getAbstractNumbering(absId);
+            const level0 = abstractNum?.getLevel(0);
+            const format = level0?.getFormat();
+            if (format === 'decimal') {
+              return num.numId;
+            }
+            continue;
+          }
+        }
+
+        // Fallback if no manager available: return first numId found (legacy behavior)
+        return num.numId;
+      }
+    }
+
+    // Pass 2: No level-0 decimal found. This happens when ALL content paragraphs
+    // are sub-items (e.g. ilvl=1, lowerLetter a./b./c.) and no main item exists.
+    // Find the most common numId among all numbered content paragraphs so we don't
+    // trigger the unnecessary fallback list creation path.
+    if (manager) {
+      const numIdCounts = new Map<number, number>();
+      for (let ri = 1; ri < rows.length; ri++) {
+        const contentCell = rows[ri].getCells()[0];
+        if (!contentCell) continue;
+        for (const p of contentCell.getParagraphs()) {
+          const num = p.getNumbering();
+          if (!num || !num.numId) continue;
+          numIdCounts.set(num.numId, (numIdCounts.get(num.numId) ?? 0) + 1);
+        }
+      }
+      if (numIdCounts.size > 0) {
+        // Return the most common numId
+        let bestNumId = 0;
+        let bestCount = 0;
+        for (const [numId, count] of numIdCounts) {
+          if (count > bestCount) {
+            bestNumId = numId;
+            bestCount = count;
+          }
+        }
+        log.debug(`discoverHLPMainNumId: no level-0 decimal found, using most common numId=${bestNumId} (${bestCount} occurrences)`);
+        return bestNumId;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -1350,42 +1487,34 @@ export class TableProcessor {
    * bold on list items, blue (#0000FF) + underline on hyperlinks.
    *
    * Content column (left / only column):
-   * - P[0] (main action item): heading2 font/size, bold, explicit numbering + level-0 indent
-   * - P[1+] (numbered sub-items): normal font/size, level-based indent
-   * - Hyperlinks: blue color + single underline
+   * - Level-0 items (all decimal numbered): heading2 font/size, bold, explicit numbering
+   * - Sub-items (level 1+): normal font/size, level-based indent
+   * - Hyperlinks within level-0: also bold
    *
    * Tips column (right, FFF2CC):
    * - P[0] (label): normal font/size, bold
    * - P[1+] (body): normal font/size
-   * - Hyperlinks: blue color + single underline
+   * - Alignment forced to left
    */
   private applyHLPContentFormatting(
     table: Table,
     analysis: HLPTableAnalysis,
     settings?: TableShadingSettings,
+    discoveredNumId?: number | null,
+    tipsBulletNumId?: number | null,
+    savedNumbering?: Map<Paragraph, { numId: number; level: number; leftIndent?: number }>,
+    hasExplicitNumbering?: boolean,
   ): void {
     const normalFont = settings?.normalFontFamily ?? 'Verdana';
     const normalSize = settings?.normalFontSize ?? 12;
-    const h2Font = settings?.heading2FontFamily ?? 'Verdana';
-    const h2Size = settings?.heading2FontSize ?? 14;
 
     const rows = table.getRows();
 
-    // Discover the numId used by numbered sub-items in this table.
-    // P[0] main items inherit numbering from ListParagraph style (getNumbering() returns null),
-    // but sub-items have explicit numbering we can reference.
-    let discoveredNumId: number | null = null;
-    for (let ri = 1; ri < rows.length && discoveredNumId === null; ri++) {
-      const cells = rows[ri].getCells();
-      const contentCell = cells[0];
-      if (!contentCell) continue;
-      for (const p of contentCell.getParagraphs()) {
-        const num = p.getNumbering();
-        if (num && num.numId) {
-          discoveredNumId = num.numId;
-          break;
-        }
-      }
+    // Use pre-discovered numId if provided, otherwise fall back to internal discovery.
+    // Note: this fallback path doesn't have `doc` so it uses legacy behavior (first numId found).
+    // The primary call path from processHLPTables() always passes the pre-discovered numId.
+    if (discoveredNumId === undefined) {
+      discoveredNumId = this.discoverHLPMainNumId(table, analysis);
     }
 
     for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
@@ -1393,16 +1522,11 @@ export class TableProcessor {
 
       for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
         const cell = cells[cellIndex];
-        const isTipsCell = analysis.hasTipsColumn && cellIndex === cells.length - 1 && analysis.variant === 'two-column';
+        const isTipsCell = analysis.hasTipsColumn && cells.length >= 2 && cellIndex === cells.length - 1 && analysis.variant === 'two-column';
         const paras = cell.getParagraphs();
 
         for (let pIdx = 0; pIdx < paras.length; pIdx++) {
           const para = paras[pIdx];
-
-          // Determine font/size for this paragraph
-          const isMainActionItem = pIdx === 0 && !isTipsCell;
-          const font = isMainActionItem ? h2Font : normalFont;
-          const size = isMainActionItem ? h2Size : normalSize;
 
           const numberingBefore = para.getNumbering();
           const paraStyle = para.getStyle();
@@ -1420,46 +1544,128 @@ export class TableProcessor {
             if (savedLeftIndent) {
               para.setLeftIndent(savedLeftIndent);
             }
+            // Check if this paragraph was originally unnumbered (numId=0).
+            // These paragraphs (e.g. "Note:" lines) never had a visible
+            // prefix and shouldn't get one.
+            const savedEntry = savedNumbering?.get(para);
+            // If savedEntry is undefined (possible identity mismatch), fall back to
+            // text-based detection for Note-like lines that shouldn't be numbered.
+            const isNoteLine = !savedEntry && /^Note:/i.test(para.getText().trim());
+            const wasUnnumbered = (savedEntry !== undefined && savedEntry.numId === 0) || isNoteLine;
+
+            // Only assign numbering if the paragraph originally had a visible prefix.
+            // Skip blank/empty paragraphs to avoid spurious numbered items.
+            const hasText = para.getText().trim().length > 0;
+            if (!wasUnnumbered) {
+              if (!isTipsCell && discoveredNumId !== null && hasText) {
+                para.setNumbering(discoveredNumId, 0);
+              } else if (isTipsCell && tipsBulletNumId && hasText) {
+                para.setNumbering(tipsBulletNumId, 0);
+              }
+            }
           }
 
-          // For P[0] main action items that were ListParagraph: set explicit numbering
-          // so they retain decimal numbering (1. 2. 3.) despite being converted to Normal.
-          if (isMainActionItem && paraStyle === 'ListParagraph' && !numberingBefore && discoveredNumId !== null) {
-            para.setNumbering(discoveredNumId, 0);
+          // After numbering fixup, determine if this is a level-0 action item.
+          // Must also match discoveredNumId to distinguish main items from sub-items,
+          // which also use ilvl=0 but in their own separate abstractNums.
+          const numberingAfter = para.getNumbering();
+          const isMainActionItem = !isTipsCell && !!numberingAfter &&
+            numberingAfter.numId === discoveredNumId &&
+            (numberingAfter.level === 0 || numberingAfter.level === undefined);
+
+          // All runs use normal font/size. Level-0 items only get bold (not larger size).
+          // The 14pt numbered prefix (1., 2.) comes from the abstractNum definition, not from run text.
+          // Tips column uses 10pt (matching original document formatting).
+          const font = normalFont;
+          const size = isTipsCell ? 10 : normalSize;
+
+          // Build set of runs that are direct paragraph children (not inside containers).
+          // Runs returned by para.getRuns() that are NOT direct children must be inside
+          // a container element (Hyperlink, Revision, etc.).
+          const directRuns = new Set<Run>();
+          let hasHyperlinkContainer = false;
+          for (const item of para.getContent()) {
+            if (item instanceof Run) {
+              directRuns.add(item);
+            } else if (
+              item instanceof Hyperlink ||
+              (item instanceof PreservedElement && (item as any).getElementType?.() === 'w:hyperlink')
+            ) {
+              hasHyperlinkContainer = true;
+            }
           }
 
-          // Apply font/size to all runs
+          // Apply font/size to all runs (para.getRuns() includes hyperlink children)
           for (const run of para.getRuns()) {
             const runFmt = run.getFormatting();
 
-            // Clear Hyperlink character style: HLP main action items (P[0]) have
-            // charStyle=Hyperlink with color=auto + underline=none overrides.
-            // These are placeholders for future hyperlinks but should render as
-            // normal black text. Clearing the charStyle removes the blue/underline
-            // inheritance so setFont/setSize/setBold don't cause color bleed.
+            // Track whether this run is a real hyperlink that needs blue+underline restored.
+            // Detection uses three methods in priority order:
+            // 1. characterStyle === 'Hyperlink' (direct style check)
+            // 2. Direct blue color (0000FF or 0563C1) from prior pipeline steps
+            // 3. Structural: run is inside a hyperlink container, not a direct paragraph child
+            let restoreHyperlink = false;
             if (runFmt.characterStyle === 'Hyperlink') {
+              // Clear the style to avoid font/size conflicts, then restore blue+underline after setters.
               run.setCharacterStyle(undefined as unknown as string);
+              restoreHyperlink = true;
+            } else {
+              // Detect runs already processed by standardizeHyperlinkFormatting() (direct blue color)
+              const color = runFmt.color?.toUpperCase();
+              if (color === '0000FF' || color === '0563C1') {
+                restoreHyperlink = true;
+              }
+              // Structural detection: run is inside a hyperlink container element,
+              // not a direct child of the paragraph. This catches hyperlinks whose
+              // characterStyle was cleared and color was dropped by earlier pipeline steps.
+              else if (hasHyperlinkContainer && !directRuns.has(run)) {
+                restoreHyperlink = true;
+              }
             }
 
             run.setFont(font);
             run.setSize(size);
 
-            // Bold: only main action items (P[0] in content cells).
+            // Bold: all level-0 action items in content cells (including hyperlinks).
             // Tips column: only P[0] (label) gets bold.
             if (isMainActionItem) {
               run.setBold(true);
             } else if (isTipsCell && pIdx === 0) {
               run.setBold(true);
             }
+
+            // Restore blue color and underline for real hyperlinks after setFont/setSize
+            // which can drop existing run properties.
+            if (restoreHyperlink) {
+              run.setColor('0000FF');
+              run.setUnderline('single');
+            }
           }
 
           this.applyNormalSpacing(para, settings);
 
-          // Apply list indentation from session settings
+          // Tips column: ensure left alignment
+          if (isTipsCell) {
+            para.setAlignment('left');
+          }
+
+          // Apply list indentation from session settings for ALL numbered content items.
+          // Both main items (level 0) and sub-items (level 1+) need explicit paragraph
+          // indentation since applyNormalSpacing can drop <w:ind> from paragraph properties.
           const indentLevels = settings?.listIndentationLevels;
           if (indentLevels) {
             const numbering = para.getNumbering();
-            if (numbering) {
+            if (numbering && !isTipsCell) {
+              const level = numbering.level || 0;
+              const indentSetting = indentLevels.find(l => l.level === level);
+              if (indentSetting && indentSetting.symbolIndent < indentSetting.textIndent) {
+                para.setLeftIndent(inchesToTwips(indentSetting.textIndent));
+                para.setFirstLineIndent(-inchesToTwips(indentSetting.textIndent - indentSetting.symbolIndent));
+              }
+            } else if (isTipsCell && numbering) {
+              // Tips cell numbered paragraphs: applyNormalSpacing drops <w:ind>,
+              // and their numbering level may have unusual indentation (e.g. left=-360).
+              // Apply indent settings so bullet markers remain visible in the cell.
               const level = numbering.level || 0;
               const indentSetting = indentLevels.find(l => l.level === level);
               if (indentSetting && indentSetting.symbolIndent < indentSetting.textIndent) {
@@ -1476,6 +1682,311 @@ export class TableProcessor {
         }
       }
     }
+  }
+
+  /**
+   * Convert bullet sub-items in HLP content to lettered sub-items.
+   * Scans ALL content cell paragraphs for unique numIds with bullet format at
+   * level 0, and converts levels 0–2 to ordered formats:
+   *   Level 0: bullet → lowerLetter (a., b., c.)
+   *   Level 1: bullet → lowerRoman (i., ii., iii.)
+   *   Level 2: bullet → upperLetter (A., B., C.)
+   *
+   * Also sets indentation on each converted level using session listIndentationLevels
+   * with a +1 level offset (sub-item numbering level 0 → UI visual level 1, etc.).
+   *
+   * @returns Number of abstractNum definitions converted
+   */
+  private convertHLPBulletsToLettered(
+    table: Table,
+    doc: Document,
+    analysis: HLPTableAnalysis,
+    settings?: TableShadingSettings,
+    discoveredNumId?: number | null,
+  ): number {
+    const manager = doc.getNumberingManager();
+    if (!manager) return 0;
+
+    // Build set of abstractNums used by the main numbered list — don't convert these.
+    // Only protect abstractNums whose level 0 is decimal (the real main list).
+    // Pass-2 fallback numIds (most common, possibly bullet) should still be convertible.
+    const mainAbsIds = new Set<number>();
+    if (discoveredNumId) {
+      const mainInstance = manager.getInstance(discoveredNumId);
+      if (mainInstance) {
+        const mainAbsId = mainInstance.getAbstractNumId();
+        const mainAbstractNum = manager.getAbstractNumbering(mainAbsId);
+        const mainLevel0Format = mainAbstractNum?.getLevel(0)?.getFormat();
+        if (mainLevel0Format === 'decimal') {
+          mainAbsIds.add(mainAbsId);
+        }
+      }
+    }
+
+    const indentLevels = settings?.listIndentationLevels;
+    const convertedAbsIds = new Set<number>();
+    const rows = table.getRows();
+
+    for (let ri = 1; ri < rows.length; ri++) {
+      const cells = rows[ri].getCells();
+      for (let ci = 0; ci < cells.length; ci++) {
+        // Skip tips column
+        const isTips = analysis.hasTipsColumn && cells.length >= 2 && ci === cells.length - 1 && analysis.variant === 'two-column';
+        if (isTips) continue;
+
+        for (const para of cells[ci].getParagraphs()) {
+          const num = para.getNumbering();
+          if (!num || !num.numId) continue;
+
+          const paraLevel = num.level ?? 0;
+          const instance = manager.getInstance(num.numId);
+          if (!instance) continue;
+          const absId = instance.getAbstractNumId();
+          if (convertedAbsIds.has(absId)) continue;
+
+          // Don't convert the main list's abstractNum
+          if (mainAbsIds.has(absId)) continue;
+
+          // Only convert if paragraph is actually at level 0 of this numId.
+          // Paragraphs at ilvl >= 1 are sub-items of a parent numbered list —
+          // their abstractNum should be left alone.
+          if (paraLevel > 0) continue;
+
+          const abstractNum = manager.getAbstractNumbering(absId);
+          if (!abstractNum) continue;
+
+          const level0 = abstractNum.getLevel(0);
+          const level0Format = level0?.getFormat();
+          if (level0 && level0Format === 'bullet') {
+            // Level 0: bullet → lowerLetter (a., b., c.)
+            level0.setFormat('lowerLetter');
+            level0.setText('%1.');
+            level0.setFont('Verdana');
+            level0.setFontSize(24); // 12pt = 24 half-points
+            level0.setColor('000000');
+            level0.setBold(false); // Sub-item prefixes must not be bold
+            this.patchLevelBoldOff(level0);
+            // Sub-item level 0 → UI visual level 1
+            if (indentLevels) {
+              const indent = indentLevels.find(l => l.level === 1);
+              if (indent) {
+                level0.setLeftIndent(inchesToTwips(indent.textIndent));
+                level0.setHangingIndent(inchesToTwips(indent.textIndent - indent.symbolIndent));
+              }
+            }
+
+            // Level 1: bullet → lowerRoman (i., ii., iii.)
+            const level1 = abstractNum.getLevel(1);
+            if (level1 && level1.getFormat() === 'bullet') {
+              level1.setFormat('lowerRoman');
+              level1.setText('%2.');
+              level1.setFont('Verdana');
+              level1.setFontSize(24);
+              level1.setColor('000000');
+              level1.setBold(false); // Sub-item prefixes must not be bold
+              this.patchLevelBoldOff(level1);
+              // Sub-item level 1 → UI visual level 2
+              if (indentLevels) {
+                const indent = indentLevels.find(l => l.level === 2);
+                if (indent) {
+                  level1.setLeftIndent(inchesToTwips(indent.textIndent));
+                  level1.setHangingIndent(inchesToTwips(indent.textIndent - indent.symbolIndent));
+                }
+              }
+            }
+
+            // Level 2: bullet → upperLetter (A., B., C.)
+            const level2 = abstractNum.getLevel(2);
+            if (level2 && level2.getFormat() === 'bullet') {
+              level2.setFormat('upperLetter');
+              level2.setText('%3.');
+              level2.setFont('Verdana');
+              level2.setFontSize(24);
+              level2.setColor('000000');
+              level2.setBold(false); // Sub-item prefixes must not be bold
+              this.patchLevelBoldOff(level2);
+              // Sub-item level 2 → UI visual level 3
+              if (indentLevels) {
+                const indent = indentLevels.find(l => l.level === 3);
+                if (indent) {
+                  level2.setLeftIndent(inchesToTwips(indent.textIndent));
+                  level2.setHangingIndent(inchesToTwips(indent.textIndent - indent.symbolIndent));
+                }
+              }
+            }
+
+            convertedAbsIds.add(absId);
+            log.debug(`Converted HLP abstractNum ${absId} levels 0-2: bullet -> lowerLetter/lowerRoman/upperLetter`);
+          }
+        }
+      }
+    }
+
+    return convertedAbsIds.size;
+  }
+
+  /**
+   * Monkey-patch a NumberingLevel's toXML() to inject <w:b w:val="0"/>
+   * into the level's <w:rPr>. This works around a docxmlater limitation
+   * where setBold(false) produces no XML output instead of the explicit
+   * <w:b w:val="0"/> needed to prevent bold inheritance from context.
+   */
+  private patchLevelBoldOff(level: unknown): void {
+    const lvl = level as { toXML: () => any };
+    const origToXML = lvl.toXML.bind(lvl);
+    lvl.toXML = function () {
+      const xml = origToXML();
+      if (xml && Array.isArray(xml.children)) {
+        for (const child of xml.children) {
+          if (typeof child === 'object' && child.name === 'w:rPr') {
+            if (!Array.isArray(child.children)) child.children = [];
+            child.children.push({ name: 'w:b', attributes: { 'w:val': '0' } });
+            child.children.push({ name: 'w:bCs', attributes: { 'w:val': '0' } });
+            break;
+          }
+        }
+      }
+      return xml;
+    };
+  }
+
+  /**
+   * Create a fallback lowerLetter numbered list for HLP tables where all paragraphs
+   * have ListParagraph style with inherited (not explicit) numbering. This ensures
+   * items retain visible markers (a., b., c.) after ListParagraph→Normal conversion.
+   */
+  private createHLPFallbackList(doc: Document, settings?: TableShadingSettings): number {
+    const manager = doc.getNumberingManager();
+    if (!manager) return 0;
+    const indentLevels = settings?.listIndentationLevels;
+
+    // Match convertHLPBulletsToLettered format: level 0 = lowerLetter (a., b., c.)
+    const indent1 = indentLevels?.find(l => l.level === 1);
+    const leftIndent = indent1 ? inchesToTwips(indent1.textIndent) : 720;
+    const hangingIndent = indent1 ? inchesToTwips(indent1.textIndent - indent1.symbolIndent) : 360;
+
+    const level0 = new NumberingLevel({
+      level: 0,
+      format: 'lowerLetter',
+      text: '%1.',
+      leftIndent,
+      hangingIndent,
+    });
+
+    const numId = manager.createCustomList([level0], "HLP Fallback");
+    if (numId) {
+      // Set font/color/bold on the created level
+      const instance = manager.getInstance(numId);
+      if (instance) {
+        const absId = instance.getAbstractNumId();
+        const abstractNum = manager.getAbstractNumbering(absId);
+        if (abstractNum) {
+          const lvl = abstractNum.getLevel(0);
+          if (lvl) {
+            lvl.setFont('Verdana');
+            lvl.setFontSize(24); // 12pt
+            lvl.setColor('000000');
+            lvl.setBold(false);
+            this.patchLevelBoldOff(lvl);
+          }
+        }
+      }
+    }
+    return numId ?? 0;
+  }
+
+  /**
+   * Create a bullet list for HLP tips column paragraphs that have inherited
+   * ListParagraph numbering (no explicit numPr). Tips cells are skipped by
+   * convertHLPBulletsToLettered and excluded from discoveredNumId assignment,
+   * so they need their own bullet list to preserve visible bullet markers.
+   */
+  private createHLPTipsBulletList(doc: Document): number {
+    const manager = doc.getNumberingManager();
+    if (!manager) return 0;
+
+    const bullet = WORD_NATIVE_BULLETS.FILLED_BULLET;
+    const level0 = new NumberingLevel({
+      level: 0,
+      format: 'bullet',
+      text: bullet.char,
+      font: bullet.font,
+      leftIndent: 360,
+      hangingIndent: 360,
+    });
+
+    const numId = manager.createCustomList([level0], "HLP Tips Bullet");
+    return numId ?? 0;
+  }
+
+  /**
+   * Insert empty paragraphs before each level-0 numbered item (except the first)
+   * in HLP content cells.  This creates a visual blank line separator between
+   * top-level items (1., 2., 3., etc.).  Only applies to the content column.
+   *
+   * @returns Number of blank paragraphs inserted
+   */
+  private insertHLPBlankLines(table: Table, analysis: HLPTableAnalysis, discoveredNumId: number | null): number {
+    let inserted = 0;
+    const rows = table.getRows();
+
+    for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+      const cells = rows[rowIndex].getCells();
+
+      for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
+        const isTipsCell = analysis.hasTipsColumn && cells.length >= 2 && cellIndex === cells.length - 1 && analysis.variant === 'two-column';
+        if (isTipsCell) continue; // Only content column
+
+        const cell = cells[cellIndex];
+        let paras = cell.getParagraphs();
+        let isFirstLevel0 = true;
+
+        for (let pIdx = 0; pIdx < paras.length; pIdx++) {
+          const para = paras[pIdx];
+          const numbering = para.getNumbering();
+
+          // Insert blank lines before:
+          // 1. Main items (discoveredNumId at level 0) — the 1., 2., 3. items
+          // 2. First paragraph of a new numId group at level 0 (content cell only)
+          //    — handles cells where sub-item groups also need visual separation
+          const isLevel0 = numbering && (numbering.level === 0 || numbering.level === undefined);
+          const isMainItem = isLevel0 && numbering.numId === discoveredNumId;
+          const isNewGroup = isLevel0 && numbering.numId !== discoveredNumId;
+
+          if (isMainItem || isNewGroup) {
+            if (isFirstLevel0 && isMainItem) {
+              // Don't insert before the very first main item
+              isFirstLevel0 = false;
+            } else {
+              // Check if the previous paragraph is already blank (no text, no numbering).
+              // The original document may already have blank paragraphs between items
+              // (converted from ListParagraph to Normal in step 6), so inserting another
+              // would create a double blank line.
+              const prevPara = paras[pIdx - 1];
+              const prevText = prevPara?.getText()?.trim() || '';
+              const prevNumbering = prevPara?.getNumbering();
+              const prevIsBlank = prevText.length === 0 && !prevNumbering;
+
+              if (pIdx > 0 && !prevIsBlank) {
+                // Insert blank paragraph before this level-0 item
+                const blankPara = Paragraph.create();
+                blankPara.setStyle('Normal');
+                cell.addParagraphAt(pIdx, blankPara);
+                inserted++;
+                pIdx++; // Skip past inserted blank
+                paras = cell.getParagraphs(); // Refresh after insertion
+              }
+
+              if (isMainItem && isFirstLevel0) {
+                isFirstLevel0 = false;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return inserted;
   }
 
   /**
@@ -1515,7 +2026,7 @@ export class TableProcessor {
   /**
    * Process all HLP (High Level Process) tables in the document.
    *
-   * HLP tables are detected by FFC000 shading in the first row.
+   * HLP tables are detected by FFC000 shading AND "High Level Process" header text.
    * Special formatting applied:
    * - Variant-aware borders (table-level for single-column, cell-level for two-column)
    * - Header row: Heading 2 style with FFC000 shading
@@ -1529,7 +2040,11 @@ export class TableProcessor {
    * @param settings - Optional table shading settings for font/size configuration
    * @returns Processing results
    */
-  async processHLPTables(doc: Document, settings?: TableShadingSettings): Promise<HLPTableProcessingResult> {
+  async processHLPTables(
+    doc: Document,
+    settings?: TableShadingSettings,
+    savedNumbering?: Map<Paragraph, { numId: number; level: number; leftIndent?: number }>,
+  ): Promise<HLPTableProcessingResult> {
     const tables = doc.getTables();
     let tablesFound = 0;
     let headersStyled = 0;
@@ -1537,9 +2052,8 @@ export class TableProcessor {
     let twoColumnTables = 0;
 
     for (const table of tables) {
-      // Skip floating tables and tables containing nested tables
-      if (this.shouldSkipTable(table)) continue;
-
+      // Don't skip — HLP tables may have nested content or floating positioning
+      // but still need processing. The analyzeHLPTable check is sufficient.
       const analysis = this.analyzeHLPTable(table);
       if (!analysis.isHLP) continue;
 
@@ -1556,6 +2070,9 @@ export class TableProcessor {
       // 2. Apply Heading 2 style to header row paragraphs
       headersStyled += this.applyHLPHeaderStyle(table);
 
+      // 2.5 Apply explicit run formatting to header row (h2Font/h2Size/bold/center)
+      this.applyHLPHeaderRunFormatting(table, settings);
+
       // 3. Apply header cell formatting (shading, margins, cell borders)
       this.applyHLPHeaderCellFormatting(table, analysis);
 
@@ -1565,8 +2082,115 @@ export class TableProcessor {
       // 5. Ensure tips column shading is correct
       this.applyHLPTipsColumnShading(table, analysis);
 
-      // 6. Apply text formatting (fonts, bold, hyperlink colors)
-      this.applyHLPContentFormatting(table, analysis, settings);
+      // 5.1 Restore original numbering for HLP paragraphs that were corrupted
+      // by applyStyles(), list normalization, or other pipeline steps.
+      if (savedNumbering) {
+        const rows = table.getRows();
+        let restored = 0;
+        for (let ri = 1; ri < rows.length; ri++) {
+          for (const cell of rows[ri].getCells()) {
+            for (const para of cell.getParagraphs()) {
+              const saved = savedNumbering.get(para);
+              if (!saved) continue;
+
+              if (saved.numId === -1) {
+                // Sentinel for ListParagraph with no detectable numbering
+                // (inherits numbering from style). Leave as-is — step 6
+                // (applyHLPContentFormatting) will convert to Normal and
+                // assign discoveredNumId.
+                continue;
+              }
+
+              if (saved.numId === 0) {
+                // numId=0 = explicit numbering suppression (e.g. "Note:" paragraphs).
+                // Remove any numbering, switch to Normal (prevents ListParagraph default
+                // numPr from showing), and restore the pre-processing indentation.
+                if (para.getNumbering()) {
+                  para.removeNumbering();
+                }
+                if (para.getStyle() === 'ListParagraph') {
+                  para.setStyle('Normal');
+                }
+                if (saved.leftIndent) {
+                  para.setLeftIndent(saved.leftIndent);
+                }
+                restored++;
+                continue;
+              }
+
+              // Existing restoration logic for numId > 0
+              const current = para.getNumbering();
+              const curNumId = current?.numId ?? 0;
+              const curLevel = current?.level ?? 0;
+              if (curNumId !== saved.numId || curLevel !== saved.level) {
+                para.setNumbering(saved.numId, saved.level);
+                restored++;
+              }
+            }
+          }
+        }
+        if (restored > 0) {
+          log.debug(`Restored numbering for ${restored} HLP paragraphs in table #${tablesFound}`);
+        } else if (savedNumbering.size > 0) {
+          log.warn(`savedNumbering had ${savedNumbering.size} entries but 0 paragraphs were restored in table #${tablesFound} — possible identity mismatch`);
+        }
+      }
+
+      // 5.7 Discover main numId before bullet conversion and content formatting
+      let discoveredNumId = this.discoverHLPMainNumId(table, analysis, doc);
+
+      // 5.5 Convert bullet sub-items to lettered (a., b., c.) in content column
+      // Runs AFTER discovering main numId so we can skip abstractNums belonging to the main numbered list
+      const bulletsConverted = this.convertHLPBulletsToLettered(table, doc, analysis, settings, discoveredNumId);
+      if (bulletsConverted > 0) {
+        log.debug(`Converted ${bulletsConverted} bullet abstractNums to lowerLetter in HLP table #${tablesFound}`);
+      }
+      const hasExplicitNumbering = discoveredNumId !== null;
+
+      // 5.8 Fallback: if no explicit numbering found but ListParagraph paragraphs
+      // exist (inherited numbering from style default), create a lowerLetter list
+      // so items retain visible markers after ListParagraph→Normal conversion.
+      if (discoveredNumId === null) {
+        const rows = table.getRows();
+        let needsFallback = false;
+        for (let ri = 1; ri < rows.length && !needsFallback; ri++) {
+          const contentCell = rows[ri].getCells()[0];
+          if (!contentCell) continue;
+          for (const p of contentCell.getParagraphs()) {
+            if (p.getStyle() === 'ListParagraph' && p.getText().trim().length > 0) {
+              needsFallback = true;
+              break;
+            }
+          }
+        }
+        if (needsFallback) {
+          const fallbackNumId = this.createHLPFallbackList(doc, settings);
+          if (fallbackNumId > 0) {
+            discoveredNumId = fallbackNumId;
+            log.debug(`Created HLP fallback lowerLetter list numId=${discoveredNumId}`);
+          }
+        }
+      }
+
+      // 5.9 Create bullet list for tips column paragraphs that have inherited
+      // ListParagraph numbering. Tips cells are skipped by convertHLPBulletsToLettered
+      // and excluded from discoveredNumId assignment, so they need their own bullet list.
+      let tipsBulletNumId: number | null = null;
+      if (analysis.variant === 'two-column' && analysis.hasTipsColumn) {
+        tipsBulletNumId = this.createHLPTipsBulletList(doc);
+        if (tipsBulletNumId > 0) {
+          log.debug(`Created HLP tips bullet list numId=${tipsBulletNumId}`);
+        }
+      }
+
+      // 6. Apply text formatting (fonts, bold, hyperlink colors, tips alignment)
+      this.applyHLPContentFormatting(table, analysis, settings, discoveredNumId, tipsBulletNumId, savedNumbering, hasExplicitNumbering);
+
+      // 6.5 Insert blank paragraphs before level-0 items (2., 3., etc.)
+      const blankLinesInserted = this.insertHLPBlankLines(table, analysis, discoveredNumId);
+      if (blankLinesInserted > 0) {
+        log.debug(`Inserted ${blankLinesInserted} blank lines in HLP table #${tablesFound}`);
+      }
 
       // 7. Fix post-table paragraphs: ListParagraph paragraphs immediately
       // after the HLP table inherit the style's default numId and continue

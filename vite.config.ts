@@ -38,6 +38,7 @@ export default defineConfig({
             rollupOptions: {
               external: [
                 'electron',
+                'canvas',
                 'docxmlater',
                 'xlsx',
                 'better-sqlite3',
@@ -78,6 +79,7 @@ export default defineConfig({
             rollupOptions: {
               external: [
                 'electron',
+                'canvas',
                 'docxmlater',
                 'xlsx',
                 'better-sqlite3',

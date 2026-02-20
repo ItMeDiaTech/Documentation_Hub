@@ -56,7 +56,7 @@ export const PATTERN_TO_CATEGORY: Record<string, ListCategory> = {
 export const FORMAT_TO_LEVEL: Record<string, number> = {
   decimal: 0,      // 1., 2., 3.
   lowerLetter: 1,  // a., b., c.
-  upperLetter: 1,  // A., B., C.
+  upperLetter: 0,  // A., B., C. — top-level alternative to decimal in business docs
   lowerRoman: 2,   // i., ii., iii.
   upperRoman: 2,   // I., II., III.
   bullet: 0,       // Top-level bullet (filled circle)

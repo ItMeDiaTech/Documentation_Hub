@@ -71,7 +71,10 @@ const electronAPI = {
   createReportZip: (folderPath: string, zipName: string) =>
     ipcRenderer.invoke('create-report-zip', { folderPath, zipName }) as Promise<string>,
   openOutlookEmail: (subject: string, attachmentPath: string) =>
-    ipcRenderer.invoke('open-outlook-email', { subject, attachmentPath }) as Promise<boolean>,
+    ipcRenderer.invoke('open-outlook-email', { subject, attachmentPath }) as Promise<{
+      success: boolean;
+      method: 'outlook' | 'mailto';
+    }>,
 
   // Document text extraction (for comparison views)
   extractDocumentText: (filePath: string) =>

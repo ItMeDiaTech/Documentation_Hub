@@ -67,6 +67,14 @@ export interface BlankLineProcessingOptions {
   };
   /** Stop bold+colon blank lines after this heading text is found in a 1x1 table */
   stopBoldColonAfterHeading?: string;
+  /** Normal style formatting for blank lines (from UI settings, pre-converted to twips) */
+  normalStyleFormatting?: {
+    spaceBefore: number;
+    spaceAfter: number;
+    lineSpacing: number;
+    fontSize: number;
+    fontFamily: string;
+  };
 }
 
 /**

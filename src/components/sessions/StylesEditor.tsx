@@ -147,8 +147,8 @@ const defaultIndentationLevels: IndentationLevel[] = [
   { level: 0, symbolIndent: 0.25, textIndent: 0.50, bulletChar: '•', numberedFormat: '1.' },
   { level: 1, symbolIndent: 0.75, textIndent: 1.00, bulletChar: '○', numberedFormat: 'a.' },
   { level: 2, symbolIndent: 1.25, textIndent: 1.50, bulletChar: '•', numberedFormat: 'i.' },
-  { level: 3, symbolIndent: 1.75, textIndent: 2.00, bulletChar: '○', numberedFormat: '1)' },
-  { level: 4, symbolIndent: 2.25, textIndent: 2.50, bulletChar: '•', numberedFormat: 'a)' },
+  { level: 3, symbolIndent: 1.75, textIndent: 2.00, bulletChar: '○', numberedFormat: 'A.' },
+  { level: 4, symbolIndent: 2.25, textIndent: 2.50, bulletChar: '•', numberedFormat: 'I.' },
 ];
 
 const defaultListBulletSettings: ListBulletSettings = {
@@ -824,7 +824,7 @@ export const StylesEditor = memo(function StylesEditor({
               onChange={(e) => {
                 const startIndent = Number(e.target.value); // Slider sets L0 symbol indent
                 const hangingIndent = 0.25; // Fixed hanging indent
-                const numberedFormats = ['1.', 'a.', 'i.', '1)', 'a)'];
+                const numberedFormats = ['1.', 'a.', 'i.', 'A.', 'I.'];
                 // Cascading: each level's text = symbol + 0.25", next symbol = prev text + 0.25"
                 const newLevels: IndentationLevel[] = [];
                 let currentSymbol = startIndent;

@@ -5,9 +5,43 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.2.39
-**docxmlater Framework Version:** 9.5.34
+**Current App Version:** 5.5.3
+**docxmlater Framework Version:** 10.0.2
 **Status:** Production Ready
+
+---
+
+## [5.5.3] - 2026-02-20
+
+### Added
+
+- **HLP Table Detection & Protection**: High Level Process tables identified by dual-gate check (FFC000 shading + "High Level Process" header text); completely skipped in table uniformity, bullet/numbered uniformity, and list normalization; numbering preserved via pre-processing snapshot and restored afterward
+- **Image Border Cropping**: Detects and removes dark border + white gap from screen captures using canvas pixel analysis; confidence-based edge detection (65% consensus) prevents false crops; replaces image data in-place
+- **Image Compression**: Always-on optimization pass compresses embedded images via canvas
+- **Correct Misapplied Styles Option**: New processing option to fix paragraphs incorrectly styled as TOC or Hyperlink (converts to Normal/ListParagraph)
+- **Email Client Fallback**: Phase 1 tries Outlook COM automation; Phase 2 falls back to mailto: + Explorer folder reveal when Outlook is unavailable
+- **Per-Monitor DPI Awareness**: Upgraded to Per-Monitor DPI Aware V2 (Windows 10 1703+); dynamically detects monitor DPI via Win32 API and scales window sizing
+- **Return-to Hyperlinks Standardization**: Removes indentation and right-aligns "Return to" hyperlinks after style processing
+- **WebSettings Sanitization**: Removes bloated `w:divs` from web paste operations that cause Word to freeze during layout
+
+### Fixed
+
+- **NormalWeb/TableGrid Style Normalization**: Converts NormalWeb → Normal and TableGrid → Normal/Heading2 early in pipeline before style application
+- **HLP Header Formatting**: Explicit run formatting applied to HLP table header rows ensures correct appearance regardless of Heading2 style definition
+- **Cell Shading False Positives**: Table uniformity now only checks direct cell shading, ignoring table style inheritance patterns (pct12 banded rows, etc.)
+- **HLP Tips Column Detection**: Skips single-cell rows and multi-column-spanning cells to avoid false tips column matches
+- **Canvas Module Missing in MSI**: Moved canvas from devDependencies to dependencies; added to asarUnpack for native binary access
+- **Style Application Tracked Changes**: Disabled track changes during style application to avoid cluttering change history with redundant direct formatting removals
+
+### Improved
+
+- **Blank Line Options**: Now respects user-configured Normal style spacing (spaceAfter, spaceBefore, lineSpacing, fontSize, fontFamily)
+- **Whitespace Normalization**: Extracted to dedicated helper module with special handling for small inline images
+- **List Prefix Standardization**: Moved to after all list processing to catch ALL abstractNum definitions including those created by ListNormalizer
+- **Numbered List Defaults**: Level 3 format changed from '1)' to 'A.'; Level 4 from 'a)' to 'I.' for more professional hierarchy
+- **Normal Style Indentation**: Removed style-level indentation to prevent conflicts with numbering.xml level indentation
+- **Dependency Updates**:
+  - docxmlater: 9.5.34 → 10.0.2
 
 ---
 
