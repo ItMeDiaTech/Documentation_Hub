@@ -1,7 +1,7 @@
 /**
  * ListNormalizer - Core list normalization for document processing
  *
- * Moved from docxmlater to Template_UI for processing-level customization.
+ * Moved from docxmlater to dochub-app for processing-level customization.
  * Detects typed list prefixes and converts them to proper Word list formatting.
  * Integrates with NumberingManager for numId resolution.
  */

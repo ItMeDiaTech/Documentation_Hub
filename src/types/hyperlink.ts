@@ -110,7 +110,7 @@ export interface HyperlinkProcessingOptions {
     forceRemoveHeading1FromTOC?: boolean;
     /**
      * Alias for updateTocHyperlinks for clearer intent in higher-level
-     * processing options (e.g., Template_UI). Either flag being true
+     * processing options (e.g., dochub-app). Either flag being true
      * should trigger TOC population logic.
      */
     populateToc?: boolean;

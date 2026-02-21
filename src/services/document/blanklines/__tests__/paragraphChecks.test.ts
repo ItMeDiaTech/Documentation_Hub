@@ -2,7 +2,8 @@
  * Unit tests for paragraph check helper functions
  */
 
-import { vi, describe, it, expect } from 'vitest';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* globals jest, describe, it, expect */
 import {
   isParagraphBlank,
   startsWithBoldColon,
@@ -12,7 +13,7 @@ import {
 } from "../helpers/paragraphChecks";
 
 // Mock docxmlater classes
-vi.mock("docxmlater", () => {
+jest.mock("docxmlater", () => {
   class MockRun {
     private text: string;
     private formatting: any;
@@ -94,7 +95,7 @@ vi.mock("docxmlater", () => {
   };
 });
 
-// Import mocked module — vi.mock is hoisted above imports by Vitest
+// Import mocked module — jest.mock is hoisted above imports by Jest
 import {
   Paragraph, Run, Hyperlink, ImageRun, Shape, TextBox, Field, Revision,
 } from "docxmlater";

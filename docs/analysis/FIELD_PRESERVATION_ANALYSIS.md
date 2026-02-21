@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-After thoroughly analyzing both the **docXMLater framework** (document processing library) and **Template_UI application** (main application using the framework), I have identified **critical bugs in field preservation** that explain why fields are inconsistently preserved during DOCX file processing.
+After thoroughly analyzing both the **docXMLater framework** (document processing library) and **dochub-app application** (main application using the framework), I have identified **critical bugs in field preservation** that explain why fields are inconsistently preserved during DOCX file processing.
 
 ### Key Findings
 
@@ -25,7 +25,7 @@ After thoroughly analyzing both the **docXMLater framework** (document processin
 ### System Flow
 
 ```
-Template_UI (Main Application)
+dochub-app (Main Application)
     ↓
 WordDocumentProcessor.ts
     ↓
@@ -475,7 +475,7 @@ for (let i = 0; i < this.content.length; i++) {
 The serialization iterates through `this.content[]` in order, which **should** preserve order. However:
 
 1. **During parsing**, the order depends on whether `_orderedChildren` exists (Bug #2)
-2. **During processing**, the `content[]` array may be modified by Template_UI operations
+2. **During processing**, the `content[]` array may be modified by dochub-app operations
 3. **No validation** ensures the order remains correct
 
 ### Potential Scenario
@@ -560,7 +560,7 @@ The framework needs **stateful parsing** to group these runs into Field objects,
 
 1. **"Fields disappear"** after processing
    - User inserts PAGE field in Word
-   - Processes document in Template_UI
+   - Processes document in dochub-app
    - Opens result → `PAGE` shows as literal text or is missing
 
 2. **"Sometimes it works, sometimes it doesn't"**
@@ -877,7 +877,7 @@ para.addField(Field.createTotalPages());
 - The `_orderedChildren` mechanism is clever
 - Type-safe object model prevents many bugs
 
-✅ **Template_UI integration is clean**
+✅ **dochub-app integration is clean**
 
 - WordDocumentProcessor uses docXMLater APIs correctly
 - Error handling is comprehensive
@@ -890,7 +890,7 @@ para.addField(Field.createTotalPages());
 - WordDocumentProcessor has `extractHyperlinks()` method
 - **No equivalent `extractFields()` method** exists
 - Can't enumerate fields in a document programmatically
-- Template_UI can't validate or report on field preservation
+- dochub-app can't validate or report on field preservation
 
 ⚠️ **No Field Validation**
 
@@ -969,7 +969,7 @@ para.addField(Field.createTotalPages());
 8. ✅ `src/xml/XMLParser.ts` (700+ lines) - XML parsing
 9. ✅ `src/xml/XMLBuilder.ts` (300+ lines) - XML building
 
-#### Template_UI Application
+#### dochub-app Application
 
 1. ✅ `src/services/document/WordDocumentProcessor.ts` (1,800+ lines)
 2. ✅ `src/services/document/DocXMLaterProcessor.ts` (500+ lines)
@@ -1086,7 +1086,7 @@ Users can't see the difference between simple and complex fields in Word - they 
 - 📄 Forms (merge fields)
 - 📖 Books/manuals (TOC, page numbers, cross-refs)
 
-Any document relying on dynamic fields **will be broken** after processing through Template_UI.
+Any document relying on dynamic fields **will be broken** after processing through dochub-app.
 
 ---
 
@@ -1103,9 +1103,9 @@ To confirm these bugs in your environment:
 5. Press Alt+F9 to view field codes
 6. Check if it shows `<w:fldSimple>` or `<w:fldChar>` in the XML
 
-### Step 2: Process Through Template_UI
+### Step 2: Process Through dochub-app
 
-1. Load `test-simple-field.docx` in Template_UI
+1. Load `test-simple-field.docx` in dochub-app
 2. Process with minimal settings (no major modifications)
 3. Save result
 4. Open result in Word
@@ -1127,7 +1127,7 @@ grep -i "fldSimple\|fldChar\|instrText" result/word/document.xml
 
 1. In Word, create a cross-reference (Insert → Cross-reference)
 2. Save as `test-complex-field.docx`
-3. Process through Template_UI
+3. Process through dochub-app
 4. Check if cross-reference still works
 
 **Expected Result**: Cross-reference will be **broken** (shows literal text or error).
@@ -1138,7 +1138,7 @@ grep -i "fldSimple\|fldChar\|instrText" result/word/document.xml
 
 ### Immediate Actions
 
-1. **Document the limitation** in Template_UI user guide
+1. **Document the limitation** in dochub-app user guide
 2. **Add validation** to warn users when fields will be lost
 3. **Consider field count** in processing statistics
 4. **Add field type** to processing options (warn about complex fields)
@@ -1164,7 +1164,7 @@ Until fixed, users should:
 1. **Avoid processing documents with critical fields**
 2. **Re-insert fields manually** after processing if needed
 3. **Use simple field structure** when possible (convert in Word first)
-4. **Keep backups** before processing (Template_UI already does this ✅)
+4. **Keep backups** before processing (dochub-app already does this ✅)
 
 ---
 
@@ -1174,7 +1174,7 @@ Until fixed, users should:
 
 - This analysis file: `FIELD_PRESERVATION_ANALYSIS.md`
 - Framework repo: `c:\Users\DiaTech\Pictures\DiaTech\Programs\DocHub\development\docXMLater`
-- Application repo: `c:\Users\DiaTech\Pictures\DiaTech\Programs\DocHub\development\Template_UI`
+- Application repo: `c:\Users\DiaTech\Pictures\DiaTech\Programs\DocHub\development\dochub-app`
 
 ### For Bug Reports
 
@@ -1183,7 +1183,7 @@ Include:
 1. Sample DOCX with fields that are lost
 2. XML diff showing before/after field presence
 3. Field type (simple vs complex) from XML inspection
-4. Processing options used in Template_UI
+4. Processing options used in dochub-app
 
 ---
 

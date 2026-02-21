@@ -4,23 +4,23 @@
  * Tests blank paragraph removal, structure operations, and document warnings.
  */
 
-import { vi, describe, it, expect, beforeEach, type Mocked } from 'vitest';
+import type { Mocked } from 'jest-mock';
 import { StructureProcessor } from '../StructureProcessor';
 import { Document, Paragraph, Run, Hyperlink, Image } from 'docxmlater';
 
 // Mock docxmlater
-vi.mock('docxmlater');
+jest.mock('docxmlater');
 
 // Setup Paragraph.create to return a usable mock paragraph
 function createMockWarningParagraph(): any {
   return {
-    setAlignment: vi.fn(),
-    setSpaceBefore: vi.fn(),
-    setSpaceAfter: vi.fn(),
-    getRuns: vi.fn().mockReturnValue([{
-      setItalic: vi.fn(),
-      setFont: vi.fn(),
-      setSize: vi.fn(),
+    setAlignment: jest.fn(),
+    setSpaceBefore: jest.fn(),
+    setSpaceAfter: jest.fn(),
+    getRuns: jest.fn().mockReturnValue([{
+      setItalic: jest.fn(),
+      setFont: jest.fn(),
+      setSize: jest.fn(),
     }]),
   };
 }
@@ -30,16 +30,16 @@ describe('StructureProcessor', () => {
   let mockDoc: Mocked<Document>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     processor = new StructureProcessor();
 
     // Setup Paragraph.create static method to return mock paragraphs
-    (Paragraph.create as ReturnType<typeof vi.fn>) = vi.fn().mockImplementation(() => createMockWarningParagraph());
+    (Paragraph.create as ReturnType<typeof jest.fn>) = jest.fn().mockImplementation(() => createMockWarningParagraph());
 
     mockDoc = {
-      getAllParagraphs: vi.fn().mockReturnValue([]),
-      removeAllHeadersFooters: vi.fn().mockReturnValue(0),
-      addParagraph: vi.fn().mockReturnThis(),
+      getAllParagraphs: jest.fn().mockReturnValue([]),
+      removeAllHeadersFooters: jest.fn().mockReturnValue(0),
+      addParagraph: jest.fn().mockReturnThis(),
     } as unknown as Mocked<Document>;
 
   });
@@ -115,8 +115,8 @@ describe('StructureProcessor', () => {
   describe('isParagraphTrulyEmpty', () => {
     it('should identify empty paragraphs', () => {
       const mockParagraph = {
-        getNumbering: vi.fn().mockReturnValue(null),
-        getContent: vi.fn().mockReturnValue([]),
+        getNumbering: jest.fn().mockReturnValue(null),
+        getContent: jest.fn().mockReturnValue([]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -126,8 +126,8 @@ describe('StructureProcessor', () => {
 
     it('should not mark list items as empty', () => {
       const mockParagraph = {
-        getNumbering: vi.fn().mockReturnValue({ level: 0 }),
-        getContent: vi.fn().mockReturnValue([]),
+        getNumbering: jest.fn().mockReturnValue({ level: 0 }),
+        getContent: jest.fn().mockReturnValue([]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -138,8 +138,8 @@ describe('StructureProcessor', () => {
     it('should not mark paragraphs with hyperlinks as empty', () => {
       const mockHyperlink = Object.create(Hyperlink.prototype);
       const mockParagraph = {
-        getNumbering: vi.fn().mockReturnValue(null),
-        getContent: vi.fn().mockReturnValue([mockHyperlink]),
+        getNumbering: jest.fn().mockReturnValue(null),
+        getContent: jest.fn().mockReturnValue([mockHyperlink]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -150,8 +150,8 @@ describe('StructureProcessor', () => {
     it('should not mark paragraphs with images as empty', () => {
       const mockImage = Object.create(Image.prototype);
       const mockParagraph = {
-        getNumbering: vi.fn().mockReturnValue(null),
-        getContent: vi.fn().mockReturnValue([mockImage]),
+        getNumbering: jest.fn().mockReturnValue(null),
+        getContent: jest.fn().mockReturnValue([mockImage]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -160,12 +160,12 @@ describe('StructureProcessor', () => {
     });
 
     it('should identify paragraphs with only empty runs as empty', () => {
-      const mockRun = { getText: vi.fn().mockReturnValue('   ') };
+      const mockRun = { getText: jest.fn().mockReturnValue('   ') };
       Object.setPrototypeOf(mockRun, Run.prototype);
 
       const mockParagraph = {
-        getNumbering: vi.fn().mockReturnValue(null),
-        getContent: vi.fn().mockReturnValue([mockRun]),
+        getNumbering: jest.fn().mockReturnValue(null),
+        getContent: jest.fn().mockReturnValue([mockRun]),
       } as unknown as Paragraph;
 
       const isEmpty = processor.isParagraphTrulyEmpty(mockParagraph);
@@ -210,48 +210,48 @@ describe('StructureProcessor', () => {
 
 function createMockRun(text: string): Mocked<Run> {
   return {
-    getText: vi.fn().mockReturnValue(text),
-    setText: vi.fn(),
-    getFormatting: vi.fn().mockReturnValue({}),
-    setItalic: vi.fn(),
+    getText: jest.fn().mockReturnValue(text),
+    setText: jest.fn(),
+    getFormatting: jest.fn().mockReturnValue({}),
+    setItalic: jest.fn(),
   } as unknown as Mocked<Run>;
 }
 
 function createMockFormattedRun(bold: boolean, italic: boolean): Mocked<Run> {
   return {
-    getText: vi.fn().mockReturnValue('Text'),
-    setText: vi.fn(),
-    getFormatting: vi.fn().mockReturnValue({ bold, italic }),
-    setItalic: vi.fn(),
+    getText: jest.fn().mockReturnValue('Text'),
+    setText: jest.fn(),
+    getFormatting: jest.fn().mockReturnValue({ bold, italic }),
+    setItalic: jest.fn(),
   } as unknown as Mocked<Run>;
 }
 
 function createMockParagraphWithRuns(runs: any[]): Mocked<Paragraph> {
   return {
-    getRuns: vi.fn().mockReturnValue(runs),
-    getNumbering: vi.fn().mockReturnValue(null),
-    getContent: vi.fn().mockReturnValue(runs),
-    getText: vi.fn().mockReturnValue(''),
-    getStyle: vi.fn().mockReturnValue('Normal'),
+    getRuns: jest.fn().mockReturnValue(runs),
+    getNumbering: jest.fn().mockReturnValue(null),
+    getContent: jest.fn().mockReturnValue(runs),
+    getText: jest.fn().mockReturnValue(''),
+    getStyle: jest.fn().mockReturnValue('Normal'),
   } as unknown as Mocked<Paragraph>;
 }
 
 function createMockTextParagraph(text: string): Mocked<Paragraph> {
   return {
-    getRuns: vi.fn().mockReturnValue([]),
-    getNumbering: vi.fn().mockReturnValue(null),
-    getContent: vi.fn().mockReturnValue([]),
-    getText: vi.fn().mockReturnValue(text),
-    getStyle: vi.fn().mockReturnValue('Normal'),
+    getRuns: jest.fn().mockReturnValue([]),
+    getNumbering: jest.fn().mockReturnValue(null),
+    getContent: jest.fn().mockReturnValue([]),
+    getText: jest.fn().mockReturnValue(text),
+    getStyle: jest.fn().mockReturnValue('Normal'),
   } as unknown as Mocked<Paragraph>;
 }
 
 function createMockStyledParagraph(style: string, text: string): Mocked<Paragraph> {
   return {
-    getRuns: vi.fn().mockReturnValue([]),
-    getNumbering: vi.fn().mockReturnValue(null),
-    getContent: vi.fn().mockReturnValue([]),
-    getText: vi.fn().mockReturnValue(text),
-    getStyle: vi.fn().mockReturnValue(style),
+    getRuns: jest.fn().mockReturnValue([]),
+    getNumbering: jest.fn().mockReturnValue(null),
+    getContent: jest.fn().mockReturnValue([]),
+    getText: jest.fn().mockReturnValue(text),
+    getStyle: jest.fn().mockReturnValue(style),
   } as unknown as Mocked<Paragraph>;
 }

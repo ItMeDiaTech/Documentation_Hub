@@ -1,7 +1,7 @@
 /**
  * List Detection Utilities
  *
- * Moved from docxmlater to Template_UI for processing-level customization.
+ * Moved from docxmlater to dochub-app for processing-level customization.
  * Provides functions to detect typed list prefixes and analyze
  * paragraph list properties.
  */

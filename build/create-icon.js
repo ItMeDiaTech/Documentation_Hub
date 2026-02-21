@@ -25,12 +25,19 @@ function createICOFromPNG(pngPath, icoPath, sizes = [16, 32, 48, 256]) {
         const imageData = ctx.getImageData(0, 0, size, size);
         const pixels = Buffer.alloc(size * size * 4);
 
-        // Convert RGBA to BGRA for ICO format
-        for (let i = 0; i < imageData.data.length; i += 4) {
-          pixels[i] = imageData.data[i + 2];     // B
-          pixels[i + 1] = imageData.data[i + 1]; // G
-          pixels[i + 2] = imageData.data[i];     // R
-          pixels[i + 3] = imageData.data[i + 3]; // A
+        // Convert RGBA to BGRA and flip vertically (BMP stores rows bottom-to-top)
+        const rowBytes = size * 4;
+        for (let y = 0; y < size; y++) {
+          const srcRow = y * rowBytes;
+          const dstRow = (size - 1 - y) * rowBytes;
+          for (let x = 0; x < size; x++) {
+            const srcIdx = srcRow + x * 4;
+            const dstIdx = dstRow + x * 4;
+            pixels[dstIdx] = imageData.data[srcIdx + 2];     // B
+            pixels[dstIdx + 1] = imageData.data[srcIdx + 1]; // G
+            pixels[dstIdx + 2] = imageData.data[srcIdx];     // R
+            pixels[dstIdx + 3] = imageData.data[srcIdx + 3]; // A
+          }
         }
 
         iconData.push({ size, data: pixels, imageData });

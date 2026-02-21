@@ -2081,8 +2081,8 @@ ipcMain.handle(
 
       // On Windows, try to position the Word windows using PowerShell
       if (process.platform === "win32") {
-        // Give Word time to open the files
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // Brief delay before launching positioning script (retry loop handles Word startup)
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
         // PowerShell script to position Word windows
         const { exec } = await import("child_process");
@@ -2144,6 +2144,22 @@ public class Win32 {
   [DllImport("shcore.dll")]
   public static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+  public static IntPtr FindWindowByTitle(string filename) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows(delegate(IntPtr hWnd, IntPtr lParam) {
+      if (!IsWindowVisible(hWnd)) return true;
+      var sb = new System.Text.StringBuilder(512);
+      GetWindowText(hWnd, sb, 512);
+      string title = sb.ToString();
+      if (title.IndexOf("Word", StringComparison.OrdinalIgnoreCase) >= 0 &&
+          title.IndexOf(filename, StringComparison.OrdinalIgnoreCase) >= 0) {
+        found = hWnd;
+        return false;
+      }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
 }
 "@
 
@@ -2194,37 +2210,28 @@ $rightX = $startX + $windowWidth
 $backupFilename = $env:DOCHUB_BACKUP_FILENAME
 $processedFilename = $env:DOCHUB_PROCESSED_FILENAME
 
-$wordWindows = @()
-$callback = {
-  param([IntPtr]$hWnd, [IntPtr]$lParam)
-  $sb = New-Object System.Text.StringBuilder 256
-  [Win32]::GetWindowText($hWnd, $sb, 256) | Out-Null
-  $title = $sb.ToString()
-  if ($title -match "Word" -and [Win32]::IsWindowVisible($hWnd)) {
-    $script:wordWindows += @{ hWnd = $hWnd; Title = $title }
-  }
-  return $true
-}
-[Win32]::EnumWindows($callback, [IntPtr]::Zero) | Out-Null
+$backupHwnd = [IntPtr]::Zero
+$processedHwnd = [IntPtr]::Zero
 
-$backupWindow = $null
-$processedWindow = $null
-
-foreach ($win in $wordWindows) {
-  if ($win.Title -like "*$backupFilename*" -and $backupWindow -eq $null) {
-    $backupWindow = $win
+for ($i = 0; $i -lt 8; $i++) {
+  if ($backupHwnd -eq [IntPtr]::Zero) {
+    $backupHwnd = [Win32]::FindWindowByTitle($backupFilename)
   }
-  if ($win.Title -like "*$processedFilename*" -and $processedWindow -eq $null) {
-    $processedWindow = $win
+  if ($processedHwnd -eq [IntPtr]::Zero) {
+    $processedHwnd = [Win32]::FindWindowByTitle($processedFilename)
   }
+  if ($backupHwnd -ne [IntPtr]::Zero -and $processedHwnd -ne [IntPtr]::Zero) {
+    break
+  }
+  Start-Sleep -Milliseconds 750
 }
 
-if ($backupWindow -ne $null) {
-  [Win32]::SetWindowPos($backupWindow.hWnd, [IntPtr]::Zero, $leftX, $y, $windowWidth, $height, 0x0040) | Out-Null
+if ($backupHwnd -ne [IntPtr]::Zero) {
+  [Win32]::SetWindowPos($backupHwnd, [IntPtr]::Zero, $leftX, $y, $windowWidth, $height, 0x0040) | Out-Null
 }
 
-if ($processedWindow -ne $null) {
-  [Win32]::SetWindowPos($processedWindow.hWnd, [IntPtr]::Zero, $rightX, $y, $windowWidth, $height, 0x0040) | Out-Null
+if ($processedHwnd -ne [IntPtr]::Zero) {
+  [Win32]::SetWindowPos($processedHwnd, [IntPtr]::Zero, $rightX, $y, $windowWidth, $height, 0x0040) | Out-Null
 }
 `;
 

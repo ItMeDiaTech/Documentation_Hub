@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide explains how to enable automatic Table of Contents generation in Template_UI. The framework (`docxmlater`) has full TOC generation capability built-in, but it requires proper option wiring from the UI.
+This guide explains how to enable automatic Table of Contents generation in dochub-app. The framework (`docxmlater`) has full TOC generation capability built-in, but it requires proper option wiring from the UI.
 
 ## Current Problem
 
@@ -134,13 +134,13 @@ operations: {
    - Choose a TOC style (e.g., Automatic Table 1)
    - Word creates the TOC field with placeholder text
 
-2. **User enables option in Template_UI:**
+2. **User enables option in dochub-app:**
    - Check "Generate/Update Table of Contents"
    - Configure other processing options as needed
    - Process the document
 
 3. **Result:**
-   - Template_UI saves the document
+   - dochub-app saves the document
    - Post-save: Scans for headings and populates TOC
    - Recipient opens document and sees fully clickable TOC
 

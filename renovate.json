@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "matchPackageNames": ["docxmlater"],
+      "automerge": true,
+      "schedule": ["at any time"],
+      "groupName": "docxmlater"
+    },
+    {
+      "matchDepTypes": ["devDependencies"],
+      "excludePackageNames": ["electron", "better-sqlite3", "canvas"],
+      "groupName": "dev-dependencies",
+      "schedule": ["every weekend"],
+      "automerge": true
+    },
+    {
+      "matchPackageNames": ["better-sqlite3", "canvas"],
+      "groupName": "native-modules",
+      "automerge": false
+    },
+    {
+      "matchPackageNames": ["electron"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["breaking-change"]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 /**
  * List Normalization Types
  *
- * Moved from docxmlater to Template_UI for processing-level customization.
+ * Moved from docxmlater to dochub-app for processing-level customization.
  * These types support detection and normalization of typed list prefixes
  * to proper Word list formatting.
  */

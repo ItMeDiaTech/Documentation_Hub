@@ -132,6 +132,27 @@ export const afterLargeTablesRule: BlankLineRule = {
 };
 
 /**
+ * Add blank line ABOVE bold+colon non-indented paragraphs.
+ * Checks ctx.nextElement to see if the upcoming paragraph starts with bold text + colon.
+ */
+export const aboveBoldColonNoIndentRule: BlankLineRule = {
+  id: "add-above-bold-colon-no-indent",
+  action: "add",
+  scope: "both",
+  matches(ctx: RuleContext): boolean {
+    if (!(ctx.nextElement instanceof Paragraph)) return false;
+    if (isParagraphBlank(ctx.nextElement)) return false;
+    if (!startsWithBoldColon(ctx.nextElement)) return false;
+    if (ctx.nextElement.getNumbering()) return false;
+
+    const indent = ctx.nextElement.getFormatting()?.indentation?.left;
+    if (indent && indent > 0) return false;
+
+    return true;
+  },
+};
+
+/**
  * Bold+colon with no indentation where next line is NOT indented:
  * add blank after, UNLESS there is a 1x1 table with "Related Document"
  * text within 15 lines above.
@@ -307,6 +328,7 @@ export const additionRules: BlankLineRule[] = [
   beforeFirst1x1TableRule,
   after1x1TablesRule,
   afterLargeTablesRule,
+  aboveBoldColonNoIndentRule,
   boldColonNoIndentAfterRule,
   aboveTopOfDocHyperlinkRule,
   afterListItemsRule,

@@ -207,7 +207,8 @@ export class BlankLineManager {
         const isBefore =
           matchedRule.id === "add-above-top-of-doc-hyperlink" ||
           matchedRule.id === "add-above-warning" ||
-          matchedRule.id === "add-before-first-1x1-table";
+          matchedRule.id === "add-before-first-1x1-table" ||
+          matchedRule.id === "add-above-bold-colon-no-indent";
 
         if (isBefore) {
           // These rules want a blank BEFORE the next element

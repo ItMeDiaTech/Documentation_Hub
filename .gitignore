@@ -39,12 +39,16 @@ electron-builder.yml
 yarn.lock
 pnpm-lock.yaml
 
+# yalc
+.yalc/
+yalc.lock
+
 # Personal/Development files
 /UI_Customizations.md
 /Goal.md
 HyperlinkService.cs
 allowedPackageJsonDependencies.txt
-Template_UI.code-workspace
+dochub-app.code-workspace
 *.code-workspace
 DocHub_Error_Examples/
 Example1/

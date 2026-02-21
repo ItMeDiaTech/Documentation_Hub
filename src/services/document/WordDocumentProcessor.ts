@@ -58,6 +58,7 @@ import { hyperlinkService } from "../HyperlinkService";
 import type { HyperlinkApiResponse } from "@/types/hyperlink";
 import { DocXMLaterProcessor } from "./DocXMLaterProcessor";
 import { blankLineManager, removeSmallIndents } from "./blanklines";
+import { startsWithBoldColon } from "./blanklines/helpers/paragraphChecks";
 import { normalizeRunWhitespace } from "./helpers/whitespace";
 import { cropEmbeddedImageBorders } from "./helpers/ImageBorderCropper";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
@@ -2164,6 +2165,12 @@ export class WordDocumentProcessor {
             count: listPrefixesStandardized,
           });
         }
+      }
+
+      // Bold colon formatting (before blank lines so startsWithBoldColon detects correctly)
+      const boldColonsFixed = this.standardizeBoldColonFormatting(doc);
+      if (boldColonsFixed > 0) {
+        this.log.info(`Bolded ${boldColonsFixed} colons in bold+colon label paragraphs`);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -4369,6 +4376,89 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Standardize bold+colon formatting: ensure the colon character is bold
+   * in paragraphs that start with bold text followed by a colon (e.g., "Note:", "Warning:").
+   * Only applies to non-indented, non-list paragraphs.
+   *
+   * @param doc - The document to process
+   * @returns Number of colons bolded
+   */
+  private standardizeBoldColonFormatting(doc: Document): number {
+    let fixed = 0;
+
+    const processParas = (paragraphs: Paragraph[]) => {
+      for (const para of paragraphs) {
+        if (!startsWithBoldColon(para)) continue;
+
+        // Skip indented paragraphs
+        const indent = para.getFormatting()?.indentation?.left;
+        if (indent && indent > 0) continue;
+
+        // Skip list items
+        if (para.getNumbering()) continue;
+
+        // Walk content to find the run containing the first colon
+        const content = para.getContent();
+        for (const item of content) {
+          if (!(item instanceof Run)) continue;
+          const text = item.getText();
+          if (!text) continue;
+
+          const colonIdx = text.indexOf(":");
+          if (colonIdx === -1) continue; // No colon in this run, check next
+
+          // Colon found — is this run already bold?
+          const formatting = item.getFormatting();
+          if (formatting.bold) break; // Already bold, done
+
+          // Need to bold the colon. Three cases:
+          if (text === ":") {
+            // Entire run is just ":" — bold it
+            item.setBold(true);
+            fixed++;
+          } else if (colonIdx === 0) {
+            // Run starts with ":" (e.g., ": rest of text")
+            const colonRun = new Run(":", { ...formatting, bold: true });
+            const remainderRun = new Run(text.substring(1), formatting);
+            para.replaceContent(item, [colonRun, remainderRun]);
+            fixed++;
+          } else {
+            // Colon is mid-run (e.g., "text: more")
+            const newRuns: Run[] = [];
+            newRuns.push(new Run(text.substring(0, colonIdx), formatting));
+            newRuns.push(new Run(":", { ...formatting, bold: true }));
+            if (colonIdx + 1 < text.length) {
+              newRuns.push(new Run(text.substring(colonIdx + 1), formatting));
+            }
+            para.replaceContent(item, newRuns);
+            fixed++;
+          }
+          break; // Stop after first colon
+        }
+      }
+    };
+
+    // Process body paragraphs
+    const bodyParas: Paragraph[] = [];
+    for (let i = 0; i < doc.getBodyElementCount(); i++) {
+      const el = doc.getBodyElementAt(i);
+      if (el instanceof Paragraph) bodyParas.push(el);
+    }
+    processParas(bodyParas);
+
+    // Process table cell paragraphs
+    for (const table of doc.getAllTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          processParas(cell.getParagraphs());
+        }
+      }
+    }
+
+    return fixed;
+  }
+
+  /**
    * Fix column width for "Step" tables.
    * Detects tables where first column header is "Step" and cells below contain numbers.
    * Sets the first column width to 1 inch (1440 twips).
@@ -5331,93 +5421,6 @@ export class WordDocumentProcessor {
     }
 
     return { count: cellsFixed, affectedCells };
-  }
-
-  /**
-   * Center all images and apply 2pt solid black borders
-   * Enhanced version that both centers image-containing paragraphs and applies borders
-   * Only processes images LARGER than 50x50 pixels to avoid formatting small icons/logos
-   */
-  private async centerAllImages(doc: Document): Promise<number> {
-    let processedCount = 0;
-    let skippedCount = 0;
-    const paragraphs = doc.getAllParagraphs();
-
-    this.log.debug("=== CENTERING IMAGES AND APPLYING BORDERS ===");
-    this.log.debug("Only processing images larger than 50x50 pixels");
-
-    // Conversion: 1 pixel = 9525 EMUs, so 50 pixels = 476250 EMUs
-    const MIN_SIZE_EMUS = 476250; // 50 pixels
-
-    for (const para of paragraphs) {
-      const content = para.getContent();
-
-      // Process each content item
-      for (const item of content) {
-        if (item instanceof Image) {
-          // Get image dimensions in EMUs (English Metric Units)
-          const width = item.getWidth();
-          const height = item.getHeight();
-
-          // Check if image is larger than 50x50 pixels
-          if (width > MIN_SIZE_EMUS && height > MIN_SIZE_EMUS) {
-            // Skip centering for list paragraphs - numbering controls their layout
-            const numbering = para.getNumbering();
-            if (!numbering) {
-              // Center the paragraph containing the image
-              para.setAlignment("center");
-            } else {
-              this.log.debug(
-                `[LIST] Skipping centering for list paragraph with image: numId=${numbering.numId}, level=${numbering.level}`
-              );
-            }
-
-            // Apply 2pt solid black border to the image
-            await this.applyImageBorder(doc, item);
-
-            processedCount++;
-            this.log.debug(
-              `Processed image ${processedCount}: centered and bordered (${Math.round(width / 9525)}x${Math.round(height / 9525)} pixels)`
-            );
-          } else {
-            skippedCount++;
-            this.log.debug(
-              `Skipped small image ${skippedCount}: ${Math.round(width / 9525)}x${Math.round(height / 9525)} pixels (below 50x50 threshold)`
-            );
-          }
-        }
-      }
-    }
-
-    this.log.info(
-      `Centered and bordered ${processedCount} images (skipped ${skippedCount} small images)`
-    );
-    return processedCount;
-  }
-
-  /**
-   * Apply 2pt solid black border to an image
-   *
-   * Adds border formatting to image drawing elements by manipulating the document XML.
-   * Border specs: 2pt width (25400 EMUs), solid black (#000000)
-   *
-   * @param doc - Document containing the image
-   * @param image - Image instance to apply border to
-   */
-  private async applyImageBorder(doc: Document, image: Image): Promise<void> {
-    try {
-      // Use docxmlater's Image.setBorder() API to apply borders.
-      // This modifies the in-memory model directly, keeping it in sync
-      // with the save pipeline and avoiding corruption from raw XML regex
-      // manipulation via getPart/setPart on document.xml.
-      image.setBorder(2); // 2pt solid black border
-      this.log.debug("Applied 2pt solid black border to image via docxmlater API");
-    } catch (error) {
-      this.log.warn(
-        `Failed to apply border to image: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
-      // Don't throw - continue processing other images
-    }
   }
 
   /**
@@ -8013,8 +8016,12 @@ export class WordDocumentProcessor {
     cellsRecolored: number;
   }> {
     // Get shading colors for tables from session settings (strip # prefix for OOXML format)
-    const header2Color = options.tableShadingSettings?.header2Shading?.replace("#", "") || "BFBFBF";
-    const otherColor = options.tableShadingSettings?.otherShading?.replace("#", "") || "DFDFDF";
+    // Validate hex format to prevent malformed values from breaking regex interpolation
+    const hexColorRegex = /^[0-9A-Fa-f]{6}$/;
+    const rawHeader2 = options.tableShadingSettings?.header2Shading?.replace("#", "") || "BFBFBF";
+    const rawOther = options.tableShadingSettings?.otherShading?.replace("#", "") || "DFDFDF";
+    const header2Color = hexColorRegex.test(rawHeader2) ? rawHeader2 : "BFBFBF";
+    const otherColor = hexColorRegex.test(rawOther) ? rawOther : "DFDFDF";
 
     // Get preserveBold from Normal style (table cells use Normal style formatting)
     // Use DIRECT formatting check only (not getEffectiveBold) to avoid table style inheritance issues
@@ -8119,6 +8126,25 @@ export class WordDocumentProcessor {
             docAny._originalStylesXml = docAny._originalStylesXml.replace(
               fillPattern,
               `$1${newColor}$2`
+            );
+
+            // Strip theme fill attributes from <w:shd> elements that now have
+            // the new fill color — Word prioritizes w:themeFill/w:themeFillShade
+            // over w:fill, so leaving them causes the old theme-derived color
+            // (e.g. E9E9E9) to render instead of the explicit fill (DFDFDF)
+            const shdThemeRegex = new RegExp(
+              `(<w:shd\\b)([^>]*w:fill=["']${newColor}["'][^>]*?)(/?>)`,
+              "gi"
+            );
+            docAny._originalStylesXml = docAny._originalStylesXml.replace(
+              shdThemeRegex,
+              (_match: string, prefix: string, attrs: string, suffix: string) => {
+                const cleaned = attrs
+                  .replace(/\s*w:themeFill="[^"]*"/gi, "")
+                  .replace(/\s*w:themeFillShade="[^"]*"/gi, "")
+                  .replace(/\s*w:themeFillTint="[^"]*"/gi, "");
+                return prefix + cleaned + suffix;
+              }
             );
           }
         }

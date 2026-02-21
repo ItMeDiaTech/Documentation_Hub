@@ -1,7 +1,7 @@
 /**
  * List normalization module
  *
- * Moved from docxmlater to Template_UI for processing-level customization.
+ * Moved from docxmlater to dochub-app for processing-level customization.
  * Provides typed list prefix detection and normalization to proper Word formatting.
  */
 
