@@ -9,7 +9,7 @@
  * - Spacing between list items
  */
 
-import { Document, Paragraph, inchesToTwips } from "docxmlater";
+import { Document, inchesToTwips } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("ListProcessor");
@@ -106,61 +106,40 @@ export class ListProcessor {
 
   /**
    * Standardize list prefix formatting (bullet/number font, size, color)
+   * Uses NumberingLevel API setters instead of raw XML manipulation.
    */
   async standardizeListPrefixFormatting(doc: Document): Promise<number> {
     let standardizedCount = 0;
 
     try {
-      const numberingPart = await doc.getPart("word/numbering.xml");
-      if (!numberingPart || typeof numberingPart.content !== "string") {
-        log.warn("Unable to access numbering.xml for list prefix standardization");
+      const numberingManager = doc.getNumberingManager();
+      if (!numberingManager) {
+        log.warn("No numbering manager available for list prefix standardization");
         return 0;
       }
 
-      let xmlContent = numberingPart.content;
-      let modified = false;
-
-      // Find all <w:lvl> elements
-      const lvlRegex = /<w:lvl w:ilvl="(\d+)"[^>]*>([\s\S]*?)<\/w:lvl>/g;
-      const matches = Array.from(xmlContent.matchAll(lvlRegex));
-
-      log.debug(`Found ${matches.length} list levels to process`);
+      const abstractNums = numberingManager.getAllAbstractNumberings();
+      log.debug(`Found ${abstractNums.length} abstract numberings to process`);
 
       // Special bullet fonts that should be preserved (used for special characters like open/closed circles)
       const specialBulletFonts = ["Webdings", "Wingdings", "Symbol", "Wingdings 2", "Wingdings 3", "Courier New"];
 
-      // Process matches in reverse order
-      for (let i = matches.length - 1; i >= 0; i--) {
-        const match = matches[i];
-        const levelIndex = match[1];
-        const levelContent = match[2];
-        const fullMatch = match[0];
-
-        const rPrMatches = Array.from(levelContent.matchAll(/<w:rPr>([\s\S]*?)<\/w:rPr>/g));
-
-        if (rPrMatches.length > 0) {
-          let updatedContent = levelContent;
+      for (const abstractNum of abstractNums) {
+        for (let levelIndex = 0; levelIndex <= 8; levelIndex++) {
+          const level = abstractNum.getLevel(levelIndex);
+          if (!level) continue;
 
           // Check if this level uses a special bullet font that should be preserved
-          const currentFontMatch = levelContent.match(/<w:rFonts[^>]*w:ascii="([^"]+)"/);
-          const currentFont = currentFontMatch ? currentFontMatch[1] : null;
+          const currentFont = level.getProperties().font;
           const preserveFont = currentFont && specialBulletFonts.includes(currentFont);
 
-          // Build font XML - preserve special bullet fonts, otherwise use Verdana
-          // Bold is explicitly removed from bullet point symbols
+          // Preserve special bullet fonts, otherwise use Verdana
           const fontToUse = preserveFont ? currentFont : "Verdana";
-          const rPrXml = `<w:rPr>
-              <w:rFonts w:hint="default" w:ascii="${fontToUse}" w:hAnsi="${fontToUse}" w:cs="${fontToUse}"/>
-              <w:color w:val="000000"/>
-              <w:sz w:val="24"/>
-              <w:szCs w:val="24"/>
-            </w:rPr>`;
+          level.setFont(fontToUse);
+          level.setColor("000000");
+          level.setFontSize(24); // 24 half-points = 12pt
+          level.setBold(false);
 
-          updatedContent = updatedContent.replace(/<w:rPr>[\s\S]*?<\/w:rPr>/g, rPrXml);
-
-          const updatedLevel = fullMatch.replace(levelContent, updatedContent);
-          xmlContent = xmlContent.replace(fullMatch, updatedLevel);
-          modified = true;
           standardizedCount++;
 
           if (preserveFont) {
@@ -168,25 +147,10 @@ export class ListProcessor {
           } else {
             log.debug(`Standardized list level ${levelIndex}: Verdana 12pt black`);
           }
-        } else {
-          // No rPr found - insert one with standard Verdana (no bullet font to preserve)
-          const standardRPr = `<w:rPr>
-              <w:rFonts w:hint="default" w:ascii="Verdana" w:hAnsi="Verdana" w:cs="Verdana"/>
-              <w:color w:val="000000"/>
-              <w:sz w:val="24"/>
-              <w:szCs w:val="24"/>
-            </w:rPr>`;
-          const updatedLevel = fullMatch.replace("</w:lvl>", `${standardRPr}\n          </w:lvl>`);
-          xmlContent = xmlContent.replace(fullMatch, updatedLevel);
-          modified = true;
-          standardizedCount++;
-
-          log.debug(`Added standardized formatting to list level ${levelIndex}`);
         }
       }
 
-      if (modified) {
-        await doc.setPart("word/numbering.xml", xmlContent);
+      if (standardizedCount > 0) {
         log.info(`Standardized ${standardizedCount} list prefix levels`);
       }
     } catch (error) {
@@ -199,6 +163,7 @@ export class ListProcessor {
 
   /**
    * Apply bullet uniformity - standardize bullet characters
+   * Uses NumberingLevel API setters instead of raw XML manipulation.
    */
   async applyBulletUniformity(
     doc: Document,
@@ -207,35 +172,30 @@ export class ListProcessor {
     let listsUpdated = 0;
 
     try {
-      const numberingPart = await doc.getPart("word/numbering.xml");
-      if (!numberingPart || typeof numberingPart.content !== "string") {
+      const numberingManager = doc.getNumberingManager();
+      if (!numberingManager) {
         return { listsUpdated: 0, levelsProcessed: 0 };
       }
 
-      let xmlContent = numberingPart.content;
-      let modified = false;
+      const abstractNums = numberingManager.getAllAbstractNumberings();
 
       // Update bullet characters based on settings
       for (const levelConfig of settings.indentationLevels) {
-        if (levelConfig.bulletChar) {
-          // Find and update bullet character for this level
-          const lvlPattern = new RegExp(
-            `(<w:lvl w:ilvl="${levelConfig.level}"[^>]*>[\\s\\S]*?<w:lvlText w:val=")([^"]*)("/>)`,
-            "g"
-          );
+        if (!levelConfig.bulletChar) continue;
 
-          const newContent = xmlContent.replace(lvlPattern, `$1${levelConfig.bulletChar}$3`);
+        for (const abstractNum of abstractNums) {
+          const level = abstractNum.getLevel(levelConfig.level);
+          if (!level) continue;
 
-          if (newContent !== xmlContent) {
-            xmlContent = newContent;
-            modified = true;
-            listsUpdated++;
-          }
+          // Only update bullet lists, not numbered lists
+          if (level.getFormat() !== "bullet") continue;
+
+          level.setText(levelConfig.bulletChar);
+          listsUpdated++;
         }
       }
 
-      if (modified) {
-        await doc.setPart("word/numbering.xml", xmlContent);
+      if (listsUpdated > 0) {
         log.info(`Updated bullet characters in ${listsUpdated} list levels`);
       }
     } catch (error) {

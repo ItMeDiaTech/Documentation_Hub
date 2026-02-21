@@ -205,7 +205,7 @@ Track your productivity with comprehensive statistics:
 - **Styling:** Tailwind CSS 3.4
 - **Animations:** Framer Motion 12
 - **UI Components:** Radix UI primitives
-- **Document Processing:** DocXMLater 8.7 (type-safe OOXML processing)
+- **Document Processing:** DocXMLater 10.1 (type-safe OOXML processing)
 - **State Management:** React Context with Zustand
 - **Data Persistence:** IndexedDB for sessions, LocalStorage for settings
 - **Command Palette:** cmdk library
@@ -648,11 +648,16 @@ Planned features for future releases:
 
 ---
 
-**Version:** 5.2.35
-**Last Updated:** January 2026
+**Version:** 5.6.0
+**Last Updated:** February 2026
 **Maintainer:** ItMeDiaTech
 
 ### Recent Major Updates
+
+**February 2026 - DocXMLater 10.1 Upgrade:**
+- Upgraded to DocXMLater 10.1.0 with 70+ new ECMA-376 API methods
+- Refactored ListProcessor to use NumberingLevel API, eliminating raw XML manipulation
+- List prefix standardization now uses type-safe setters (setFont, setColor, setFontSize, setBold)
 
 **January 2025 - DocXMLater Migration:**
 - Complete migration to DocXMLater library for document processing

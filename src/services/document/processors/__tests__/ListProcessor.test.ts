@@ -105,60 +105,47 @@ describe('ListProcessor', () => {
 
   describe('standardizeListPrefixFormatting', () => {
     it('should standardize list prefix formatting to Verdana', async () => {
-      const mockNumberingXml = `<?xml version="1.0"?>
-        <w:numbering>
-          <w:abstractNum w:abstractNumId="0">
-            <w:lvl w:ilvl="0">
-              <w:rPr>
-                <w:rFonts w:ascii="Arial"/>
-                <w:color w:val="FF0000"/>
-              </w:rPr>
-            </w:lvl>
-          </w:abstractNum>
-        </w:numbering>`;
-
-      mockDoc.getPart.mockResolvedValue({ name: 'word/numbering.xml', content: mockNumberingXml });
+      const mockLevel = createMockNumberingLevel('Arial');
+      const mockAbstractNum = {
+        getLevel: vi.fn((idx: number) => (idx === 0 ? mockLevel : null)),
+      };
+      const mockNumberingManager = {
+        getAllAbstractNumberings: vi.fn().mockReturnValue([mockAbstractNum]),
+      };
+      mockDoc.getNumberingManager = vi.fn().mockReturnValue(mockNumberingManager);
 
       const count = await processor.standardizeListPrefixFormatting(mockDoc);
 
       expect(count).toBe(1);
-      expect(mockDoc.setPart).toHaveBeenCalledWith(
-        'word/numbering.xml',
-        expect.stringContaining('Verdana')
-      );
+      expect(mockLevel.setFont).toHaveBeenCalledWith('Verdana');
+      expect(mockLevel.setColor).toHaveBeenCalledWith('000000');
+      expect(mockLevel.setFontSize).toHaveBeenCalledWith(24);
+      expect(mockLevel.setBold).toHaveBeenCalledWith(false);
     });
 
-    it('should handle missing numbering.xml', async () => {
-      mockDoc.getPart.mockResolvedValue(null);
+    it('should handle missing numbering manager', async () => {
+      mockDoc.getNumberingManager = vi.fn().mockReturnValue(null);
 
       const count = await processor.standardizeListPrefixFormatting(mockDoc);
 
       expect(count).toBe(0);
     });
 
-    it('should remove bold formatting from list prefixes (standardization)', async () => {
-      // Note: Bold is explicitly removed during standardization per implementation design
-      const mockNumberingXml = `<?xml version="1.0"?>
-        <w:numbering>
-          <w:abstractNum w:abstractNumId="0">
-            <w:lvl w:ilvl="0">
-              <w:rPr>
-                <w:b/>
-                <w:rFonts w:ascii="Arial"/>
-              </w:rPr>
-            </w:lvl>
-          </w:abstractNum>
-        </w:numbering>`;
-
-      mockDoc.getPart.mockResolvedValue({ name: 'word/numbering.xml', content: mockNumberingXml });
+    it('should preserve special bullet fonts', async () => {
+      const mockLevel = createMockNumberingLevel('Symbol');
+      const mockAbstractNum = {
+        getLevel: vi.fn((idx: number) => (idx === 0 ? mockLevel : null)),
+      };
+      const mockNumberingManager = {
+        getAllAbstractNumberings: vi.fn().mockReturnValue([mockAbstractNum]),
+      };
+      mockDoc.getNumberingManager = vi.fn().mockReturnValue(mockNumberingManager);
 
       await processor.standardizeListPrefixFormatting(mockDoc);
 
-      // Bold should NOT be in output - it's explicitly removed during standardization
-      expect(mockDoc.setPart).toHaveBeenCalledWith(
-        'word/numbering.xml',
-        expect.not.stringContaining('<w:b/>')
-      );
+      // Symbol font should be preserved, not replaced with Verdana
+      expect(mockLevel.setFont).toHaveBeenCalledWith('Symbol');
+      expect(mockLevel.setBold).toHaveBeenCalledWith(false);
     });
   });
 
@@ -278,6 +265,18 @@ function createMockListParagraph(level: number, numId: number): Mocked<Paragraph
     getText: vi.fn().mockReturnValue('List item'),
     getStyle: vi.fn().mockReturnValue('ListParagraph'),
   } as unknown as Mocked<Paragraph>;
+}
+
+function createMockNumberingLevel(font: string) {
+  return {
+    getProperties: vi.fn().mockReturnValue({ font }),
+    getFormat: vi.fn().mockReturnValue('bullet'),
+    setFont: vi.fn().mockReturnThis(),
+    setColor: vi.fn().mockReturnThis(),
+    setFontSize: vi.fn().mockReturnThis(),
+    setBold: vi.fn().mockReturnThis(),
+    setText: vi.fn().mockReturnThis(),
+  };
 }
 
 function createMockNormalParagraph(): Mocked<Paragraph> {
