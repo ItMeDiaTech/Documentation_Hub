@@ -135,28 +135,38 @@ export function sanitizeHyperlinkTexts(texts: string[]): string[] {
 }
 
 /**
- * Replace en-dashes and em-dashes with regular hyphens
+ * Remove em/en typographic variants
  *
- * Normalizes typographic dashes to standard ASCII hyphens:
+ * Normalizes typographic dashes and spaces to standard ASCII equivalents:
  * - En-dash (U+2013, –) -> Hyphen (U+002D, -)
  * - Em-dash (U+2014, —) -> Hyphen (U+002D, -)
+ * - En-space (U+2002) -> Regular space (U+0020)
+ * - Em-space (U+2003) -> Regular space (U+0020)
  *
- * @param text - The text that may contain en-dashes or em-dashes
- * @returns The text with dashes normalized to hyphens
+ * After space replacement, collapses any resulting leading spaces at the start of the text.
+ *
+ * @param text - The text that may contain em/en dashes or spaces
+ * @returns The text with typographic variants normalized
  *
  * @example
  * ```typescript
- * normalizeEnDashesToHyphens("2020–2024")
+ * removeEmEnVariants("2020–2024")
  * // Returns: "2020-2024"
  *
- * normalizeEnDashesToHyphens("Hello—World")
+ * removeEmEnVariants("Hello—World")
  * // Returns: "Hello-World"
  *
- * normalizeEnDashesToHyphens("Normal text with - hyphens")
- * // Returns: "Normal text with - hyphens" (unchanged)
+ * removeEmEnVariants("\u2003\u2002Text with em/en spaces")
+ * // Returns: "Text with em/en spaces"
  * ```
  */
-export function normalizeEnDashesToHyphens(text: string): string {
+export function removeEmEnVariants(text: string): string {
   if (!text) return '';
-  return text.replace(/[\u2013\u2014]/g, '-');
+  // Replace em/en dashes with hyphens
+  let result = text.replace(/[\u2013\u2014]/g, '-');
+  // Replace em/en spaces with regular spaces
+  result = result.replace(/[\u2002\u2003]/g, ' ');
+  // Collapse leading spaces at paragraph start
+  result = result.replace(/^ +/, '');
+  return result;
 }

@@ -132,8 +132,55 @@ export const afterLargeTablesRule: BlankLineRule = {
 };
 
 /**
+ * Check if a paragraph is a bold-colon non-indented, non-list paragraph.
+ */
+function isBoldColonNoIndent(para: Paragraph): boolean {
+  if (isParagraphBlank(para)) return false;
+  if (!startsWithBoldColon(para)) return false;
+  if (para.getNumbering()) return false;
+  const indent = para.getFormatting()?.indentation?.left;
+  if (indent && indent > 0) return false;
+  return true;
+}
+
+/**
+ * Check if a "Related Document(s)" 1x1 table exists within 15 body elements above.
+ */
+function hasRelatedDocumentTableNearby(ctx: RuleContext): boolean {
+  if (ctx.scope !== "body") return false;
+  const lookbackLimit = Math.max(0, ctx.currentIndex - 15);
+  for (let i = ctx.currentIndex - 1; i >= lookbackLimit; i--) {
+    const el = ctx.doc.getBodyElementAt(i);
+    if (el instanceof Table) {
+      const r = el.getRowCount();
+      const c = el.getColumnCount();
+      if (r === 1 && c === 1) {
+        try {
+          const cell = el.getCell(0, 0);
+          if (cell) {
+            const cellText = cell
+              .getParagraphs()
+              .map((p) => p.getText())
+              .join(" ")
+              .toLowerCase();
+            if (cellText.includes("related document")) {
+              return true;
+            }
+          }
+        } catch {
+          // Skip if cell access fails
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Add blank line ABOVE bold+colon non-indented paragraphs.
  * Checks ctx.nextElement to see if the upcoming paragraph starts with bold text + colon.
+ * Near a Related Documents table, suppresses blank between consecutive bold-colon entries
+ * but allows blank above the first entry.
  */
 export const aboveBoldColonNoIndentRule: BlankLineRule = {
   id: "add-above-bold-colon-no-indent",
@@ -141,21 +188,26 @@ export const aboveBoldColonNoIndentRule: BlankLineRule = {
   scope: "both",
   matches(ctx: RuleContext): boolean {
     if (!(ctx.nextElement instanceof Paragraph)) return false;
-    if (isParagraphBlank(ctx.nextElement)) return false;
-    if (!startsWithBoldColon(ctx.nextElement)) return false;
-    if (ctx.nextElement.getNumbering()) return false;
+    if (!isBoldColonNoIndent(ctx.nextElement)) return false;
 
-    const indent = ctx.nextElement.getFormatting()?.indentation?.left;
-    if (indent && indent > 0) return false;
+    // Near Related Documents: suppress blank between consecutive bold-colon entries
+    if (hasRelatedDocumentTableNearby(ctx)) {
+      // If current element is also bold-colon non-indented, suppress blank between them
+      if (ctx.currentElement instanceof Paragraph && isBoldColonNoIndent(ctx.currentElement)) {
+        return false;
+      }
+      // Otherwise allow blank above the first entry
+      return true;
+    }
 
     return true;
   },
 };
 
 /**
- * Bold+colon with no indentation where next line is NOT indented:
- * add blank after, UNLESS there is a 1x1 table with "Related Document"
- * text within 15 lines above.
+ * Bold+colon with no indentation: add blank after.
+ * Near a Related Documents table, only add blank after the LAST consecutive
+ * bold-colon entry (suppress between entries).
  */
 export const boldColonNoIndentAfterRule: BlankLineRule = {
   id: "add-after-bold-colon-no-indent",
@@ -163,15 +215,7 @@ export const boldColonNoIndentAfterRule: BlankLineRule = {
   scope: "both",
   matches(ctx: RuleContext): boolean {
     if (!(ctx.currentElement instanceof Paragraph)) return false;
-    if (isParagraphBlank(ctx.currentElement)) return false;
-    if (!startsWithBoldColon(ctx.currentElement)) return false;
-
-    // Must not be a list item
-    if (ctx.currentElement.getNumbering()) return false;
-
-    // Must have no indentation
-    const indent = ctx.currentElement.getFormatting()?.indentation?.left;
-    if (indent && indent > 0) return false;
+    if (!isBoldColonNoIndent(ctx.currentElement)) return false;
 
     // Next line must NOT be indented and NOT be a list item
     if (ctx.nextElement instanceof Paragraph) {
@@ -180,33 +224,14 @@ export const boldColonNoIndentAfterRule: BlankLineRule = {
       if (nextIndent && nextIndent > 0) return false;
     }
 
-    // Check for "Related Document" 1x1 table within 15 lines above
-    if (ctx.scope === "body") {
-      const lookbackLimit = Math.max(0, ctx.currentIndex - 15);
-      for (let i = ctx.currentIndex - 1; i >= lookbackLimit; i--) {
-        const el = ctx.doc.getBodyElementAt(i);
-        if (el instanceof Table) {
-          const r = el.getRowCount();
-          const c = el.getColumnCount();
-          if (r === 1 && c === 1) {
-            try {
-              const cell = el.getCell(0, 0);
-              if (cell) {
-                const cellText = cell
-                  .getParagraphs()
-                  .map((p) => p.getText())
-                  .join(" ")
-                  .toLowerCase();
-                if (cellText.includes("related document")) {
-                  return false; // Skip - Related Document table nearby
-                }
-              }
-            } catch {
-              // Skip if cell access fails
-            }
-          }
-        }
+    // Near Related Documents: only add blank after the last bold-colon entry
+    if (hasRelatedDocumentTableNearby(ctx)) {
+      // If next is also a bold-colon non-indented paragraph, suppress blank between entries
+      if (ctx.nextElement instanceof Paragraph && isBoldColonNoIndent(ctx.nextElement)) {
+        return false;
       }
+      // Next is NOT bold-colon — this is the last entry, add blank after it
+      return true;
     }
 
     return true;

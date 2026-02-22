@@ -58,7 +58,6 @@ import { hyperlinkService } from "../HyperlinkService";
 import type { HyperlinkApiResponse } from "@/types/hyperlink";
 import { DocXMLaterProcessor } from "./DocXMLaterProcessor";
 import { blankLineManager, removeSmallIndents } from "./blanklines";
-import { startsWithBoldColon } from "./blanklines/helpers/paragraphChecks";
 import { normalizeRunWhitespace } from "./helpers/whitespace";
 import { cropEmbeddedImageBorders } from "./helpers/ImageBorderCropper";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
@@ -116,7 +115,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   removeParagraphLines?: boolean; // remove-paragraph-lines: Remove consecutive empty paragraphs
   removeItalics?: boolean; // remove-italics: Remove italic formatting from all runs
   preserveRedFont?: boolean; // preserve-red-font: Preserve exact #FF0000 red font color on Normal and List Paragraph style paragraphs
-  normalizeDashes?: boolean; // normalize-dashes: Replace en-dashes (U+2013) and em-dashes (U+2014) with hyphens (U+002D)
+  removeEmEnVariants?: boolean; // remove-em-en-variants: Replace em/en dashes with hyphens and em/en spaces with regular spaces
   standardizeHyperlinkFormatting?: boolean; // standardize-hyperlink-formatting: Remove bold/italic from hyperlinks and reset to standard style
   standardizeListPrefixFormatting?: boolean; // standardize-list-prefix-formatting: Apply consistent Verdana 12pt black formatting to all list symbols/numbers
   correctMisappliedStyles?: boolean; // correct-misapplied-styles: Fix paragraphs with incorrectly applied TOC or Hyperlink paragraph styles
@@ -896,6 +895,26 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
+      // PRE-TRACKING NORMALIZATION
+      // These operations run BEFORE tracking is enabled so they
+      // don't appear as tracked changes in the output document.
+      // ═══════════════════════════════════════════════════════════
+      if (options.removeEmEnVariants) {
+        this.log.debug("=== REMOVING EM/EN VARIANTS (PRE-TRACKING) ===");
+        const variantsRemoved = await this.removeEmEnVariants(doc);
+        this.log.info(`Removed em/en variants in ${variantsRemoved} runs`);
+
+        if (variantsRemoved > 0) {
+          result.changes?.push({
+            type: 'text',
+            category: 'structure',
+            description: 'Removed em/en dashes and spaces (pre-tracking)',
+            count: variantsRemoved,
+          });
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // Word Tracked Changes - Enable Tracking Mode
       // All DocHub modifications will become Word tracked changes
       // ═══════════════════════════════════════════════════════════
@@ -1443,21 +1462,7 @@ export class WordDocumentProcessor {
         }
       }
 
-      if (options.normalizeDashes) {
-        this.log.debug("=== NORMALIZING EN-DASHES TO HYPHENS ===");
-        const dashesNormalized = await this.normalizeEnDashesToHyphens(doc);
-        this.log.info(`Normalized en-dashes in ${dashesNormalized} runs`);
-
-        // Track dash normalization
-        if (dashesNormalized > 0) {
-          result.changes?.push({
-            type: 'text',
-            category: 'structure',
-            description: 'Normalized en-dashes to hyphens',
-            count: dashesNormalized,
-          });
-        }
-      }
+      // Em/en variant removal now runs BEFORE tracking is enabled (see above)
 
       // ALWAYS standardize hyperlink formatting to ensure consistency
       // All hyperlinks should be: Verdana 12pt, Blue, Underlined
@@ -1750,6 +1755,10 @@ export class WordDocumentProcessor {
       if (options.operations?.validateHeader2Tables && options.styles) {
         const header2Style = options.styles.find((s: any) => s.id === "header2");
         if (header2Style) {
+          // Disable tracking — cell shading changes on 1x1 tables should not
+          // generate tcPrChange (causes scrunched tables in Word's "Original" view)
+          doc.disableTrackChanges();
+
           this.log.debug("=== VALIDATING HEADER 2 TABLE FORMATTING ===");
           const tableResult = await this.validateHeader2TableFormatting(
             doc,
@@ -1757,6 +1766,13 @@ export class WordDocumentProcessor {
             options.tableShadingSettings
           );
           this.log.info(`Validated and fixed ${tableResult.count} Header 2 table cells`);
+
+          doc.enableTrackChanges({
+            author: authorName,
+            trackFormatting: true,
+            showInsertionsAndDeletions: true,
+            clearExistingPropertyChanges: false,
+          });
 
           // Track Header 2 table validation with affected cell names
           if (tableResult.count > 0) {
@@ -1786,6 +1802,21 @@ export class WordDocumentProcessor {
           category: 'structure',
           description: 'Standardized "Return to" hyperlinks (indent removed, right-aligned)',
           count: returnToLinksFixed,
+        });
+      }
+
+      // Clear indentation from center-aligned paragraphs.
+      // Per ECMA-376, center alignment renders content centered within text extents;
+      // non-zero left indentation shifts the centering reference point, causing misalignment.
+      this.log.debug("=== CLEARING CENTER-ALIGNED INDENTATION ===");
+      const centerIndentsCleared = this.clearCenterAlignedIndentation(doc);
+      if (centerIndentsCleared > 0) {
+        this.log.info(`Cleared indentation from ${centerIndentsCleared} center-aligned paragraphs`);
+        result.changes?.push({
+          type: 'style',
+          category: 'structure',
+          description: 'Removed indentation from center-aligned paragraphs',
+          count: centerIndentsCleared,
         });
       }
 
@@ -2231,6 +2262,70 @@ export class WordDocumentProcessor {
         }
       }
 
+      // ═══════════════════════════════════════════════════════════
+      // DOCUMENT ORIENTATION AND MARGINS (moved before table processing)
+      // Set landscape orientation and 1" margins BEFORE tables are sized,
+      // then rescale existing table grids to fit the landscape page width.
+      // ═══════════════════════════════════════════════════════════
+
+      // Disable track changes - landscape orientation and table rescaling are
+      // structural/layout changes that should not appear as tracked changes.
+      // Without this, tcPrChange records old portrait widths, causing tables
+      // to appear scrunched in Word's "Original" view.
+      doc.disableTrackChanges();
+
+      if (options.setLandscapeMargins) {
+        this.log.debug("=== SETTING LANDSCAPE ORIENTATION AND MARGINS ===");
+
+        // Set landscape orientation
+        doc.setPageOrientation('landscape');
+
+        // Set 1" margins on all sides (1440 twips = 1 inch)
+        doc.setMargins({
+          top: 1440,
+          bottom: 1440,
+          left: 1440,
+          right: 1440,
+          header: 720,
+          footer: 720,
+          gutter: 0,
+        });
+
+        // Force Print Layout view so Word doesn't open in Web Layout
+        doc.setDocumentView('print');
+
+        // Rescale table grids from portrait to landscape available width
+        const section = doc.getSection();
+        const pageSize = section.getPageSize();
+        const margins = section.getMargins();
+        if (pageSize && margins) {
+          const availableWidth = pageSize.width - (margins.left ?? 1440) - (margins.right ?? 1440);
+          for (const table of doc.getTables()) {
+            if (tableProcessor.shouldSkipTable(table)) continue;
+            const grid = table.getTableGrid();
+            if (grid && grid.length > 0) {
+              const gridSum = grid.reduce((s: number, w: number) => s + w, 0);
+              if (gridSum > 0 && gridSum < availableWidth) {
+                const scale = availableWidth / gridSum;
+                table.setTableGrid(grid.map((w: number) => Math.round(w * scale)));
+              }
+            }
+            // Use percentage (5000 = 100%) rather than absolute DXA value.
+            // Setting DXA values with the original 'pct' widthType causes Word
+            // to interpret the value as fiftieths-of-a-percent (e.g., 12960/50 = 259.2%).
+            table.setWidthType("pct");
+            table.setWidth(5000);
+          }
+        }
+
+        this.log.info('Set document to landscape orientation with 1" margins');
+        result.changes?.push({
+          type: 'structure',
+          category: 'structure',
+          description: 'Set landscape orientation with 1" margins',
+        });
+      }
+
       if (options.tableUniformity) {
         this.log.debug("=== APPLYING TABLE UNIFORMITY (DOCXMLATER 1.7.0) ===");
         this.log.info(`[DEBUG] tableUniformity=true, smartTables=${options.smartTables} (BOTH will run if both true!)`);
@@ -2243,18 +2338,6 @@ export class WordDocumentProcessor {
         const centeredCount = await tableProcessor.centerNumericCells(doc);
         if (centeredCount > 0) {
           this.log.info(`Centered ${centeredCount} numeric table cells`);
-        }
-
-        // Apply Step column width adjustment (tables with "Step" header get 1 inch width)
-        const stepColumnsAdjusted = await tableProcessor.applyStepColumnWidth(doc);
-        if (stepColumnsAdjusted > 0) {
-          this.log.info(`Adjusted ${stepColumnsAdjusted} Step column widths to 1 inch`);
-        }
-
-        // Remove specified row heights - allow rows to auto-size based on content
-        const rowHeightsRemoved = await tableProcessor.removeSpecifiedRowHeights(doc);
-        if (rowHeightsRemoved > 0) {
-          this.log.info(`Removed specified heights from ${rowHeightsRemoved} table rows`);
         }
 
         // Apply cell padding based on "Adjust Table Padding" processing option
@@ -2386,24 +2469,61 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
-      // TABLE AUTOFIT TO WINDOW + CLEAR ROW HEIGHTS
-      // Set all tables to auto-fit layout and clear fixed row heights
+      // TABLE AUTOFIT TO WINDOW WITH WIDTH PRESERVATION
+      // 1. Save cell widths (tcW) and clear all tcW + trHeight
+      // 2. Set auto-fit layout
+      // 3. Restore saved tcW
+      // Row heights (trHeight) are permanently cleared.
+      // Step column fix runs as a separate pass afterwards.
       // ═══════════════════════════════════════════════════════════
-      this.log.debug("=== SETTING TABLES TO AUTOFIT WINDOW ===");
+      this.log.debug("=== SETTING TABLES TO AUTOFIT WINDOW (WITH WIDTH PRESERVATION) ===");
+      const STEP_COLUMN_WIDTH = 1440; // 1 inch in twips
       const tables = doc.getTables();
       let autofitCount = 0;
+
       for (const table of tables) {
-        // Skip floating tables and tables containing nested tables
         if (tableProcessor.shouldSkipTable(table)) continue;
-        table.setLayout("auto");
-        // Clear fixed row heights to allow content-based sizing
-        for (const row of table.getRows()) {
+
+        const rows = table.getRows();
+
+        // 1. Save cell widths per row and clear tcW + trHeight
+        const savedWidths: Array<Array<{ width: number | undefined; widthType: string | undefined }>> = [];
+        for (const row of rows) {
+          const rowWidths: Array<{ width: number | undefined; widthType: string | undefined }> = [];
+          for (const cell of row.getCells()) {
+            rowWidths.push({
+              width: cell.getWidth(),
+              widthType: cell.getWidthType(),
+            });
+            // Clear cell width
+            cell.setWidthType(0, "auto");
+          }
+          savedWidths.push(rowWidths);
+          // Permanently clear row height
           row.clearHeight();
         }
+
+        // 2. Set auto-fit layout
+        table.setLayout("auto");
         autofitCount++;
+
+        // 3. Restore saved cell widths
+        for (let r = 0; r < rows.length; r++) {
+          const cells = rows[r].getCells();
+          const rowWidths = savedWidths[r];
+          if (!rowWidths) continue;
+
+          for (let c = 0; c < cells.length; c++) {
+            const saved = rowWidths[c];
+            if (saved && saved.width !== undefined && saved.widthType) {
+              cells[c].setWidthType(saved.width, saved.widthType as "auto" | "dxa" | "pct");
+            }
+          }
+        }
       }
+
       if (autofitCount > 0) {
-        this.log.info(`Set ${autofitCount} tables to autofit window layout with auto row heights`);
+        this.log.info(`Set ${autofitCount} tables to autofit window layout (widths preserved, heights cleared)`);
         result.changes?.push({
           type: 'table',
           category: 'structure',
@@ -2411,13 +2531,56 @@ export class WordDocumentProcessor {
           count: autofitCount,
         });
       }
+      // ═══════════════════════════════════════════════════════════
+      // STEP COLUMN WIDTH FIX (runs AFTER autofit restore)
+      // Detects tables with a "Step" header and numeric data cells,
+      // then sets the first column to 1 inch so the width is never
+      // overwritten by the autofit save/clear/restore cycle.
+      // ═══════════════════════════════════════════════════════════
+      let stepTablesFixed = 0;
+      for (const table of tables) {
+        if (tableProcessor.shouldSkipTable(table)) continue;
 
-      // ═══════════════════════════════════════════════════════════
-      // FIX "STEP" TABLE COLUMN WIDTH
-      // Tables with "Step" header and numbered rows get 1" first column
-      // ═══════════════════════════════════════════════════════════
-      this.log.debug("=== FIXING STEP TABLE COLUMN WIDTHS ===");
-      const stepTablesFixed = this.fixStepTableColumnWidth(doc);
+        const rows = table.getRows();
+        if (rows.length < 2) continue;
+
+        const headerRow = rows[0];
+        const firstCell = headerRow.getCells()[0];
+        if (!firstCell) continue;
+
+        const headerText = firstCell.getText().trim().toLowerCase();
+        if (headerText !== "step") continue;
+
+        // Validate data cells: must be numeric (e.g. "1", "2.", "3") or empty
+        let isStepTable = true;
+        for (let i = 1; i < rows.length; i++) {
+          const dataCell = rows[i].getCells()[0];
+          if (!dataCell) {
+            isStepTable = false;
+            break;
+          }
+          const cellText = dataCell.getText().trim();
+          if (cellText && !/^\d+\.?$/.test(cellText)) {
+            isStepTable = false;
+            break;
+          }
+        }
+
+        if (isStepTable) {
+          // Set grid-level column width
+          table.setColumnWidth(0, STEP_COLUMN_WIDTH);
+          // Set cell-level width for each row
+          for (const row of rows) {
+            const cell = row.getCells()[0];
+            if (cell) {
+              cell.setWidthType(STEP_COLUMN_WIDTH, "dxa");
+            }
+          }
+          this.log.debug(`Detected "Step" table: set first column to 1 inch`);
+          stepTablesFixed++;
+        }
+      }
+
       if (stepTablesFixed > 0) {
         this.log.info(`Fixed ${stepTablesFixed} "Step" tables with 1" first column`);
         result.changes?.push({
@@ -2427,6 +2590,48 @@ export class WordDocumentProcessor {
           count: stepTablesFixed,
         });
       }
+
+      // ═══════════════════════════════════════════════════════════
+      // NORMALIZE CELL WIDTHS (tcW) TO MATCH TABLE GRID (tblGrid)
+      // After all table processing, ensure each cell's tcW matches
+      // the sum of its spanned tblGrid columns to prevent Word's
+      // autofit from collapsing columns to near-zero width.
+      // ═══════════════════════════════════════════════════════════
+      for (const table of doc.getTables()) {
+        if (tableProcessor.shouldSkipTable(table)) continue;
+        const grid = table.getTableGrid();
+        if (!grid || grid.length === 0) continue;
+
+        for (const row of table.getRows()) {
+          let gridIdx = 0;
+          for (const cell of row.getCells()) {
+            if (gridIdx >= grid.length) break;
+            const span = cell.getColumnSpan() || 1;
+            let expectedWidth = 0;
+            for (let s = 0; s < span && (gridIdx + s) < grid.length; s++) {
+              expectedWidth += grid[gridIdx + s];
+            }
+            const currentWidth = cell.getWidth();
+            const currentType = cell.getWidthType();
+            if (currentWidth !== undefined && (currentWidth !== expectedWidth || currentType !== 'dxa')) {
+              cell.setWidthType(expectedWidth, "dxa");
+            }
+            gridIdx += span;
+          }
+        }
+      }
+
+      // Re-enable track changes after all structural table processing is complete.
+      // Everything above (landscape margins, table uniformity, borders, HLP tables,
+      // autofit, step columns, cell width normalization) modifies table layout/structure
+      // and should not generate tcPrChange/tblPrChange — those cause tables to appear
+      // scrunched in Word's "Original" view.
+      doc.enableTrackChanges({
+        author: authorName,
+        trackFormatting: true,
+        showInsertionsAndDeletions: true,
+        clearExistingPropertyChanges: false,
+      });
 
       // ═══════════════════════════════════════════════════════════
       // TEXT REPLACEMENT: "Parent SOP:" → "Parent Document:"
@@ -2793,35 +2998,6 @@ export class WordDocumentProcessor {
       // corruption due to double ZIP creation breaking file ordering.
       // ═══════════════════════════════════════════════════════════
       this.log.debug("=== SAVING DOCUMENT ===");
-
-      // ═══════════════════════════════════════════════════════════
-      // DOCUMENT ORIENTATION AND MARGINS
-      // Set landscape orientation and 1" margins on all sides
-      // ═══════════════════════════════════════════════════════════
-      if (options.setLandscapeMargins) {
-        this.log.debug("=== SETTING LANDSCAPE ORIENTATION AND MARGINS ===");
-
-        // Set landscape orientation
-        doc.setPageOrientation('landscape');
-
-        // Set 1" margins on all sides (1440 twips = 1 inch)
-        doc.setMargins({
-          top: 1440,
-          bottom: 1440,
-          left: 1440,
-          right: 1440,
-          header: 720,
-          footer: 720,
-          gutter: 0,
-        });
-
-        this.log.info('Set document to landscape orientation with 1" margins');
-        result.changes?.push({
-          type: 'structure',
-          category: 'structure',
-          description: 'Set landscape orientation with 1" margins',
-        });
-      }
 
       // PRESERVE TOC FIELD STRUCTURE
       // DocXMLater loses complex field structures (<w:fldChar>) during load.
@@ -3871,18 +4047,19 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Normalize en-dashes to regular hyphens
+   * Remove em/en typographic variants
    *
-   * Replaces typographic en-dashes (U+2013, –) with standard ASCII hyphens (U+002D, -)
-   * in all document text runs.
+   * Replaces em/en dashes (U+2013, U+2014) with hyphens (U+002D)
+   * and em/en spaces (U+2002, U+2003) with regular spaces in all document text runs.
+   * Collapses leading spaces at paragraph start after space replacement.
    *
    * Skips TOC paragraphs and complex field content to prevent corruption.
    *
    * @param doc - Document to process
    * @returns Number of runs modified
    */
-  private async normalizeEnDashesToHyphens(doc: Document): Promise<number> {
-    const { normalizeEnDashesToHyphens } = await import('@/utils/textSanitizer');
+  private async removeEmEnVariants(doc: Document): Promise<number> {
+    const { removeEmEnVariants } = await import('@/utils/textSanitizer');
     let normalizedCount = 0;
     const paragraphs = doc.getAllParagraphs();
 
@@ -3904,7 +4081,7 @@ export class WordDocumentProcessor {
         const text = run.getText();
         if (!text) continue;
 
-        const normalized = normalizeEnDashesToHyphens(text);
+        const normalized = removeEmEnVariants(text);
 
         if (normalized !== text) {
           run.setText(normalized);
@@ -4051,22 +4228,60 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Clear indentation from center-aligned paragraphs.
+   *
+   * Per ECMA-376 Section 17.3.1.13 (jc) and 17.3.1.12 (ind), center justification
+   * renders content centered within the text extents. Non-zero left or first-line
+   * indentation shifts the centering reference point, producing misaligned output.
+   *
+   * @param doc - Document to process
+   * @returns Number of paragraphs modified
+   */
+  private clearCenterAlignedIndentation(doc: Document): number {
+    let modified = 0;
+
+    for (const para of doc.getAllParagraphs()) {
+      if (para.getAlignment() !== 'center') continue;
+
+      const formatting = para.getFormatting();
+      const leftIndent = formatting?.indentation?.left || 0;
+      const firstLineIndent = formatting?.indentation?.firstLine || 0;
+
+      if (leftIndent > 0 || firstLineIndent > 0) {
+        if (leftIndent > 0) para.setLeftIndent(0);
+        if (firstLineIndent > 0) para.setFirstLineIndent(0);
+        modified++;
+      }
+    }
+
+    return modified;
+  }
+
+  /**
    * Apply standard formatting to a hyperlink
    *
    * Standard format: Verdana 12pt, Blue (#0000FF), Underlined, no bold/italic
-   * Uses replace: true to clear any existing characterStyle reference
+   * Uses individual property setters on each run to ensure changes are tracked
+   * by Word's revision tracking mechanism (setFormatting with replace bypasses tracking).
+   *
+   * Per docxmlater rules: setFont/setSize/setBold can DROP existing run properties,
+   * so color and underline are re-set after bold/italic changes.
    *
    * @param hyperlink - The hyperlink to format
    */
   private applyStandardHyperlinkFormatting(hyperlink: Hyperlink): void {
-    hyperlink.setFormatting({
-      font: "Verdana",
-      size: 12, // 12pt (docxmlater converts to 24 half-points internally)
-      color: "0000FF", // Blue (hex without #)
-      underline: "single",
-      bold: false,
-      italic: false,
-    }, { replace: true });
+    const run = hyperlink.getRun();
+    if (!run) return;
+
+    // Set font and size first
+    run.setFont("Verdana");
+    run.setSize(12);
+    // Set bold/italic (these can drop existing properties)
+    run.setBold(false);
+    run.setItalic(false);
+    // Re-set color and underline after bold/italic to prevent property loss
+    run.setColor("0000FF");
+    run.setUnderline("single");
   }
 
   /**
@@ -4376,9 +4591,12 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Standardize bold+colon formatting: ensure the colon character is bold
-   * in paragraphs that start with bold text followed by a colon (e.g., "Note:", "Warning:").
-   * Only applies to non-indented, non-list paragraphs.
+   * Standardize bold+colon formatting universally: anywhere bold text transitions
+   * to non-bold and the next character is a colon, that colon should be bolded.
+   * This ensures startsWithBoldColon() detection works correctly downstream.
+   *
+   * Per ECMA-376 Section 17.3.2.1 (b - bold): ensures consistent bold property
+   * on runs so pattern matching for spacing rules doesn't produce false negatives.
    *
    * @param doc - The document to process
    * @returns Number of colons bolded
@@ -4388,52 +4606,39 @@ export class WordDocumentProcessor {
 
     const processParas = (paragraphs: Paragraph[]) => {
       for (const para of paragraphs) {
-        if (!startsWithBoldColon(para)) continue;
-
-        // Skip indented paragraphs
-        const indent = para.getFormatting()?.indentation?.left;
-        if (indent && indent > 0) continue;
-
-        // Skip list items
-        if (para.getNumbering()) continue;
-
-        // Walk content to find the run containing the first colon
         const content = para.getContent();
+        let lastWasBold = false;
+
         for (const item of content) {
-          if (!(item instanceof Run)) continue;
+          if (!(item instanceof Run)) {
+            lastWasBold = false;
+            continue;
+          }
           const text = item.getText();
           if (!text) continue;
 
-          const colonIdx = text.indexOf(":");
-          if (colonIdx === -1) continue; // No colon in this run, check next
-
-          // Colon found — is this run already bold?
           const formatting = item.getFormatting();
-          if (formatting.bold) break; // Already bold, done
+          const isBold = !!formatting.bold;
 
-          // Need to bold the colon. Three cases:
-          if (text === ":") {
-            // Entire run is just ":" — bold it
-            item.setBold(true);
-            fixed++;
-          } else if (colonIdx === 0) {
-            // Run starts with ":" (e.g., ": rest of text")
-            const colonRun = new Run(":", { ...formatting, bold: true });
-            const remainderRun = new Run(text.substring(1), formatting);
-            para.replaceContent(item, [colonRun, remainderRun]);
-            fixed++;
-          } else {
-            // Colon is mid-run (e.g., "text: more")
-            const newRuns: Run[] = [];
-            newRuns.push(new Run(text.substring(0, colonIdx), formatting));
-            newRuns.push(new Run(":", { ...formatting, bold: true }));
-            if (colonIdx + 1 < text.length) {
-              newRuns.push(new Run(text.substring(colonIdx + 1), formatting));
+          // Check for bold-to-non-bold transition where non-bold run starts with ":"
+          if (lastWasBold && !isBold && text.startsWith(":")) {
+            if (text === ":") {
+              // Entire run is just ":" — bold it
+              item.setBold(true);
+              fixed++;
+            } else {
+              // Run starts with ":" (e.g., ": rest of text") — split it
+              const colonRun = new Run(":", { ...formatting, bold: true });
+              const remainderRun = new Run(text.substring(1), formatting);
+              para.replaceContent(item, [colonRun, remainderRun]);
+              fixed++;
             }
-            para.replaceContent(item, newRuns);
-            fixed++;
+            // After bolding the colon, it's now bold, so lastWasBold stays true
+            lastWasBold = true;
+            continue;
           }
-          break; // Stop after first colon
+
+          lastWasBold = isBold;
         }
       }
     };
@@ -4458,64 +4663,7 @@ export class WordDocumentProcessor {
     return fixed;
   }
 
-  /**
-   * Fix column width for "Step" tables.
-   * Detects tables where first column header is "Step" and cells below contain numbers.
-   * Sets the first column width to 1 inch (1440 twips).
-   *
-   * @param doc - The document to process
-   * @returns Number of tables fixed
-   */
-  private fixStepTableColumnWidth(doc: Document): number {
-    const STEP_COLUMN_WIDTH = 1440; // 1 inch in twips
-    let fixedCount = 0;
-
-    for (const table of doc.getTables()) {
-      // Skip floating tables and tables containing nested tables
-      if (tableProcessor.shouldSkipTable(table)) continue;
-
-      const rows = table.getRows();
-      if (rows.length < 2) continue; // Need at least header + 1 data row
-
-      // Check if first cell in first row says "Step" (case-insensitive)
-      const headerRow = rows[0];
-      const firstCell = headerRow.getCells()[0];
-      if (!firstCell) continue;
-
-      const headerText = firstCell.getText().trim().toLowerCase();
-      if (headerText !== "step") continue;
-
-      // Check if cells below first column contain just numbers
-      let isStepTable = true;
-      for (let i = 1; i < rows.length; i++) {
-        const dataCell = rows[i].getCells()[0];
-        if (!dataCell) {
-          isStepTable = false;
-          break;
-        }
-        const cellText = dataCell.getText().trim();
-        // Check if cell contains only digits (or is empty for merged cells)
-        if (cellText && !/^\d+$/.test(cellText)) {
-          isStepTable = false;
-          break;
-        }
-      }
-
-      if (isStepTable) {
-        // Set first column width to 1 inch for all cells in first column
-        for (const row of rows) {
-          const cell = row.getCells()[0];
-          if (cell) {
-            cell.setWidth(STEP_COLUMN_WIDTH);
-          }
-        }
-        this.log.debug(`Fixed "Step" table: set first column to 1 inch`);
-        fixedCount++;
-      }
-    }
-
-    return fixedCount;
-  }
+  // fixStepTableColumnWidth logic moved inline into the table auto-fit loop above
 
   /**
    * Assign styles to document - ENHANCED with docxmlater 1.1.0
@@ -9262,7 +9410,8 @@ export class WordDocumentProcessor {
     for (let i = 0; i < paragraphs.length; i++) {
       const text = this.getParagraphText(paragraphs[i])
         .replace(/[\u00A0\u2002\u2003\u2009\u200B]/g, ' ')
-        .toLowerCase();
+        .toLowerCase()
+        .replace(/\//g, '-'); // Normalize slashes to dashes for matching both "/" and "-" variants
 
       // Check for exact disclaimer lines first
       const matchesLine1 = text.includes(disclaimerLine1Pattern);

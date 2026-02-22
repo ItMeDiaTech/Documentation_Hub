@@ -189,7 +189,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
   autoAcceptRevisions: false,
   enabledOperations: [
     'remove-italics',
-    'normalize-dashes',
+    'remove-em-en-variants',
     'replace-outdated-titles',
     'validate-document-styles',
     'update-top-hyperlinks',
@@ -323,7 +323,7 @@ const ensureProcessingOptions = (session: Session): Session => {
   // This list is used to backfill existing sessions with newly added default-enabled options
   const defaultEnabledOptionIds = [
     'remove-italics',
-    'normalize-dashes',
+    'remove-em-en-variants',
     'validate-document-styles',
     'replace-outdated-titles',
     'update-top-hyperlinks',
@@ -1263,7 +1263,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           preserveUserBlankStructures?: boolean;
           removeItalics?: boolean;
           preserveRedFont?: boolean;
-          normalizeDashes?: boolean;
+          removeEmEnVariants?: boolean;
           standardizeHyperlinkFormatting?: boolean;
           standardizeListPrefixFormatting?: boolean;
           correctMisappliedStyles?: boolean;
@@ -1390,7 +1390,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionToProcess.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
           removeItalics: sessionToProcess.processingOptions?.enabledOperations?.includes('remove-italics'),
           preserveRedFont: sessionToProcess.processingOptions?.enabledOperations?.includes('preserve-red-font'),
-          normalizeDashes: sessionToProcess.processingOptions?.enabledOperations?.includes('normalize-dashes'),
+          removeEmEnVariants: sessionToProcess.processingOptions?.enabledOperations?.includes('remove-em-en-variants'),
 
           // ALWAYS ENABLED: Standardize hyperlink formatting (remove bold/italic from all hyperlinks)
           // This is intentional and required for the work environment to maintain professional document standards.

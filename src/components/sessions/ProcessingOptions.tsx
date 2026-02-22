@@ -23,7 +23,7 @@ export interface ProcessingOption {
 const optionDescriptions: Record<string, string> = {
   // Text Formatting
   'remove-italics': 'Removes all italic text formatting',
-  'normalize-dashes': 'Converts special dashes (em-dash, en-dash) to regular hyphens',
+  'remove-em-en-variants': 'Replaces em/en dashes with hyphens and em/en spaces with regular spaces',
   'preserve-red-font': 'Prevents changes to text that is colored red',
   'replace-outdated-titles': 'Updates a hyperlink\'s display text to match the title within theSource if different',
   'validate-document-styles': 'Applies your custom style settings from the Styles tab',
@@ -57,7 +57,7 @@ const optionDescriptions: Record<string, string> = {
 export const defaultOptions: ProcessingOption[] = [
   // Text Formatting Group
   { id: 'remove-italics', label: 'Remove Italics', group: 'text', enabled: true },
-  { id: 'normalize-dashes', label: 'Standardize Dashes', group: 'text', enabled: true },
+  { id: 'remove-em-en-variants', label: 'Remove "em" / "en" Variants', group: 'text', enabled: true },
   { id: 'preserve-red-font', label: 'Keep Red Text', group: 'text', enabled: false },
   { id: 'replace-outdated-titles', label: 'Update theSource Link Titles', group: 'hyperlinks', enabled: true },
   { id: 'validate-document-styles', label: 'Apply Custom Styles', group: 'text', enabled: true },

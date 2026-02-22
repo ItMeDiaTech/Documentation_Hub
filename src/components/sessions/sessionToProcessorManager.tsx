@@ -112,7 +112,7 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
   // Text Formatting Group
   // ═══════════════════════════════════════════════════════════
   if (enabled.has('remove-italics')) flags.removeItalics = true;
-  if (enabled.has('normalize-dashes')) flags.normalizeDashes = true;
+  if (enabled.has('remove-em-en-variants')) flags.removeEmEnVariants = true;
   if (enabled.has('remove-whitespace')) flags.removeWhitespace = true;
 
   // ═══════════════════════════════════════════════════════════
