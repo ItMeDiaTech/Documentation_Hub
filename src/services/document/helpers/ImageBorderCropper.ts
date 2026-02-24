@@ -20,7 +20,7 @@ const LIGHT_THRESHOLD = 230;      // luminance >= this = gap/padding pixel
 const EDGE_CONSENSUS = 0.65;      // 65 % of scan lines must detect border
 const MIN_BORDERED_EDGES = 3;     // at least 3 of 4 edges
 const MAX_BORDER_THICKNESS = 4;   // border line max 4 px
-const MIN_GAP_THICKNESS = 2;      // white gap at least 2 px
+const MIN_GAP_THICKNESS = 5;      // white gap at least 5 px
 const SAMPLE_INTERVAL = 5;        // sample every 5th column / row
 const MAX_CROP_FRACTION = 0.15;   // never crop > 15 % from one edge
 const MIN_DIMENSION_PX = 80;      // skip images < 80 px
@@ -274,7 +274,7 @@ function detectEmbeddedBorder(
  * Analyze one edge of the image for the border+gap pattern.
  *
  * Samples every SAMPLE_INTERVAL-th line perpendicular to the edge.
- * Each scan line looks inward for: dark border (1-4 px) then white gap (2-20 px).
+ * Each scan line looks inward for: dark border (1-4 px) then white gap (5-20 px).
  * Uses the median crop position from all detecting scan lines.
  */
 function analyzeEdge(
@@ -363,10 +363,8 @@ function scanLine(
         inBorder = false;
         gapPixels = 1;
       } else if (borderPixels === 0 && lum >= LIGHT_THRESHOLD) {
-        // No dark border at start — white-gap-only pattern
-        // (e.g., screen capture of borderless image showing page background padding)
-        inBorder = false;
-        gapPixels = 1;
+        // No dark border — not a border pattern, skip this scan line
+        return null;
       } else {
         // Mid-tone pixel before finding border — not a clean border
         if (borderPixels === 0) return null;
