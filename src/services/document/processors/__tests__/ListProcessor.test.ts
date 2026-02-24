@@ -4,27 +4,27 @@
  * Tests list bullet settings, indentation, and numbered list formatting.
  */
 
-import { vi, describe, it, expect, beforeEach, type Mocked } from 'vitest';
+
 import { ListProcessor, ListBulletSettings } from '../ListProcessor';
 import { Document, Paragraph } from 'docxmlater';
 
 // Mock docxmlater
-vi.mock('docxmlater');
+jest.mock('docxmlater');
 
 describe('ListProcessor', () => {
   let processor: ListProcessor;
-  let mockDoc: Mocked<Document>;
+  let mockDoc: jest.Mocked<Document>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     processor = new ListProcessor();
 
     mockDoc = {
-      getAllParagraphs: vi.fn().mockReturnValue([]),
-      getPart: vi.fn().mockResolvedValue(null),
-      setPart: vi.fn().mockResolvedValue(undefined),
-      getNumberingManager: vi.fn().mockReturnValue(null),
-    } as unknown as Mocked<Document>;
+      getAllParagraphs: jest.fn().mockReturnValue([]),
+      getPart: jest.fn().mockResolvedValue(null),
+      setPart: jest.fn().mockResolvedValue(undefined),
+      getNumberingManager: jest.fn().mockReturnValue(null),
+    } as unknown as jest.Mocked<Document>;
   });
 
   describe('applyListIndentation', () => {
@@ -107,12 +107,12 @@ describe('ListProcessor', () => {
     it('should standardize list prefix formatting to Verdana', async () => {
       const mockLevel = createMockNumberingLevel('Arial');
       const mockAbstractNum = {
-        getLevel: vi.fn((idx: number) => (idx === 0 ? mockLevel : null)),
+        getLevel: jest.fn((idx: number) => (idx === 0 ? mockLevel : null)),
       };
       const mockNumberingManager = {
-        getAllAbstractNumberings: vi.fn().mockReturnValue([mockAbstractNum]),
+        getAllAbstractNumberings: jest.fn().mockReturnValue([mockAbstractNum]),
       };
-      mockDoc.getNumberingManager = vi.fn().mockReturnValue(mockNumberingManager);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const count = await processor.standardizeListPrefixFormatting(mockDoc);
 
@@ -124,7 +124,7 @@ describe('ListProcessor', () => {
     });
 
     it('should handle missing numbering manager', async () => {
-      mockDoc.getNumberingManager = vi.fn().mockReturnValue(null);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(null);
 
       const count = await processor.standardizeListPrefixFormatting(mockDoc);
 
@@ -134,12 +134,12 @@ describe('ListProcessor', () => {
     it('should preserve special bullet fonts', async () => {
       const mockLevel = createMockNumberingLevel('Symbol');
       const mockAbstractNum = {
-        getLevel: vi.fn((idx: number) => (idx === 0 ? mockLevel : null)),
+        getLevel: jest.fn((idx: number) => (idx === 0 ? mockLevel : null)),
       };
       const mockNumberingManager = {
-        getAllAbstractNumberings: vi.fn().mockReturnValue([mockAbstractNum]),
+        getAllAbstractNumberings: jest.fn().mockReturnValue([mockAbstractNum]),
       };
-      mockDoc.getNumberingManager = vi.fn().mockReturnValue(mockNumberingManager);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       await processor.standardizeListPrefixFormatting(mockDoc);
 
@@ -152,18 +152,18 @@ describe('ListProcessor', () => {
   describe('isBulletList', () => {
     it('should identify bullet lists', () => {
       const mockAbstractNum = {
-        getLevel: vi.fn().mockReturnValue({
-          getFormat: vi.fn().mockReturnValue('bullet'),
+        getLevel: jest.fn().mockReturnValue({
+          getFormat: jest.fn().mockReturnValue('bullet'),
         }),
       };
       const mockInstance = {
-        getAbstractNumId: vi.fn().mockReturnValue(0),
+        getAbstractNumId: jest.fn().mockReturnValue(0),
       };
       const mockNumberingManager = {
-        getNumberingInstance: vi.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingManager = vi.fn().mockReturnValue(mockNumberingManager);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isBulletList(mockDoc, 1);
 
@@ -172,18 +172,18 @@ describe('ListProcessor', () => {
 
     it('should return false for numbered lists', () => {
       const mockAbstractNum = {
-        getLevel: vi.fn().mockReturnValue({
-          getFormat: vi.fn().mockReturnValue('decimal'),
+        getLevel: jest.fn().mockReturnValue({
+          getFormat: jest.fn().mockReturnValue('decimal'),
         }),
       };
       const mockInstance = {
-        getAbstractNumId: vi.fn().mockReturnValue(0),
+        getAbstractNumId: jest.fn().mockReturnValue(0),
       };
       const mockNumberingManager = {
-        getNumberingInstance: vi.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingManager = vi.fn().mockReturnValue(mockNumberingManager);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isBulletList(mockDoc, 1);
 
@@ -194,18 +194,18 @@ describe('ListProcessor', () => {
   describe('isNumberedList', () => {
     it('should identify decimal numbered lists', () => {
       const mockAbstractNum = {
-        getLevel: vi.fn().mockReturnValue({
-          getFormat: vi.fn().mockReturnValue('decimal'),
+        getLevel: jest.fn().mockReturnValue({
+          getFormat: jest.fn().mockReturnValue('decimal'),
         }),
       };
       const mockInstance = {
-        getAbstractNumId: vi.fn().mockReturnValue(0),
+        getAbstractNumId: jest.fn().mockReturnValue(0),
       };
       const mockNumberingManager = {
-        getNumberingInstance: vi.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingManager = vi.fn().mockReturnValue(mockNumberingManager);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isNumberedList(mockDoc, 1);
 
@@ -214,18 +214,18 @@ describe('ListProcessor', () => {
 
     it('should identify letter numbered lists', () => {
       const mockAbstractNum = {
-        getLevel: vi.fn().mockReturnValue({
-          getFormat: vi.fn().mockReturnValue('lowerLetter'),
+        getLevel: jest.fn().mockReturnValue({
+          getFormat: jest.fn().mockReturnValue('lowerLetter'),
         }),
       };
       const mockInstance = {
-        getAbstractNumId: vi.fn().mockReturnValue(0),
+        getAbstractNumId: jest.fn().mockReturnValue(0),
       };
       const mockNumberingManager = {
-        getNumberingInstance: vi.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingManager = vi.fn().mockReturnValue(mockNumberingManager);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isNumberedList(mockDoc, 1);
 
@@ -234,18 +234,18 @@ describe('ListProcessor', () => {
 
     it('should return false for bullet lists', () => {
       const mockAbstractNum = {
-        getLevel: vi.fn().mockReturnValue({
-          getFormat: vi.fn().mockReturnValue('bullet'),
+        getLevel: jest.fn().mockReturnValue({
+          getFormat: jest.fn().mockReturnValue('bullet'),
         }),
       };
       const mockInstance = {
-        getAbstractNumId: vi.fn().mockReturnValue(0),
+        getAbstractNumId: jest.fn().mockReturnValue(0),
       };
       const mockNumberingManager = {
-        getNumberingInstance: vi.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
+        getNumberingInstance: jest.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
       };
-      mockDoc.getNumberingManager = vi.fn().mockReturnValue(mockNumberingManager);
+      mockDoc.getNumberingManager = jest.fn().mockReturnValue(mockNumberingManager);
 
       const result = processor.isNumberedList(mockDoc, 1);
 
@@ -256,36 +256,36 @@ describe('ListProcessor', () => {
 
 // Helper functions
 
-function createMockListParagraph(level: number, numId: number): Mocked<Paragraph> {
+function createMockListParagraph(level: number, numId: number): jest.Mocked<Paragraph> {
   return {
-    getNumbering: vi.fn().mockReturnValue({ level, numId }),
-    setLeftIndent: vi.fn().mockReturnThis(),
-    setFirstLineIndent: vi.fn().mockReturnThis(),
-    setSpaceAfter: vi.fn(),
-    getText: vi.fn().mockReturnValue('List item'),
-    getStyle: vi.fn().mockReturnValue('ListParagraph'),
-  } as unknown as Mocked<Paragraph>;
+    getNumbering: jest.fn().mockReturnValue({ level, numId }),
+    setLeftIndent: jest.fn().mockReturnThis(),
+    setFirstLineIndent: jest.fn().mockReturnThis(),
+    setSpaceAfter: jest.fn(),
+    getText: jest.fn().mockReturnValue('List item'),
+    getStyle: jest.fn().mockReturnValue('ListParagraph'),
+  } as unknown as jest.Mocked<Paragraph>;
 }
 
 function createMockNumberingLevel(font: string) {
   return {
-    getProperties: vi.fn().mockReturnValue({ font }),
-    getFormat: vi.fn().mockReturnValue('bullet'),
-    setFont: vi.fn().mockReturnThis(),
-    setColor: vi.fn().mockReturnThis(),
-    setFontSize: vi.fn().mockReturnThis(),
-    setBold: vi.fn().mockReturnThis(),
-    setText: vi.fn().mockReturnThis(),
+    getProperties: jest.fn().mockReturnValue({ font }),
+    getFormat: jest.fn().mockReturnValue('bullet'),
+    setFont: jest.fn().mockReturnThis(),
+    setColor: jest.fn().mockReturnThis(),
+    setFontSize: jest.fn().mockReturnThis(),
+    setBold: jest.fn().mockReturnThis(),
+    setText: jest.fn().mockReturnThis(),
   };
 }
 
-function createMockNormalParagraph(): Mocked<Paragraph> {
+function createMockNormalParagraph(): jest.Mocked<Paragraph> {
   return {
-    getNumbering: vi.fn().mockReturnValue(null),
-    setLeftIndent: vi.fn().mockReturnThis(),
-    setFirstLineIndent: vi.fn().mockReturnThis(),
-    setSpaceAfter: vi.fn(),
-    getText: vi.fn().mockReturnValue('Normal paragraph'),
-    getStyle: vi.fn().mockReturnValue('Normal'),
-  } as unknown as Mocked<Paragraph>;
+    getNumbering: jest.fn().mockReturnValue(null),
+    setLeftIndent: jest.fn().mockReturnThis(),
+    setFirstLineIndent: jest.fn().mockReturnThis(),
+    setSpaceAfter: jest.fn(),
+    getText: jest.fn().mockReturnValue('Normal paragraph'),
+    getStyle: jest.fn().mockReturnValue('Normal'),
+  } as unknown as jest.Mocked<Paragraph>;
 }

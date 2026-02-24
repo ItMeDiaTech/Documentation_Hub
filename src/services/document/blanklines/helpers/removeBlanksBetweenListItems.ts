@@ -5,7 +5,6 @@
 
 import { Document, Paragraph, Table } from "docxmlater";
 import { isParagraphBlank } from "./paragraphChecks";
-import { tableHasNestedContent } from "./tableGuards";
 
 /**
  * Removes blank paragraphs between consecutive list items in both
@@ -22,11 +21,11 @@ export function removeBlanksBetweenListItems(doc: Document): number {
   let removed = 0;
 
   // Process table cells
-  // Skip tables with nested content to avoid violating ECMA-376 cell structure
+  // Skip cells with nested content to avoid violating ECMA-376 cell structure
   for (const table of doc.getAllTables()) {
-    if (tableHasNestedContent(table)) continue;
     for (const row of table.getRows()) {
       for (const cell of row.getCells()) {
+        if (cell.hasNestedTables()) continue;
         let cellParas = cell.getParagraphs();
         for (let ci = 1; ci < cellParas.length - 1; ci++) {
           const prev = cellParas[ci - 1];

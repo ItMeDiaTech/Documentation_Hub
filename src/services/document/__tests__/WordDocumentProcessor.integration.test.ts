@@ -7,7 +7,7 @@
  * Coverage target: 90%+ of WordDocumentProcessor.ts
  */
 
-import { vi, describe, it, expect, beforeEach, type Mocked } from 'vitest';
+
 import {
   WordDocumentProcessor,
   WordProcessingOptions,
@@ -19,32 +19,32 @@ import * as path from 'path';
 import { hyperlinkService } from '../../HyperlinkService';
 
 // Mock ONLY external dependencies, NOT docxmlater
-vi.mock('../../HyperlinkService');
-vi.mock('@/utils/MemoryMonitor', () => ({
+jest.mock('../../HyperlinkService');
+jest.mock('@/utils/MemoryMonitor', () => ({
   MemoryMonitor: {
-    checkMemory: vi.fn(),
-    forceGarbageCollection: vi.fn(),
-    logMemoryUsage: vi.fn(),
-    compareCheckpoints: vi.fn(),
-    getMemoryStats: vi.fn().mockReturnValue({
+    checkMemory: jest.fn(),
+    forceGarbageCollection: jest.fn(),
+    logMemoryUsage: jest.fn(),
+    compareCheckpoints: jest.fn(),
+    getMemoryStats: jest.fn().mockReturnValue({
       heapUsed: 100,
       heapTotal: 200,
       rss: 300,
     }),
   },
 }));
-vi.mock('@/utils/logger', () => ({
+jest.mock('@/utils/logger', () => ({
   logger: {
-    namespace: vi.fn().mockReturnValue({
-      info: vi.fn(),
-      debug: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
+    namespace: jest.fn().mockReturnValue({
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
     }),
   },
-  startTimer: vi.fn().mockReturnValue({
-    end: vi.fn().mockReturnValue(0),
-    elapsed: vi.fn().mockReturnValue(0),
+  startTimer: jest.fn().mockReturnValue({
+    end: jest.fn().mockReturnValue(0),
+    elapsed: jest.fn().mockReturnValue(0),
   }),
   debugModes: {
     DOCUMENT_PROCESSING: 'debug:documentProcessing',
@@ -55,7 +55,7 @@ vi.mock('@/utils/logger', () => ({
     BACKUPS: 'debug:backups',
     LIST_PROCESSING: 'debug:listProcessing',
   },
-  isDebugEnabled: vi.fn().mockReturnValue(false),
+  isDebugEnabled: jest.fn().mockReturnValue(false),
 }));
 
 const fixturesDir = path.join(__dirname, 'fixtures');
@@ -64,7 +64,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
   let processor: WordDocumentProcessor;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     processor = new WordDocumentProcessor();
   });
 
@@ -90,7 +90,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     it('should reject files exceeding size limit', async () => {
       const filePath = path.join(fixturesDir, 'sample.docx');
 
-      vi.spyOn(fs, 'stat').mockResolvedValue({
+      jest.spyOn(fs, 'stat').mockResolvedValue({
         size: 200 * 1024 * 1024, // 200MB
       } as any);
 
@@ -104,7 +104,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       expect(result.errorMessages[0]).toContain('200.00MB');
 
       // Restore fs.stat
-      vi.restoreAllMocks();
+      jest.restoreAllMocks();
     });
 
     it('should handle corrupt DOCX files gracefully', async () => {
@@ -121,7 +121,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     it('should create backup before processing when requested', async () => {
       const filePath = path.join(fixturesDir, 'sample.docx');
 
-      const copyFileSpy = vi.spyOn(fs, 'copyFile').mockResolvedValue(undefined);
+      const copyFileSpy = jest.spyOn(fs, 'copyFile').mockResolvedValue(undefined);
 
       const result = await processor.processDocument(filePath, {
         createBackup: true,
@@ -133,7 +133,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       expect(backupPath).toContain('Backup');
       expect(result.backupPath).toBeDefined();
 
-      vi.restoreAllMocks();
+      jest.restoreAllMocks();
     });
 
     it('should handle file not found errors', async () => {
@@ -360,7 +360,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
         path.join(fixturesDir, 'hyperlinks.docx'),
       ];
 
-      const progressCallback = vi.fn();
+      const progressCallback = jest.fn();
 
       await processor.batchProcess(files, {}, 1, progressCallback);
 
@@ -391,7 +391,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       const files = Array(15).fill(path.join(fixturesDir, 'sample.docx'));
 
       // Mock global.gc
-      global.gc = vi.fn();
+      global.gc = jest.fn();
 
       await processor.batchProcess(files, {}, 3);
 
@@ -431,7 +431,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
         },
       };
 
-      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof vi.fn>).mockResolvedValue(mockApiResponse);
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue(mockApiResponse);
 
       const result = await processor.processDocument(filePath, {
         apiEndpoint: 'https://api.example.com',
@@ -449,7 +449,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     it('should handle API failures gracefully', async () => {
       const filePath = path.join(fixturesDir, 'theSource.docx');
 
-      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue({
         success: false,
         error: 'API timeout',
       });
@@ -485,6 +485,70 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       } else {
         expect(result.success).toBe(true);
       }
+    });
+  });
+
+  describe('Step Column Width Fix', () => {
+    it('should set step column to exactly 1 inch with fixed layout, preserving original grid', async () => {
+      // 1. Create a DOCX with a 2-column Step/Action table
+      const doc = Document.create();
+      const table = doc.createTable(3, 2); // 3 rows, 2 columns
+
+      // Set header row
+      table.getCell(0, 0)?.createParagraph('Step');
+      table.getCell(0, 1)?.createParagraph('Action');
+
+      // Set data rows with step numbers
+      table.getCell(1, 0)?.createParagraph('1');
+      table.getCell(1, 1)?.createParagraph('Do something');
+      table.getCell(2, 0)?.createParagraph('2');
+      table.getCell(2, 1)?.createParagraph('Do something else');
+
+      // Set initial grid (typical Word default)
+      const originalGrid = [2500, 7000];
+      table.setTableGrid(originalGrid);
+      table.setLayout("auto");
+
+      // 2. Save to temp file, process, reload
+      const tmpPath = path.join(fixturesDir, '_step-column-test.docx');
+      await doc.save(tmpPath);
+      doc.dispose();
+
+      const result = await processor.processDocument(tmpPath, {
+        tableUniformity: true,
+      });
+      expect(result.success).toBe(true);
+
+      // 3. Reload and verify
+      const processed = await Document.load(tmpPath);
+      const tables = processed.getTables();
+      expect(tables.length).toBeGreaterThanOrEqual(1);
+
+      const stepTable = tables.find(t => {
+        const firstCell = t.getCell(0, 0);
+        return firstCell?.getText().trim().toLowerCase() === 'step';
+      });
+      expect(stepTable).toBeDefined();
+
+      // Verify fixed layout
+      expect(stepTable!.getLayout()).toBe('fixed');
+
+      // Verify original grid is preserved (not modified)
+      const grid = stepTable!.getTableGrid();
+      expect(grid).toBeDefined();
+      expect(grid![0]).toBe(originalGrid[0]);
+      expect(grid![1]).toBe(originalGrid[1]);
+
+      // Verify step column cell widths = 1440 (1 inch)
+      for (const row of stepTable!.getRows()) {
+        const cell = row.getCells()[0];
+        expect(cell.getWidth()).toBe(1440);
+        expect(cell.getWidthType()).toBe('dxa');
+      }
+
+      // Cleanup
+      processed.dispose();
+      await fs.unlink(tmpPath).catch(() => {});
     });
   });
 

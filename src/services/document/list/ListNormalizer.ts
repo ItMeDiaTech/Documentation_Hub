@@ -313,7 +313,6 @@ export function normalizeListsInCell(
                 }
               }
             }
-            // Do NOT change the paragraph's numId or ilvl — preserve original structure
             report.normalized++;
             report.details.push({
               originalText: item.text.substring(0, 50),
@@ -323,10 +322,32 @@ export function normalizeListsInCell(
           }
         }
       }
-      normalizeOrphanListLevelsInCell(cell);
-      return report;
     }
-    report.skipped = analysis.paragraphs.length;
+
+    // Restart numbering per original numId so each cell gets independent numbering.
+    // restartNumbering() creates a new instance that starts at 1, preventing cross-cell
+    // numId sharing that causes continuation (e.g., 5. instead of 1.)
+    if (analysis.hasWordLists) {
+      const restartedNumIds = new Map<number, number>();
+
+      for (const item of analysis.paragraphs) {
+        if (item.detection.isWordList && item.detection.numId !== null) {
+          const para = item.paragraph as Paragraph;
+          const numbering = para.getNumbering();
+          if (numbering) {
+            if (!restartedNumIds.has(numbering.numId)) {
+              restartedNumIds.set(numbering.numId, numberingManager.restartNumbering(numbering.numId));
+            }
+
+            const newNumId = restartedNumIds.get(numbering.numId)!;
+            para.setNumbering(newNumId, numbering.level);
+          }
+        }
+      }
+    } else {
+      report.skipped = analysis.paragraphs.length;
+    }
+
     // Always normalize orphan levels even when no other normalization needed
     normalizeOrphanListLevelsInCell(cell);
     return report;
@@ -459,6 +480,7 @@ export function normalizeListsInCell(
 
   if (majorityCategory === "bullet") {
     let lastBulletItemIndex = -1;
+    let lastSubItemIndex = -1;
 
     for (let i = 0; i < analysis.paragraphs.length; i++) {
       const item = analysis.paragraphs[i]!;
@@ -466,23 +488,84 @@ export function normalizeListsInCell(
 
       if (detection.category === "bullet") {
         lastBulletItemIndex = i;
+        lastSubItemIndex = -1;
       } else if (detection.category === "numbered" && lastBulletItemIndex >= 0) {
-        // Only mark as sub-item if actually indented MORE than the parent
         const parentDetection = analysis.paragraphs[lastBulletItemIndex]!.detection;
         if (detection.indentationTwips > parentDetection.indentationTwips + INDENT_THRESHOLD) {
           numberedAsSubItemIndices.add(i);
           parentIndexByIndex.set(i, lastBulletItemIndex);
+          lastSubItemIndex = i;
+        } else if (
+          // 0-indentation fallback for table cells: when both parent and child have
+          // 0 indentation (common in table cells), use proximity to the last bullet
+          // or sub-item to infer sub-item status. Only apply when the numbered item
+          // is at inferred level 0 (to avoid demoting items already at higher ilvl).
+          detection.indentationTwips === 0 &&
+          parentDetection.indentationTwips === 0 &&
+          detection.inferredLevel === 0 &&
+          (i - Math.max(lastBulletItemIndex, lastSubItemIndex === -1 ? 0 : lastSubItemIndex)) <= 3
+        ) {
+          numberedAsSubItemIndices.add(i);
+          parentIndexByIndex.set(i, lastBulletItemIndex);
+          lastSubItemIndex = i;
         }
       } else if (detection.category === "none") {
         // Only reset on text-bearing "none" items — blank paragraphs (spacers)
         // between list items should not break the parent-child chain
         if (item.text.trim().length > 0) {
           lastBulletItemIndex = -1;
+          lastSubItemIndex = -1;
         }
       }
     }
   }
   // === End sub-item detection ===
+
+  // Recalculate level shifts excluding detected sub-items.
+  // Sub-items get their level from parent+1, so including their ilvl in the
+  // shift calculation can prevent parent items from being shifted to level 0.
+  // Example: bullets at ilvl=1 with numbered sub-items at ilvl=0 — without
+  // this fix, shift=0 (from numbered ilvl=0) keeps bullets at level 1.
+  const allSubItemIndices = new Set([...bulletAsSubItemIndices, ...numberedAsSubItemIndices]);
+  if (allSubItemIndices.size > 0) {
+    levelShiftByIndex.clear();
+    let recalcGroupStart = -1;
+    let recalcGroupMinLevel = Infinity;
+
+    for (let i = 0; i < analysis.paragraphs.length; i++) {
+      const item = analysis.paragraphs[i]!;
+
+      if (item.detection.category !== "none") {
+        if (recalcGroupStart === -1) {
+          recalcGroupStart = i;
+          recalcGroupMinLevel = Infinity;
+        }
+        if (!allSubItemIndices.has(i)) {
+          recalcGroupMinLevel = Math.min(recalcGroupMinLevel, item.detection.inferredLevel);
+        }
+      } else {
+        if (recalcGroupStart !== -1) {
+          const shift = recalcGroupMinLevel === Infinity ? 0 : recalcGroupMinLevel;
+          for (let j = recalcGroupStart; j < i; j++) {
+            if (analysis.paragraphs[j]!.detection.category !== "none") {
+              levelShiftByIndex.set(j, shift);
+            }
+          }
+          recalcGroupStart = -1;
+          recalcGroupMinLevel = Infinity;
+        }
+      }
+    }
+
+    if (recalcGroupStart !== -1) {
+      const shift = recalcGroupMinLevel === Infinity ? 0 : recalcGroupMinLevel;
+      for (let j = recalcGroupStart; j < analysis.paragraphs.length; j++) {
+        if (analysis.paragraphs[j]!.detection.category !== "none") {
+          levelShiftByIndex.set(j, shift);
+        }
+      }
+    }
+  }
 
   // Track numId per level - will be reset when parent level appears
   const numIdByLevel = new Map<number, number>();
@@ -500,11 +583,10 @@ export function normalizeListsInCell(
     lastProcessedLevel = level;
 
     if (!numIdByLevel.has(level)) {
-      const numId =
+      let numId =
         majorityCategory === "numbered"
           ? numberingManager.createNumberedList()
           : numberingManager.createBulletList();
-      numIdByLevel.set(level, numId);
 
       // Apply user's indentation settings if provided
       if (options?.indentationLevels?.length) {
@@ -516,6 +598,14 @@ export function normalizeListsInCell(
           }
         }
       }
+
+      // Restart numbering so converted lists start at 1 instead of continuing
+      // from a previous cell's sequence
+      if (majorityCategory === "numbered") {
+        numId = numberingManager.restartNumbering(numId);
+      }
+
+      numIdByLevel.set(level, numId);
     }
     return numIdByLevel.get(level)!;
   };
@@ -598,12 +688,16 @@ export function normalizeListsInCell(
           // No extra indent but format suggests nesting (e.g., "a." at level 1)
           targetLevel = Math.max(0, detection.inferredLevel - levelShift);
         } else if (indentBasedLevel > 0 && detection.inferredLevel === 0) {
-          // FIX: Decimal/bullet typed prefix with extra indentation from cell baseline.
-          // Don't infer nesting from indentation alone when the format is top-level
-          // (e.g., "1.", "2.", "3." are decimal = level 0). The baseline may come from
-          // a non-list paragraph (header text), causing false nesting.
-          // The levelShift mechanism handles true multi-level lists correctly.
-          targetLevel = 0;
+          // Typed prefix with extra indentation from cell baseline.
+          // For numbered formats (decimal, letter, roman), don't infer nesting from
+          // indentation alone — "1.", "2.", "3." are level 0 regardless of indent.
+          // For bullet/dash/arrow formats, indentation IS the nesting signal since
+          // all bullet chars map to inferredLevel=0.
+          if (detection.format === 'bullet' || detection.format === 'dash' || detection.format === 'arrow') {
+            targetLevel = indentBasedLevel;
+          } else {
+            targetLevel = 0;
+          }
         } else {
           targetLevel = indentBasedLevel;
         }

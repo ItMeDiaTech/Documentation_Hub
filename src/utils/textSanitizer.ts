@@ -140,10 +140,9 @@ export function sanitizeHyperlinkTexts(texts: string[]): string[] {
  * Normalizes typographic dashes and spaces to standard ASCII equivalents:
  * - En-dash (U+2013, –) -> Hyphen (U+002D, -)
  * - Em-dash (U+2014, —) -> Hyphen (U+002D, -)
+ * - Non-breaking space (U+00A0, NBSP) -> Regular space (U+0020)
  * - En-space (U+2002) -> Regular space (U+0020)
  * - Em-space (U+2003) -> Regular space (U+0020)
- *
- * After space replacement, collapses any resulting leading spaces at the start of the text.
  *
  * @param text - The text that may contain em/en dashes or spaces
  * @returns The text with typographic variants normalized
@@ -157,16 +156,14 @@ export function sanitizeHyperlinkTexts(texts: string[]): string[] {
  * // Returns: "Hello-World"
  *
  * removeEmEnVariants("\u2003\u2002Text with em/en spaces")
- * // Returns: "Text with em/en spaces"
+ * // Returns: "  Text with em/en spaces"
  * ```
  */
 export function removeEmEnVariants(text: string): string {
   if (!text) return '';
   // Replace em/en dashes with hyphens
   let result = text.replace(/[\u2013\u2014]/g, '-');
-  // Replace em/en spaces with regular spaces
-  result = result.replace(/[\u2002\u2003]/g, ' ');
-  // Collapse leading spaces at paragraph start
-  result = result.replace(/^ +/, '');
+  // Replace NBSP, em-space, en-space with regular spaces
+  result = result.replace(/[\u00A0\u2002\u2003]/g, ' ');
   return result;
 }

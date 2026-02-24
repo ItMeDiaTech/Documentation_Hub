@@ -21,7 +21,6 @@ const EDGE_CONSENSUS = 0.65;      // 65 % of scan lines must detect border
 const MIN_BORDERED_EDGES = 3;     // at least 3 of 4 edges
 const MAX_BORDER_THICKNESS = 4;   // border line max 4 px
 const MIN_GAP_THICKNESS = 2;      // white gap at least 2 px
-const MAX_SCAN_DEPTH = 25;        // scan max 25 px from edge
 const SAMPLE_INTERVAL = 5;        // sample every 5th column / row
 const MAX_CROP_FRACTION = 0.15;   // never crop > 15 % from one edge
 const MIN_DIMENSION_PX = 80;      // skip images < 80 px
@@ -75,6 +74,42 @@ export async function cropEmbeddedImageBorders(
   }
 
   return result;
+}
+
+/**
+ * Detect whether an image has a baked-in dark border on ALL 4 sides.
+ * Unlike the cropper (which looks for dark border + white gap), this only
+ * checks whether the outermost pixels are consistently dark.
+ */
+export async function hasAllSideBakedBorder(image: Image): Promise<boolean> {
+  const ext = image.getExtension()?.toLowerCase();
+  if (ext === "svg" || ext === "emf" || ext === "wmf") return false;
+
+  const buf = image.getImageDataSafe();
+  if (!buf || buf.length === 0) return false;
+
+  const img = await loadImage(buf);
+  const w = img.width;
+  const h = img.height;
+  if (w < MIN_DIMENSION_PX || h < MIN_DIMENSION_PX) return false;
+
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  const pixels = ctx.getImageData(0, 0, w, h).data;
+
+  return pixelsHaveAllSideBakedBorder(pixels, w, h);
+}
+
+/** Pixel-level check: are all 4 edges predominantly dark? */
+function pixelsHaveAllSideBakedBorder(
+  pixels: Uint8ClampedArray, width: number, height: number,
+): boolean {
+  const edges: Edge[] = ["top", "bottom", "left", "right"];
+  for (const edge of edges) {
+    if (!edgeIsDark(pixels, width, height, edge)) return false;
+  }
+  return true;
 }
 
 // ── Image collection ─────────────────────────────────────────────────
@@ -137,6 +172,13 @@ async function processOneImage(
   ctx.drawImage(img, 0, 0);
   const imageData = ctx.getImageData(0, 0, w, h);
   const pixels = imageData.data; // Uint8ClampedArray [r,g,b,a, ...]
+
+  // Check for baked-in border on all 4 sides — skip cropping if present
+  if (pixelsHaveAllSideBakedBorder(pixels, w, h)) {
+    log.debug("Skipped crop: image has baked-in border on all 4 sides");
+    result.skippedCount++;
+    return;
+  }
 
   const cropRect = detectEmbeddedBorder(pixels, w, h);
   if (!cropRect) {
@@ -266,6 +308,31 @@ function analyzeEdge(
 }
 
 /**
+ * Check whether the outermost 1-MAX_BORDER_THICKNESS pixels of one edge
+ * are predominantly dark. Samples every SAMPLE_INTERVAL-th pixel.
+ * Returns true if >= EDGE_CONSENSUS fraction of samples have dark pixels.
+ */
+function edgeIsDark(
+  pixels: Uint8ClampedArray, width: number, height: number, edge: Edge,
+): boolean {
+  const perpLength = edge === "top" || edge === "bottom" ? width : height;
+  const sampleCount = Math.floor(perpLength / SAMPLE_INTERVAL);
+  if (sampleCount === 0) return false;
+
+  let darkCount = 0;
+  for (let s = 0; s < sampleCount; s++) {
+    const lineIndex = s * SAMPLE_INTERVAL;
+    for (let depth = 0; depth < MAX_BORDER_THICKNESS; depth++) {
+      if (getPixelLuminance(pixels, width, height, edge, lineIndex, depth) <= DARK_THRESHOLD) {
+        darkCount++;
+        break;
+      }
+    }
+  }
+  return darkCount >= Math.ceil(sampleCount * EDGE_CONSENSUS);
+}
+
+/**
  * Scan one line from the given edge inward, looking for the
  * dark-border + white-gap pattern.
  *
@@ -278,7 +345,8 @@ function scanLine(
   edge: Edge,
   lineIndex: number,
 ): number | null {
-  const maxDepth = MAX_SCAN_DEPTH;
+  const depthDimension = edge === "top" || edge === "bottom" ? height : width;
+  const maxDepth = Math.floor(depthDimension * MAX_CROP_FRACTION);
   let borderPixels = 0;
   let gapPixels = 0;
   let inBorder = true;
@@ -295,8 +363,10 @@ function scanLine(
         inBorder = false;
         gapPixels = 1;
       } else if (borderPixels === 0 && lum >= LIGHT_THRESHOLD) {
-        // No dark border found at all — not a border pattern
-        return null;
+        // No dark border at start — white-gap-only pattern
+        // (e.g., screen capture of borderless image showing page background padding)
+        inBorder = false;
+        gapPixels = 1;
       } else {
         // Mid-tone pixel before finding border — not a clean border
         if (borderPixels === 0) return null;

@@ -4,26 +4,26 @@
  * Tests table formatting, uniformity, and Header2 handling.
  */
 
-import { vi, describe, it, expect, beforeEach, type Mocked } from 'vitest';
+
 import { TableProcessor } from '../TableProcessor';
 import type { HLPTableAnalysis } from '../TableProcessor';
 import { Document, Table, Paragraph, Run, Hyperlink, PreservedElement, TableCell, TableRow, inchesToTwips } from 'docxmlater';
 
 // Mock docxmlater
-vi.mock('docxmlater');
+jest.mock('docxmlater');
 
 describe('TableProcessor', () => {
   let processor: TableProcessor;
-  let mockDoc: Mocked<Document>;
+  let mockDoc: jest.Mocked<Document>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     processor = new TableProcessor();
 
     mockDoc = {
-      getTables: vi.fn().mockReturnValue([]),
-      getBodyElements: vi.fn().mockReturnValue([]),
-    } as unknown as Mocked<Document>;
+      getTables: jest.fn().mockReturnValue([]),
+      getBodyElements: jest.fn().mockReturnValue([]),
+    } as unknown as jest.Mocked<Document>;
   });
 
   describe('applyTableUniformity', () => {
@@ -44,15 +44,15 @@ describe('TableProcessor', () => {
       // Cell has Heading2 style paragraph — triggers Header2 shading
       const mockH2Paragraph = createMockParagraph('Heading2');
       const mockCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([mockH2Paragraph]),
-        getFormatting: vi.fn().mockReturnValue({ shading: { fill: 'FFFFFF' } }),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('Section Header'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([mockH2Paragraph]),
+        getFormatting: jest.fn().mockReturnValue({ shading: { fill: 'FFFFFF' } }),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('Section Header'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
       const mockRow = createMockRow([mockCell]);
       const mockTable = createMockTable([mockRow]); // 1x1 table
 
@@ -187,134 +187,134 @@ describe('TableProcessor', () => {
 
 // Helper functions
 
-function createMockCell(shading: string): Mocked<TableCell> {
+function createMockCell(shading: string): jest.Mocked<TableCell> {
   const mockParagraph = createMockParagraph('Normal');
   return {
-    getShading: vi.fn().mockReturnValue(shading),
-    setShading: vi.fn(),
-    getParagraphs: vi.fn().mockReturnValue([mockParagraph]),
-    getFormatting: vi.fn().mockReturnValue({ shading: { fill: shading } }),
-    setAllRunsFont: vi.fn(),
-    setAllRunsSize: vi.fn(),
-    getText: vi.fn().mockReturnValue('Sample text'),
-    hasNestedTables: vi.fn().mockReturnValue(false),
-  } as unknown as Mocked<TableCell>;
+    getShading: jest.fn().mockReturnValue(shading),
+    setShading: jest.fn(),
+    getParagraphs: jest.fn().mockReturnValue([mockParagraph]),
+    getFormatting: jest.fn().mockReturnValue({ shading: { fill: shading } }),
+    setAllRunsFont: jest.fn(),
+    setAllRunsSize: jest.fn(),
+    getText: jest.fn().mockReturnValue('Sample text'),
+    hasNestedTables: jest.fn().mockReturnValue(false),
+  } as unknown as jest.Mocked<TableCell>;
 }
 
-function createMockCellWithParagraphs(paragraphs: any[]): Mocked<TableCell> {
+function createMockCellWithParagraphs(paragraphs: any[]): jest.Mocked<TableCell> {
   return {
-    getShading: vi.fn().mockReturnValue('FFFFFF'),
-    setShading: vi.fn(),
-    getParagraphs: vi.fn().mockReturnValue(paragraphs),
-    getFormatting: vi.fn().mockReturnValue({}),
-    setAllRunsFont: vi.fn(),
-    setAllRunsSize: vi.fn(),
-    getText: vi.fn().mockReturnValue('Sample text'),
-    hasNestedTables: vi.fn().mockReturnValue(false),
-  } as unknown as Mocked<TableCell>;
+    getShading: jest.fn().mockReturnValue('FFFFFF'),
+    setShading: jest.fn(),
+    getParagraphs: jest.fn().mockReturnValue(paragraphs),
+    getFormatting: jest.fn().mockReturnValue({}),
+    setAllRunsFont: jest.fn(),
+    setAllRunsSize: jest.fn(),
+    getText: jest.fn().mockReturnValue('Sample text'),
+    hasNestedTables: jest.fn().mockReturnValue(false),
+  } as unknown as jest.Mocked<TableCell>;
 }
 
-function createMockRow(cells: any[]): Mocked<TableRow> {
+function createMockRow(cells: any[]): jest.Mocked<TableRow> {
   return {
-    getCells: vi.fn().mockReturnValue(cells),
-  } as unknown as Mocked<TableRow>;
+    getCells: jest.fn().mockReturnValue(cells),
+  } as unknown as jest.Mocked<TableRow>;
 }
 
-function createMockTable(rows: any[]): Mocked<Table> {
+function createMockTable(rows: any[]): jest.Mocked<Table> {
   return {
-    getRows: vi.fn().mockReturnValue(rows),
-    isFloating: vi.fn().mockReturnValue(false),
-  } as unknown as Mocked<Table>;
+    getRows: jest.fn().mockReturnValue(rows),
+    isFloating: jest.fn().mockReturnValue(false),
+  } as unknown as jest.Mocked<Table>;
 }
 
-function createMockParagraph(style: string): Mocked<Paragraph> {
+function createMockParagraph(style: string): jest.Mocked<Paragraph> {
   return {
-    getStyle: vi.fn().mockReturnValue(style),
-    setStyle: vi.fn(),
-    getText: vi.fn().mockReturnValue('Sample text'),
-    getRuns: vi.fn().mockReturnValue([]),
-    getNumbering: vi.fn().mockReturnValue(null),
-    getContent: vi.fn().mockReturnValue([]),
-    setAlignment: vi.fn(),
-    setSpaceBefore: vi.fn(),
-    setSpaceAfter: vi.fn(),
-    setLineSpacing: vi.fn(),
-    setNumbering: vi.fn(),
-    getLeftIndent: vi.fn().mockReturnValue(undefined),
-    setLeftIndent: vi.fn(),
-    setFirstLineIndent: vi.fn(),
-  } as unknown as Mocked<Paragraph>;
+    getStyle: jest.fn().mockReturnValue(style),
+    setStyle: jest.fn(),
+    getText: jest.fn().mockReturnValue('Sample text'),
+    getRuns: jest.fn().mockReturnValue([]),
+    getNumbering: jest.fn().mockReturnValue(null),
+    getContent: jest.fn().mockReturnValue([]),
+    setAlignment: jest.fn(),
+    setSpaceBefore: jest.fn(),
+    setSpaceAfter: jest.fn(),
+    setLineSpacing: jest.fn(),
+    setNumbering: jest.fn(),
+    getLeftIndent: jest.fn().mockReturnValue(undefined),
+    setLeftIndent: jest.fn(),
+    setFirstLineIndent: jest.fn(),
+  } as unknown as jest.Mocked<Paragraph>;
 }
 
-function createMockParagraphWithRuns(runs: any[], style = 'Normal'): Mocked<Paragraph> {
+function createMockParagraphWithRuns(runs: any[], style = 'Normal'): jest.Mocked<Paragraph> {
   return {
-    getStyle: vi.fn().mockReturnValue(style),
-    setStyle: vi.fn(),
-    getText: vi.fn().mockReturnValue('Sample text'),
-    getRuns: vi.fn().mockReturnValue(runs),
-    getNumbering: vi.fn().mockReturnValue(null),
-    getContent: vi.fn().mockReturnValue(runs),
-    setAlignment: vi.fn(),
-    setSpaceBefore: vi.fn(),
-    setSpaceAfter: vi.fn(),
-    setLineSpacing: vi.fn(),
-    setNumbering: vi.fn(),
-    getLeftIndent: vi.fn().mockReturnValue(undefined),
-    setLeftIndent: vi.fn(),
-    setFirstLineIndent: vi.fn(),
-  } as unknown as Mocked<Paragraph>;
+    getStyle: jest.fn().mockReturnValue(style),
+    setStyle: jest.fn(),
+    getText: jest.fn().mockReturnValue('Sample text'),
+    getRuns: jest.fn().mockReturnValue(runs),
+    getNumbering: jest.fn().mockReturnValue(null),
+    getContent: jest.fn().mockReturnValue(runs),
+    setAlignment: jest.fn(),
+    setSpaceBefore: jest.fn(),
+    setSpaceAfter: jest.fn(),
+    setLineSpacing: jest.fn(),
+    setNumbering: jest.fn(),
+    getLeftIndent: jest.fn().mockReturnValue(undefined),
+    setLeftIndent: jest.fn(),
+    setFirstLineIndent: jest.fn(),
+  } as unknown as jest.Mocked<Paragraph>;
 }
 
-function createMockRun(bold: boolean, characterStyle?: string): Mocked<Run> {
+function createMockRun(bold: boolean, characterStyle?: string): jest.Mocked<Run> {
   return {
-    getText: vi.fn().mockReturnValue('Text'),
-    getFormatting: vi.fn().mockReturnValue({ bold, characterStyle }),
-    setFont: vi.fn(),
-    setSize: vi.fn(),
-    setBold: vi.fn(),
-    setColor: vi.fn(),
-    setUnderline: vi.fn(),
-    setCharacterStyle: vi.fn(),
-  } as unknown as Mocked<Run>;
+    getText: jest.fn().mockReturnValue('Text'),
+    getFormatting: jest.fn().mockReturnValue({ bold, characterStyle }),
+    setFont: jest.fn(),
+    setSize: jest.fn(),
+    setBold: jest.fn(),
+    setColor: jest.fn(),
+    setUnderline: jest.fn(),
+    setCharacterStyle: jest.fn(),
+  } as unknown as jest.Mocked<Run>;
 }
 
 // ═══════════════════════════════════════════════════════════
 // HLP Table Test Helpers
 // ═══════════════════════════════════════════════════════════
 
-function createMockHyperlink(): Mocked<Hyperlink> {
+function createMockHyperlink(): jest.Mocked<Hyperlink> {
   const mockHyperlink = {
-    setFormatting: vi.fn(),
-    getRun: vi.fn().mockReturnValue(createMockRun(true)),
-    getText: vi.fn().mockReturnValue('Link text'),
-    getUrl: vi.fn().mockReturnValue('https://example.com'),
+    setFormatting: jest.fn(),
+    getRun: jest.fn().mockReturnValue(createMockRun(true)),
+    getText: jest.fn().mockReturnValue('Link text'),
+    getUrl: jest.fn().mockReturnValue('https://example.com'),
     // Mark as Hyperlink instance for isHyperlink() type guard
     constructor: { name: 'Hyperlink' },
-  } as unknown as Mocked<Hyperlink>;
+  } as unknown as jest.Mocked<Hyperlink>;
   // Make instanceof check work with mock
   Object.setPrototypeOf(mockHyperlink, Hyperlink.prototype);
   return mockHyperlink;
 }
 
-function createHLPHeaderCell(text = 'High Level Process'): Mocked<TableCell> {
+function createHLPHeaderCell(text = 'High Level Process'): jest.Mocked<TableCell> {
   const mockParagraph = createMockParagraph('Heading2');
   mockParagraph.getText.mockReturnValue(text);
   return {
-    getShading: vi.fn().mockReturnValue('FFC000'),
-    setShading: vi.fn(),
-    setBorders: vi.fn(),
-    setMargins: vi.fn(),
-    getParagraphs: vi.fn().mockReturnValue([mockParagraph]),
-    getFormatting: vi.fn().mockReturnValue({ shading: { fill: 'FFC000' } }),
-    getColumnSpan: vi.fn().mockReturnValue(1),
-    setAllRunsFont: vi.fn(),
-    setAllRunsSize: vi.fn(),
-    getText: vi.fn().mockReturnValue(text),
-    hasNestedTables: vi.fn().mockReturnValue(false),
-  } as unknown as Mocked<TableCell>;
+    getShading: jest.fn().mockReturnValue('FFC000'),
+    setShading: jest.fn(),
+    setBorders: jest.fn(),
+    setMargins: jest.fn(),
+    getParagraphs: jest.fn().mockReturnValue([mockParagraph]),
+    getFormatting: jest.fn().mockReturnValue({ shading: { fill: 'FFC000' } }),
+    getColumnSpan: jest.fn().mockReturnValue(1),
+    setAllRunsFont: jest.fn(),
+    setAllRunsSize: jest.fn(),
+    getText: jest.fn().mockReturnValue(text),
+    hasNestedTables: jest.fn().mockReturnValue(false),
+  } as unknown as jest.Mocked<TableCell>;
 }
 
-function createHLPDataCell(shading?: string): Mocked<TableCell> {
+function createHLPDataCell(shading?: string): jest.Mocked<TableCell> {
   const numberedRun = createMockRun(false);
   const mainRun = createMockRun(true);
 
@@ -332,48 +332,48 @@ function createHLPDataCell(shading?: string): Mocked<TableCell> {
   numberedPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
 
   return {
-    getShading: vi.fn().mockReturnValue(shading || 'FFFFFF'),
-    setShading: vi.fn(),
-    setBorders: vi.fn(),
-    setMargins: vi.fn(),
-    getParagraphs: vi.fn().mockReturnValue([mainPara, numberedPara]),
-    getFormatting: vi.fn().mockReturnValue({ shading: shading ? { fill: shading } : undefined }),
-    getColumnSpan: vi.fn().mockReturnValue(1),
-    setAllRunsFont: vi.fn(),
-    setAllRunsSize: vi.fn(),
-    getText: vi.fn().mockReturnValue('Item1\nA1'),
-    hasNestedTables: vi.fn().mockReturnValue(false),
-  } as unknown as Mocked<TableCell>;
+    getShading: jest.fn().mockReturnValue(shading || 'FFFFFF'),
+    setShading: jest.fn(),
+    setBorders: jest.fn(),
+    setMargins: jest.fn(),
+    getParagraphs: jest.fn().mockReturnValue([mainPara, numberedPara]),
+    getFormatting: jest.fn().mockReturnValue({ shading: shading ? { fill: shading } : undefined }),
+    getColumnSpan: jest.fn().mockReturnValue(1),
+    setAllRunsFont: jest.fn(),
+    setAllRunsSize: jest.fn(),
+    getText: jest.fn().mockReturnValue('Item1\nA1'),
+    hasNestedTables: jest.fn().mockReturnValue(false),
+  } as unknown as jest.Mocked<TableCell>;
 }
 
-function createHLPTipsCell(): Mocked<TableCell> {
+function createHLPTipsCell(): jest.Mocked<TableCell> {
   const tipRun = createMockRun(false);
   const tipPara = createMockParagraphWithRuns([tipRun]);
   tipPara.getText.mockReturnValue('[TIP] Some tip text');
 
   return {
-    getShading: vi.fn().mockReturnValue('FFF2CC'),
-    setShading: vi.fn(),
-    setBorders: vi.fn(),
-    setMargins: vi.fn(),
-    getParagraphs: vi.fn().mockReturnValue([tipPara]),
-    getFormatting: vi.fn().mockReturnValue({ shading: { fill: 'FFF2CC' } }),
-    getColumnSpan: vi.fn().mockReturnValue(1),
-    setAllRunsFont: vi.fn(),
-    setAllRunsSize: vi.fn(),
-    getText: vi.fn().mockReturnValue('[TIP] Some tip text'),
-    hasNestedTables: vi.fn().mockReturnValue(false),
-  } as unknown as Mocked<TableCell>;
+    getShading: jest.fn().mockReturnValue('FFF2CC'),
+    setShading: jest.fn(),
+    setBorders: jest.fn(),
+    setMargins: jest.fn(),
+    getParagraphs: jest.fn().mockReturnValue([tipPara]),
+    getFormatting: jest.fn().mockReturnValue({ shading: { fill: 'FFF2CC' } }),
+    getColumnSpan: jest.fn().mockReturnValue(1),
+    setAllRunsFont: jest.fn(),
+    setAllRunsSize: jest.fn(),
+    getText: jest.fn().mockReturnValue('[TIP] Some tip text'),
+    hasNestedTables: jest.fn().mockReturnValue(false),
+  } as unknown as jest.Mocked<TableCell>;
 }
 
-function createMockHLPTable(variant: 'single-column' | 'two-column'): Mocked<Table> {
+function createMockHLPTable(variant: 'single-column' | 'two-column'): jest.Mocked<Table> {
   const headerCell = createHLPHeaderCell();
   if (variant === 'two-column') {
     headerCell.getColumnSpan.mockReturnValue(2);
   }
   const headerRow = createMockRow([headerCell]);
 
-  const dataRows: Mocked<TableRow>[] = [];
+  const dataRows: jest.Mocked<TableRow>[] = [];
   for (let i = 0; i < 3; i++) {
     if (variant === 'single-column') {
       dataRows.push(createMockRow([createHLPDataCell()]));
@@ -384,12 +384,12 @@ function createMockHLPTable(variant: 'single-column' | 'two-column'): Mocked<Tab
 
   const allRows = [headerRow, ...dataRows];
   return {
-    getRows: vi.fn().mockReturnValue(allRows),
-    getColumnCount: vi.fn().mockReturnValue(variant === 'single-column' ? 1 : 2),
-    isFloating: vi.fn().mockReturnValue(false),
-    setBorders: vi.fn(),
-    setShading: vi.fn(),
-  } as unknown as Mocked<Table>;
+    getRows: jest.fn().mockReturnValue(allRows),
+    getColumnCount: jest.fn().mockReturnValue(variant === 'single-column' ? 1 : 2),
+    isFloating: jest.fn().mockReturnValue(false),
+    setBorders: jest.fn(),
+    setShading: jest.fn(),
+  } as unknown as jest.Mocked<Table>;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -398,19 +398,19 @@ function createMockHLPTable(variant: 'single-column' | 'two-column'): Mocked<Tab
 
 describe('HLP Table Processing', () => {
   let processor: TableProcessor;
-  let mockDoc: Mocked<Document>;
+  let mockDoc: jest.Mocked<Document>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     processor = new TableProcessor();
     mockDoc = {
-      getTables: vi.fn().mockReturnValue([]),
+      getTables: jest.fn().mockReturnValue([]),
       // getBodyElements returns same tables — fixPostHLPTableNumbering
       // is a no-op when there are no post-table paragraphs in the array
-      getBodyElements: vi.fn().mockReturnValue([]),
+      getBodyElements: jest.fn().mockReturnValue([]),
       // getNumberingManager — convertHLPBulletsToLettered gracefully handles null
-      getNumberingManager: vi.fn().mockReturnValue(null),
-    } as unknown as Mocked<Document>;
+      getNumberingManager: jest.fn().mockReturnValue(null),
+    } as unknown as jest.Mocked<Document>;
   });
 
   describe('analyzeHLPTable', () => {
@@ -609,28 +609,28 @@ describe('HLP Table Processing', () => {
       mainPara.getNumbering.mockReturnValue(null);
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([mainPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('Item with Hyperlink style'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([mainPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('Item with Hyperlink style'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
@@ -659,28 +659,28 @@ describe('HLP Table Processing', () => {
       mainPara.getNumbering.mockReturnValue(null);
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([mainPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('Determine something'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([mainPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('Determine something'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
@@ -727,28 +727,28 @@ describe('HLP Table Processing', () => {
       mainPara.getNumbering.mockReturnValue(null);
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([mainPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('Text with link'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([mainPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('Text with link'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
@@ -778,28 +778,28 @@ describe('HLP Table Processing', () => {
       mainPara.getLeftIndent.mockReturnValue(720);
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([mainPara, notePara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('Item\nNote: text'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([mainPara, notePara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('Item\nNote: text'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
@@ -839,28 +839,28 @@ describe('HLP Table Processing', () => {
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([mainPara, subPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('Item\na. Sub'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([mainPara, subPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('Item\na. Sub'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
@@ -871,8 +871,8 @@ describe('HLP Table Processing', () => {
     });
 
     it('should apply list indentation levels to numbered paragraphs', async () => {
-      // Provide real implementation for inchesToTwips (auto-mocked by vi.mock)
-      vi.mocked(inchesToTwips).mockImplementation((inches: number) => Math.round(inches * 1440));
+      // Provide real implementation for inchesToTwips (auto-mocked by jest.mock)
+      jest.mocked(inchesToTwips).mockImplementation((inches: number) => Math.round(inches * 1440));
 
       const table = createMockHLPTable('single-column');
       mockDoc.getTables.mockReturnValue([table]);
@@ -972,44 +972,44 @@ describe('HLP Table Processing', () => {
     it('should set setBold(false) on converted sub-item numbering levels', async () => {
       // Create a mock numbering manager with bullet abstractNums
       const mockLevel0 = {
-        getFormat: vi.fn().mockReturnValue('bullet'),
-        setFormat: vi.fn(),
-        setText: vi.fn(),
-        setFont: vi.fn(),
-        setFontSize: vi.fn(),
-        setColor: vi.fn(),
-        setBold: vi.fn(),
-        setLeftIndent: vi.fn(),
-        setHangingIndent: vi.fn(),
-        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
+        getFormat: jest.fn().mockReturnValue('bullet'),
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
       };
       const mockLevel1 = {
-        getFormat: vi.fn().mockReturnValue('bullet'),
-        setFormat: vi.fn(),
-        setText: vi.fn(),
-        setFont: vi.fn(),
-        setFontSize: vi.fn(),
-        setColor: vi.fn(),
-        setBold: vi.fn(),
-        setLeftIndent: vi.fn(),
-        setHangingIndent: vi.fn(),
-        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
+        getFormat: jest.fn().mockReturnValue('bullet'),
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
       };
       const mockLevel2 = {
-        getFormat: vi.fn().mockReturnValue('bullet'),
-        setFormat: vi.fn(),
-        setText: vi.fn(),
-        setFont: vi.fn(),
-        setFontSize: vi.fn(),
-        setColor: vi.fn(),
-        setBold: vi.fn(),
-        setLeftIndent: vi.fn(),
-        setHangingIndent: vi.fn(),
-        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
+        getFormat: jest.fn().mockReturnValue('bullet'),
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
       };
 
       const mockAbstractNum = {
-        getLevel: vi.fn().mockImplementation((level: number) => {
+        getLevel: jest.fn().mockImplementation((level: number) => {
           if (level === 0) return mockLevel0;
           if (level === 1) return mockLevel1;
           if (level === 2) return mockLevel2;
@@ -1018,16 +1018,16 @@ describe('HLP Table Processing', () => {
       };
 
       const mockInstance = {
-        getAbstractNumId: vi.fn().mockReturnValue(42),
+        getAbstractNumId: jest.fn().mockReturnValue(42),
       };
 
       const mockManager = {
-        getInstance: vi.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
-        createCustomList: vi.fn().mockReturnValue(0),
+        getInstance: jest.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
+        createCustomList: jest.fn().mockReturnValue(0),
       };
 
-      (mockDoc as any).getNumberingManager = vi.fn().mockReturnValue(mockManager);
+      (mockDoc as any).getNumberingManager = jest.fn().mockReturnValue(mockManager);
 
       // Build a table with a sub-item paragraph that has numbering
       const subRun = createMockRun(false);
@@ -1035,28 +1035,28 @@ describe('HLP Table Processing', () => {
       subPara.getNumbering.mockReturnValue({ numId: 7, level: 0 });
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([subPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('a. Sub-item'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([subPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
@@ -1070,16 +1070,16 @@ describe('HLP Table Processing', () => {
     it('should patch converted level toXML to include <w:b w:val="0"/>', async () => {
       // Create a mock level with a toXML() that returns an rPr child
       const mockLevel0 = {
-        getFormat: vi.fn().mockReturnValue('bullet'),
-        setFormat: vi.fn(),
-        setText: vi.fn(),
-        setFont: vi.fn(),
-        setFontSize: vi.fn(),
-        setColor: vi.fn(),
-        setBold: vi.fn(),
-        setLeftIndent: vi.fn(),
-        setHangingIndent: vi.fn(),
-        toXML: vi.fn().mockReturnValue({
+        getFormat: jest.fn().mockReturnValue('bullet'),
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({
           name: 'w:lvl',
           children: [
             { name: 'w:rPr', children: [{ name: 'w:rFonts', attributes: { 'w:ascii': 'Verdana' } }] },
@@ -1087,16 +1087,16 @@ describe('HLP Table Processing', () => {
         }),
       };
       const mockLevel1 = {
-        getFormat: vi.fn().mockReturnValue('bullet'),
-        setFormat: vi.fn(),
-        setText: vi.fn(),
-        setFont: vi.fn(),
-        setFontSize: vi.fn(),
-        setColor: vi.fn(),
-        setBold: vi.fn(),
-        setLeftIndent: vi.fn(),
-        setHangingIndent: vi.fn(),
-        toXML: vi.fn().mockReturnValue({
+        getFormat: jest.fn().mockReturnValue('bullet'),
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({
           name: 'w:lvl',
           children: [
             { name: 'w:rPr', children: [] },
@@ -1104,16 +1104,16 @@ describe('HLP Table Processing', () => {
         }),
       };
       const mockLevel2 = {
-        getFormat: vi.fn().mockReturnValue('bullet'),
-        setFormat: vi.fn(),
-        setText: vi.fn(),
-        setFont: vi.fn(),
-        setFontSize: vi.fn(),
-        setColor: vi.fn(),
-        setBold: vi.fn(),
-        setLeftIndent: vi.fn(),
-        setHangingIndent: vi.fn(),
-        toXML: vi.fn().mockReturnValue({
+        getFormat: jest.fn().mockReturnValue('bullet'),
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({
           name: 'w:lvl',
           children: [
             { name: 'w:rPr', children: [] },
@@ -1122,7 +1122,7 @@ describe('HLP Table Processing', () => {
       };
 
       const mockAbstractNum = {
-        getLevel: vi.fn().mockImplementation((level: number) => {
+        getLevel: jest.fn().mockImplementation((level: number) => {
           if (level === 0) return mockLevel0;
           if (level === 1) return mockLevel1;
           if (level === 2) return mockLevel2;
@@ -1131,16 +1131,16 @@ describe('HLP Table Processing', () => {
       };
 
       const mockInstance = {
-        getAbstractNumId: vi.fn().mockReturnValue(99),
+        getAbstractNumId: jest.fn().mockReturnValue(99),
       };
 
       const mockManager = {
-        getInstance: vi.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
-        createCustomList: vi.fn().mockReturnValue(0),
+        getInstance: jest.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
+        createCustomList: jest.fn().mockReturnValue(0),
       };
 
-      (mockDoc as any).getNumberingManager = vi.fn().mockReturnValue(mockManager);
+      (mockDoc as any).getNumberingManager = jest.fn().mockReturnValue(mockManager);
 
       // Build a table with a sub-item paragraph that triggers bullet conversion
       const subRun = createMockRun(false);
@@ -1148,28 +1148,28 @@ describe('HLP Table Processing', () => {
       subPara.getNumbering.mockReturnValue({ numId: 7, level: 0 });
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([subPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('a. Sub-item'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([subPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
@@ -1221,21 +1221,21 @@ describe('HLP Table Processing', () => {
       const allParas = [para1, blankPara, para2];
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue(allParas),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('Item1\n\nItem2'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-        addParagraphAt: vi.fn().mockImplementation((idx: number, p: any) => {
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue(allParas),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('Item1\n\nItem2'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+        addParagraphAt: jest.fn().mockImplementation((idx: number, p: any) => {
           addParagraphAtCalls.push({ idx, p });
         }),
-      } as unknown as Mocked<TableCell>;
+      } as unknown as jest.Mocked<TableCell>;
 
       // Need a sub-item so discoverHLPMainNumId finds numId=33
       const subRun = createMockRun(false);
@@ -1243,30 +1243,30 @@ describe('HLP Table Processing', () => {
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
 
       const dataCell2 = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([subPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('a. sub'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-        addParagraphAt: vi.fn(),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([subPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('a. sub'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+        addParagraphAt: jest.fn(),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow1 = createMockRow([dataCell]);
       const dataRow2 = createMockRow([dataCell2]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow1, dataRow2]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow1, dataRow2]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
@@ -1286,28 +1286,28 @@ describe('HLP Table Processing', () => {
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 0 });
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([subPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('a. Sub-item'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([subPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
 
@@ -1328,28 +1328,28 @@ describe('HLP Table Processing', () => {
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([subPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('a. Sub-item'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([subPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
 
@@ -1368,28 +1368,28 @@ describe('HLP Table Processing', () => {
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 0 });
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([subPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('a. Sub-item'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([subPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
 
@@ -1411,45 +1411,45 @@ describe('HLP Table Processing', () => {
       headerPara.getText.mockReturnValue('High Level Process');
 
       const headerCell = {
-        getShading: vi.fn().mockReturnValue('FFC000'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([headerPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: { fill: 'FFC000' } }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('High Level Process'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFC000'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([headerPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: { fill: 'FFC000' } }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('High Level Process'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const dataRun = createMockRun(false);
       const dataPara = createMockParagraphWithRuns([dataRun], 'ListParagraph');
       dataPara.getNumbering.mockReturnValue({ numId: 33, level: 0 });
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue([dataPara]),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('Item'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue([dataPara]),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('Item'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
 
@@ -1479,22 +1479,22 @@ describe('HLP Table Processing', () => {
       // All content paragraphs are sub-items at level 1 — no level-0 decimal exists.
       // Pass 2 should return the most common numId among them.
       const mockLevel0 = {
-        getFormat: vi.fn().mockReturnValue('decimal'),
-        setFormat: vi.fn(), setText: vi.fn(), setFont: vi.fn(),
-        setFontSize: vi.fn(), setColor: vi.fn(), setBold: vi.fn(),
-        setLeftIndent: vi.fn(), setHangingIndent: vi.fn(),
-        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [] }),
+        getFormat: jest.fn().mockReturnValue('decimal'),
+        setFormat: jest.fn(), setText: jest.fn(), setFont: jest.fn(),
+        setFontSize: jest.fn(), setColor: jest.fn(), setBold: jest.fn(),
+        setLeftIndent: jest.fn(), setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [] }),
       };
       const mockAbstractNum = {
-        getLevel: vi.fn().mockImplementation((level: number) => level === 0 ? mockLevel0 : null),
+        getLevel: jest.fn().mockImplementation((level: number) => level === 0 ? mockLevel0 : null),
       };
-      const mockInstance = { getAbstractNumId: vi.fn().mockReturnValue(10) };
+      const mockInstance = { getAbstractNumId: jest.fn().mockReturnValue(10) };
       const mockManager = {
-        getInstance: vi.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
-        createCustomList: vi.fn().mockReturnValue(0),
+        getInstance: jest.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
+        createCustomList: jest.fn().mockReturnValue(0),
       };
-      (mockDoc as any).getNumberingManager = vi.fn().mockReturnValue(mockManager);
+      (mockDoc as any).getNumberingManager = jest.fn().mockReturnValue(mockManager);
 
       // Three sub-item paragraphs all at numId=33, level=1
       const paras = [1, 2, 3].map(() => {
@@ -1505,28 +1505,28 @@ describe('HLP Table Processing', () => {
       });
 
       const dataCell = {
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue(paras),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('a. Sub1\nb. Sub2\nc. Sub3'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      } as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue(paras),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('a. Sub1\nb. Sub2\nc. Sub3'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow = createMockRow([dataCell]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       const result = await processor.processHLPTables(mockDoc);
@@ -1540,22 +1540,22 @@ describe('HLP Table Processing', () => {
     it('should discover the highest-count numId via Pass 2 when mixed numIds exist', async () => {
       // Two paragraphs with numId=33 and one with numId=44 — should pick 33
       const mockLevel0 = {
-        getFormat: vi.fn().mockReturnValue('lowerLetter'), // NOT decimal, so Pass 1 skips
-        setFormat: vi.fn(), setText: vi.fn(), setFont: vi.fn(),
-        setFontSize: vi.fn(), setColor: vi.fn(), setBold: vi.fn(),
-        setLeftIndent: vi.fn(), setHangingIndent: vi.fn(),
-        toXML: vi.fn().mockReturnValue({ name: 'w:lvl', children: [] }),
+        getFormat: jest.fn().mockReturnValue('lowerLetter'), // NOT decimal, so Pass 1 skips
+        setFormat: jest.fn(), setText: jest.fn(), setFont: jest.fn(),
+        setFontSize: jest.fn(), setColor: jest.fn(), setBold: jest.fn(),
+        setLeftIndent: jest.fn(), setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [] }),
       };
       const mockAbstractNum = {
-        getLevel: vi.fn().mockImplementation((level: number) => level === 0 ? mockLevel0 : null),
+        getLevel: jest.fn().mockImplementation((level: number) => level === 0 ? mockLevel0 : null),
       };
-      const mockInstance = { getAbstractNumId: vi.fn().mockReturnValue(10) };
+      const mockInstance = { getAbstractNumId: jest.fn().mockReturnValue(10) };
       const mockManager = {
-        getInstance: vi.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: vi.fn().mockReturnValue(mockAbstractNum),
-        createCustomList: vi.fn().mockReturnValue(0),
+        getInstance: jest.fn().mockReturnValue(mockInstance),
+        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
+        createCustomList: jest.fn().mockReturnValue(0),
       };
-      (mockDoc as any).getNumberingManager = vi.fn().mockReturnValue(mockManager);
+      (mockDoc as any).getNumberingManager = jest.fn().mockReturnValue(mockManager);
 
       // Row 1: two paragraphs with numId=33
       const para1 = createMockParagraphWithRuns([createMockRun(false)], 'ListParagraph');
@@ -1568,29 +1568,29 @@ describe('HLP Table Processing', () => {
       para3.getNumbering.mockReturnValue({ numId: 44, level: 1 });
 
       const makeCell = (paras: any[]) => ({
-        getShading: vi.fn().mockReturnValue('FFFFFF'),
-        setShading: vi.fn(),
-        setBorders: vi.fn(),
-        setMargins: vi.fn(),
-        getParagraphs: vi.fn().mockReturnValue(paras),
-        getFormatting: vi.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: vi.fn().mockReturnValue(1),
-        setAllRunsFont: vi.fn(),
-        setAllRunsSize: vi.fn(),
-        getText: vi.fn().mockReturnValue('sub items'),
-        hasNestedTables: vi.fn().mockReturnValue(false),
-      }) as unknown as Mocked<TableCell>;
+        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        setShading: jest.fn(),
+        setBorders: jest.fn(),
+        setMargins: jest.fn(),
+        getParagraphs: jest.fn().mockReturnValue(paras),
+        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+        getColumnSpan: jest.fn().mockReturnValue(1),
+        setAllRunsFont: jest.fn(),
+        setAllRunsSize: jest.fn(),
+        getText: jest.fn().mockReturnValue('sub items'),
+        hasNestedTables: jest.fn().mockReturnValue(false),
+      }) as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const dataRow1 = createMockRow([makeCell([para1, para2])]);
       const dataRow2 = createMockRow([makeCell([para3])]);
       const table = {
-        getRows: vi.fn().mockReturnValue([headerRow, dataRow1, dataRow2]),
-        getColumnCount: vi.fn().mockReturnValue(1),
-        isFloating: vi.fn().mockReturnValue(false),
-        setBorders: vi.fn(),
-      } as unknown as Mocked<Table>;
+        getRows: jest.fn().mockReturnValue([headerRow, dataRow1, dataRow2]),
+        getColumnCount: jest.fn().mockReturnValue(1),
+        isFloating: jest.fn().mockReturnValue(false),
+        setBorders: jest.fn(),
+      } as unknown as jest.Mocked<Table>;
 
       mockDoc.getTables.mockReturnValue([table]);
       const result = await processor.processHLPTables(mockDoc);

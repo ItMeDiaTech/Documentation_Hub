@@ -16,6 +16,7 @@ import { Document } from '@/types/session';
 import { UserSettings } from '@/types/settings';
 import { logger } from '@/utils/logger';
 import { sanitizeUrl, validatePowerAutomateUrl } from '@/utils/urlHelpers';
+import { removeEmEnVariants } from '@/utils/textSanitizer';
 import { extractContentId, extractDocumentId } from '@/utils/urlPatterns';
 
 /**
@@ -770,9 +771,10 @@ export class HyperlinkService {
         // Remove existing Content_ID pattern (4-6 digits in parentheses)
         newDisplayText = newDisplayText.replace(/\s*\(\d{4,6}\)\s*$/, '');
 
-        // Update title if mismatch detected
-        if (apiResult.title && newDisplayText.trim() !== apiResult.title.trim()) {
-          newDisplayText = apiResult.title;
+        // Update title if mismatch detected (normalize em/en dashes and spaces)
+        const normalizedTitle = apiResult.title ? removeEmEnVariants(apiResult.title) : '';
+        if (normalizedTitle && newDisplayText.trim() !== normalizedTitle.trim()) {
+          newDisplayText = normalizedTitle;
         }
 
         // Append Content_ID (last 6 digits) if present

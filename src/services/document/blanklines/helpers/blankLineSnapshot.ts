@@ -216,9 +216,11 @@ export function wasOriginallyBlankAtBody(
   index: number
 ): boolean {
   const prev = index > 0 ? doc.getBodyElementAt(index - 1) : undefined;
+  // The blank would be inserted AT index, so the element that follows
+  // the blank is the one currently at index (not index + 1)
   const next =
-    index < doc.getBodyElementCount() - 1
-      ? doc.getBodyElementAt(index + 1)
+    index < doc.getBodyElementCount()
+      ? doc.getBodyElementAt(index)
       : undefined;
 
   const prevHash = hashElement(prev);
@@ -240,7 +242,9 @@ export function wasOriginallyBlankInCell(
 ): boolean {
   const paras = cell.getParagraphs();
   const prevHash = hashParagraph(paras[paraIndex - 1]);
-  const nextHash = hashParagraph(paras[paraIndex + 1]);
+  // The blank would be inserted AT paraIndex, so the element that follows
+  // the blank is the one currently at paraIndex (not paraIndex + 1)
+  const nextHash = hashParagraph(paras[paraIndex]);
 
   return snapshot.cellBlanks.some(
     (b) =>

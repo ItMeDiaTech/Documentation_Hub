@@ -4,37 +4,37 @@
  * Tests hyperlink manipulation, URL updates, and custom replacements.
  */
 
-import { vi, describe, it, expect, beforeEach, type Mocked } from 'vitest';
+
 import { HyperlinkProcessor } from '../HyperlinkProcessor';
 import { Document, Hyperlink, Paragraph, Revision } from 'docxmlater';
 import { DocXMLaterProcessor } from '../../DocXMLaterProcessor';
 
 // Mock dependencies
-vi.mock('docxmlater');
-vi.mock('../../DocXMLaterProcessor');
+jest.mock('docxmlater');
+jest.mock('../../DocXMLaterProcessor');
 
 describe('HyperlinkProcessor', () => {
   let processor: HyperlinkProcessor;
-  let mockDoc: Mocked<Document>;
-  let mockDocXMLater: Mocked<DocXMLaterProcessor>;
+  let mockDoc: jest.Mocked<Document>;
+  let mockDocXMLater: jest.Mocked<DocXMLaterProcessor>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     processor = new HyperlinkProcessor();
 
     // Create mock document
     mockDoc = {
-      getAllParagraphs: vi.fn().mockReturnValue([]),
-      isTrackChangesEnabled: vi.fn().mockReturnValue(false),
-      getRevisionManager: vi.fn().mockReturnValue({
-        register: vi.fn(),
+      getAllParagraphs: jest.fn().mockReturnValue([]),
+      isTrackChangesEnabled: jest.fn().mockReturnValue(false),
+      getRevisionManager: jest.fn().mockReturnValue({
+        register: jest.fn(),
       }),
-      hasBookmark: vi.fn().mockReturnValue(false),
-    } as unknown as Mocked<Document>;
+      hasBookmark: jest.fn().mockReturnValue(false),
+    } as unknown as jest.Mocked<Document>;
 
     // Setup DocXMLaterProcessor mock
-    mockDocXMLater = new DocXMLaterProcessor() as Mocked<DocXMLaterProcessor>;
-    mockDocXMLater.extractHyperlinks = vi.fn().mockResolvedValue([]);
+    mockDocXMLater = new DocXMLaterProcessor() as jest.Mocked<DocXMLaterProcessor>;
+    mockDocXMLater.extractHyperlinks = jest.fn().mockResolvedValue([]);
     (processor as any).docXMLater = mockDocXMLater;
   });
 
@@ -78,7 +78,7 @@ describe('HyperlinkProcessor', () => {
       const mockHyperlink2 = createMockHyperlink('https://example2.com', 'Link 2');
 
       // Make first hyperlink throw error
-      mockHyperlink1.setFormatting = vi.fn().mockImplementation(() => {
+      mockHyperlink1.setFormatting = jest.fn().mockImplementation(() => {
         throw new Error('Format error');
       });
 
@@ -112,7 +112,7 @@ describe('HyperlinkProcessor', () => {
     it('should update URLs in hyperlinks', async () => {
       const mockHyperlink = createMockHyperlink('https://old-url.com', 'Link');
       const mockParagraph = {
-        getContent: vi.fn().mockReturnValue([mockHyperlink]),
+        getContent: jest.fn().mockReturnValue([mockHyperlink]),
       };
 
       mockDoc.getAllParagraphs.mockReturnValue([mockParagraph as unknown as Paragraph]);
@@ -132,7 +132,7 @@ describe('HyperlinkProcessor', () => {
     it('should skip identical URLs', async () => {
       const mockHyperlink = createMockHyperlink('https://same-url.com', 'Link');
       const mockParagraph = {
-        getContent: vi.fn().mockReturnValue([mockHyperlink]),
+        getContent: jest.fn().mockReturnValue([mockHyperlink]),
       };
 
       mockDoc.getAllParagraphs.mockReturnValue([mockParagraph as unknown as Paragraph]);
@@ -155,12 +155,12 @@ describe('HyperlinkProcessor', () => {
 
     it('should track failed updates', async () => {
       const mockHyperlink = createMockHyperlink('https://old-url.com', 'Link');
-      mockHyperlink.setUrl = vi.fn().mockImplementation(() => {
+      mockHyperlink.setUrl = jest.fn().mockImplementation(() => {
         throw new Error('Update failed');
       });
 
       const mockParagraph = {
-        getContent: vi.fn().mockReturnValue([mockHyperlink]),
+        getContent: jest.fn().mockReturnValue([mockHyperlink]),
       };
 
       mockDoc.getAllParagraphs.mockReturnValue([mockParagraph as unknown as Paragraph]);
@@ -300,15 +300,15 @@ describe('HyperlinkProcessor', () => {
 });
 
 // Helper function to create mock hyperlink
-function createMockHyperlink(url: string, text: string): Mocked<Hyperlink> {
+function createMockHyperlink(url: string, text: string): jest.Mocked<Hyperlink> {
   return {
-    getUrl: vi.fn().mockReturnValue(url),
-    getText: vi.fn().mockReturnValue(text),
-    setText: vi.fn(),
-    setUrl: vi.fn(),
-    setFormatting: vi.fn(),
-    getFormatting: vi.fn().mockReturnValue({}),
-    getAnchor: vi.fn().mockReturnValue(null),
-    clone: vi.fn(),
-  } as unknown as Mocked<Hyperlink>;
+    getUrl: jest.fn().mockReturnValue(url),
+    getText: jest.fn().mockReturnValue(text),
+    setText: jest.fn(),
+    setUrl: jest.fn(),
+    setFormatting: jest.fn(),
+    getFormatting: jest.fn().mockReturnValue({}),
+    getAnchor: jest.fn().mockReturnValue(null),
+    clone: jest.fn(),
+  } as unknown as jest.Mocked<Hyperlink>;
 }

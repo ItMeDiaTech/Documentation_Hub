@@ -8,7 +8,7 @@
  * should exist at the position AFTER the current element.
  */
 
-import { Paragraph, Table } from "docxmlater";
+import { Paragraph, Table, ImageRun } from "docxmlater";
 import type { BlankLineRule, RuleContext } from "./ruleTypes";
 import { isParagraphBlank, isTocParagraph, startsWithBoldColon, getEffectiveLeftIndent, hasNavigationHyperlink } from "../helpers/paragraphChecks";
 import { getImageRunFromParagraph, isImageSmall, isSmallImageParagraph } from "../helpers/imageChecks";
@@ -317,6 +317,38 @@ export const aboveAndBelowLargeImagesRule: BlankLineRule = {
 };
 
 /**
+ * Add blank line ABOVE paragraphs that start with a small image (<100x100)
+ * and also contain text. These are typically callout/notice paragraphs
+ * with a leading icon that should be visually separated from preceding content.
+ */
+export const aboveSmallImageTextRule: BlankLineRule = {
+  id: "add-above-small-image-text",
+  action: "add",
+  scope: "both",
+  matches(ctx: RuleContext): boolean {
+    if (!(ctx.nextElement instanceof Paragraph)) return false;
+    if (isParagraphBlank(ctx.nextElement)) return false;
+    if (ctx.nextElement.getNumbering()) return false;
+
+    const indent = ctx.nextElement.getFormatting()?.indentation?.left;
+    if (indent && indent > 0) return false;
+
+    // First content item must be a small ImageRun
+    const content = ctx.nextElement.getContent();
+    if (!content || content.length === 0) return false;
+    if (!(content[0] instanceof ImageRun)) return false;
+    const image = content[0].getImageElement();
+    if (!isImageSmall(image)) return false;
+
+    // Must also have text content (not image-only)
+    const text = ctx.nextElement.getText()?.trim();
+    if (!text) return false;
+
+    return true;
+  },
+};
+
+/**
  * Add blank line above the end-of-document warning/disclaimer.
  * Matches the specific two-line disclaimer:
  *   "Not to Be Reproduced or Disclosed to Others Without Prior Written Approval"
@@ -335,12 +367,22 @@ export const aboveWarningRule: BlankLineRule = {
     const nextText = ctx.nextElement.getText().trim().toLowerCase();
     if (!nextText) return false;
 
-    const isDisclaimer =
-      nextText.includes("not to be reproduced") ||
-      nextText.includes("electronic data") ||
-      nextText.includes("paper copy = informational only");
+    const isDisclaimer = (text: string) =>
+      text.includes("not to be reproduced") ||
+      text.includes("electronic data") ||
+      text.includes("paper copy = informational only");
 
-    return isDisclaimer;
+    if (!isDisclaimer(nextText)) return false;
+
+    // Don't insert blank between consecutive disclaimer lines
+    if (ctx.currentElement instanceof Paragraph) {
+      const currentText = ctx.currentElement.getText().trim().toLowerCase();
+      if (currentText && isDisclaimer(currentText)) {
+        return false;
+      }
+    }
+
+    return true;
   },
 };
 
@@ -354,6 +396,7 @@ export const additionRules: BlankLineRule[] = [
   after1x1TablesRule,
   afterLargeTablesRule,
   aboveBoldColonNoIndentRule,
+  aboveSmallImageTextRule,
   boldColonNoIndentAfterRule,
   aboveTopOfDocHyperlinkRule,
   afterListItemsRule,

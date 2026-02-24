@@ -5,41 +5,41 @@
  * using the docxmlater library implementation.
  */
 
-import { vi, describe, it, expect, beforeEach, type Mocked } from 'vitest';
+
 import {
   WordDocumentProcessor,
   WordProcessingOptions,
   WordProcessingResult,
 } from '../WordDocumentProcessor';
 import { DocXMLaterProcessor } from '../DocXMLaterProcessor';
-import { Document, Hyperlink, Paragraph } from 'docxmlater';
+import { Document, Hyperlink, Paragraph, Run } from 'docxmlater';
 import { hyperlinkService } from '../../HyperlinkService';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 
 // Mock all dependencies
-vi.mock('docxmlater');
-vi.mock('../DocXMLaterProcessor');
-vi.mock('../../HyperlinkService');
-vi.mock('fs', () => ({
+jest.mock('docxmlater');
+jest.mock('../DocXMLaterProcessor');
+jest.mock('../../HyperlinkService');
+jest.mock('fs', () => ({
   promises: {
-    stat: vi.fn(),
-    copyFile: vi.fn(),
-    writeFile: vi.fn(),
-    readFile: vi.fn(),
-    mkdir: vi.fn(),
-    readdir: vi.fn(),
+    stat: jest.fn(),
+    copyFile: jest.fn(),
+    writeFile: jest.fn(),
+    readFile: jest.fn(),
+    mkdir: jest.fn(),
+    readdir: jest.fn(),
   },
 }));
 
 describe('WordDocumentProcessor', () => {
   let processor: WordDocumentProcessor;
-  let mockDoc: Mocked<Document>;
-  let mockDocXMLater: Mocked<DocXMLaterProcessor>;
+  let mockDoc: jest.Mocked<Document>;
+  let mockDocXMLater: jest.Mocked<DocXMLaterProcessor>;
 
   beforeEach(() => {
     // Clear all mocks before each test
-    vi.clearAllMocks();
+    jest.clearAllMocks();
 
     // Initialize processor
     processor = new WordDocumentProcessor();
@@ -47,19 +47,19 @@ describe('WordDocumentProcessor', () => {
     // Create comprehensive mock document that supports the full processing pipeline.
     // processDocument calls 60+ methods on doc — this mock provides sensible defaults.
     const mockNumberingManager = {
-      getAbstractNumbering: vi.fn().mockReturnValue(null),
-      getAllNumberingInstances: vi.fn().mockReturnValue([]),
+      getAbstractNumbering: jest.fn().mockReturnValue(null),
+      getAllNumberingInstances: jest.fn().mockReturnValue([]),
     };
     const mockRevisionManager = {
-      acceptAll: vi.fn(),
-      getRevisions: vi.fn().mockReturnValue([]),
+      acceptAll: jest.fn(),
+      getRevisions: jest.fn().mockReturnValue([]),
     };
     const mockBookmarkManager = {
-      getBookmarks: vi.fn().mockReturnValue([]),
+      getBookmarks: jest.fn().mockReturnValue([]),
     };
     const mockZipHandler = {
-      getFile: vi.fn().mockReturnValue(null),
-      setFile: vi.fn(),
+      getFile: jest.fn().mockReturnValue(null),
+      setFile: jest.fn(),
     };
     const mockCleanupResult = {
       hyperlinksDefragmented: 0,
@@ -69,90 +69,123 @@ describe('WordDocumentProcessor', () => {
 
     mockDoc = {
       // I/O & State
-      getRawXml: vi.fn().mockReturnValue(''),
-      getPart: vi.fn().mockReturnValue(''),
-      setPart: vi.fn(),
-      save: vi.fn().mockResolvedValue(undefined),
-      toBuffer: vi.fn().mockResolvedValue(Buffer.from('test')),
-      dispose: vi.fn(),
+      getRawXml: jest.fn().mockReturnValue(''),
+      getPart: jest.fn().mockReturnValue(''),
+      setPart: jest.fn(),
+      save: jest.fn().mockResolvedValue(undefined),
+      toBuffer: jest.fn().mockResolvedValue(Buffer.from('test')),
+      dispose: jest.fn(),
       // Paragraphs
-      getParagraphs: vi.fn().mockReturnValue([]),
-      getAllParagraphs: vi.fn().mockReturnValue([]),
-      createParagraph: vi.fn().mockReturnValue({
-        setStyle: vi.fn(),
-        setPreserved: vi.fn(),
-        setSpaceAfter: vi.fn(),
+      getParagraphs: jest.fn().mockReturnValue([]),
+      getAllParagraphs: jest.fn().mockReturnValue([]),
+      createParagraph: jest.fn().mockReturnValue({
+        setStyle: jest.fn(),
+        setPreserved: jest.fn(),
+        setSpaceAfter: jest.fn(),
       }),
-      insertParagraphAt: vi.fn(),
-      removeParagraph: vi.fn(),
+      insertParagraphAt: jest.fn(),
+      removeParagraph: jest.fn(),
       // Tables
-      getAllTables: vi.fn().mockReturnValue([]),
-      getTables: vi.fn().mockReturnValue([]),
-      getBodyElements: vi.fn().mockReturnValue([]),
-      borderAndCenterLargeImages: vi.fn().mockReturnValue(0),
+      getAllTables: jest.fn().mockReturnValue([]),
+      getTables: jest.fn().mockReturnValue([]),
+      getBodyElements: jest.fn().mockReturnValue([]),
+      borderAndCenterLargeImages: jest.fn().mockReturnValue(0),
       // TOC
-      getTableOfContentsElements: vi.fn().mockReturnValue([]),
-      rebuildTOCs: vi.fn().mockReturnValue([]),
-      removeTocAt: vi.fn(),
+      getTableOfContentsElements: jest.fn().mockReturnValue([]),
+      rebuildTOCs: jest.fn().mockReturnValue([]),
+      removeTocAt: jest.fn(),
       // Headers/Footers
-      removeAllHeadersFooters: vi.fn().mockReturnValue(0),
+      removeAllHeadersFooters: jest.fn().mockReturnValue(0),
       // Track Changes
-      enableTrackChanges: vi.fn(),
-      disableTrackChanges: vi.fn(),
-      setAcceptRevisionsBeforeSave: vi.fn(),
-      isTrackChangesEnabled: vi.fn().mockReturnValue(false),
-      getRevisionManager: vi.fn().mockReturnValue(mockRevisionManager),
+      enableTrackChanges: jest.fn(),
+      disableTrackChanges: jest.fn(),
+      setAcceptRevisionsBeforeSave: jest.fn(),
+      isTrackChangesEnabled: jest.fn().mockReturnValue(false),
+      getRevisionManager: jest.fn().mockReturnValue(mockRevisionManager),
       // Styles
-      addStyle: vi.fn(),
-      getStyles: vi.fn().mockReturnValue([]),
-      applyH1: vi.fn().mockReturnValue(0),
-      applyH2: vi.fn().mockReturnValue(0),
-      applyH3: vi.fn().mockReturnValue(0),
-      applyStylesFromObjects: vi.fn(),
+      addStyle: jest.fn(),
+      getStyles: jest.fn().mockReturnValue([]),
+      applyH1: jest.fn().mockReturnValue(0),
+      applyH2: jest.fn().mockReturnValue(0),
+      applyH3: jest.fn().mockReturnValue(0),
+      applyStylesFromObjects: jest.fn(),
       // Hyperlinks & Bookmarks
-      defragmentHyperlinks: vi.fn().mockReturnValue(0),
-      getHyperlinks: vi.fn().mockReturnValue([]),
-      updateAllHyperlinkColors: vi.fn().mockReturnValue(0),
-      hasBookmark: vi.fn().mockReturnValue(false),
-      createHeadingBookmark: vi.fn(),
-      addTopBookmark: vi.fn(),
-      getBookmarkManager: vi.fn().mockReturnValue(mockBookmarkManager),
+      defragmentHyperlinks: jest.fn().mockReturnValue(0),
+      getHyperlinks: jest.fn().mockReturnValue([]),
+      updateAllHyperlinkColors: jest.fn().mockReturnValue(0),
+      hasBookmark: jest.fn().mockReturnValue(false),
+      createHeadingBookmark: jest.fn(),
+      addTopBookmark: jest.fn(),
+      getBookmarkManager: jest.fn().mockReturnValue(mockBookmarkManager),
       // Text Replacement
-      replaceFormattedText: vi.fn().mockReturnValue(0),
+      replaceFormattedText: jest.fn().mockReturnValue(0),
       // Lists
-      normalizeTableLists: vi.fn().mockReturnValue({ tablesProcessed: 0, listsConverted: 0 }),
-      removeBlanksBetweenListItems: vi.fn().mockReturnValue(0),
-      removeExtraBlankParagraphs: vi.fn().mockReturnValue({ removed: 0, added: 0, total: 0, preserved: 0 }),
-      ensureBlankLinesAfter1x1Tables: vi.fn().mockReturnValue({ tablesProcessed: 0, blankLinesAdded: 0, existingLinesMarked: 0 }),
-      standardizeNumberedListPrefixes: vi.fn().mockReturnValue(0),
-      getNumberingManager: vi.fn().mockReturnValue(mockNumberingManager),
+      normalizeTableLists: jest.fn().mockReturnValue({ tablesProcessed: 0, listsConverted: 0 }),
+      removeBlanksBetweenListItems: jest.fn().mockReturnValue(0),
+      removeExtraBlankParagraphs: jest.fn().mockReturnValue({ removed: 0, added: 0, total: 0, preserved: 0 }),
+      ensureBlankLinesAfter1x1Tables: jest.fn().mockReturnValue({ tablesProcessed: 0, blankLinesAdded: 0, existingLinesMarked: 0 }),
+      standardizeNumberedListPrefixes: jest.fn().mockReturnValue(0),
+      getNumberingManager: jest.fn().mockReturnValue(mockNumberingManager),
       // Images
-      isSmallImageParagraph: vi.fn().mockReturnValue(false),
+      isSmallImageParagraph: jest.fn().mockReturnValue(false),
       // Page Setup
-      setPageOrientation: vi.fn(),
-      setMargins: vi.fn(),
+      setPageOrientation: jest.fn(),
+      setMargins: jest.fn(),
+      setDocumentView: jest.fn(),
+      getSection: jest.fn().mockReturnValue({
+        getPageSize: jest.fn().mockReturnValue({ width: 12240, height: 15840 }),
+        getMargins: jest.fn().mockReturnValue({ left: 1440, right: 1440, top: 1440, bottom: 1440 }),
+      }),
+      // Compatibility
+      isCompatibilityMode: jest.fn().mockReturnValue(false),
+      getCompatibilityMode: jest.fn().mockReturnValue(12),
+      upgradeToModernFormat: jest.fn().mockReturnValue({ previousMode: 11, newMode: 14, removedFlags: [], addedSettings: [] }),
+      // Web Settings
+      sanitizeWebSettings: jest.fn().mockReturnValue(0),
+      // Images
+      optimizeImages: jest.fn().mockResolvedValue({ optimizedCount: 0, totalSavedBytes: 0 }),
+      // Headers/Footers/Notes
+      clearAllHeaderFooterContent: jest.fn().mockReturnValue(0),
+      getFootnoteManager: jest.fn().mockReturnValue({ getCount: jest.fn().mockReturnValue(0) }),
+      getEndnoteManager: jest.fn().mockReturnValue({ getCount: jest.fn().mockReturnValue(0) }),
+      clearFootnotes: jest.fn(),
+      clearEndnotes: jest.fn(),
+      // Cleanup & Finalization
+      flattenFieldCodes: jest.fn(),
+      stripOrphanRSIDs: jest.fn(),
+      clearDirectSpacingForStyles: jest.fn(),
+      cleanupUnusedNumbering: jest.fn(),
+      consolidateNumbering: jest.fn().mockReturnValue({ abstractNumsRemoved: 0, instancesRemapped: 0, groupsConsolidated: 0 }),
+      validateNumberingReferences: jest.fn().mockReturnValue(0),
+      // Body Elements
+      getBodyElementCount: jest.fn().mockReturnValue(0),
+      getBodyElementAt: jest.fn().mockReturnValue(null),
+      // Style XML
+      getStylesXml: jest.fn().mockReturnValue(''),
+      updateTableStyleShading: jest.fn().mockReturnValue(0),
+      formatTOCStyles: jest.fn().mockReturnValue({ formatted: [] }),
       // Archive
-      getZipHandler: vi.fn().mockReturnValue(mockZipHandler),
-    } as unknown as Mocked<Document>;
+      getZipHandler: jest.fn().mockReturnValue(mockZipHandler),
+    } as unknown as jest.Mocked<Document>;
 
     // Setup Document.load mock
-    (Document.load as ReturnType<typeof vi.fn>).mockResolvedValue(mockDoc);
+    (Document.load as ReturnType<typeof jest.fn>).mockResolvedValue(mockDoc);
 
     // Setup DocXMLaterProcessor mock
     mockDocXMLater = (processor as any).docXMLater;
     if (mockDocXMLater) {
-      mockDocXMLater.extractHyperlinks = vi.fn().mockResolvedValue([]);
+      mockDocXMLater.extractHyperlinks = jest.fn().mockResolvedValue([]);
     }
 
     // Setup fs mocks — fs is imported as `promises` from 'fs'
-    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (fs.stat as ReturnType<typeof jest.fn>).mockResolvedValue({
       size: 1024 * 1024, // 1MB
     });
-    (fs.copyFile as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    (fs.writeFile as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(Buffer.from('test'));
-    (fs.mkdir as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    (fs.readdir as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (fs.copyFile as ReturnType<typeof jest.fn>).mockResolvedValue(undefined);
+    (fs.writeFile as ReturnType<typeof jest.fn>).mockResolvedValue(undefined);
+    (fs.readFile as unknown as ReturnType<typeof jest.fn>).mockResolvedValue(Buffer.from('test'));
+    (fs.mkdir as unknown as ReturnType<typeof jest.fn>).mockResolvedValue(undefined);
+    (fs.readdir as unknown as ReturnType<typeof jest.fn>).mockResolvedValue([]);
   });
 
   describe('Document Loading and Validation', () => {
@@ -176,7 +209,7 @@ describe('WordDocumentProcessor', () => {
       };
 
       // Mock large file
-      (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (fs.stat as ReturnType<typeof jest.fn>).mockResolvedValue({
         size: 1024 * 1024 * 2, // 2MB
       });
 
@@ -195,7 +228,7 @@ describe('WordDocumentProcessor', () => {
       await processor.processDocument(filePath, options);
 
       expect(fs.copyFile).toHaveBeenCalled();
-      const backupCall = (fs.copyFile as ReturnType<typeof vi.fn>).mock.calls[0];
+      const backupCall = (fs.copyFile as ReturnType<typeof jest.fn>).mock.calls[0];
       expect(backupCall[0]).toBe(filePath);
       expect(backupCall[1]).toContain('Backup');
     });
@@ -309,7 +342,7 @@ describe('WordDocumentProcessor', () => {
   describe('PowerAutomate API Integration', () => {
     beforeEach(() => {
       // Setup hyperlink service mock
-      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof vi.fn>) = vi.fn();
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>) = jest.fn();
     });
 
     it('should process hyperlinks with PowerAutomate API', async () => {
@@ -345,7 +378,7 @@ describe('WordDocumentProcessor', () => {
         },
       };
 
-      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof vi.fn>).mockResolvedValue(apiResponse);
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue(apiResponse);
 
       const options: WordProcessingOptions = {
         apiEndpoint: 'https://api.example.com',
@@ -377,7 +410,7 @@ describe('WordDocumentProcessor', () => {
       mockDocXMLater.extractHyperlinks.mockResolvedValue(mockHyperlinks);
 
       // Mock API failure
-      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue({
         success: false,
         error: 'API timeout',
       });
@@ -421,7 +454,7 @@ describe('WordDocumentProcessor', () => {
         },
       };
 
-      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof vi.fn>).mockResolvedValue(apiResponse);
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue(apiResponse);
 
       const options: WordProcessingOptions = {
         apiEndpoint: 'https://api.example.com',
@@ -434,7 +467,7 @@ describe('WordDocumentProcessor', () => {
 
       expect(result.success).toBe(true);
       // Text should be marked as "Not Found"
-      const setText = mockHyperlinks[0].hyperlink.setText as ReturnType<typeof vi.fn>;
+      const setText = mockHyperlinks[0].hyperlink.setText as ReturnType<typeof jest.fn>;
       expect(setText).toHaveBeenCalledWith(expect.stringContaining('Not Found'));
     });
   });
@@ -532,7 +565,7 @@ describe('WordDocumentProcessor', () => {
       const filePaths = ['/test/doc1.docx', '/test/doc2.docx', '/test/doc3.docx'];
 
       // Make second document fail
-      (Document.load as ReturnType<typeof vi.fn>)
+      (Document.load as ReturnType<typeof jest.fn>)
         .mockResolvedValueOnce(mockDoc)
         .mockRejectedValueOnce(new Error('Load failed'))
         .mockResolvedValueOnce(mockDoc);
@@ -546,7 +579,7 @@ describe('WordDocumentProcessor', () => {
 
     it('should call progress callback during batch processing', async () => {
       const filePaths = ['/test/doc1.docx', '/test/doc2.docx'];
-      const progressCallback = vi.fn();
+      const progressCallback = jest.fn();
 
       await processor.batchProcess(filePaths, {}, 1, progressCallback);
 
@@ -563,7 +596,7 @@ describe('WordDocumentProcessor', () => {
   describe('Memory Management', () => {
     it('should trigger garbage collection periodically in batch processing', async () => {
       // Mock global.gc
-      global.gc = vi.fn();
+      global.gc = jest.fn();
 
       const filePaths = Array(15).fill('/test/doc.docx');
 
@@ -587,7 +620,7 @@ describe('WordDocumentProcessor', () => {
     it('should handle document load errors gracefully', async () => {
       const filePath = '/test/invalid.docx';
 
-      (Document.load as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Invalid format'));
+      (Document.load as ReturnType<typeof jest.fn>).mockRejectedValue(new Error('Invalid format'));
 
       const result = await processor.processDocument(filePath);
 
@@ -648,7 +681,7 @@ describe('WordDocumentProcessor', () => {
       const mockParagraph = createMockParagraphForStyleTest('Normal', [mockRun]);
 
       // Set up doc to return this paragraph
-      mockDoc.getAllParagraphs = vi.fn().mockReturnValue([mockParagraph]);
+      mockDoc.getAllParagraphs = jest.fn().mockReturnValue([mockParagraph]);
 
       const options: WordProcessingOptions = {
         assignStyles: true,
@@ -674,9 +707,8 @@ describe('WordDocumentProcessor', () => {
 
       // The run's Hyperlink character style should have been stripped
       expect(mockRun.setCharacterStyle).toHaveBeenCalledWith(undefined);
-      // And it should have received Normal formatting
-      expect(mockRun.setFont).toHaveBeenCalledWith('Verdana');
-      expect(mockRun.setSize).toHaveBeenCalledWith(12);
+      // Bold/italic/underline are applied directly (font/size handled by style definitions)
+      expect(mockRun.setBold).toHaveBeenCalledWith(false);
     });
 
     it('should strip Hyperlink character style from non-hyperlink runs in List Paragraph', async () => {
@@ -685,7 +717,7 @@ describe('WordDocumentProcessor', () => {
       const mockRun = createMockRunWithHyperlinkStyle('List item with false hyperlink style');
       const mockParagraph = createMockParagraphForStyleTest('ListParagraph', [mockRun]);
 
-      mockDoc.getAllParagraphs = vi.fn().mockReturnValue([mockParagraph]);
+      mockDoc.getAllParagraphs = jest.fn().mockReturnValue([mockParagraph]);
 
       const options: WordProcessingOptions = {
         assignStyles: true,
@@ -711,8 +743,8 @@ describe('WordDocumentProcessor', () => {
 
       // The run's Hyperlink character style should have been stripped
       expect(mockRun.setCharacterStyle).toHaveBeenCalledWith(undefined);
-      // And it should have received List Paragraph formatting
-      expect(mockRun.setFont).toHaveBeenCalledWith('Verdana');
+      // Bold/italic/underline are applied directly (font/size handled by style definitions)
+      expect(mockRun.setBold).toHaveBeenCalledWith(false);
     });
 
     it('should not strip style from runs that are not hyperlink-styled', async () => {
@@ -720,20 +752,21 @@ describe('WordDocumentProcessor', () => {
 
       // Create a normal run (not hyperlink-styled)
       const mockRun = {
-        isHyperlinkStyled: vi.fn().mockReturnValue(false),
-        setCharacterStyle: vi.fn(),
-        getFormatting: vi.fn().mockReturnValue({}),
-        getText: vi.fn().mockReturnValue('Normal text'),
-        setFont: vi.fn(),
-        setSize: vi.fn(),
-        setBold: vi.fn(),
-        setItalic: vi.fn(),
-        setUnderline: vi.fn(),
-        setColor: vi.fn(),
+        isHyperlinkStyled: jest.fn().mockReturnValue(false),
+        setCharacterStyle: jest.fn(),
+        getFormatting: jest.fn().mockReturnValue({}),
+        getText: jest.fn().mockReturnValue('Normal text'),
+        setFont: jest.fn(),
+        setSize: jest.fn(),
+        setBold: jest.fn(),
+        setItalic: jest.fn(),
+        setUnderline: jest.fn(),
+        setColor: jest.fn(),
       };
+      Object.setPrototypeOf(mockRun, Run.prototype);
 
       const mockParagraph = createMockParagraphForStyleTest('Normal', [mockRun]);
-      mockDoc.getAllParagraphs = vi.fn().mockReturnValue([mockParagraph]);
+      mockDoc.getAllParagraphs = jest.fn().mockReturnValue([mockParagraph]);
 
       const options: WordProcessingOptions = {
         assignStyles: true,
@@ -759,54 +792,57 @@ describe('WordDocumentProcessor', () => {
 
       // setCharacterStyle should NOT have been called since this run isn't hyperlink-styled
       expect(mockRun.setCharacterStyle).not.toHaveBeenCalled();
-      // But it should still receive Normal formatting
-      expect(mockRun.setFont).toHaveBeenCalledWith('Verdana');
+      // Bold/italic/underline are applied directly (font/size handled by style definitions)
+      expect(mockRun.setBold).toHaveBeenCalledWith(false);
     });
   });
 });
 
 // Helper function to create mock hyperlink
-function createMockHyperlink(url: string, text: string): Mocked<Hyperlink> {
+function createMockHyperlink(url: string, text: string): jest.Mocked<Hyperlink> {
   return {
-    getUrl: vi.fn().mockReturnValue(url),
-    getText: vi.fn().mockReturnValue(text),
-    setText: vi.fn(),
-    setUrl: vi.fn(),
-    getFormatting: vi.fn().mockReturnValue({}),
-  } as unknown as Mocked<Hyperlink>;
+    getUrl: jest.fn().mockReturnValue(url),
+    getText: jest.fn().mockReturnValue(text),
+    setText: jest.fn(),
+    setUrl: jest.fn(),
+    getFormatting: jest.fn().mockReturnValue({}),
+  } as unknown as jest.Mocked<Hyperlink>;
 }
 
 // Helper function to create a mock run with false Hyperlink character style
 function createMockRunWithHyperlinkStyle(text: string) {
-  return {
-    isHyperlinkStyled: vi.fn().mockReturnValue(true),
-    setCharacterStyle: vi.fn(),
-    getFormatting: vi.fn().mockReturnValue({ characterStyle: 'Hyperlink' }),
-    getText: vi.fn().mockReturnValue(text),
-    setFont: vi.fn(),
-    setSize: vi.fn(),
-    setBold: vi.fn(),
-    setItalic: vi.fn(),
-    setUnderline: vi.fn(),
-    setColor: vi.fn(),
+  const run = {
+    isHyperlinkStyled: jest.fn().mockReturnValue(true),
+    setCharacterStyle: jest.fn(),
+    getFormatting: jest.fn().mockReturnValue({ characterStyle: 'Hyperlink' }),
+    getText: jest.fn().mockReturnValue(text),
+    setFont: jest.fn(),
+    setSize: jest.fn(),
+    setBold: jest.fn(),
+    setItalic: jest.fn(),
+    setUnderline: jest.fn(),
+    setColor: jest.fn(),
   };
+  // Make it pass instanceof Run check in getAllRunsFromParagraph
+  Object.setPrototypeOf(run, Run.prototype);
+  return run;
 }
 
 // Helper function to create a mock paragraph for style assignment tests
 function createMockParagraphForStyleTest(style: string, runs: any[]) {
   return {
-    getStyle: vi.fn().mockReturnValue(style),
-    getContent: vi.fn().mockReturnValue(runs), // Direct runs, no Hyperlink wrappers
-    getRuns: vi.fn().mockReturnValue(runs),
-    getText: vi.fn().mockReturnValue(runs.map((r: any) => r.getText()).join('')),
-    getFormatting: vi.fn().mockReturnValue({ style, alignment: 'left' }),
-    setAlignment: vi.fn(),
-    setSpaceBefore: vi.fn(),
-    setSpaceAfter: vi.fn(),
-    setLineSpacing: vi.fn(),
-    setStyle: vi.fn(),
-    setLeftIndent: vi.fn(),
-    setFirstLineIndent: vi.fn(),
-    getNumbering: vi.fn().mockReturnValue(undefined),
+    getStyle: jest.fn().mockReturnValue(style),
+    getContent: jest.fn().mockReturnValue(runs), // Direct runs, no Hyperlink wrappers
+    getRuns: jest.fn().mockReturnValue(runs),
+    getText: jest.fn().mockReturnValue(runs.map((r: any) => r.getText()).join('')),
+    getFormatting: jest.fn().mockReturnValue({ style, alignment: 'left' }),
+    setAlignment: jest.fn(),
+    setSpaceBefore: jest.fn(),
+    setSpaceAfter: jest.fn(),
+    setLineSpacing: jest.fn(),
+    setStyle: jest.fn(),
+    setLeftIndent: jest.fn(),
+    setFirstLineIndent: jest.fn(),
+    getNumbering: jest.fn().mockReturnValue(undefined),
   };
 }

@@ -81,14 +81,6 @@ export function isParagraphBlank(para: Paragraph): boolean {
     }
   }
 
-  // Check for bookmarks
-  if (
-    para.getBookmarksStart().length > 0 ||
-    para.getBookmarksEnd().length > 0
-  ) {
-    return false;
-  }
-
   return true;
 }
 
@@ -101,10 +93,10 @@ export function startsWithBoldColon(para: Paragraph): boolean {
   const content = para.getContent();
   if (!content || content.length === 0) return false;
 
-  // Get first content item that is a Run (skip any non-Run items at start)
-  const firstRun = content.find((item) => item instanceof Run) as
-    | Run
-    | undefined;
+  // Get first content item that is a text Run (skip ImageRun and non-Run items)
+  const firstRun = content.find(
+    (item) => item instanceof Run && !(item instanceof ImageRun)
+  ) as Run | undefined;
   if (!firstRun) return false;
 
   // Check if first run is bold

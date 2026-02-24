@@ -21,7 +21,6 @@ import { clearCustom } from "./helpers/clearCustom";
 import { isParagraphBlank } from "./helpers/paragraphChecks";
 import { createBlankParagraph } from "./helpers/blankLineInsertion";
 import { getImageRunFromParagraph, isImageSmall } from "./helpers/imageChecks";
-import { tableHasNestedContent } from "./helpers/tableGuards";
 import type { BlankLineSnapshot } from "./helpers/blankLineSnapshot";
 import {
   wasOriginallyBlankAtBody,
@@ -144,10 +143,9 @@ export class BlankLineManager {
     let removed = 0;
 
     for (const table of doc.getAllTables()) {
-      if (tableHasNestedContent(table)) continue;
-
       for (const row of table.getRows()) {
         for (const cell of row.getCells()) {
+          if (cell.hasNestedTables()) continue;
           let paras = cell.getParagraphs();
 
           for (let ci = paras.length - 1; ci >= 0; ci--) {
@@ -188,6 +186,7 @@ export class BlankLineManager {
 
     for (let i = 0; i < doc.getBodyElementCount(); i++) {
       const element = doc.getBodyElementAt(i);
+      const originalIndex = i;
       const ctx = this.buildBodyContext(doc, i);
       const matchedRule = this.findMatchingRule(additionRules, ctx, "body");
 
@@ -208,9 +207,14 @@ export class BlankLineManager {
           matchedRule.id === "add-above-top-of-doc-hyperlink" ||
           matchedRule.id === "add-above-warning" ||
           matchedRule.id === "add-before-first-1x1-table" ||
-          matchedRule.id === "add-above-bold-colon-no-indent";
+          matchedRule.id === "add-above-bold-colon-no-indent" ||
+          matchedRule.id === "add-above-small-image-text";
 
         if (isBefore) {
+          // Current element IS the required blank — don't insert a duplicate
+          if (element instanceof Paragraph && isParagraphBlank(element)) {
+            continue;
+          }
           // These rules want a blank BEFORE the next element
           // Check if a blank already exists between current and next
           const nextIdx = i + 1;
@@ -245,8 +249,8 @@ export class BlankLineManager {
         const imageRun = getImageRunFromParagraph(element);
         if (imageRun) {
           const image = imageRun.getImageElement();
-          if (!isImageSmall(image) && i > 0) {
-            const prevEl = doc.getBodyElementAt(i - 1);
+          if (!isImageSmall(image) && originalIndex > 0) {
+            const prevEl = doc.getBodyElementAt(originalIndex - 1);
             if (!(prevEl instanceof Paragraph && isParagraphBlank(prevEl))) {
               // Don't add blank above image if previous is centered text
               const isCenteredText =
@@ -255,7 +259,7 @@ export class BlankLineManager {
                 !!prevEl.getText()?.trim();
               if (!isCenteredText) {
                 const blankPara = createBlankParagraph(blankOpts);
-                doc.insertBodyElementAt(i, blankPara);
+                doc.insertBodyElementAt(originalIndex, blankPara);
                 added++;
                 i++; // Skip past inserted blank
               }
@@ -279,10 +283,9 @@ export class BlankLineManager {
     let added = 0;
 
     for (const table of doc.getAllTables()) {
-      if (tableHasNestedContent(table)) continue;
-
       for (const row of table.getRows()) {
         for (const cell of row.getCells()) {
+          if (cell.hasNestedTables()) continue;
           let paras = cell.getParagraphs();
 
           for (let ci = 0; ci < paras.length; ci++) {
@@ -296,6 +299,9 @@ export class BlankLineManager {
             if (matchedRule) {
               const isLastInCell = ci === paras.length - 1;
               if (isLastInCell) continue; // Don't add blank at end of cell
+
+              // Current paragraph is already blank — serves as the required spacing
+              if (para && isParagraphBlank(para)) continue;
 
               const nextPara = paras[ci + 1];
               if (nextPara && isParagraphBlank(nextPara)) continue; // Already has blank
@@ -361,11 +367,6 @@ export class BlankLineManager {
     let tableIndex = 0;
 
     for (const table of doc.getAllTables()) {
-      if (tableHasNestedContent(table)) {
-        tableIndex++;
-        continue;
-      }
-
       let firstCellText = "";
       try {
         const firstCell = table.getCell(0, 0);
@@ -385,6 +386,7 @@ export class BlankLineManager {
         const cells = rows[ri].getCells();
         for (let colIdx = 0; colIdx < cells.length; colIdx++) {
           const cell = cells[colIdx];
+          if (cell.hasNestedTables()) continue;
           let paras = cell.getParagraphs();
           const cellId = `t${tableIndex}_r${ri}_c${colIdx}_${firstCellText.substring(0, 20)}`;
 
@@ -504,10 +506,9 @@ export class BlankLineManager {
 
     // Cell dedup
     for (const table of doc.getAllTables()) {
-      if (tableHasNestedContent(table)) continue;
-
       for (const row of table.getRows()) {
         for (const cell of row.getCells()) {
+          if (cell.hasNestedTables()) continue;
           let paras = cell.getParagraphs();
 
           // Remove adjacent blanks

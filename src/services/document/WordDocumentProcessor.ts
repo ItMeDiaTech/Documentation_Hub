@@ -36,6 +36,7 @@ import {
   stripTypedPrefix,
   detectTypedPrefix,
   detectListType,
+  getParagraphIndentation,
 } from "@/services/document/list";
 import type { ParagraphContent, RunFormatting, TableCell } from "docxmlater";
 import type { RevisionHandlingMode } from "@/types/session";
@@ -59,7 +60,7 @@ import type { HyperlinkApiResponse } from "@/types/hyperlink";
 import { DocXMLaterProcessor } from "./DocXMLaterProcessor";
 import { blankLineManager, removeSmallIndents } from "./blanklines";
 import { normalizeRunWhitespace } from "./helpers/whitespace";
-import { cropEmbeddedImageBorders } from "./helpers/ImageBorderCropper";
+import { cropEmbeddedImageBorders, hasAllSideBakedBorder } from "./helpers/ImageBorderCropper";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
 import { DocumentSnapshotService } from "./DocumentSnapshotService";
@@ -914,6 +915,29 @@ export class WordDocumentProcessor {
         }
       }
 
+      // Defragment hyperlinks that were split by Google Docs or other processors.
+      // Must run BEFORE tracking is enabled — defragmentHyperlinks() is silently
+      // skipped when track changes is active (returns 0).
+      if (options.operations?.processHyperlinks) {
+        this.log.debug("=== DEFRAGMENTING HYPERLINKS (PRE-TRACKING) ===");
+        const merged = doc.defragmentHyperlinks({
+          resetFormatting: true,
+          cleanupRelationships: true,
+        });
+        this.log.info(`Merged ${merged} fragmented hyperlinks`);
+        result.mergedHyperlinks = merged;
+
+        // Track hyperlink defragmentation
+        if (merged > 0) {
+          result.changes?.push({
+            type: 'hyperlink',
+            category: 'structure',
+            description: 'Merged fragmented hyperlinks',
+            count: merged,
+          });
+        }
+      }
+
       // ═══════════════════════════════════════════════════════════
       // Word Tracked Changes - Enable Tracking Mode
       // All DocHub modifications will become Word tracked changes
@@ -1134,11 +1158,16 @@ export class WordDocumentProcessor {
                       newText += " - Expired";
                     }
 
+                    // Capture trailing punctuation before comparing/updating text
+                    const trailingPunct = /[.,]$/.test(hyperlinkInfo.displayText)
+                      ? hyperlinkInfo.displayText.slice(-1)
+                      : null;
+
                     if (newText !== hyperlinkInfo.displayText) {
                       // Update hyperlink text using docxmlater API
                       // Note: hyperlink is from extractHyperlinks() with structure { hyperlink: Hyperlink, paragraph: Paragraph, ... }
                       // So hyperlink.hyperlink accesses the actual docxmlater Hyperlink object
-                      hyperlink.hyperlink.setText(newText);
+                      this.setHyperlinkTextTracked(doc, hyperlink.hyperlink, hyperlink.paragraph, newText, authorName);
                       finalDisplayText = newText;
                       newTextValue = newText;
                       textChanged = true;
@@ -1208,6 +1237,33 @@ export class WordDocumentProcessor {
                         }
                       }
 
+                      // Insert trailing punctuation as a normal-styled Run after the hyperlink
+                      if (trailingPunct) {
+                        const para = hyperlink.paragraph;
+                        const freshContent = para.getContent();
+                        let insertAfterIdx = -1;
+
+                        for (let i = 0; i < freshContent.length; i++) {
+                          const item = freshContent[i];
+                          if (item === hyperlink.hyperlink) {
+                            insertAfterIdx = i;
+                            break;
+                          }
+                          // When tracked changes are ON, hyperlink is wrapped in an insertion Revision
+                          if (isRevision(item) && (item as Revision).getType() === 'insert') {
+                            if ((item as Revision).getContent().some((c: unknown) => c === hyperlink.hyperlink)) {
+                              insertAfterIdx = i;
+                              break;
+                            }
+                          }
+                        }
+
+                        if (insertAfterIdx !== -1) {
+                          para.insertRunAt(insertAfterIdx + 1, new Run(trailingPunct));
+                          this.log.debug(`Inserted trailing "${trailingPunct}" after hyperlink as normal text`);
+                        }
+                      }
+
                       // Track the change with status (expired/updated) and contentId
                       if (options.trackChanges) {
                         const hyperlinkStatus = apiResult.status === "expired" || apiResult.status === "deprecated"
@@ -1221,6 +1277,120 @@ export class WordDocumentProcessor {
                           "PowerAutomate API Update",
                           hyperlinkStatus,
                           apiResult.contentId // Pass contentId for tracking
+                        );
+                      }
+                    }
+                  } else if (options.operations?.fixContentIds && apiResult.contentId) {
+                    // Content ID References enabled WITHOUT Update Titles:
+                    // Keep original display text but append Content ID (last 6 digits)
+                    const last6 = apiResult.contentId.slice(-6);
+
+                    // Check for trailing punctuation before appending
+                    const trailingPunct = /[.,]$/.test(hyperlinkInfo.displayText)
+                      ? hyperlinkInfo.displayText.slice(-1)
+                      : null;
+
+                    // Build new text: original (minus trailing punct) + content ID
+                    let baseText = trailingPunct
+                      ? hyperlinkInfo.displayText.slice(0, -1)
+                      : hyperlinkInfo.displayText;
+
+                    // Strip existing content ID (4-6 digits in parentheses) to prevent
+                    // double-appending and allow replacing incorrect IDs
+                    baseText = baseText.replace(/\s*\(\d{4,6}\)\s*$/, '').trimEnd();
+
+                    const newText = `${baseText} (${last6})`;
+
+                    if (newText !== hyperlinkInfo.displayText) {
+                      this.setHyperlinkTextTracked(doc, hyperlink.hyperlink, hyperlink.paragraph, newText, authorName);
+                      finalDisplayText = newText;
+                      newTextValue = newText;
+                      textChanged = true;
+                      result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
+                      modifications.push("Content ID appended");
+
+                      this.log.debug(`Appended Content ID: "${hyperlinkInfo.displayText}" → "${newText}"`);
+
+                      // Clean up orphaned content ID runs (same logic as updateTitles path)
+                      const para = hyperlink.paragraph;
+                      const content = para.getContent();
+                      const hyperlinkIndex = content.findIndex((item: unknown) => item === hyperlink.hyperlink);
+
+                      if (hyperlinkIndex !== -1 && hyperlinkIndex < content.length - 1) {
+                        const itemsToRemove: Run[] = [];
+                        let combinedText = '';
+
+                        for (let ci = 1; ci <= 3 && hyperlinkIndex + ci < content.length; ci++) {
+                          const item = content[hyperlinkIndex + ci];
+
+                          if (this.isRunItem(item)) {
+                            const itemText = item.getText();
+                            combinedText += itemText;
+                            itemsToRemove.push(item);
+
+                            const trimmedText = combinedText.trim();
+                            const fullContentIdPattern = new RegExp(`^\\s*\\(${last6}\\)\\s*$`);
+                            const partialEndPattern = /^\s*\d*\)\s*$/;
+
+                            if (
+                              fullContentIdPattern.test(combinedText) ||
+                              trimmedText === ')' ||
+                              trimmedText === `(${last6})` ||
+                              (partialEndPattern.test(combinedText) && trimmedText.length <= 7)
+                            ) {
+                              for (const toRemove of itemsToRemove) {
+                                para.replaceContent(toRemove, []);
+                              }
+                              this.log.debug(
+                                `Removed ${itemsToRemove.length} orphaned content ID fragment(s): "${trimmedText}"`
+                              );
+                              break;
+                            }
+
+                            if (!/^[\s\d\(\)]+$/.test(combinedText)) {
+                              break;
+                            }
+                          } else {
+                            break;
+                          }
+                        }
+                      }
+
+                      // Insert trailing punctuation as normal-styled Run after hyperlink
+                      if (trailingPunct) {
+                        const freshContent = para.getContent();
+                        let insertAfterIdx = -1;
+
+                        for (let pi = 0; pi < freshContent.length; pi++) {
+                          const item = freshContent[pi];
+                          if (item === hyperlink.hyperlink) {
+                            insertAfterIdx = pi;
+                            break;
+                          }
+                          if (isRevision(item) && (item as Revision).getType() === 'insert') {
+                            if ((item as Revision).getContent().some((c: unknown) => c === hyperlink.hyperlink)) {
+                              insertAfterIdx = pi;
+                              break;
+                            }
+                          }
+                        }
+
+                        if (insertAfterIdx !== -1) {
+                          para.insertRunAt(insertAfterIdx + 1, new Run(trailingPunct));
+                          this.log.debug(`Inserted trailing "${trailingPunct}" after hyperlink as normal text`);
+                        }
+                      }
+
+                      // Track the change
+                      if (options.trackChanges) {
+                        documentProcessingComparison.recordHyperlinkTextChange(
+                          hyperlink.paragraphIndex,
+                          hyperlink.hyperlinkIndexInParagraph,
+                          hyperlinkInfo.displayText,
+                          newText,
+                          "PowerAutomate API - Content ID Reference",
+                          'updated',
+                          apiResult.contentId
                         );
                       }
                     }
@@ -1281,7 +1451,7 @@ export class WordDocumentProcessor {
                     // Mark as "Not Found"
                     const notFoundText = `${hyperlinkInfo.displayText} - Not Found`;
                     // Note: hyperlink.hyperlink accesses the actual docxmlater Hyperlink object
-                    hyperlink.hyperlink.setText(notFoundText);
+                    this.setHyperlinkTextTracked(doc, hyperlink.hyperlink, hyperlink.paragraph, notFoundText, authorName);
                     result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
 
                     // Track the change with not_found status for Document Changes UI
@@ -1391,28 +1561,7 @@ export class WordDocumentProcessor {
       // Custom replacements
       if (options.customReplacements && options.customReplacements.length > 0) {
         this.log.debug("=== APPLYING CUSTOM REPLACEMENTS ===");
-        await this.processCustomReplacements(hyperlinks, options.customReplacements, result);
-      }
-
-      // Defragment hyperlinks that were split by Google Docs or other processors
-      if (options.operations?.processHyperlinks) {
-        this.log.debug("=== DEFRAGMENTING HYPERLINKS ===");
-        const merged = doc.defragmentHyperlinks({
-          resetFormatting: true,
-          cleanupRelationships: true,
-        });
-        this.log.info(`Merged ${merged} fragmented hyperlinks`);
-        result.mergedHyperlinks = merged;
-
-        // Track hyperlink defragmentation
-        if (merged > 0) {
-          result.changes?.push({
-            type: 'hyperlink',
-            category: 'structure',
-            description: 'Merged fragmented hyperlinks',
-            count: merged,
-          });
-        }
+        await this.processCustomReplacements(hyperlinks, options.customReplacements, result, doc, authorName);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -1466,9 +1615,19 @@ export class WordDocumentProcessor {
 
       // ALWAYS standardize hyperlink formatting to ensure consistency
       // All hyperlinks should be: Verdana 12pt, Blue, Underlined
+      // Disable tracking — formatting standardization is cosmetic and should
+      // not generate tracked changes (setFormatting silently overwrites anyway,
+      // but disabling ensures no rPrChange noise if library behavior changes).
+      doc.disableTrackChanges();
       this.log.debug("=== STANDARDIZING HYPERLINK FORMATTING (AUTOMATIC) ===");
       const hyperlinksStandardized = await this.standardizeHyperlinkFormatting(doc);
       this.log.info(`Standardized formatting for ${hyperlinksStandardized} hyperlinks`);
+      doc.enableTrackChanges({
+        author: authorName,
+        trackFormatting: true,
+        showInsertionsAndDeletions: true,
+        clearExistingPropertyChanges: false,
+      });
 
       // Track automatic hyperlink formatting standardization
       if (hyperlinksStandardized > 0) {
@@ -1625,6 +1784,28 @@ export class WordDocumentProcessor {
       }
 
       if (options.assignStyles && options.styles && options.styles.length > 0) {
+        // Save table cell numbering before applyStyles() to prevent framework
+        // from silently reassigning numId/ilvl via style defaults
+        const savedTableCellNumbering = new Map<Paragraph, { numId: number; level: number }>();
+        for (const table of doc.getTables()) {
+          for (const row of table.getRows()) {
+            for (const cell of row.getCells()) {
+              for (const para of cell.getParagraphs()) {
+                const numbering = para.getNumbering();
+                if (numbering && numbering.numId > 0) {
+                  savedTableCellNumbering.set(para, {
+                    numId: numbering.numId,
+                    level: numbering.level ?? 0,
+                  });
+                }
+              }
+            }
+          }
+        }
+        if (savedTableCellNumbering.size > 0) {
+          this.log.debug(`Saved numbering for ${savedTableCellNumbering.size} table cell paragraphs before applyStyles()`);
+        }
+
         // Disable tracking during style application — clearing of redundant direct
         // formatting and style overrides should not appear as tracked changes
         doc.disableTrackChanges();
@@ -1675,6 +1856,20 @@ export class WordDocumentProcessor {
           showInsertionsAndDeletions: true,
           clearExistingPropertyChanges: false,
         });
+
+        // Restore table cell numbering that applyStyles() may have corrupted
+        let restoredCount = 0;
+        for (const [para, saved] of savedTableCellNumbering) {
+          const current = para.getNumbering();
+          if (!current || current.numId !== saved.numId || (current.level ?? 0) !== saved.level) {
+            para.setNumbering(saved.numId, saved.level);
+            restoredCount++;
+          }
+        }
+        if (restoredCount > 0) {
+          this.log.debug(`Restored numbering for ${restoredCount} table cell paragraphs after applyStyles()`);
+        }
+        savedTableCellNumbering.clear();
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -1704,6 +1899,43 @@ export class WordDocumentProcessor {
         this.log.warn("Failed to update Hyperlink style:", error);
         // Continue processing - manual formatting will still apply
       }
+
+      // Re-apply hyperlink formatting after style application.
+      // doc.applyStyles() can clear direct run formatting from hyperlink runs that
+      // lack rStyle="Hyperlink" character style, causing them to fall back to
+      // Normal paragraph formatting (black, no underline).
+      // Disable tracking — this is cosmetic formatting repair, not a user-visible change.
+      doc.disableTrackChanges();
+      try {
+        const allHyperlinks = await this.docXMLater.extractHyperlinks(doc);
+        let reappliedCount = 0;
+        for (const { hyperlink } of allHyperlinks) {
+          try {
+            hyperlink.setFormatting({
+              font: "Verdana",
+              size: 12,
+              color: "0000FF",
+              underline: "single",
+              bold: false,
+              italic: false,
+            });
+            reappliedCount++;
+          } catch (err) {
+            this.log.warn(`Failed to re-apply hyperlink formatting: ${err}`);
+          }
+        }
+        if (reappliedCount > 0) {
+          this.log.debug(`Re-applied formatting to ${reappliedCount} hyperlinks after style application`);
+        }
+      } catch (error) {
+        this.log.warn(`Failed hyperlink formatting safety net: ${error}`);
+      }
+      doc.enableTrackChanges({
+        author: authorName,
+        trackFormatting: true,
+        showInsertionsAndDeletions: true,
+        clearExistingPropertyChanges: false,
+      });
 
       // NOTE: Old blank line blocks (ensureBlankLinesAfter1x1Tables,
       // ensureBlankLinesAfterAllTables, removeExtraParagraphLines) have been
@@ -1822,7 +2054,14 @@ export class WordDocumentProcessor {
 
       if (options.addDocumentWarning) {
         this.log.debug("=== ADDING/UPDATING DOCUMENT WARNING ===");
+        doc.disableTrackChanges();
         await this.addOrUpdateDocumentWarning(doc);
+        doc.enableTrackChanges({
+          author: authorName,
+          trackFormatting: true,
+          showInsertionsAndDeletions: true,
+          clearExistingPropertyChanges: false,
+        });
 
         // Track document warning addition
         result.changes?.push({
@@ -1847,18 +2086,75 @@ export class WordDocumentProcessor {
         }
 
         this.log.debug("=== CENTERING AND BORDERING IMAGES ===");
-        // Centers and borders images where either dimension > 1 inch (96px at 96 DPI)
         const borderWidth = options.tableShadingSettings?.imageBorderWidth ?? 1.0;
-        const imagesCentered = doc.borderAndCenterLargeImages(96, borderWidth);
-        this.log.info(`Centered and bordered ${imagesCentered} images with ${borderWidth}pt border`);
+        const minEmus = Math.round(96 * 9525); // 96px threshold = 1 inch at 96 DPI
 
-        // Track image processing
-        if (imagesCentered > 0) {
+        let centeredCount = 0;
+        let borderedCount = 0;
+        let skippedBorderCount = 0;
+
+        for (const paragraph of doc.getAllParagraphs()) {
+          const content = paragraph.getContent();
+          const largeImages: Image[] = [];
+
+          for (const item of content) {
+            if (item instanceof ImageRun) {
+              const image = item.getImageElement();
+              if (image.getWidth() >= minEmus || image.getHeight() >= minEmus) {
+                largeImages.push(image);
+              }
+            } else if (item instanceof Revision) {
+              for (const revItem of item.getContent()) {
+                if (revItem instanceof ImageRun) {
+                  const image = revItem.getImageElement();
+                  if (image.getWidth() >= minEmus || image.getHeight() >= minEmus) {
+                    largeImages.push(image);
+                  }
+                }
+              }
+            }
+          }
+
+          if (largeImages.length === 0) continue;
+
+          // Center the paragraph (always, regardless of border decision)
+          paragraph.formatting.indentation = undefined;
+          paragraph.setAlignment('center');
+          centeredCount++;
+
+          // Selectively border each image
+          for (const image of largeImages) {
+            try {
+              const hasBakedBorder = await hasAllSideBakedBorder(image);
+              if (hasBakedBorder) {
+                skippedBorderCount++;
+                this.log.debug("Skipped Word border for image with baked-in border on all 4 sides");
+              } else {
+                image.setBorder(borderWidth);
+                borderedCount++;
+              }
+            } catch {
+              // On error, fall back to applying the border (safe default)
+              image.setBorder(borderWidth);
+              borderedCount++;
+            }
+          }
+        }
+
+        if (centeredCount > 0 || borderedCount > 0) {
+          this.log.info(
+            `Images: ${centeredCount} centered, ${borderedCount} bordered, ${skippedBorderCount} border-skipped (baked-in)`
+          );
+        }
+
+        if (centeredCount > 0) {
           result.changes?.push({
             type: 'structure',
             category: 'structure',
-            description: 'Centered and bordered images',
-            count: imagesCentered,
+            description: skippedBorderCount > 0
+              ? `Centered ${centeredCount} images (${borderedCount} bordered, ${skippedBorderCount} had baked-in borders)`
+              : `Centered and bordered ${centeredCount} images`,
+            count: centeredCount,
           });
         }
       }
@@ -1983,20 +2279,6 @@ export class WordDocumentProcessor {
         // have been moved to the rule-based BlankLineManager which runs AFTER all list processing.
       }
 
-      // Next, normalize list levels based on visual indentation (before applying uniformity)
-      // This handles documents where items have w:ilvl="0" but extra paragraph indentation
-      if (options.listBulletSettings?.enabled && options.listBulletSettings.indentationLevels) {
-        this.debugCaptureListState(doc, 'BEFORE normalizeListLevelsFromIndentation');
-        this.log.debug("=== NORMALIZING LIST LEVELS FROM VISUAL INDENTATION ===");
-        const levelsNormalized = await this.normalizeListLevelsFromIndentation(doc, {
-          indentationLevels: options.listBulletSettings.indentationLevels,
-        });
-        if (levelsNormalized > 0) {
-          this.log.info(`Normalized ${levelsNormalized} list item levels from visual indentation`);
-        }
-        this.debugCaptureListState(doc, 'AFTER normalizeListLevelsFromIndentation');
-      }
-
       // Normalize orphan Level 1+ bullets in table cells
       // If a cell's first bullet is Level 1+ with no preceding Level 0, shift all bullets down
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
@@ -2016,6 +2298,17 @@ export class WordDocumentProcessor {
         this.debugCaptureListState(doc, 'AFTER normalizeOrphanListLevelsInTable');
       }
 
+      // Normalize orphan Level 1+ bullets in body paragraphs
+      if (options.listBulletSettings?.enabled || options.bulletUniformity) {
+        this.debugCaptureListState(doc, 'BEFORE normalizeOrphanBodyListLevels');
+        this.log.debug("=== NORMALIZING ORPHAN LIST LEVELS IN BODY ===");
+        const bodyOrphansFixed = this.normalizeOrphanBodyListLevels(doc);
+        if (bodyOrphansFixed > 0) {
+          this.log.info(`Normalized ${bodyOrphansFixed} orphan list levels in body paragraphs`);
+        }
+        this.debugCaptureListState(doc, 'AFTER normalizeOrphanBodyListLevels');
+      }
+
       // Collapse non-contiguous level gaps (e.g., 0→1→3→4 becomes 0→1→2→3)
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
         this.debugCaptureListState(doc, 'BEFORE normalizeLevelGaps');
@@ -2025,6 +2318,21 @@ export class WordDocumentProcessor {
           this.log.info(`Collapsed ${gapsFixed} level gaps in list sequences`);
         }
         this.debugCaptureListState(doc, 'AFTER normalizeLevelGaps');
+      }
+
+      // Normalize list levels based on visual indentation (format clustering).
+      // Runs AFTER orphan normalization and gap collapsing so those passes operate
+      // on raw ilvl values and format clustering has the final say on sub-bullet levels.
+      if (options.listBulletSettings?.enabled && options.listBulletSettings.indentationLevels) {
+        this.debugCaptureListState(doc, 'BEFORE normalizeListLevelsFromIndentation');
+        this.log.debug("=== NORMALIZING LIST LEVELS FROM VISUAL INDENTATION ===");
+        const levelsNormalized = await this.normalizeListLevelsFromIndentation(doc, {
+          indentationLevels: options.listBulletSettings.indentationLevels,
+        });
+        if (levelsNormalized > 0) {
+          this.log.info(`Normalized ${levelsNormalized} list item levels from visual indentation`);
+        }
+        this.debugCaptureListState(doc, 'AFTER normalizeListLevelsFromIndentation');
       }
 
       if (options.listBulletSettings?.enabled) {
@@ -2202,6 +2510,28 @@ export class WordDocumentProcessor {
       const boldColonsFixed = this.standardizeBoldColonFormatting(doc);
       if (boldColonsFixed > 0) {
         this.log.info(`Bolded ${boldColonsFixed} colons in bold+colon label paragraphs`);
+      }
+
+      // Second whitespace pass: clean up leading spaces introduced or exposed
+      // by list normalization, typed prefix stripping, or bold colon formatting.
+      if (options.removeWhitespace) {
+        doc.disableTrackChanges();
+        const secondPassCleaned = await this.removeExtraWhitespace(doc);
+        doc.enableTrackChanges({
+          author: authorName,
+          trackFormatting: true,
+          showInsertionsAndDeletions: true,
+          clearExistingPropertyChanges: false,
+        });
+        if (secondPassCleaned > 0) {
+          this.log.info(`Second whitespace pass cleaned ${secondPassCleaned} additional runs`);
+          result.changes?.push({
+            type: 'text',
+            category: 'structure',
+            description: 'Second-pass whitespace cleanup after list/style processing',
+            count: secondPassCleaned,
+          });
+        }
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -2403,30 +2733,6 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
-      // TABLE BORDER STANDARDIZATION (CONDITIONAL)
-      // Standardize all table and cell borders to uniform thickness
-      // ═══════════════════════════════════════════════════════════
-      if (options.standardizeTableBorders) {
-        this.log.debug("=== STANDARDIZING TABLE BORDERS ===");
-        const borderThickness = options.tableShadingSettings?.cellBorderThickness ?? 0.5;
-        const borderSize = Math.round(borderThickness * 8); // Convert points to eighths
-
-        const tablesNormalized = this.standardizeTableBorders(doc, {
-          size: borderSize,
-        });
-
-        if (tablesNormalized > 0) {
-          this.log.info(`Standardized borders on ${tablesNormalized} tables to ${borderThickness}pt`);
-          result.changes?.push({
-            type: 'table',
-            category: 'structure',
-            description: `Standardized table borders to ${borderThickness}pt thickness`,
-            count: tablesNormalized,
-          });
-        }
-      }
-
-      // ═══════════════════════════════════════════════════════════
       // HLP TABLE DETECTION AND FORMATTING
       // Detect HLP tables (FFC000 header) and apply special formatting:
       // - Outer borders: 2.25pt orange (#FFC000)
@@ -2469,16 +2775,69 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
+      // STEP TABLE DETECTION
+      // Identifies tables with a "Step" header and numeric data cells.
+      // Does NOT modify grid or tcW here — changes are applied after
+      // autofit/normalize so original widths (especially in pct tables)
+      // are preserved.
+      // ═══════════════════════════════════════════════════════════
+      const tables = doc.getTables();
+      const stepTableSet = new Set<typeof tables[0]>();
+      let stepTablesFixed = 0;
+
+      for (const table of tables) {
+        if (tableProcessor.shouldSkipTable(table)) continue;
+
+        const rows = table.getRows();
+        if (rows.length < 2) continue;
+
+        const headerRow = rows[0];
+        const firstCell = headerRow.getCells()[0];
+        if (!firstCell) continue;
+
+        const headerText = firstCell.getText().trim().toLowerCase();
+        if (headerText !== "step") continue;
+
+        // Validate data cells: must be numeric (e.g. "1", "2.", "3") or empty
+        let isStepTable = true;
+        for (let i = 1; i < rows.length; i++) {
+          const dataCell = rows[i].getCells()[0];
+          if (!dataCell) {
+            isStepTable = false;
+            break;
+          }
+          const cellText = dataCell.getText().trim();
+          if (cellText && !/^\d+\.?$/.test(cellText)) {
+            isStepTable = false;
+            break;
+          }
+        }
+
+        if (isStepTable) {
+          stepTableSet.add(table);
+          this.log.debug(`Detected "Step" table (${rows.length} rows) — will fix column width after autofit`);
+          stepTablesFixed++;
+        }
+      }
+
+      if (stepTablesFixed > 0) {
+        this.log.info(`Fixed ${stepTablesFixed} "Step" tables with 1" first column`);
+        result.changes?.push({
+          type: 'table',
+          category: 'structure',
+          description: 'Set "Step" table first column to 1 inch',
+          count: stepTablesFixed,
+        });
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // TABLE AUTOFIT TO WINDOW WITH WIDTH PRESERVATION
       // 1. Save cell widths (tcW) and clear all tcW + trHeight
       // 2. Set auto-fit layout
       // 3. Restore saved tcW
       // Row heights (trHeight) are permanently cleared.
-      // Step column fix runs as a separate pass afterwards.
       // ═══════════════════════════════════════════════════════════
       this.log.debug("=== SETTING TABLES TO AUTOFIT WINDOW (WITH WIDTH PRESERVATION) ===");
-      const STEP_COLUMN_WIDTH = 1440; // 1 inch in twips
-      const tables = doc.getTables();
       let autofitCount = 0;
 
       for (const table of tables) {
@@ -2532,66 +2891,6 @@ export class WordDocumentProcessor {
         });
       }
       // ═══════════════════════════════════════════════════════════
-      // STEP COLUMN WIDTH FIX (runs AFTER autofit restore)
-      // Detects tables with a "Step" header and numeric data cells,
-      // then sets the first column to 1 inch so the width is never
-      // overwritten by the autofit save/clear/restore cycle.
-      // ═══════════════════════════════════════════════════════════
-      let stepTablesFixed = 0;
-      for (const table of tables) {
-        if (tableProcessor.shouldSkipTable(table)) continue;
-
-        const rows = table.getRows();
-        if (rows.length < 2) continue;
-
-        const headerRow = rows[0];
-        const firstCell = headerRow.getCells()[0];
-        if (!firstCell) continue;
-
-        const headerText = firstCell.getText().trim().toLowerCase();
-        if (headerText !== "step") continue;
-
-        // Validate data cells: must be numeric (e.g. "1", "2.", "3") or empty
-        let isStepTable = true;
-        for (let i = 1; i < rows.length; i++) {
-          const dataCell = rows[i].getCells()[0];
-          if (!dataCell) {
-            isStepTable = false;
-            break;
-          }
-          const cellText = dataCell.getText().trim();
-          if (cellText && !/^\d+\.?$/.test(cellText)) {
-            isStepTable = false;
-            break;
-          }
-        }
-
-        if (isStepTable) {
-          // Set grid-level column width
-          table.setColumnWidth(0, STEP_COLUMN_WIDTH);
-          // Set cell-level width for each row
-          for (const row of rows) {
-            const cell = row.getCells()[0];
-            if (cell) {
-              cell.setWidthType(STEP_COLUMN_WIDTH, "dxa");
-            }
-          }
-          this.log.debug(`Detected "Step" table: set first column to 1 inch`);
-          stepTablesFixed++;
-        }
-      }
-
-      if (stepTablesFixed > 0) {
-        this.log.info(`Fixed ${stepTablesFixed} "Step" tables with 1" first column`);
-        result.changes?.push({
-          type: 'table',
-          category: 'structure',
-          description: 'Set "Step" table first column to 1 inch',
-          count: stepTablesFixed,
-        });
-      }
-
-      // ═══════════════════════════════════════════════════════════
       // NORMALIZE CELL WIDTHS (tcW) TO MATCH TABLE GRID (tblGrid)
       // After all table processing, ensure each cell's tcW matches
       // the sum of its spanned tblGrid columns to prevent Word's
@@ -2599,6 +2898,9 @@ export class WordDocumentProcessor {
       // ═══════════════════════════════════════════════════════════
       for (const table of doc.getTables()) {
         if (tableProcessor.shouldSkipTable(table)) continue;
+        // Skip step tables: their original tcW values must be preserved
+        // so pct-width tables render correctly in Word
+        if (stepTableSet.has(table)) continue;
         const grid = table.getTableGrid();
         if (!grid || grid.length === 0) continue;
 
@@ -2621,9 +2923,52 @@ export class WordDocumentProcessor {
         }
       }
 
+      // ═══════════════════════════════════════════════════════════
+      // STEP COLUMN WIDTH FIX (runs AFTER autofit + normalize)
+      // Sets step column tcW to 1" and fixed layout. Grid is left
+      // untouched so pct-width tables preserve their original
+      // gridCol/tcW relationship.
+      // ═══════════════════════════════════════════════════════════
+      const STEP_COLUMN_WIDTH = 1440; // 1 inch in twips
+      for (const table of stepTableSet) {
+        for (const row of table.getRows()) {
+          const cell = row.getCells()[0];
+          if (cell) {
+            cell.setWidthType(STEP_COLUMN_WIDTH, "dxa");
+          }
+        }
+        table.setLayout("fixed");
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // TABLE BORDER STANDARDIZATION (CONDITIONAL)
+      // Standardize all table and cell borders to uniform thickness.
+      // Runs LAST in the table pipeline so borders survive all
+      // width operations (autofit, normalize, step column fix).
+      // ═══════════════════════════════════════════════════════════
+      if (options.standardizeTableBorders) {
+        this.log.debug("=== STANDARDIZING TABLE BORDERS ===");
+        const borderThickness = options.tableShadingSettings?.cellBorderThickness ?? 0.5;
+        const borderSize = Math.round(borderThickness * 8); // Convert points to eighths
+
+        const tablesNormalized = this.standardizeTableBorders(doc, {
+          size: borderSize,
+        });
+
+        if (tablesNormalized > 0) {
+          this.log.info(`Standardized borders on ${tablesNormalized} tables to ${borderThickness}pt`);
+          result.changes?.push({
+            type: 'table',
+            category: 'structure',
+            description: `Standardized table borders to ${borderThickness}pt thickness`,
+            count: tablesNormalized,
+          });
+        }
+      }
+
       // Re-enable track changes after all structural table processing is complete.
-      // Everything above (landscape margins, table uniformity, borders, HLP tables,
-      // autofit, step columns, cell width normalization) modifies table layout/structure
+      // Everything above (landscape margins, table uniformity, HLP tables, autofit,
+      // cell width normalization, step columns, borders) modifies table layout/structure
       // and should not generate tcPrChange/tblPrChange — those cause tables to appear
       // scrunched in Word's "Original" view.
       doc.enableTrackChanges({
@@ -2654,7 +2999,16 @@ export class WordDocumentProcessor {
       // HYPERLINK GROUP (additional operations)
       if (options.operations?.updateTopHyperlinks) {
         this.log.debug("=== UPDATING TOP OF DOCUMENT HYPERLINKS ===");
+        // Disable track changes — Top of Document links are cosmetic navigation aids,
+        // not content changes that should appear in Word's Review pane
+        doc.disableTrackChanges();
         const topLinksAdded = await this.updateTopOfDocumentHyperlinks(doc);
+        doc.enableTrackChanges({
+          author: authorName,
+          trackFormatting: true,
+          showInsertionsAndDeletions: true,
+          clearExistingPropertyChanges: false,
+        });
         this.log.info(`Added ${topLinksAdded} "Top of Document" navigation links`);
 
         // Track Top of Document hyperlink creation
@@ -2672,7 +3026,8 @@ export class WordDocumentProcessor {
         this.log.debug("=== REPLACING OUTDATED HYPERLINK TITLES ===");
         const titlesReplaced = await this.replaceOutdatedHyperlinkTitles(
           doc,
-          options.customReplacements
+          options.customReplacements,
+          authorName
         );
         this.log.info(`Replaced ${titlesReplaced} outdated hyperlink titles`);
       }
@@ -2706,6 +3061,22 @@ export class WordDocumentProcessor {
             description: 'Fixed internal hyperlink bookmarks',
             count: internalLinksFixed,
           });
+        }
+      }
+
+      // Final whitespace pass: catch double spaces introduced by
+      // late-pipeline text modifications (hyperlink title replacement, etc.)
+      if (options.removeWhitespace) {
+        doc.disableTrackChanges();
+        const finalPassCleaned = await this.removeExtraWhitespace(doc);
+        doc.enableTrackChanges({
+          author: authorName,
+          trackFormatting: true,
+          showInsertionsAndDeletions: true,
+          clearExistingPropertyChanges: false,
+        });
+        if (finalPassCleaned > 0) {
+          this.log.info(`Final whitespace pass cleaned ${finalPassCleaned} additional runs`);
         }
       }
 
@@ -2941,6 +3312,32 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
+      // DEDUPLICATE COMPLEX FIELD HYPERLINKS
+      //
+      // Cross-paragraph ComplexField chains (fldChar begin in one paragraph,
+      // fldChar end at start of the next) can produce duplicate field
+      // sequences after docxmlater parses and re-serializes them.
+      // Remove identical adjacent ComplexField hyperlinks to prevent
+      // doubled text in the output (e.g. "Mail Order ErrorMail Order Error").
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== DEDUPLICATING COMPLEX FIELD HYPERLINKS ===");
+      try {
+        const dedupCount = this.deduplicateComplexFieldHyperlinks(doc);
+        if (dedupCount > 0) {
+          this.log.info(`Removed ${dedupCount} duplicate hyperlink(s) from cross-paragraph field chains`);
+          result.changes?.push({
+            type: 'hyperlink',
+            category: 'structure',
+            description: 'Removed duplicate hyperlinks from cross-paragraph field chains',
+            count: dedupCount,
+          });
+        }
+      } catch (dedupError) {
+        this.log.debug("ComplexField deduplication completed with warnings:", dedupError);
+        // Non-fatal - continue with save
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // DOCUMENT SANITIZATION - Prevent Word freezes/crashes
       //
       // Fixes two common bloat sources in loaded documents:
@@ -3171,9 +3568,11 @@ export class WordDocumentProcessor {
       matchType: "contains" | "exact" | "startsWith";
       applyTo: "url" | "text" | "both";
     }>,
-    result: WordProcessingResult
+    result: WordProcessingResult,
+    doc: Document,
+    author: string
   ): Promise<void> {
-    for (const { hyperlink, url, text } of hyperlinks) {
+    for (const { hyperlink, paragraph, url, text } of hyperlinks) {
       for (const rule of replacements) {
         let shouldApply = false;
 
@@ -3182,8 +3581,7 @@ export class WordDocumentProcessor {
             shouldApply = this.matchesPattern(url, rule.find, rule.matchType);
             if (shouldApply) {
               const newUrl = url.replace(rule.find, rule.replace);
-              // Update hyperlink using docxmlater's setUrl method
-              hyperlink.setUrl(newUrl);
+              this.setHyperlinkUrlTracked(doc, hyperlink, paragraph, newUrl, author);
               if (result.updatedUrls !== undefined) {
                 result.updatedUrls++;
               }
@@ -3195,7 +3593,7 @@ export class WordDocumentProcessor {
           shouldApply = this.matchesPattern(text, rule.find, rule.matchType);
           if (shouldApply) {
             const newText = text.replace(rule.find, rule.replace);
-            hyperlink.setText(newText);
+            this.setHyperlinkTextTracked(doc, hyperlink, paragraph, newText, author);
             if (result.updatedDisplayTexts !== undefined) {
               result.updatedDisplayTexts++;
             }
@@ -3410,6 +3808,76 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Update hyperlink text with tracked change support.
+   * When tracking is enabled, creates w:del/w:ins revision pair so the
+   * text change appears in Word's Review pane.
+   */
+  private setHyperlinkTextTracked(
+    doc: Document,
+    hyperlink: Hyperlink,
+    paragraph: Paragraph,
+    newText: string,
+    author: string,
+  ): boolean {
+    if (!doc.isTrackChangesEnabled()) {
+      hyperlink.setText(newText);
+      return true;
+    }
+
+    const oldHyperlink = hyperlink.clone();
+    hyperlink.setText(newText);
+
+    const deletion = Revision.createDeletion(author, [oldHyperlink]);
+    const insertion = Revision.createInsertion(author, [hyperlink]);
+    const replaced = paragraph.replaceContent(hyperlink, [deletion, insertion]);
+
+    if (replaced) {
+      const rm = doc.getRevisionManager();
+      rm.register(deletion);
+      rm.register(insertion);
+    } else {
+      this.log.warn('Could not create tracked change for hyperlink text update, text updated without tracking');
+    }
+
+    return replaced;
+  }
+
+  /**
+   * Update hyperlink URL with tracked change support.
+   * When tracking is enabled, creates w:del/w:ins revision pair so the
+   * URL change appears in Word's Review pane.
+   */
+  private setHyperlinkUrlTracked(
+    doc: Document,
+    hyperlink: Hyperlink,
+    paragraph: Paragraph,
+    newUrl: string,
+    author: string,
+  ): boolean {
+    if (!doc.isTrackChangesEnabled()) {
+      hyperlink.setUrl(newUrl);
+      return true;
+    }
+
+    const oldHyperlink = hyperlink.clone();
+    hyperlink.setUrl(newUrl);
+
+    const deletion = Revision.createDeletion(author, [oldHyperlink]);
+    const insertion = Revision.createInsertion(author, [hyperlink]);
+    const replaced = paragraph.replaceContent(hyperlink, [deletion, insertion]);
+
+    if (replaced) {
+      const rm = doc.getRevisionManager();
+      rm.register(deletion);
+      rm.register(insertion);
+    } else {
+      this.log.warn('Could not create tracked change for hyperlink URL update, URL updated without tracking');
+    }
+
+    return replaced;
+  }
+
+  /**
    * Apply URL updates to hyperlinks using DocXMLater's setUrl() method
    * Updated to use the new setUrl() API added to DocXMLater library
    *
@@ -3437,12 +3905,8 @@ export class WordDocumentProcessor {
     const failedUrls: UrlUpdateResult["failed"] = [];
     let updatedCount = 0;
     const paragraphs = doc.getAllParagraphs();
-    const trackChangesEnabled = doc.isTrackChangesEnabled();
 
     this.log.debug(`Processing ${paragraphs.length} paragraphs for URL updates`);
-    if (trackChangesEnabled) {
-      this.log.debug(`Track changes enabled - will create tracked hyperlink changes`);
-    }
 
     for (let paraIndex = 0; paraIndex < paragraphs.length; paraIndex++) {
       const para = paragraphs[paraIndex];
@@ -3466,39 +3930,11 @@ export class WordDocumentProcessor {
             }
 
             try {
-              if (trackChangesEnabled) {
-                // Create tracked changes for URL update:
-                // 1. Clone the hyperlink to preserve old state
-                const oldHyperlink = item.clone();
-
-                // 2. Update the hyperlink with new URL
-                item.setUrl(newUrl);
-
-                // 3. Create deletion revision for old hyperlink
-                const deletion = Revision.createDeletion(author, [oldHyperlink]);
-
-                // 4. Create insertion revision for new hyperlink
-                const insertion = Revision.createInsertion(author, [item]);
-
-                // 5. Replace the hyperlink in paragraph with the revisions
-                const replaced = para.replaceContent(item, [deletion, insertion]);
-
-                if (replaced) {
-                  // 6. Register revisions with the document's revision manager
-                  const revisionManager = doc.getRevisionManager();
-                  revisionManager.register(deletion);
-                  revisionManager.register(insertion);
-
-                  this.log.debug(`Created tracked change for hyperlink URL: ${oldUrl} -> ${newUrl}`);
-                } else {
-                  // Fallback: replaceContent failed, just update the URL
-                  this.log.warn(`Could not create tracked change, falling back to direct update: ${oldUrl}`);
-                }
-              } else {
-                // No track changes - just update the URL directly
-                item.setUrl(newUrl);
-                this.log.debug(`Updated hyperlink URL: ${oldUrl} -> ${newUrl}`);
-              }
+              // URL-only updates are applied directly without tracked changes.
+              // Creating del/ins revision pairs for URL changes produces no-op
+              // tracked changes in Word (identical display text in both).
+              item.setUrl(newUrl);
+              this.log.debug(`Updated hyperlink URL: ${oldUrl} -> ${newUrl}`);
 
               updatedCount++;
             } catch (error) {
@@ -3519,8 +3955,9 @@ export class WordDocumentProcessor {
           }
         }
         // Case 2: Hyperlinks inside Revision elements (w:ins, w:del tracked changes)
-        // These hyperlinks are already wrapped in a revision, so just update URL directly
-        else if (item instanceof Revision) {
+        // Only update URLs inside insertion Revisions — skip deletion Revisions
+        // to preserve the original "before" state for genuine text-change pairs.
+        else if (item instanceof Revision && item.getType() === 'insert') {
           const revisionContent = item.getContent();
           for (const revContent of revisionContent) {
             if (revContent instanceof Hyperlink) {
@@ -3650,16 +4087,95 @@ export class WordDocumentProcessor {
         continue;
       }
 
-      // Skip paragraphs with complex field content (instructionText runs)
-      // This prevents corrupting TOC field instructions, cross-references, etc.
+      let runs = para.getRuns();
+
+      // Filter out field-marker runs instead of skipping the entire paragraph.
+      // Always keep ImageRun and VML image runs — they have no field content
+      // and dropping them prevents space-after-image insertion.
       if (this.hasComplexFieldContent(para)) {
-        continue;
+        runs = runs.filter(run => {
+          if (run instanceof ImageRun) return true;
+          try {
+            const content = run.getContent();
+            // Keep VML image runs (legacy format inline images)
+            if (content.some((c: { type: string }) => c.type === "vml")) return true;
+            return !content.some(
+              (c: { type: string }) =>
+                c.type === "instructionText" || c.type === "fieldChar"
+            );
+          } catch {
+            return false;
+          }
+        });
       }
 
-      cleanedCount += normalizeRunWhitespace(para.getRuns());
+      const gapAfter = this.detectContentGaps(runs, para);
+      cleanedCount += normalizeRunWhitespace(runs, gapAfter);
     }
 
     return cleanedCount;
+  }
+
+  /**
+   * Detect "content gaps" — positions where invisible content (e.g. a
+   * Revision-wrapped hyperlink) sits between two adjacent visible runs.
+   *
+   * When the API updates hyperlink text with tracked changes, the hyperlink
+   * gets wrapped in Revision elements (tracked delete + tracked insert).
+   * `para.getRuns()` skips these (Revision.getRuns() filters by isRunContent
+   * which excludes Hyperlinks), so the whitespace normalizer sees
+   * `["Contact ", " to confirm"]` as adjacent and incorrectly strips the
+   * trailing space from "Contact ".
+   *
+   * Returns a Set of run indices where a gap exists (meaning invisible content
+   * sits between runs[i] and runs[i+1]), or undefined if no gaps found.
+   */
+  private detectContentGaps(runs: Run[], para: Paragraph): Set<number> | undefined {
+    // Quick exit: if no Revision instances in paragraph content, no gaps possible
+    const content = para.getContent();
+    if (!content.some((item: ParagraphContent) => isRevision(item))) {
+      return undefined;
+    }
+
+    // Build a map: for each run, find which top-level content index it belongs to.
+    // Direct runs map to their own index; hyperlink child runs map to the hyperlink's index.
+    const runToContentIndex = new Map<Run, number>();
+    for (let ci = 0; ci < content.length; ci++) {
+      const item = content[ci];
+      if (isRun(item)) {
+        runToContentIndex.set(item as Run, ci);
+      } else if (isHyperlink(item)) {
+        // Hyperlink child run — map it to the hyperlink's content index
+        try {
+          const hlRun = (item as Hyperlink).getRun();
+          if (hlRun) runToContentIndex.set(hlRun, ci);
+        } catch {
+          // Ignore — hyperlink may not expose run
+        }
+      }
+    }
+
+    // For adjacent runs in the filtered list, check if there's a gap
+    // (content indices differ by >1) with a Revision in between.
+    let gapAfter: Set<number> | undefined;
+
+    for (let i = 0; i < runs.length - 1; i++) {
+      const ciA = runToContentIndex.get(runs[i]);
+      const ciB = runToContentIndex.get(runs[i + 1]);
+      if (ciA === undefined || ciB === undefined) continue;
+      if (ciB - ciA <= 1) continue;
+
+      // Check if any content between ciA and ciB is a Revision
+      for (let ci = ciA + 1; ci < ciB; ci++) {
+        if (isRevision(content[ci])) {
+          if (!gapAfter) gapAfter = new Set();
+          gapAfter.add(i);
+          break;
+        }
+      }
+    }
+
+    return gapAfter;
   }
 
   /**
@@ -4179,6 +4695,204 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Deduplicate hyperlink content that appears in cross-paragraph chains.
+   *
+   * When a DOCX file uses cross-paragraph ComplexField HYPERLINK chains
+   * (fldChar begin in one paragraph, fldChar end at the start of the next),
+   * docxmlater's two-pass field assembly can produce duplicate hyperlink
+   * content in a single paragraph:
+   *
+   * 1. `assembleMultiParagraphFields()` creates a Hyperlink in the target paragraph
+   * 2. `assembleComplexFields()` creates a ComplexField from remaining field runs
+   *
+   * Result: para.getContent() → [ Hyperlink("text"), ComplexField("text") ]
+   *
+   * This method is type-agnostic: it extracts { anchor, text } from all
+   * hyperlink-like content types (ComplexField, Hyperlink) and removes
+   * adjacent duplicates sharing the same anchor AND display text.
+   *
+   * @param doc - The document to deduplicate
+   * @returns Number of duplicate hyperlink items removed
+   */
+  private deduplicateComplexFieldHyperlinks(doc: Document): number {
+    let removed = 0;
+
+    for (const para of doc.getAllParagraphs()) {
+      const content = para.getContent();
+
+      // Extract { item, anchor, text } from every hyperlink-like content item
+      type HyperlinkInfo = { item: ComplexField | Hyperlink; anchor: string; text: string };
+      const hyperlinkItems: HyperlinkInfo[] = [];
+
+      for (const item of content) {
+        if (item instanceof ComplexField && item.isHyperlinkField()) {
+          const parsed = item.getParsedHyperlink();
+          hyperlinkItems.push({
+            item,
+            anchor: parsed?.anchor || parsed?.url || item.getInstruction().trim(),
+            text: item.getResult() || '',
+          });
+        } else if (item instanceof Hyperlink) {
+          hyperlinkItems.push({
+            item,
+            anchor: item.getAnchor() || item.getUrl() || '',
+            text: item.getText() || '',
+          });
+        }
+      }
+
+      if (hyperlinkItems.length < 2) {
+        // Fallback: if paragraph has raw field content but no typed items,
+        // try dedup via raw run scanning
+        if (hyperlinkItems.length === 0 && this.hasComplexFieldContent(para)) {
+          removed += this.deduplicateRawFieldRuns(para);
+        }
+        continue;
+      }
+
+      this.log.debug(
+        `Para has ${hyperlinkItems.length} hyperlink items: ${
+          hyperlinkItems.map(h => `${h.item.constructor.name}("${h.text}")`).join(', ')
+        }`,
+      );
+
+      // Compare adjacent items — remove duplicates
+      const toRemove: (ComplexField | Hyperlink)[] = [];
+      for (let i = 1; i < hyperlinkItems.length; i++) {
+        const prev = hyperlinkItems[i - 1];
+        const curr = hyperlinkItems[i];
+        if (prev.anchor === curr.anchor && prev.text === curr.text) {
+          toRemove.push(curr.item);
+        }
+      }
+
+      // Remove duplicates
+      for (const item of toRemove) {
+        para.replaceContent(item, []);
+        removed++;
+        const typeName = item instanceof ComplexField ? 'ComplexField' : 'Hyperlink';
+        const displayText = item instanceof ComplexField ? item.getResult() : item.getText();
+        this.log.debug(
+          `Removed duplicate ${typeName} hyperlink: "${displayText}"`,
+        );
+      }
+    }
+
+    return removed;
+  }
+
+  /**
+   * Fallback dedup for paragraphs with raw field runs (PreservedElement or
+   * unassembled fieldChar/instructionText runs) that were not recognized as
+   * ComplexField or Hyperlink instances by the parser.
+   *
+   * Scans runs for HYPERLINK field sequences:
+   *   fieldChar(begin) → instructionText(HYPERLINK...) → fieldChar(separate) → text → fieldChar(end)
+   *
+   * Adjacent groups with the same instruction and result text are duplicates;
+   * the second group's runs are removed via para.replaceContent().
+   */
+  private deduplicateRawFieldRuns(para: Paragraph): number {
+    let removed = 0;
+    try {
+      const runs = para.getRuns();
+      if (runs.length === 0) return 0;
+
+      // Parse run groups: each group is a HYPERLINK field sequence
+      interface FieldGroup {
+        runs: Run[];
+        instruction: string;
+        resultText: string;
+      }
+
+      const groups: FieldGroup[] = [];
+      let i = 0;
+
+      while (i < runs.length) {
+        const run = runs[i];
+        const runContent = run.getContent();
+
+        // Look for fieldChar begin
+        const hasBegin = runContent.some(
+          (c: { type: string; value?: string }) => c.type === 'fieldChar' && c.value === 'begin',
+        );
+
+        if (!hasBegin) {
+          i++;
+          continue;
+        }
+
+        // Collect runs until fieldChar end
+        const groupRuns: Run[] = [run];
+        let instruction = '';
+        let resultText = '';
+        let foundEnd = false;
+        let pastSeparate = false;
+
+        for (let j = i + 1; j < runs.length; j++) {
+          const r = runs[j];
+          groupRuns.push(r);
+          const rc = r.getContent();
+
+          for (const c of rc) {
+            const typedC = c as { type: string; value?: string; text?: string };
+            if (typedC.type === 'instructionText' && typedC.text) {
+              instruction += typedC.text;
+            }
+            if (typedC.type === 'fieldChar' && typedC.value === 'separate') {
+              pastSeparate = true;
+            }
+            if (typedC.type === 'fieldChar' && typedC.value === 'end') {
+              foundEnd = true;
+            }
+            if (pastSeparate && !foundEnd && typedC.type === 'text' && typedC.text) {
+              resultText += typedC.text;
+            }
+          }
+
+          if (foundEnd) {
+            i = j + 1;
+            break;
+          }
+        }
+
+        if (!foundEnd) {
+          i++;
+          continue;
+        }
+
+        // Only track HYPERLINK field groups
+        if (/^\s*HYPERLINK\b/i.test(instruction)) {
+          groups.push({
+            runs: groupRuns,
+            instruction: instruction.trim(),
+            resultText: resultText.trim(),
+          });
+        }
+      }
+
+      // Compare adjacent groups and remove duplicates
+      for (let g = 1; g < groups.length; g++) {
+        const prev = groups[g - 1];
+        const curr = groups[g];
+        if (prev.instruction === curr.instruction && prev.resultText === curr.resultText) {
+          for (const run of curr.runs) {
+            para.replaceContent(run, []);
+          }
+          removed++;
+          this.log.debug(
+            `Removed duplicate raw field run group: "${curr.resultText}"`,
+          );
+        }
+      }
+    } catch (error) {
+      this.log.debug(`Raw field run dedup error: ${error}`);
+    }
+
+    return removed;
+  }
+
+  /**
    * Standardize "Return to" hyperlinks (e.g. "Return to HLP", "Return to TOC").
    *
    * 1. Remove any left/first-line indentation on the containing paragraph.
@@ -4258,30 +4972,35 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Apply standard formatting to a hyperlink
+   * Apply standard formatting to ALL runs inside a hyperlink.
    *
    * Standard format: Verdana 12pt, Blue (#0000FF), Underlined, no bold/italic
-   * Uses individual property setters on each run to ensure changes are tracked
-   * by Word's revision tracking mechanism (setFormatting with replace bypasses tracking).
+   * Uses hyperlink.setFormatting() which applies to every run in the hyperlink,
+   * correctly handling multi-run hyperlinks (e.g., "CALL-0049 " in one run,
+   * "Customer Care Internal..." in another).
    *
-   * Per docxmlater rules: setFont/setSize/setBold can DROP existing run properties,
-   * so color and underline are re-set after bold/italic changes.
+   * Callers disable tracking before invoking this method, so formatting
+   * standardization does not generate tracked changes.
    *
    * @param hyperlink - The hyperlink to format
    */
   private applyStandardHyperlinkFormatting(hyperlink: Hyperlink): void {
-    const run = hyperlink.getRun();
-    if (!run) return;
+    // Trim leading/trailing whitespace from hyperlink text.
+    // Whitespace inside hyperlinks gets underlined (Hyperlink style),
+    // producing visual artifacts like underlined spaces before the text.
+    const text = hyperlink.getText();
+    if (text && text !== text.trim()) {
+      hyperlink.setText(text.trim());
+    }
 
-    // Set font and size first
-    run.setFont("Verdana");
-    run.setSize(12);
-    // Set bold/italic (these can drop existing properties)
-    run.setBold(false);
-    run.setItalic(false);
-    // Re-set color and underline after bold/italic to prevent property loss
-    run.setColor("0000FF");
-    run.setUnderline("single");
+    hyperlink.setFormatting({
+      font: "Verdana",
+      size: 12,
+      color: "0000FF",
+      underline: "single",
+      bold: false,
+      italic: false,
+    });
   }
 
   /**
@@ -4417,6 +5136,23 @@ export class WordDocumentProcessor {
 
         // setAllBorders applies to all 6 border types AND all cells
         table.setAllBorders(border);
+        table.setTblLook('0600');
+
+        // Remove trailing empty rows — Word Web Layout collapses empty rows
+        // to near-zero height, hiding the border above them
+        const rows = table.getRows();
+        for (let i = rows.length - 1; i >= 1; i--) {
+          const row = rows[i]!;
+          const cells = row.getCells();
+          const isEmpty = cells.every(cell => {
+            const paragraphs = cell.getParagraphs();
+            return paragraphs.every(para => para.getContent().length === 0);
+          });
+          if (!isEmpty) break;
+          table.removeRow(i);
+          this.log.debug(`Removed trailing empty row ${i} from table`);
+        }
+
         tablesProcessed++;
       } catch (error) {
         this.log.warn(`Failed to standardize borders for table: ${error}`);
@@ -6162,13 +6898,16 @@ export class WordDocumentProcessor {
     // Group by numId and only adjust items in groups where ALL items share the same level
     // (indicating flat ilvl values that need indentation-based inference).
     // Groups with mixed levels already have correct multi-level structure — trust them.
-    const bodyParagraphs = doc.getParagraphs();
+    const bodyParagraphs: Paragraph[] = [];
+    for (const el of doc.getBodyElements()) {
+      if (el instanceof Paragraph) bodyParagraphs.push(el);
+    }
     const manager = doc.getNumberingManager();
 
     // Collect and group body list paragraphs by numId
     const bodyNumIdGroups = new Map<number, Array<{
-      para: typeof bodyParagraphs[0];
-      numbering: NonNullable<ReturnType<typeof bodyParagraphs[0]['getNumbering']>>;
+      para: Paragraph;
+      numbering: NonNullable<ReturnType<Paragraph['getNumbering']>>;
     }>>();
 
     for (const para of bodyParagraphs) {
@@ -6193,46 +6932,126 @@ export class WordDocumentProcessor {
       bodyNumIdGroups.get(numbering.numId)!.push({ para, numbering });
     }
 
-    // Process each numId group
+    // Phase 1: Handle groups with internal indent variation (per-group relative)
+    // Phase 2: Collect flat groups for cross-group clustering
+    const flatGroups: Array<{
+      numId: number;
+      items: Array<{
+        para: typeof bodyParagraphs[0];
+        numbering: NonNullable<ReturnType<typeof bodyParagraphs[0]['getNumbering']>>;
+        effectiveIndent: number;
+      }>;
+      representativeIndent: number;
+    }> = [];
+
     for (const [numId, items] of bodyNumIdGroups) {
-      // Check if all items share the same level
       const uniqueLevels = new Set(items.map(i => i.numbering.level));
       if (uniqueLevels.size > 1) {
-        // Multi-level structure — trust original levels
         this.log.debug(`  Skipping body numId ${numId}: already has multi-level structure (levels: ${[...uniqueLevels].join(', ')})`);
         continue;
       }
 
-      // All items at the same level — apply threshold inference
-      for (const { para, numbering } of items) {
-        const effectiveIndent = this.getEffectiveListIndent(doc, para, numbering);
+      const itemsWithIndent = items.map(item => ({
+        ...item,
+        effectiveIndent: this.getEffectiveListIndent(doc, item.para, item.numbering),
+      }));
 
-        if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-          const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
-          const paraLeft = para.getFormatting().indentation?.left || 0;
-          const textSnippet = para.getText().substring(0, 35).replace(/\n/g, ' ');
-          this.log.debug(
-            `  [BODY ITEM] "${textSnippet}..." ` +
-              `origLevel=${numbering.level}, paraLeft=${paraLeft}tw, ` +
-              `numDefIndent=${numDefIndent ?? 'N/A'}tw, ` +
-              `effectiveIndent=${effectiveIndent}tw`
-          );
-        }
+      const minIndent = Math.min(...itemsWithIndent.map(i => i.effectiveIndent));
+      const maxIndent = Math.max(...itemsWithIndent.map(i => i.effectiveIndent));
 
-        // Match effective indent against absolute textIndent thresholds
-        const inferredLevel = this.inferLevelFromIndentation(effectiveIndent, textThresholds);
+      if (maxIndent - minIndent >= 200) {
+        // Phase 1: Internal variation — per-group relative approach (360tw/level)
+        for (const { para, numbering, effectiveIndent } of itemsWithIndent) {
+          const relativeIndent = effectiveIndent - minIndent;
+          const inferredLevel = Math.floor(relativeIndent / 360);
 
-        if (inferredLevel !== numbering.level) {
           if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+            const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
+            const paraLeft = para.getFormatting().indentation?.left || 0;
+            const textSnippet = para.getText().substring(0, 35).replace(/\n/g, ' ');
             this.log.debug(
-              `    -> CHANGING from level ${numbering.level} to ${inferredLevel} (textIndent threshold match)`
+              `  [BODY ITEM] "${textSnippet}..." ` +
+                `origLevel=${numbering.level}, paraLeft=${paraLeft}tw, ` +
+                `numDefIndent=${numDefIndent ?? 'N/A'}tw, ` +
+                `effectiveIndent=${effectiveIndent}tw, relativeIndent=${relativeIndent}tw`
             );
           }
+
+          if (inferredLevel !== numbering.level) {
+            if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
+              this.log.debug(
+                `    -> CHANGING from level ${numbering.level} to ${inferredLevel} (relative indent)`
+              );
+            }
+            this.log.debug(
+              `  Normalizing body paragraph: effectiveIndent=${effectiveIndent}tw, ` +
+                `relativeIndent=${relativeIndent}tw, ` +
+                `current level=${numbering.level}, inferred level=${inferredLevel}`
+            );
+            para.setNumbering(numbering.numId, inferredLevel);
+            normalized++;
+          }
+        }
+      } else {
+        // Phase 2: Flat group — collect for cross-group clustering
+        this.log.debug(`  Flat group numId ${numId}: representativeIndent=${minIndent}tw (range=${maxIndent - minIndent}tw, ${items.length} items)`);
+        flatGroups.push({ numId, items: itemsWithIndent, representativeIndent: minIndent });
+      }
+    }
+
+    // Phase 2: Bullet-format clustering for flat groups
+    // Group flat numIds by their abstractNum level definition's bullet format (font + text).
+    // All groups sharing the same visual bullet format are assigned the same level.
+    // The level is determined by mapping the minimum representative indentation of each
+    // format group to the user's textIndent thresholds — this is deterministic regardless
+    // of which processing options are enabled or what order groups appear in.
+    const groupFormatKeys = new Map<number, string>(); // numId → format key
+    const formatMinIndent = new Map<string, number>(); // format key → minimum representative indent
+
+    for (const group of flatGroups) {
+      try {
+        const instance = manager.getInstance(group.numId);
+        if (!instance) continue;
+        const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+        if (!abstractNum) continue;
+        const ilvl = group.items[0].numbering.level;
+        const levelDef = abstractNum.getLevel(ilvl);
+        if (!levelDef) continue;
+        const props = levelDef.getProperties();
+        const formatKey = `${props.font || ''}|${props.text || ''}`;
+        groupFormatKeys.set(group.numId, formatKey);
+        // Track the minimum representative indentation across all groups sharing this format
+        const existing = formatMinIndent.get(formatKey);
+        if (existing === undefined || group.representativeIndent < existing) {
+          formatMinIndent.set(formatKey, group.representativeIndent);
+        }
+        this.log.debug(`  Format: numId ${group.numId} → "${formatKey}" indent=${group.representativeIndent}tw (${group.items.length} items)`);
+      } catch { /* skip groups where numbering lookup fails */ }
+    }
+
+    this.log.debug(`  Bullet-format clustering: ${flatGroups.length} flat groups → ${formatMinIndent.size} distinct formats`);
+
+    // Map each format group to a level using textThresholds applied to its minimum indent.
+    // Same visual bullet → same level (from the lowest-indented instance of that bullet).
+    const formatLevelMap = new Map<string, number>(); // format key → assigned level
+    for (const [formatKey, minIndent] of formatMinIndent) {
+      const level = this.inferLevelFromIndentation(minIndent, textThresholds);
+      formatLevelMap.set(formatKey, level);
+      this.log.debug(`  Format level: "${formatKey}" minIndent=${minIndent}tw → level ${level}`);
+    }
+
+    // Apply the threshold-based level to every item in each flat group
+    for (const group of flatGroups) {
+      const formatKey = groupFormatKeys.get(group.numId);
+      if (formatKey === undefined) continue;
+      const level = formatLevelMap.get(formatKey);
+      if (level === undefined) continue;
+      for (const { para, numbering } of group.items) {
+        if (level !== numbering.level) {
           this.log.debug(
-            `  Normalizing body paragraph: effectiveIndent=${effectiveIndent}tw, ` +
-              `current level=${numbering.level}, inferred level=${inferredLevel}`
+            `  Format assign: numId=${numbering.numId}, "${formatKey}" → level ${numbering.level} → ${level}`
           );
-          para.setNumbering(numbering.numId, inferredLevel);
+          para.setNumbering(numbering.numId, level);
           normalized++;
         }
       }
@@ -6341,6 +7160,121 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Normalize orphan Level 1+ list items in the document body.
+   *
+   * Body-level list items may start at ilvl=1+ with no ilvl=0 sibling
+   * in the same contiguous run. This shifts all items down by the run's
+   * minimum level so they start at ilvl=0.
+   *
+   * Uses getBodyElements() (not getParagraphs()) to exclude table cell
+   * paragraphs, and groups by contiguous runs of the same numId rather
+   * than globally — so sub-bullets that follow their parent at ilvl=0
+   * are never incorrectly flattened.
+   */
+  private normalizeOrphanBodyListLevels(doc: Document): number {
+    let normalized = 0;
+    const manager = doc.getNumberingManager();
+
+    // Use getBodyElements() to get ONLY body-level elements (not table cell paragraphs)
+    const bodyElements = doc.getBodyElements();
+
+    // Build contiguous runs of same-numId list paragraphs
+    type ListItem = { para: Paragraph; numId: number; level: number };
+    let currentRun: ListItem[] = [];
+    let currentNumId: number | null = null;
+
+    // Track the level of the last list paragraph before the current run,
+    // so we can detect intentional nesting across numId boundaries
+    let previousListLevel: number | null = null;
+    let blankGapCount = 0;
+
+    const flushRun = () => {
+      if (currentRun.length === 0) return;
+
+      let minLevel = Infinity;
+      for (const item of currentRun) {
+        minLevel = Math.min(minLevel, item.level);
+      }
+
+      if (minLevel > 0 && minLevel !== Infinity) {
+        // Don't shift if preceded by a list item at a lower level —
+        // the nesting is intentional (sub-items of the preceding list)
+        if (previousListLevel !== null && previousListLevel < minLevel) {
+          previousListLevel = currentRun[currentRun.length - 1].level;
+          currentRun = [];
+          currentNumId = null;
+          return;
+        }
+
+        for (const item of currentRun) {
+          const newLevel = item.level - minLevel;
+          item.para.setNumbering(item.numId, newLevel);
+          normalized++;
+        }
+      }
+
+      // Update previousListLevel from the last item in the flushed run
+      previousListLevel = currentRun[currentRun.length - 1].level;
+      blankGapCount = 0;
+      currentRun = [];
+      currentNumId = null;
+    };
+
+    for (const element of bodyElements) {
+      if (!(element instanceof Paragraph)) {
+        flushRun();
+        previousListLevel = null;
+        blankGapCount = 0;
+        continue;
+      }
+
+      const numbering = element.getNumbering();
+      if (!numbering) {
+        flushRun();
+        if (element.getText().trim().length > 0) {
+          previousListLevel = null;
+          blankGapCount = 0;
+        } else {
+          blankGapCount++;
+          if (blankGapCount > 1) {
+            previousListLevel = null;
+          }
+        }
+        continue;
+      }
+
+      // Skip HLP and row-number protected items
+      let isProtected = false;
+      try {
+        const instance = manager.getInstance(numbering.numId);
+        if (instance) {
+          if (this._hlpAbstractNumIds.has(instance.getAbstractNumId())) isProtected = true;
+          if (this._rowNumberAbstractNumIds.has(instance.getAbstractNumId())) isProtected = true;
+        }
+      } catch { /* proceed */ }
+
+      if (isProtected) {
+        flushRun();
+        previousListLevel = null;
+        blankGapCount = 0;
+        continue;
+      }
+
+      // Same numId continues the run; different numId starts a new run
+      if (numbering.numId !== currentNumId) {
+        flushRun();
+        currentNumId = numbering.numId;
+      }
+
+      currentRun.push({ para: element, numId: numbering.numId, level: numbering.level });
+    }
+
+    flushRun(); // Process final run
+
+    return normalized;
+  }
+
+  /**
    * Normalize level gaps in list item sequences.
    *
    * After other normalization steps, some sequences may have non-contiguous levels
@@ -6390,11 +7324,14 @@ export class WordDocumentProcessor {
       }
     }
 
-    // Process body paragraphs — group by numId
-    const bodyParagraphs = doc.getParagraphs();
+    // Process body paragraphs — group by numId (body-only, not table cells)
+    const bodyParagraphs: Paragraph[] = [];
+    for (const el of doc.getBodyElements()) {
+      if (el instanceof Paragraph) bodyParagraphs.push(el);
+    }
     const bodyGroups = new Map<number, Array<{
-      para: typeof bodyParagraphs[0];
-      numbering: NonNullable<ReturnType<typeof bodyParagraphs[0]['getNumbering']>>;
+      para: Paragraph;
+      numbering: NonNullable<ReturnType<Paragraph['getNumbering']>>;
     }>>();
 
     for (const para of bodyParagraphs) {
@@ -7505,7 +8442,9 @@ export class WordDocumentProcessor {
       // parentListContext tracks the original Word list item that triggers sub-item conversion.
       // Unlike lastListContext (which updates to each converted item), parentListContext stays
       // fixed so all sibling typed prefixes get the SAME level (parentLevel + 1).
-      let parentListContext: { isBullet: boolean; level: number; numId: number } | null = null;
+      // indentTwips tracks the parent's indentation so typed prefixes can compare their own
+      // indent to decide whether they're genuinely deeper or at the same level.
+      let parentListContext: { isBullet: boolean; level: number; numId: number; indentTwips: number } | null = null;
       let gapSinceLastList = 0;
       // Sequence tracking: reuse numId for consecutive typed-prefix conversions at same type/level
       let seqNumId: number | null = null;
@@ -7516,10 +8455,16 @@ export class WordDocumentProcessor {
         // 1. Already has Word numbering? Update context and continue.
         const numbering = para.getNumbering();
         if (numbering && numbering.numId !== undefined && numbering.numId !== 0) {
+          // Get indentation: paragraph-level first, then fall back to numbering definition
+          const paraIndent = getParagraphIndentation(para);
+          const numDefIndent = paraIndent > 0
+            ? paraIndent
+            : (this.getListTextIndent(doc, numbering.numId, numbering.level ?? 0) ?? 0);
           const ctx = {
             isBullet: this.isBulletList(doc, numbering.numId),
             level: numbering.level ?? 0,
             numId: numbering.numId,
+            indentTwips: numDefIndent,
           };
           lastListContext = ctx;
           parentListContext = ctx; // Real Word list item becomes the parent for subsequent typed prefixes
@@ -7574,9 +8519,19 @@ export class WordDocumentProcessor {
         let targetLevel: number;
 
         if (parentListContext) {
-          // After a list item: inherit parent's type, one level deeper
-          targetType = parentListContext.isBullet ? 'bullet' : 'numbered';
-          targetLevel = Math.min(parentListContext.level + 1, 8); // Cap at level 8
+          // After a list item: compare typed prefix indent vs parent indent
+          const typedPrefixIndent = getParagraphIndentation(para);
+          const INDENT_THRESHOLD = 200; // twips
+
+          if (typedPrefixIndent > parentListContext.indentTwips + INDENT_THRESHOLD) {
+            // Genuinely deeper indentation → sub-item
+            targetType = parentListContext.isBullet ? 'bullet' : 'numbered';
+            targetLevel = Math.min(parentListContext.level + 1, 8);
+          } else {
+            // Same or less indent → same level as parent
+            targetType = detection.category === 'bullet' ? 'bullet' : 'numbered';
+            targetLevel = parentListContext.level;
+          }
         } else {
           // No context: native type at level 0
           targetType = detection.category === 'bullet' ? 'bullet' : 'numbered';
@@ -7623,6 +8578,11 @@ export class WordDocumentProcessor {
             }
           }
           applyIndentation(numId);
+          // Restart numbering so converted typed-prefix lists start at 1
+          // instead of continuing from a previous sequence's counter
+          if (targetType === 'numbered') {
+            numId = manager.restartNumbering(numId);
+          }
           seqNumId = numId;
           seqType = targetType;
           seqLevel = targetLevel;
@@ -8727,13 +9687,24 @@ export class WordDocumentProcessor {
 
   /**
    * Standardize hyperlink colors - Set all hyperlinks to #0000FF (blue)
-   * Uses DocXMLater's updateAllHyperlinkColors() helper function
+   *
+   * Iterates paragraphs and modifies hyperlink-styled runs obtained via
+   * para.getRuns() (which have proper tracking context) instead of using
+   * doc.updateAllHyperlinkColors() which creates non-standard revision types
+   * that Word doesn't recognize.
    */
   private async standardizeHyperlinkColors(doc: Document): Promise<number> {
     this.log.debug("=== STANDARDIZING HYPERLINK COLORS ===");
 
-    // Use DocXMLater's built-in helper to update all hyperlinks at once
-    const updatedCount = doc.updateAllHyperlinkColors("0000FF");
+    let updatedCount = 0;
+    for (const para of doc.getAllParagraphs()) {
+      for (const run of para.getRuns()) {
+        if (run.isHyperlinkStyled() && run.getColor() !== "0000FF") {
+          run.setColor("0000FF");
+          updatedCount++;
+        }
+      }
+    }
 
     if (updatedCount > 0) {
       this.log.info(`Standardized ${updatedCount} hyperlink(s) to blue (#0000FF)`);
@@ -9336,7 +10307,8 @@ export class WordDocumentProcessor {
       replace: string;
       matchType: "contains" | "exact" | "startsWith";
       applyTo: "url" | "text" | "both";
-    }>
+    }>,
+    author: string = 'DocHub'
   ): Promise<number> {
     if (!customReplacements || customReplacements.length === 0) {
       this.log.debug("No custom replacements configured - skipping outdated title replacement");
@@ -9346,7 +10318,7 @@ export class WordDocumentProcessor {
     let replacedCount = 0;
     const hyperlinks = await this.docXMLater.extractHyperlinks(doc);
 
-    for (const { hyperlink, text } of hyperlinks) {
+    for (const { hyperlink, paragraph, text } of hyperlinks) {
       for (const rule of customReplacements) {
         // Only apply rules that target text or both
         if (rule.applyTo === "text" || rule.applyTo === "both") {
@@ -9354,7 +10326,7 @@ export class WordDocumentProcessor {
 
           if (shouldApply) {
             const newText = text.replace(rule.find, rule.replace);
-            hyperlink.setText(newText);
+            this.setHyperlinkTextTracked(doc, hyperlink, paragraph, newText, author);
             replacedCount++;
 
             this.log.debug(`Replaced title: "${text}" → "${newText}"`);
@@ -9375,7 +10347,7 @@ export class WordDocumentProcessor {
    *
    * Warning format:
    * Line 1: "Not to Be Reproduced or Disclosed to Others Without Prior Written Approval" (normal weight)
-   * Line 2: "ELECTRONIC DATA = OFFICIAL VERSION - PAPER COPY = INFORMATIONAL ONLY" (bold)
+   * Line 2: "ELECTRONIC DATA = OFFICIAL VERSION / PAPER COPY = INFORMATIONAL ONLY" (bold)
    *
    * Both lines: Centered, Verdana 8pt, 3pt spacing before/after
    *
@@ -9385,7 +10357,7 @@ export class WordDocumentProcessor {
     // Exact capitalization as specified
     const warningLine1 =
       "Not to Be Reproduced or Disclosed to Others Without Prior Written Approval";
-    const warningLine2 = "ELECTRONIC DATA = OFFICIAL VERSION - PAPER COPY = INFORMATIONAL ONLY";
+    const warningLine2 = "ELECTRONIC DATA = OFFICIAL VERSION / PAPER COPY = INFORMATIONAL ONLY";
 
     this.log.debug("Adding/updating document warning at end of document");
 
@@ -9397,7 +10369,7 @@ export class WordDocumentProcessor {
 
     // Use precise matching for the two disclaimer lines
     const disclaimerLine1Pattern = "not to be reproduced or disclosed to others without prior written approval";
-    const disclaimerLine2Pattern = "electronic data = official version - paper copy = informational only";
+    const disclaimerLine2Pattern = "electronic data = official version / paper copy = informational only";
 
     // Also keep broader patterns for catching malformed/partial disclaimers
     const additionalPatterns = [
@@ -9411,7 +10383,7 @@ export class WordDocumentProcessor {
       const text = this.getParagraphText(paragraphs[i])
         .replace(/[\u00A0\u2002\u2003\u2009\u200B]/g, ' ')
         .toLowerCase()
-        .replace(/\//g, '-'); // Normalize slashes to dashes for matching both "/" and "-" variants
+        .replace(/-/g, '/'); // Normalize dashes to slashes for matching both "-" and "/" variants
 
       // Check for exact disclaimer lines first
       const matchesLine1 = text.includes(disclaimerLine1Pattern);

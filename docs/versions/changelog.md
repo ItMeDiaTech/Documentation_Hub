@@ -5,9 +5,50 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.5.3
-**docxmlater Framework Version:** 10.0.2
+**Current App Version:** 5.8.0
+**docxmlater Framework Version:** 10.1.7
 **Status:** Production Ready
+
+---
+
+## [5.8.0] - 2026-02-24
+
+### Fixed
+
+- **Hyperlink Duplication in Cross-Paragraph Chains**: Rewrote `deduplicateComplexFieldHyperlinks()` to be type-agnostic — now detects Hyperlink + ComplexField mixed-type duplicates (not just ComplexField pairs), with raw field run fallback for unrecognized content types
+- **Hyperlink Defragmentation + Tracked Changes**: Moved `defragmentHyperlinks()` before tracking is enabled since the library silently skips it when tracking is active
+- **Trailing Punctuation in Hyperlinks**: Hyperlinks ending with `.` or `,` now extract trailing punctuation outside the hyperlink as normal text
+- **Duplicate Blank Line Insertion**: Blank line rules now check if the element at the insertion position is already blank before inserting
+- **Disclaimer Deduplication**: `aboveWarningRule` no longer inserts blank between consecutive disclaimer lines
+- **Blank Line Snapshot Indexing**: Fixed off-by-one in `wasOriginallyBlankAtBody()` and `wasOriginallyBlankInCell()` — element following an inserted blank is at the current index, not index+1
+- **Table Cell Numbering Corruption**: Save/restore mechanism preserves numId/level in table cells before `applyStyles()` since the framework can corrupt numbering via style defaults
+- **List Level Shift Sub-Item Exclusion**: Fixed level shift recalculation to exclude detected sub-items, preventing parent bullets from being blocked at higher levels
+- **Restart Numbering Per Cell**: Table cells with Word lists now restart numbering to prevent cross-cell continuation (e.g., "5." when it should be "1.")
+- **Space-Only Run Merging**: Pre-pass merges space-only runs into adjacent text runs to prevent framework defragmentation from dropping them
+- **NBSP Whitespace Handling**: NBSP (U+00A0) now treated like regular space for collapsing and cross-run double-space detection
+- **Cross-Run Gap Awareness**: Whitespace normalization skips collapsing across invisible content gaps (Revision-wrapped hyperlinks)
+- **Paragraph Blank Detection**: Removed bookmark checks from `isParagraphBlank()` — bookmarks are invisible metadata and should not affect blank status
+- **Bold Colon False Positives**: `startsWithBoldColon()` now skips ImageRun items when finding the first text run
+- **Hyperlink Formatting Safety Net**: Re-applies hyperlink formatting (Verdana 12pt, blue, underline) after `applyStyles()` since the framework can clear direct formatting
+- **Image Baked-In Border Detection**: New `hasAllSideBakedBorder()` check prevents redundant Word borders on images that already have dark pixel borders on all 4 edges
+
+### Added
+
+- **Content ID Reference Appending**: New operation path appends Content IDs (last 6 digits) to hyperlinks when API returns contentId but "Update Titles" is disabled
+- **Small Image + Text Blank Rule**: New `aboveSmallImageTextRule` ensures spacing above callout/notice paragraphs containing small images with text
+- **VML Image Run Support**: Whitespace normalization now detects VML drawing runs (legacy inline images) and inserts space after them
+- **Em/En Variant NBSP Normalization**: `removeEmEnVariants()` now includes NBSP (U+00A0) alongside em/en dash and space variants
+- **Hyperlink Defragmentation Tracking**: Defragmentation results logged to `result.mergedHyperlinks` and tracked in change history
+- **Tracking Disabled for Cosmetic Operations**: Hyperlink formatting standardization and document warning insertion temporarily disable tracking to prevent cosmetic tracked changes
+
+### Improved
+
+- **Test Infrastructure**: Migrated all test suites from Vitest to Jest (`vi.mock` → `jest.mock`, `Mocked<T>` → `jest.Mocked<T>`)
+- **Nested Table Detection**: Replaced `tableHasNestedContent()` with direct `cell.hasNestedTables()` throughout BlankLineManager
+- **Image Border Cropping**: Dynamic scan depth based on image size replaces hardcoded `MAX_SCAN_DEPTH = 25px`; white-gap-only patterns now accepted
+- **Typed Prefix Level Inference**: Indentation-based nesting now only applies to bullet/dash/arrow formats; decimal/letter/roman formats skip indentation inference
+- **Dependency Updates**:
+  - docxmlater: 10.1.4 → 10.1.7
 
 ---
 

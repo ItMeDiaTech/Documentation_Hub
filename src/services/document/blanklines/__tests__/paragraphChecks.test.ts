@@ -146,9 +146,7 @@ describe("isParagraphBlank", () => {
     expect(isParagraphBlank(para)).toBe(false);
   });
 
-  it("should return true for paragraph with bookmarks but no content (early return)", () => {
-    // Note: The function returns true for empty content before checking bookmarks.
-    // Bookmarks are only checked when content items exist but are all blank.
+  it("should return true for paragraph with bookmarks but no content", () => {
     const para = new Paragraph({
       content: [],
       bookmarksStart: [{ id: 1 }],
@@ -156,12 +154,13 @@ describe("isParagraphBlank", () => {
     expect(isParagraphBlank(para)).toBe(true);
   });
 
-  it("should return false for paragraph with bookmarks and whitespace run", () => {
+  it("should return true for paragraph with bookmarks and whitespace run", () => {
+    // Bookmarks are invisible metadata — they don't make a paragraph non-blank
     const para = new Paragraph({
       content: [new Run("  ")],
       bookmarksStart: [{ id: 1 }],
     });
-    expect(isParagraphBlank(para)).toBe(false);
+    expect(isParagraphBlank(para)).toBe(true);
   });
 
   it("should return true for Revision with only whitespace", () => {
@@ -194,6 +193,26 @@ describe("startsWithBoldColon", () => {
 
   it("should return false for empty paragraph", () => {
     const para = new Paragraph({ content: [] });
+    expect(startsWithBoldColon(para)).toBe(false);
+  });
+
+  it("should skip leading ImageRun and find bold text Run with colon", () => {
+    const para = new Paragraph({
+      content: [
+        new ImageRun(),
+        new Run("Exception:", { bold: true }),
+      ],
+    });
+    expect(startsWithBoldColon(para)).toBe(true);
+  });
+
+  it("should skip leading ImageRun and return false when text Run is not bold", () => {
+    const para = new Paragraph({
+      content: [
+        new ImageRun(),
+        new Run(" For FEP mail tag and credit scenarios"),
+      ],
+    });
     expect(startsWithBoldColon(para)).toBe(false);
   });
 });
