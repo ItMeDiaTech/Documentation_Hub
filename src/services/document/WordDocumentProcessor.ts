@@ -22,6 +22,7 @@ import {
   NumberingLevel,
   Paragraph,
   pointsToTwips,
+  PreservedElement,
   Revision,
   RevisionAwareProcessor,
   Run,
@@ -47,7 +48,14 @@ import {
   HyperlinkProcessingResult,
   HyperlinkType,
 } from "@/types/hyperlink";
-import type { ChangeEntry, ChangelogSummary, DocumentChange, PreviousRevisionState, SessionStyle, WordRevisionState } from "@/types/session";
+import type {
+  ChangeEntry,
+  ChangelogSummary,
+  DocumentChange,
+  PreviousRevisionState,
+  SessionStyle,
+  WordRevisionState,
+} from "@/types/session";
 import { MemoryMonitor } from "@/utils/MemoryMonitor";
 import { logger, startTimer, debugModes, isDebugEnabled } from "@/utils/logger";
 import { sanitizeHyperlinkText } from "@/utils/textSanitizer";
@@ -57,10 +65,10 @@ import pLimit from "p-limit";
 import * as path from "path";
 import { hyperlinkService } from "../HyperlinkService";
 import type { HyperlinkApiResponse } from "@/types/hyperlink";
-import { DocXMLaterProcessor } from "./DocXMLaterProcessor";
+import { DocXMLaterProcessor, type ExtractedHyperlink } from "./DocXMLaterProcessor";
 import { blankLineManager, removeSmallIndents } from "./blanklines";
 import { normalizeRunWhitespace } from "./helpers/whitespace";
-import { cropEmbeddedImageBorders, hasAllSideBakedBorder } from "./helpers/ImageBorderCropper";
+import { cropEmbeddedImageBorders, collectParagraphImages } from "./helpers/ImageBorderCropper";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
 import { DocumentSnapshotService } from "./DocumentSnapshotService";
@@ -73,14 +81,14 @@ import { tableProcessor } from "./processors/TableProcessor";
 // ═══════════════════════════════════════════════════════════
 const BULLET_CHAR_MAP: Record<string, { char: string; font: string }> = {
   // Filled bullets - various Unicode representations that should all map to Word's filled bullet
-  '●': WORD_NATIVE_BULLETS.FILLED_BULLET,  // U+25CF BLACK CIRCLE
-  '•': WORD_NATIVE_BULLETS.FILLED_BULLET,  // U+2022 BULLET (used in UI default settings)
+  "●": WORD_NATIVE_BULLETS.FILLED_BULLET, // U+25CF BLACK CIRCLE
+  "•": WORD_NATIVE_BULLETS.FILLED_BULLET, // U+2022 BULLET (used in UI default settings)
   // Open circle bullets
-  '○': WORD_NATIVE_BULLETS.OPEN_CIRCLE,    // U+25CB WHITE CIRCLE
-  'o': WORD_NATIVE_BULLETS.OPEN_CIRCLE,    // Lowercase o (alternative representation)
+  "○": WORD_NATIVE_BULLETS.OPEN_CIRCLE, // U+25CB WHITE CIRCLE
+  o: WORD_NATIVE_BULLETS.OPEN_CIRCLE, // Lowercase o (alternative representation)
   // Filled square bullets
-  '■': WORD_NATIVE_BULLETS.FILLED_SQUARE,  // U+25A0 BLACK SQUARE
-  '▪': WORD_NATIVE_BULLETS.FILLED_SQUARE,  // U+25AA BLACK SMALL SQUARE (alternative)
+  "■": WORD_NATIVE_BULLETS.FILLED_SQUARE, // U+25A0 BLACK SQUARE
+  "▪": WORD_NATIVE_BULLETS.FILLED_SQUARE, // U+25AA BLACK SMALL SQUARE (alternative)
 };
 
 /**
@@ -328,7 +336,10 @@ export class WordDocumentProcessor {
 
   // Per-paragraph numbering snapshot taken BEFORE applyStyles() — restored in processHLPTables()
   // to undo any ilvl/numId corruption caused by list processing or style application.
-  private _hlpSavedNumbering = new Map<Paragraph, { numId: number; level: number; leftIndent?: number }>();
+  private _hlpSavedNumbering = new Map<
+    Paragraph,
+    { numId: number; level: number; leftIndent?: number }
+  >();
 
   // DEPRECATED v1.16.0: Header 2 table detection (replaced with 1x1 table dimension check)
   // Kept for potential future use: stored Header 2 table indices during style application
@@ -345,7 +356,7 @@ export class WordDocumentProcessor {
    * Detect if running in main process (Node.js) vs renderer process (browser)
    */
   private isMainProcess(): boolean {
-    return typeof window === 'undefined';
+    return typeof window === "undefined";
   }
 
   /**
@@ -358,15 +369,17 @@ export class WordDocumentProcessor {
       const code = (error as NodeJS.ErrnoException).code;
 
       // Windows file lock error codes
-      if (code === 'EBUSY' || code === 'EPERM' || code === 'EACCES') {
+      if (code === "EBUSY" || code === "EPERM" || code === "EACCES") {
         return true;
       }
 
       // Check for common file-in-use error messages
-      if (message.includes('resource busy') ||
-          message.includes('file in use') ||
-          message.includes('being used by another process') ||
-          message.includes('locked')) {
+      if (
+        message.includes("resource busy") ||
+        message.includes("file in use") ||
+        message.includes("being used by another process") ||
+        message.includes("locked")
+      ) {
         return true;
       }
     }
@@ -395,9 +408,9 @@ export class WordDocumentProcessor {
 
       const mode = doc.getCompatibilityMode();
       const versionMap: Record<number, string> = {
-        11: 'Word 2003',
-        12: 'Word 2007',
-        14: 'Word 2010',
+        11: "Word 2003",
+        12: "Word 2007",
+        14: "Word 2010",
       };
       const wordVersion = versionMap[mode] || `Unknown (${mode})`;
 
@@ -409,7 +422,7 @@ export class WordDocumentProcessor {
 
       this.log.info(
         `Upgraded from mode ${report.previousMode} to ${report.newMode}. ` +
-        `Removed ${report.removedFlags.length} legacy flags, added ${report.addedSettings.length} modern settings.`
+          `Removed ${report.removedFlags.length} legacy flags, added ${report.addedSettings.length} modern settings.`
       );
 
       return {
@@ -419,7 +432,7 @@ export class WordDocumentProcessor {
         removedFlags: report.removedFlags,
       };
     } catch (error) {
-      this.log.warn('Failed to check/upgrade compatibility mode (non-fatal):', error);
+      this.log.warn("Failed to check/upgrade compatibility mode (non-fatal):", error);
       return { wasUpgraded: false };
     }
   }
@@ -453,9 +466,9 @@ export class WordDocumentProcessor {
             const text = para.getText().substring(0, 40);
             this.log.debug(
               `  T${tableIdx}R${rowIdx}C${cellIdx}[${paraIdx}]: ilvl=${numbering.level}, numId=${numbering.numId}, ` +
-              `left=${formatting.indentation?.left || 0}tw, ` +
-              `hanging=${formatting.indentation?.hanging || 0}tw, ` +
-              `text="${text}${text.length >= 40 ? '...' : ''}"`
+                `left=${formatting.indentation?.left || 0}tw, ` +
+                `hanging=${formatting.indentation?.hanging || 0}tw, ` +
+                `text="${text}${text.length >= 40 ? "..." : ""}"`
             );
           }
         }
@@ -473,9 +486,9 @@ export class WordDocumentProcessor {
       const text = para.getText().substring(0, 40);
       this.log.debug(
         `  Body[${i}]: ilvl=${numbering.level}, numId=${numbering.numId}, ` +
-        `left=${formatting.indentation?.left || 0}tw, ` +
-        `hanging=${formatting.indentation?.hanging || 0}tw, ` +
-        `text="${text}${text.length >= 40 ? '...' : ''}"`
+          `left=${formatting.indentation?.left || 0}tw, ` +
+          `hanging=${formatting.indentation?.hanging || 0}tw, ` +
+          `text="${text}${text.length >= 40 ? "..." : ""}"`
       );
     }
   }
@@ -494,16 +507,17 @@ export class WordDocumentProcessor {
   ): Promise<HyperlinkApiResponse & { processedHyperlinks?: DetailedHyperlinkInfo[] }> {
     // In renderer process, use HyperlinkService (goes through IPC)
     if (!this.isMainProcess()) {
-      this.log.info('[WordDocProcessor] Using renderer process API (HyperlinkService -> IPC)');
+      this.log.info("[WordDocProcessor] Using renderer process API (HyperlinkService -> IPC)");
       return hyperlinkService.processHyperlinksWithApi(hyperlinkInfos, apiSettings, userProfile);
     }
 
     // In main process, call net.request directly
-    this.log.info('[WordDocProcessor] Using main process API (net.request)');
+    this.log.info("[WordDocProcessor] Using main process API (net.request)");
 
     try {
       // Dynamic import to avoid bundling Electron modules in renderer
-      const { callPowerAutomateApiWithRetry } = await import('../../../electron/services/PowerAutomateApiService');
+      const { callPowerAutomateApiWithRetry } =
+        await import("../../../electron/services/PowerAutomateApiService");
 
       // Extract lookup IDs from hyperlinks
       const lookupIds: string[] = [];
@@ -526,7 +540,9 @@ export class WordDocumentProcessor {
       if (lookupIds.length === 0) {
         // No IDs found is not a failure - it just means no hyperlinks need API processing
         // Return success with empty results so other formatting operations can continue
-        this.log.warn('No Content_ID or Document_ID patterns found in hyperlinks - skipping API call');
+        this.log.warn(
+          "No Content_ID or Document_ID patterns found in hyperlinks - skipping API call"
+        );
         return {
           success: true,
           timestamp: new Date(),
@@ -545,17 +561,20 @@ export class WordDocumentProcessor {
         documentId: string;
         contentId: string;
         title: string;
-        status: 'active' | 'deprecated' | 'expired' | 'moved' | 'not_found';
+        status: "active" | "deprecated" | "expired" | "moved" | "not_found";
         metadata: Record<string, unknown>;
       }> = [];
       let idsNotFoundLocally: string[] = [...lookupIds];
 
       if (localDictionarySettings?.enabled && localDictionarySettings.totalEntries > 0) {
-        this.log.info(`[WordDocProcessor] Local dictionary enabled with ${localDictionarySettings.totalEntries} entries - checking local first`);
+        this.log.info(
+          `[WordDocProcessor] Local dictionary enabled with ${localDictionarySettings.totalEntries} entries - checking local first`
+        );
 
         try {
           // Dynamic import of local dictionary lookup service
-          const { getLocalDictionaryLookupService } = await import('../../../electron/services/LocalDictionaryLookupService');
+          const { getLocalDictionaryLookupService } =
+            await import("../../../electron/services/LocalDictionaryLookupService");
           const lookupService = getLocalDictionaryLookupService();
 
           // Batch lookup against local dictionary
@@ -564,19 +583,23 @@ export class WordDocumentProcessor {
           // Process local results
           const foundLocallySet = new Set<string>();
           for (const result of localLookupResults) {
-            if (result.Status !== 'Not_Found') {
+            if (result.Status !== "Not_Found") {
               const normalizedStatus =
-                result.Status.toLowerCase() === 'deprecated' ? 'deprecated' as const :
-                result.Status.toLowerCase() === 'expired' ? 'expired' as const :
-                result.Status.toLowerCase() === 'moved' ? 'moved' as const :
-                result.Status.toLowerCase() === 'not_found' ? 'not_found' as const :
-                'active' as const;
+                result.Status.toLowerCase() === "deprecated"
+                  ? ("deprecated" as const)
+                  : result.Status.toLowerCase() === "expired"
+                    ? ("expired" as const)
+                    : result.Status.toLowerCase() === "moved"
+                      ? ("moved" as const)
+                      : result.Status.toLowerCase() === "not_found"
+                        ? ("not_found" as const)
+                        : ("active" as const);
 
               localResults.push({
-                url: '',
-                documentId: result.Document_ID || '',
-                contentId: result.Content_ID || '',
-                title: result.Title || '',
+                url: "",
+                documentId: result.Document_ID || "",
+                contentId: result.Content_ID || "",
+                title: result.Title || "",
                 status: normalizedStatus,
                 metadata: {},
               });
@@ -588,18 +611,25 @@ export class WordDocumentProcessor {
           }
 
           // Filter out IDs that were found locally
-          idsNotFoundLocally = lookupIds.filter(id => !foundLocallySet.has(id));
+          idsNotFoundLocally = lookupIds.filter((id) => !foundLocallySet.has(id));
 
-          this.log.info(`[WordDocProcessor] Local dictionary: found ${localResults.length} entries, ${idsNotFoundLocally.length} IDs need API lookup`);
+          this.log.info(
+            `[WordDocProcessor] Local dictionary: found ${localResults.length} entries, ${idsNotFoundLocally.length} IDs need API lookup`
+          );
         } catch (localError) {
-          this.log.warn('[WordDocProcessor] Local dictionary lookup failed, falling back to API:', localError);
+          this.log.warn(
+            "[WordDocProcessor] Local dictionary lookup failed, falling back to API:",
+            localError
+          );
           idsNotFoundLocally = [...lookupIds];
         }
       }
 
       // If all IDs were found locally, return early
       if (idsNotFoundLocally.length === 0 && localResults.length > 0) {
-        this.log.info('[WordDocProcessor] All lookups satisfied by local dictionary - skipping API call');
+        this.log.info(
+          "[WordDocProcessor] All lookups satisfied by local dictionary - skipping API call"
+        );
         return {
           success: true,
           timestamp: new Date(),
@@ -613,7 +643,7 @@ export class WordDocumentProcessor {
 
       // Calculate statistics
       const totalHyperlinks = hyperlinkInfos.length;
-      const hyperlinksChecked = hyperlinkInfos.filter(h =>
+      const hyperlinksChecked = hyperlinkInfos.filter((h) =>
         /thesource\.cvshealth\.com/i.test(h.url)
       ).length;
 
@@ -624,9 +654,9 @@ export class WordDocumentProcessor {
           Lookup_ID: idsNotFoundLocally.length > 0 ? idsNotFoundLocally : lookupIds,
           Hyperlinks_Checked: hyperlinksChecked,
           Total_Hyperlinks: totalHyperlinks,
-          First_Name: userProfile?.firstName || '',
-          Last_Name: userProfile?.lastName || '',
-          Email: userProfile?.email || '',
+          First_Name: userProfile?.firstName || "",
+          Last_Name: userProfile?.lastName || "",
+          Email: userProfile?.email || "",
         },
         {
           timeout: apiSettings.timeout,
@@ -638,13 +668,15 @@ export class WordDocumentProcessor {
       if (!response.success) {
         // If we have local results, return those even if API failed
         if (localResults.length > 0) {
-          this.log.warn('[WordDocProcessor] API call failed but returning local dictionary results');
+          this.log.warn(
+            "[WordDocProcessor] API call failed but returning local dictionary results"
+          );
           return {
             success: true,
             timestamp: new Date(),
             body: {
               results: localResults,
-              errors: [response.error || 'API request failed (local results returned)'],
+              errors: [response.error || "API request failed (local results returned)"],
             },
             processedHyperlinks: hyperlinkInfos,
           };
@@ -652,29 +684,34 @@ export class WordDocumentProcessor {
         return {
           success: false,
           timestamp: new Date(),
-          error: response.error || 'API request failed',
+          error: response.error || "API request failed",
         };
       }
 
       // Parse API results into HyperlinkApiResponse format
-      const apiResults = response.data?.Results?.map(result => {
-        const rawStatus = result.Status?.trim() || 'Active';
-        const normalizedStatus =
-          rawStatus.toLowerCase() === 'deprecated' ? 'deprecated' as const :
-          rawStatus.toLowerCase() === 'expired' ? 'expired' as const :
-          rawStatus.toLowerCase() === 'moved' ? 'moved' as const :
-          rawStatus.toLowerCase() === 'not_found' ? 'not_found' as const :
-          'active' as const;
+      const apiResults =
+        response.data?.Results?.map((result) => {
+          const rawStatus = result.Status?.trim() || "Active";
+          const normalizedStatus =
+            rawStatus.toLowerCase() === "deprecated"
+              ? ("deprecated" as const)
+              : rawStatus.toLowerCase() === "expired"
+                ? ("expired" as const)
+                : rawStatus.toLowerCase() === "moved"
+                  ? ("moved" as const)
+                  : rawStatus.toLowerCase() === "not_found"
+                    ? ("not_found" as const)
+                    : ("active" as const);
 
-        return {
-          url: '',
-          documentId: result.Document_ID?.trim() || '',
-          contentId: result.Content_ID?.trim() || '',
-          title: result.Title?.trim() || '',
-          status: normalizedStatus,
-          metadata: {},
-        };
-      }) || [];
+          return {
+            url: "",
+            documentId: result.Document_ID?.trim() || "",
+            contentId: result.Content_ID?.trim() || "",
+            title: result.Title?.trim() || "",
+            status: normalizedStatus,
+            metadata: {},
+          };
+        }) || [];
 
       // Merge local results with API results
       const mergedResults = [...localResults, ...apiResults];
@@ -690,11 +727,11 @@ export class WordDocumentProcessor {
         processedHyperlinks: hyperlinkInfos,
       };
     } catch (error) {
-      this.log.error('[WordDocProcessor] Main process API call failed:', error);
+      this.log.error("[WordDocProcessor] Main process API call failed:", error);
       return {
         success: false,
         timestamp: new Date(),
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -767,10 +804,12 @@ export class WordDocumentProcessor {
       // ALWAYS load with 'preserve' to capture pre-existing tracked changes first
       // Auto-accept is applied at the END of processing (after extracting changes for UI)
       this.log.debug("=== LOADING DOCUMENT WITH DOCXMLATER ===");
-      this.log.debug(`autoAcceptRevisions=${options.autoAcceptRevisions} (will be applied after processing)`);
+      this.log.debug(
+        `autoAcceptRevisions=${options.autoAcceptRevisions} (will be applied after processing)`
+      );
       doc = await Document.load(filePath, {
         strictParsing: false,
-        revisionHandling: 'preserve' // Always preserve to capture pre-existing changes
+        revisionHandling: "preserve", // Always preserve to capture pre-existing changes
       });
       this.log.debug("Document loaded successfully");
 
@@ -862,15 +901,15 @@ export class WordDocumentProcessor {
                 hyperlinks.push({
                   paragraphIndex: pIndex,
                   hyperlinkIndex: hIndex++,
-                  url: element.getUrl() || '',
-                  text: element.getText() || '',
+                  url: element.getUrl() || "",
+                  text: element.getText() || "",
                 });
               }
             });
           });
 
           // Deduplicate hyperlinks (each paragraph was adding all its hyperlinks)
-          const uniqueHyperlinks = new Map<string, typeof hyperlinks[0]>();
+          const uniqueHyperlinks = new Map<string, (typeof hyperlinks)[0]>();
           hyperlinks.forEach((h) => {
             const key = `${h.paragraphIndex}-${h.hyperlinkIndex}`;
             if (!uniqueHyperlinks.has(key)) {
@@ -907,9 +946,9 @@ export class WordDocumentProcessor {
 
         if (variantsRemoved > 0) {
           result.changes?.push({
-            type: 'text',
-            category: 'structure',
-            description: 'Removed em/en dashes and spaces (pre-tracking)',
+            type: "text",
+            category: "structure",
+            description: "Removed em/en dashes and spaces (pre-tracking)",
             count: variantsRemoved,
           });
         }
@@ -930,9 +969,9 @@ export class WordDocumentProcessor {
         // Track hyperlink defragmentation
         if (merged > 0) {
           result.changes?.push({
-            type: 'hyperlink',
-            category: 'structure',
-            description: 'Merged fragmented hyperlinks',
+            type: "hyperlink",
+            category: "structure",
+            description: "Merged fragmented hyperlinks",
             count: merged,
           });
         }
@@ -947,12 +986,11 @@ export class WordDocumentProcessor {
       // Enable track changes BEFORE any modifications
       // This makes all DocHub changes become Word tracked changes
       // Priority: 1) revisionAuthor option, 2) user profile name, 3) "Doc Hub" default
-      const firstName = options.userProfile?.firstName?.trim() || '';
-      const lastName = options.userProfile?.lastName?.trim() || '';
-      const profileName = firstName && lastName
-        ? `${firstName} ${lastName}`
-        : firstName || lastName || '';
-      const authorName = options.revisionAuthor?.trim() || profileName || 'Doc Hub';
+      const firstName = options.userProfile?.firstName?.trim() || "";
+      const lastName = options.userProfile?.lastName?.trim() || "";
+      const profileName =
+        firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || "";
+      const authorName = options.revisionAuthor?.trim() || profileName || "Doc Hub";
 
       doc.enableTrackChanges({
         author: authorName,
@@ -966,7 +1004,9 @@ export class WordDocumentProcessor {
       // This records original blank line positions using neighbor content hashes
       // so they can be re-located after list normalization shifts indices.
       const blankLineSnapshot = captureBlankLineSnapshot(doc);
-      this.log.debug(`Captured blank line snapshot: ${blankLineSnapshot.bodyBlanks.length} body blanks, ${blankLineSnapshot.cellBlanks.length} cell blanks`);
+      this.log.debug(
+        `Captured blank line snapshot: ${blankLineSnapshot.bodyBlanks.length} body blanks, ${blankLineSnapshot.cellBlanks.length} cell blanks`
+      );
 
       // Start tracking DocHub's changes if enabled (legacy comparison tracking)
       if (options.trackChanges) {
@@ -1096,7 +1136,7 @@ export class WordDocumentProcessor {
                   // SKIP: This hyperlink doesn't contain Content_ID or Document_ID patterns
                   // Examples: external URLs, mailto links, internal bookmarks
                   this.log.debug(
-                    `⊘ Skipping hyperlink (no Lookup_ID pattern): ${hyperlinkInfo.url.substring(0, 80)}`
+                    `⊘ Skipping hyperlink (no Lookup_ID pattern): type=${hyperlink.isComplexField ? "ComplexField" : "Hyperlink"} url="${hyperlinkInfo.url?.substring(0, 80)}" text="${hyperlinkInfo.displayText?.substring(0, 50)}"`
                   );
                   continue; // Skip to next hyperlink - no API processing needed
                 }
@@ -1147,9 +1187,23 @@ export class WordDocumentProcessor {
                   if (options.operations?.updateTitles) {
                     let newText = apiResult.title?.trim() || hyperlinkInfo.displayText;
 
-                    // Append Content_ID (last 6 digits) if present
+                    // Extract content ID digits: prefer apiResult.contentId, fall back to title text
+                    let last6: string | null = null;
                     if (apiResult.contentId) {
-                      const last6 = apiResult.contentId.slice(-6);
+                      const m = apiResult.contentId.match(/(\d+)$/);
+                      if (m) last6 = m[1].padStart(6, "0").slice(-6);
+                    }
+                    if (!last6) {
+                      // Fallback: extract digits from the title text itself (handles empty contentId)
+                      const m = newText.match(/\((?:[A-Za-z0-9]+-)*(\d{4,6})\)\s*$/);
+                      if (m) last6 = m[1].padStart(6, "0").slice(-6);
+                    }
+
+                    // Only strip+re-append when we have a content ID to work with
+                    if (last6) {
+                      newText = newText
+                        .replace(/\s*\((?:[A-Za-z0-9]+-)*\d{4,6}\)\s*$/, "")
+                        .trimEnd();
                       newText = `${newText} (${last6})`;
                     }
 
@@ -1164,10 +1218,25 @@ export class WordDocumentProcessor {
                       : null;
 
                     if (newText !== hyperlinkInfo.displayText) {
-                      // Update hyperlink text using docxmlater API
-                      // Note: hyperlink is from extractHyperlinks() with structure { hyperlink: Hyperlink, paragraph: Paragraph, ... }
-                      // So hyperlink.hyperlink accesses the actual docxmlater Hyperlink object
-                      this.setHyperlinkTextTracked(doc, hyperlink.hyperlink, hyperlink.paragraph, newText, authorName);
+                      // Update hyperlink text using the appropriate API
+                      if (hyperlink.isComplexField) {
+                        // ComplexField: use setResult() for display text
+                        this.setComplexFieldTextTracked(
+                          doc,
+                          hyperlink.hyperlink as ComplexField,
+                          newText,
+                          authorName
+                        );
+                      } else {
+                        // Hyperlink: use setText() with tracked changes
+                        this.setHyperlinkTextTracked(
+                          doc,
+                          hyperlink.hyperlink as Hyperlink,
+                          hyperlink.paragraph,
+                          newText,
+                          authorName
+                        );
+                      }
                       finalDisplayText = newText;
                       newTextValue = newText;
                       textChanged = true;
@@ -1180,15 +1249,33 @@ export class WordDocumentProcessor {
                       // Some documents have the content ID as a separate styled run (blue, underlined)
                       // that looks like part of the hyperlink but isn't. After updating the hyperlink
                       // text to include the content ID, we need to remove these orphaned fragments.
-                      if (apiResult.contentId) {
-                        const last6 = apiResult.contentId.slice(-6);
+                      if (last6) {
                         const para = hyperlink.paragraph;
                         const content = para.getContent();
-                        const hyperlinkIndex = content.findIndex((item: unknown) => item === hyperlink.hyperlink);
+                        let hyperlinkIndex = content.findIndex(
+                          (item: unknown) => item === hyperlink.hyperlink
+                        );
+
+                        // Fallback: when tracking is ON, hyperlink may be wrapped in an insertion Revision
+                        if (hyperlinkIndex === -1) {
+                          for (let idx = 0; idx < content.length; idx++) {
+                            const item = content[idx];
+                            if (isRevision(item) && (item as Revision).getType() === "insert") {
+                              if (
+                                (item as Revision)
+                                  .getContent()
+                                  .some((c: unknown) => c === hyperlink.hyperlink)
+                              ) {
+                                hyperlinkIndex = idx;
+                                break;
+                              }
+                            }
+                          }
+                        }
 
                         if (hyperlinkIndex !== -1 && hyperlinkIndex < content.length - 1) {
                           const itemsToRemove: Run[] = [];
-                          let combinedText = '';
+                          let combinedText = "";
 
                           // Look at up to 3 items after the hyperlink to handle various split patterns
                           for (let i = 1; i <= 3 && hyperlinkIndex + i < content.length; i++) {
@@ -1211,7 +1298,7 @@ export class WordDocumentProcessor {
                               // Check if combined text is an orphaned content ID pattern
                               if (
                                 fullContentIdPattern.test(combinedText) || // Full: "(017428)"
-                                trimmedText === ')' || // Just closing paren
+                                trimmedText === ")" || // Just closing paren
                                 trimmedText === `(${last6})` || // No space variant
                                 (partialEndPattern.test(combinedText) && trimmedText.length <= 7) // Partial end like "428)"
                               ) {
@@ -1225,8 +1312,24 @@ export class WordDocumentProcessor {
                                 break;
                               }
 
+                              // Check for prefixed content ID like "(CMS-PRD1-017428)"
+                              const prefixedContentIdPattern1 =
+                                /^\s*\((?:[A-Za-z0-9]+-)*\d{4,6}\)\s*$/;
+                              if (prefixedContentIdPattern1.test(combinedText)) {
+                                for (const toRemove of itemsToRemove) {
+                                  para.replaceContent(toRemove, []);
+                                }
+                                this.log.debug(
+                                  `Removed ${itemsToRemove.length} orphaned prefixed content ID fragment(s): "${trimmedText}"`
+                                );
+                                break;
+                              }
+
                               // If the text doesn't look like a content ID fragment, stop looking
-                              if (!/^[\s\d\(\)]+$/.test(combinedText)) {
+                              if (
+                                !/^[\s\d\(\)]+$/.test(combinedText) &&
+                                !/^\s*\([\w-]*$/.test(combinedText)
+                              ) {
                                 break;
                               }
                             } else {
@@ -1250,8 +1353,12 @@ export class WordDocumentProcessor {
                             break;
                           }
                           // When tracked changes are ON, hyperlink is wrapped in an insertion Revision
-                          if (isRevision(item) && (item as Revision).getType() === 'insert') {
-                            if ((item as Revision).getContent().some((c: unknown) => c === hyperlink.hyperlink)) {
+                          if (isRevision(item) && (item as Revision).getType() === "insert") {
+                            if (
+                              (item as Revision)
+                                .getContent()
+                                .some((c: unknown) => c === hyperlink.hyperlink)
+                            ) {
                               insertAfterIdx = i;
                               break;
                             }
@@ -1260,15 +1367,18 @@ export class WordDocumentProcessor {
 
                         if (insertAfterIdx !== -1) {
                           para.insertRunAt(insertAfterIdx + 1, new Run(trailingPunct));
-                          this.log.debug(`Inserted trailing "${trailingPunct}" after hyperlink as normal text`);
+                          this.log.debug(
+                            `Inserted trailing "${trailingPunct}" after hyperlink as normal text`
+                          );
                         }
                       }
 
                       // Track the change with status (expired/updated) and contentId
                       if (options.trackChanges) {
-                        const hyperlinkStatus = apiResult.status === "expired" || apiResult.status === "deprecated"
-                          ? 'expired' as const
-                          : 'updated' as const;
+                        const hyperlinkStatus =
+                          apiResult.status === "expired" || apiResult.status === "deprecated"
+                            ? ("expired" as const)
+                            : ("updated" as const);
                         documentProcessingComparison.recordHyperlinkTextChange(
                           hyperlink.paragraphIndex,
                           hyperlink.hyperlinkIndexInParagraph,
@@ -1283,7 +1393,9 @@ export class WordDocumentProcessor {
                   } else if (options.operations?.fixContentIds && apiResult.contentId) {
                     // Content ID References enabled WITHOUT Update Titles:
                     // Keep original display text but append Content ID (last 6 digits)
-                    const last6 = apiResult.contentId.slice(-6);
+                    const contentIdMatchFix = apiResult.contentId.match(/(\d+)$/);
+                    if (!contentIdMatchFix) continue;
+                    const last6 = contentIdMatchFix[1].padStart(6, "0").slice(-6);
 
                     // Check for trailing punctuation before appending
                     const trailingPunct = /[.,]$/.test(hyperlinkInfo.displayText)
@@ -1297,28 +1409,66 @@ export class WordDocumentProcessor {
 
                     // Strip existing content ID (4-6 digits in parentheses) to prevent
                     // double-appending and allow replacing incorrect IDs
-                    baseText = baseText.replace(/\s*\(\d{4,6}\)\s*$/, '').trimEnd();
+                    baseText = baseText
+                      .replace(/\s*\((?:[A-Za-z0-9]+-)*\d{4,6}\)\s*$/, "")
+                      .trimEnd();
 
                     const newText = `${baseText} (${last6})`;
 
                     if (newText !== hyperlinkInfo.displayText) {
-                      this.setHyperlinkTextTracked(doc, hyperlink.hyperlink, hyperlink.paragraph, newText, authorName);
+                      if (hyperlink.isComplexField) {
+                        this.setComplexFieldTextTracked(
+                          doc,
+                          hyperlink.hyperlink as ComplexField,
+                          newText,
+                          authorName
+                        );
+                      } else {
+                        this.setHyperlinkTextTracked(
+                          doc,
+                          hyperlink.hyperlink as Hyperlink,
+                          hyperlink.paragraph,
+                          newText,
+                          authorName
+                        );
+                      }
                       finalDisplayText = newText;
                       newTextValue = newText;
                       textChanged = true;
                       result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
                       modifications.push("Content ID appended");
 
-                      this.log.debug(`Appended Content ID: "${hyperlinkInfo.displayText}" → "${newText}"`);
+                      this.log.debug(
+                        `Appended Content ID: "${hyperlinkInfo.displayText}" → "${newText}"`
+                      );
 
                       // Clean up orphaned content ID runs (same logic as updateTitles path)
                       const para = hyperlink.paragraph;
                       const content = para.getContent();
-                      const hyperlinkIndex = content.findIndex((item: unknown) => item === hyperlink.hyperlink);
+                      let hyperlinkIndex = content.findIndex(
+                        (item: unknown) => item === hyperlink.hyperlink
+                      );
+
+                      // Fallback: when tracking is ON, hyperlink may be wrapped in an insertion Revision
+                      if (hyperlinkIndex === -1) {
+                        for (let idx = 0; idx < content.length; idx++) {
+                          const item = content[idx];
+                          if (isRevision(item) && (item as Revision).getType() === "insert") {
+                            if (
+                              (item as Revision)
+                                .getContent()
+                                .some((c: unknown) => c === hyperlink.hyperlink)
+                            ) {
+                              hyperlinkIndex = idx;
+                              break;
+                            }
+                          }
+                        }
+                      }
 
                       if (hyperlinkIndex !== -1 && hyperlinkIndex < content.length - 1) {
                         const itemsToRemove: Run[] = [];
-                        let combinedText = '';
+                        let combinedText = "";
 
                         for (let ci = 1; ci <= 3 && hyperlinkIndex + ci < content.length; ci++) {
                           const item = content[hyperlinkIndex + ci];
@@ -1334,7 +1484,7 @@ export class WordDocumentProcessor {
 
                             if (
                               fullContentIdPattern.test(combinedText) ||
-                              trimmedText === ')' ||
+                              trimmedText === ")" ||
                               trimmedText === `(${last6})` ||
                               (partialEndPattern.test(combinedText) && trimmedText.length <= 7)
                             ) {
@@ -1347,7 +1497,23 @@ export class WordDocumentProcessor {
                               break;
                             }
 
-                            if (!/^[\s\d\(\)]+$/.test(combinedText)) {
+                            // Check for prefixed content ID like "(CMS-PRD1-017428)"
+                            const prefixedContentIdPattern2 =
+                              /^\s*\((?:[A-Za-z0-9]+-)*\d{4,6}\)\s*$/;
+                            if (prefixedContentIdPattern2.test(combinedText)) {
+                              for (const toRemove of itemsToRemove) {
+                                para.replaceContent(toRemove, []);
+                              }
+                              this.log.debug(
+                                `Removed ${itemsToRemove.length} orphaned prefixed content ID fragment(s): "${trimmedText}"`
+                              );
+                              break;
+                            }
+
+                            if (
+                              !/^[\s\d\(\)]+$/.test(combinedText) &&
+                              !/^\s*\([\w-]*$/.test(combinedText)
+                            ) {
                               break;
                             }
                           } else {
@@ -1367,8 +1533,12 @@ export class WordDocumentProcessor {
                             insertAfterIdx = pi;
                             break;
                           }
-                          if (isRevision(item) && (item as Revision).getType() === 'insert') {
-                            if ((item as Revision).getContent().some((c: unknown) => c === hyperlink.hyperlink)) {
+                          if (isRevision(item) && (item as Revision).getType() === "insert") {
+                            if (
+                              (item as Revision)
+                                .getContent()
+                                .some((c: unknown) => c === hyperlink.hyperlink)
+                            ) {
                               insertAfterIdx = pi;
                               break;
                             }
@@ -1377,7 +1547,9 @@ export class WordDocumentProcessor {
 
                         if (insertAfterIdx !== -1) {
                           para.insertRunAt(insertAfterIdx + 1, new Run(trailingPunct));
-                          this.log.debug(`Inserted trailing "${trailingPunct}" after hyperlink as normal text`);
+                          this.log.debug(
+                            `Inserted trailing "${trailingPunct}" after hyperlink as normal text`
+                          );
                         }
                       }
 
@@ -1389,7 +1561,7 @@ export class WordDocumentProcessor {
                           hyperlinkInfo.displayText,
                           newText,
                           "PowerAutomate API - Content ID Reference",
-                          'updated',
+                          "updated",
                           apiResult.contentId
                         );
                       }
@@ -1398,21 +1570,22 @@ export class WordDocumentProcessor {
 
                   // Consolidated change tracking for UI - track if URL or text changed
                   if (urlChanged || textChanged) {
-                    const nearestHeader2 = this.findNearestHeader2(doc, hyperlink.paragraphIndex) || undefined;
+                    const nearestHeader2 =
+                      this.findNearestHeader2(doc, hyperlink.paragraphIndex) || undefined;
 
                     // Build description based on what changed
-                    let description = 'Updated hyperlink';
+                    let description = "Updated hyperlink";
                     if (urlChanged && textChanged) {
-                      description = 'Updated hyperlink URL and display text';
+                      description = "Updated hyperlink URL and display text";
                     } else if (urlChanged) {
-                      description = 'Updated hyperlink URL';
+                      description = "Updated hyperlink URL";
                     } else if (textChanged) {
-                      description = 'Updated hyperlink display text';
+                      description = "Updated hyperlink display text";
                     }
 
                     result.changes?.push({
-                      type: 'hyperlink',
-                      category: 'hyperlink_update',
+                      type: "hyperlink",
+                      category: "hyperlink_update",
                       description,
                       // Text changes (before/after are for display text)
                       before: textChanged ? hyperlinkInfo.displayText : undefined,
@@ -1423,7 +1596,10 @@ export class WordDocumentProcessor {
                       paragraphIndex: hyperlink.paragraphIndex,
                       nearestHeader2,
                       contentId: apiResult.contentId,
-                      hyperlinkStatus: apiResult.status === "expired" || apiResult.status === "deprecated" ? 'expired' : 'updated',
+                      hyperlinkStatus:
+                        apiResult.status === "expired" || apiResult.status === "deprecated"
+                          ? "expired"
+                          : "updated",
                     });
                   }
 
@@ -1450,8 +1626,22 @@ export class WordDocumentProcessor {
                   if (options.operations?.updateTitles) {
                     // Mark as "Not Found"
                     const notFoundText = `${hyperlinkInfo.displayText} - Not Found`;
-                    // Note: hyperlink.hyperlink accesses the actual docxmlater Hyperlink object
-                    this.setHyperlinkTextTracked(doc, hyperlink.hyperlink, hyperlink.paragraph, notFoundText, authorName);
+                    if (hyperlink.isComplexField) {
+                      this.setComplexFieldTextTracked(
+                        doc,
+                        hyperlink.hyperlink as ComplexField,
+                        notFoundText,
+                        authorName
+                      );
+                    } else {
+                      this.setHyperlinkTextTracked(
+                        doc,
+                        hyperlink.hyperlink as Hyperlink,
+                        hyperlink.paragraph,
+                        notFoundText,
+                        authorName
+                      );
+                    }
                     result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
 
                     // Track the change with not_found status for Document Changes UI
@@ -1462,21 +1652,22 @@ export class WordDocumentProcessor {
                         hyperlinkInfo.displayText,
                         notFoundText,
                         "Source not found in SharePoint",
-                        'not_found'
+                        "not_found"
                       );
                     }
 
                     // Enhanced change tracking for failed hyperlinks
-                    const nearestHeader2 = this.findNearestHeader2(doc, hyperlink.paragraphIndex) || undefined;
+                    const nearestHeader2 =
+                      this.findNearestHeader2(doc, hyperlink.paragraphIndex) || undefined;
                     result.changes?.push({
-                      type: 'hyperlink',
-                      category: 'hyperlink_failed',
+                      type: "hyperlink",
+                      category: "hyperlink_failed",
                       description: `Hyperlink not found in SharePoint`,
                       before: hyperlinkInfo.displayText,
                       after: notFoundText,
                       paragraphIndex: hyperlink.paragraphIndex,
                       nearestHeader2,
-                      hyperlinkStatus: 'not_found',
+                      hyperlinkStatus: "not_found",
                     });
                   }
                 }
@@ -1558,10 +1749,31 @@ export class WordDocumentProcessor {
       // End PowerAutomate API Integration
       // ═══════════════════════════════════════════════════════════
 
-      // Custom replacements
+      // Custom replacements (hyperlink URL/text replacements)
       if (options.customReplacements && options.customReplacements.length > 0) {
         this.log.debug("=== APPLYING CUSTOM REPLACEMENTS ===");
-        await this.processCustomReplacements(hyperlinks, options.customReplacements, result, doc, authorName);
+        await this.processCustomReplacements(
+          hyperlinks,
+          options.customReplacements,
+          result,
+          doc,
+          authorName
+        );
+
+        // Text replacements across all paragraphs (body + table cells)
+        const textRules = options.customReplacements.filter(r => r.applyTo === "text");
+        if (textRules.length > 0) {
+          this.log.debug("=== APPLYING TEXT REPLACEMENTS (ALL PARAGRAPHS) ===");
+          const modifiedRunCount = this.processTextReplacementsAllParagraphs(doc, textRules);
+          this.log.info(`Text replacements: modified ${modifiedRunCount} runs across all paragraphs`);
+          if (modifiedRunCount > 0) {
+            result.changes?.push({
+              type: "text",
+              category: "other",
+              description: `Applied text replacements (${textRules.map(r => `"${r.find}" → "${r.replace}"`).join(", ")}) — modified ${modifiedRunCount} text runs`,
+            });
+          }
+        }
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -1587,9 +1799,9 @@ export class WordDocumentProcessor {
         // Track whitespace removal
         if (whitespaceCleaned > 0) {
           result.changes?.push({
-            type: 'text',
-            category: 'structure',
-            description: 'Removed extra whitespace from text runs',
+            type: "text",
+            category: "structure",
+            description: "Removed extra whitespace from text runs",
             count: whitespaceCleaned,
           });
         }
@@ -1603,9 +1815,9 @@ export class WordDocumentProcessor {
         // Track italic removal
         if (italicsRemoved > 0) {
           result.changes?.push({
-            type: 'style',
-            category: 'structure',
-            description: 'Removed italic formatting from text',
+            type: "style",
+            category: "structure",
+            description: "Removed italic formatting from text",
             count: italicsRemoved,
           });
         }
@@ -1632,9 +1844,9 @@ export class WordDocumentProcessor {
       // Track automatic hyperlink formatting standardization
       if (hyperlinksStandardized > 0) {
         result.changes?.push({
-          type: 'hyperlink',
-          category: 'structure',
-          description: 'Standardized hyperlink formatting (Verdana 12pt blue underlined)',
+          type: "hyperlink",
+          category: "structure",
+          description: "Standardized hyperlink formatting (Verdana 12pt blue underlined)",
           count: hyperlinksStandardized,
         });
       }
@@ -1678,7 +1890,10 @@ export class WordDocumentProcessor {
                     level: 0,
                     leftIndent: para.getLeftIndent(),
                   });
-                } else if (para.getStyle() === 'ListParagraph' || para.getStyle() === 'List Paragraph') {
+                } else if (
+                  para.getStyle() === "ListParagraph" ||
+                  para.getStyle() === "List Paragraph"
+                ) {
                   // ListParagraph with truly no numbering — inherits from style
                   this._hlpSavedNumbering.set(para, {
                     numId: -1,
@@ -1691,7 +1906,9 @@ export class WordDocumentProcessor {
           }
         }
         if (this._hlpAbstractNumIds.size > 0) {
-          this.log.debug(`Collected ${this._hlpAbstractNumIds.size} HLP abstractNumIds for protection: [${[...this._hlpAbstractNumIds].join(', ')}]`);
+          this.log.debug(
+            `Collected ${this._hlpAbstractNumIds.size} HLP abstractNumIds for protection: [${[...this._hlpAbstractNumIds].join(", ")}]`
+          );
         }
         if (this._hlpSavedNumbering.size > 0) {
           this.log.debug(`Saved numbering for ${this._hlpSavedNumbering.size} HLP paragraphs`);
@@ -1709,9 +1926,10 @@ export class WordDocumentProcessor {
 
         if (misappliedCorrected > 0) {
           result.changes?.push({
-            type: 'style',
-            category: 'style_application',
-            description: 'Corrected misapplied TOC/Hyperlink paragraph styles to Normal or ListParagraph',
+            type: "style",
+            category: "style_application",
+            description:
+              "Corrected misapplied TOC/Hyperlink paragraph styles to Normal or ListParagraph",
             count: misappliedCorrected,
           });
         }
@@ -1723,13 +1941,15 @@ export class WordDocumentProcessor {
       {
         let normalWebConverted = 0;
         for (const para of doc.getAllParagraphs()) {
-          if (para.getStyle() === 'NormalWeb') {
-            para.setStyle('Normal');
+          if (para.getStyle() === "NormalWeb") {
+            para.setStyle("Normal");
             normalWebConverted++;
           }
         }
         if (normalWebConverted > 0) {
-          this.log.info(`Converted ${normalWebConverted} NormalWeb paragraphs to Normal (pre-style-application)`);
+          this.log.info(
+            `Converted ${normalWebConverted} NormalWeb paragraphs to Normal (pre-style-application)`
+          );
         }
       }
 
@@ -1752,12 +1972,12 @@ export class WordDocumentProcessor {
         let tableGridToHeading2 = 0;
         for (const para of doc.getAllParagraphs()) {
           const style = para.getStyle();
-          if (style === 'TableGrid' || style === 'Table Grid') {
+          if (style === "TableGrid" || style === "Table Grid") {
             if (paragraphsIn1x1.has(para)) {
-              para.setStyle('Heading2');
+              para.setStyle("Heading2");
               tableGridToHeading2++;
             } else {
-              para.setStyle('Normal');
+              para.setStyle("Normal");
               tableGridToNormal++;
             }
           }
@@ -1779,7 +1999,9 @@ export class WordDocumentProcessor {
         this.log.debug("=== SETTING HEADING 2 STYLE ON 1X1 TABLES (PRE-STYLE APPLICATION) ===");
         const heading2Updated = await tableProcessor.ensureHeading2StyleIn1x1Tables(doc);
         if (heading2Updated > 0) {
-          this.log.info(`Set Heading 2 style on ${heading2Updated} paragraphs in 1x1 tables (before style application)`);
+          this.log.info(
+            `Set Heading 2 style on ${heading2Updated} paragraphs in 1x1 tables (before style application)`
+          );
         }
       }
 
@@ -1803,16 +2025,16 @@ export class WordDocumentProcessor {
           }
         }
         if (savedTableCellNumbering.size > 0) {
-          this.log.debug(`Saved numbering for ${savedTableCellNumbering.size} table cell paragraphs before applyStyles()`);
+          this.log.debug(
+            `Saved numbering for ${savedTableCellNumbering.size} table cell paragraphs before applyStyles()`
+          );
         }
 
         // Disable tracking during style application — clearing of redundant direct
         // formatting and style overrides should not appear as tracked changes
         doc.disableTrackChanges();
 
-        this.log.debug(
-          "=== ASSIGNING STYLES (USING DOCXMLATER applyStyles) ==="
-        );
+        this.log.debug("=== ASSIGNING STYLES (USING DOCXMLATER applyStyles) ===");
         // Use docXMLater's native method with preserve flag support
         // This handles style definitions, direct formatting clearing, and Header2 table wrapping
         const styleResults = await this.applyCustomStylesFromUI(
@@ -1831,22 +2053,13 @@ export class WordDocumentProcessor {
         // Skip applyH1/H2/H3 if already processed by applyStyles
         // This prevents framework defaults from overriding user-configured custom styles
         const h1Count = styleResults.heading1
-          ? (this.log.debug(
-              "Skipping applyH1 - already processed by applyStyles"
-            ),
-            0)
+          ? (this.log.debug("Skipping applyH1 - already processed by applyStyles"), 0)
           : doc.applyH1();
         const h2Count = styleResults.heading2
-          ? (this.log.debug(
-              "Skipping applyH2 - already processed by applyStyles"
-            ),
-            0)
+          ? (this.log.debug("Skipping applyH2 - already processed by applyStyles"), 0)
           : doc.applyH2();
         const h3Count = styleResults.heading3
-          ? (this.log.debug(
-              "Skipping applyH3 - already processed by applyStyles"
-            ),
-            0)
+          ? (this.log.debug("Skipping applyH3 - already processed by applyStyles"), 0)
           : doc.applyH3();
 
         // Re-enable tracking after style application
@@ -1867,7 +2080,9 @@ export class WordDocumentProcessor {
           }
         }
         if (restoredCount > 0) {
-          this.log.debug(`Restored numbering for ${restoredCount} table cell paragraphs after applyStyles()`);
+          this.log.debug(
+            `Restored numbering for ${restoredCount} table cell paragraphs after applyStyles()`
+          );
         }
         savedTableCellNumbering.clear();
       }
@@ -1909,23 +2124,30 @@ export class WordDocumentProcessor {
       try {
         const allHyperlinks = await this.docXMLater.extractHyperlinks(doc);
         let reappliedCount = 0;
-        for (const { hyperlink } of allHyperlinks) {
+        for (const { hyperlink, isComplexField } of allHyperlinks) {
           try {
-            hyperlink.setFormatting({
+            const formatting = {
               font: "Verdana",
               size: 12,
               color: "0000FF",
-              underline: "single",
+              underline: "single" as const,
               bold: false,
               italic: false,
-            });
+            };
+            if (isComplexField) {
+              (hyperlink as ComplexField).setResultFormatting(formatting);
+            } else {
+              (hyperlink as Hyperlink).setFormatting(formatting);
+            }
             reappliedCount++;
           } catch (err) {
             this.log.warn(`Failed to re-apply hyperlink formatting: ${err}`);
           }
         }
         if (reappliedCount > 0) {
-          this.log.debug(`Re-applied formatting to ${reappliedCount} hyperlinks after style application`);
+          this.log.debug(
+            `Re-applied formatting to ${reappliedCount} hyperlinks after style application`
+          );
         }
       } catch (error) {
         this.log.warn(`Failed hyperlink formatting safety net: ${error}`);
@@ -1961,7 +2183,7 @@ export class WordDocumentProcessor {
         options.operations?.validateDocumentStyles &&
         options.styles &&
         options.styles.length > 0 &&
-        !options.assignStyles  // Skip if applyStyles already ran with preservation flags
+        !options.assignStyles // Skip if applyStyles already ran with preservation flags
       ) {
         this.log.debug("=== VALIDATING DOCUMENT STYLES ===");
         const results = await this.validateDocumentStyles(doc, options.styles);
@@ -1970,14 +2192,16 @@ export class WordDocumentProcessor {
         // Track style validation
         if (results.applied > 0) {
           result.changes?.push({
-            type: 'style',
-            category: 'style_application',
-            description: `Validated and applied styles: ${results.validated.join(', ')}`,
+            type: "style",
+            category: "style_application",
+            description: `Validated and applied styles: ${results.validated.join(", ")}`,
             count: results.applied,
           });
         }
       } else if (options.operations?.validateDocumentStyles && options.assignStyles) {
-        this.log.debug("Skipping validateDocumentStyles - already processed by applyStyles with preservation flags");
+        this.log.debug(
+          "Skipping validateDocumentStyles - already processed by applyStyles with preservation flags"
+        );
       } else if (options.operations?.validateDocumentStyles) {
         this.log.warn(
           "⚠️ validateDocumentStyles is ENABLED but no styles provided! Please configure styles in the Styles tab."
@@ -2009,9 +2233,9 @@ export class WordDocumentProcessor {
           // Track Header 2 table validation with affected cell names
           if (tableResult.count > 0) {
             result.changes?.push({
-              type: 'style',
-              category: 'structure',
-              description: 'Validated and fixed Header 2 table cell formatting',
+              type: "style",
+              category: "structure",
+              description: "Validated and fixed Header 2 table cell formatting",
               count: tableResult.count,
               affectedItems: tableResult.affectedCells,
             });
@@ -2030,8 +2254,8 @@ export class WordDocumentProcessor {
       const returnToLinksFixed = this.standardizeReturnToHyperlinks(doc);
       if (returnToLinksFixed > 0) {
         result.changes?.push({
-          type: 'hyperlink',
-          category: 'structure',
+          type: "hyperlink",
+          category: "structure",
           description: 'Standardized "Return to" hyperlinks (indent removed, right-aligned)',
           count: returnToLinksFixed,
         });
@@ -2045,9 +2269,9 @@ export class WordDocumentProcessor {
       if (centerIndentsCleared > 0) {
         this.log.info(`Cleared indentation from ${centerIndentsCleared} center-aligned paragraphs`);
         result.changes?.push({
-          type: 'style',
-          category: 'structure',
-          description: 'Removed indentation from center-aligned paragraphs',
+          type: "style",
+          category: "structure",
+          description: "Removed indentation from center-aligned paragraphs",
           count: centerIndentsCleared,
         });
       }
@@ -2065,9 +2289,9 @@ export class WordDocumentProcessor {
 
         // Track document warning addition
         result.changes?.push({
-          type: 'structure',
-          category: 'structure',
-          description: 'Added standardized document warning at end',
+          type: "structure",
+          category: "structure",
+          description: "Added standardized document warning at end",
         });
       }
 
@@ -2078,9 +2302,9 @@ export class WordDocumentProcessor {
         if (cropResult.croppedCount > 0) {
           this.log.info(`Cropped embedded borders from ${cropResult.croppedCount} images`);
           result.changes?.push({
-            type: 'structure',
-            category: 'structure',
-            description: 'Cropped embedded borders from screen-captured images',
+            type: "structure",
+            category: "structure",
+            description: "Cropped embedded borders from screen-captured images",
             count: cropResult.croppedCount,
           });
         }
@@ -2094,47 +2318,23 @@ export class WordDocumentProcessor {
         let skippedBorderCount = 0;
 
         for (const paragraph of doc.getAllParagraphs()) {
-          const content = paragraph.getContent();
-          const largeImages: Image[] = [];
-
-          for (const item of content) {
-            if (item instanceof ImageRun) {
-              const image = item.getImageElement();
-              if (image.getWidth() >= minEmus || image.getHeight() >= minEmus) {
-                largeImages.push(image);
-              }
-            } else if (item instanceof Revision) {
-              for (const revItem of item.getContent()) {
-                if (revItem instanceof ImageRun) {
-                  const image = revItem.getImageElement();
-                  if (image.getWidth() >= minEmus || image.getHeight() >= minEmus) {
-                    largeImages.push(image);
-                  }
-                }
-              }
-            }
-          }
+          const largeImages = collectParagraphImages(paragraph).filter(
+            (image) => image.getWidth() >= minEmus || image.getHeight() >= minEmus
+          );
 
           if (largeImages.length === 0) continue;
 
           // Center the paragraph (always, regardless of border decision)
           paragraph.formatting.indentation = undefined;
-          paragraph.setAlignment('center');
+          paragraph.setAlignment("center");
           centeredCount++;
 
-          // Selectively border each image
+          // Selectively border each image (uses cached results from crop step)
           for (const image of largeImages) {
-            try {
-              const hasBakedBorder = await hasAllSideBakedBorder(image);
-              if (hasBakedBorder) {
-                skippedBorderCount++;
-                this.log.debug("Skipped Word border for image with baked-in border on all 4 sides");
-              } else {
-                image.setBorder(borderWidth);
-                borderedCount++;
-              }
-            } catch {
-              // On error, fall back to applying the border (safe default)
+            if (cropResult.allSideBakedBorderImages.has(image)) {
+              skippedBorderCount++;
+              this.log.debug("Skipped Word border for image with baked-in border on all 4 sides");
+            } else {
               image.setBorder(borderWidth);
               borderedCount++;
             }
@@ -2149,11 +2349,12 @@ export class WordDocumentProcessor {
 
         if (centeredCount > 0) {
           result.changes?.push({
-            type: 'structure',
-            category: 'structure',
-            description: skippedBorderCount > 0
-              ? `Centered ${centeredCount} images (${borderedCount} bordered, ${skippedBorderCount} had baked-in borders)`
-              : `Centered and bordered ${centeredCount} images`,
+            type: "structure",
+            category: "structure",
+            description:
+              skippedBorderCount > 0
+                ? `Centered ${centeredCount} images (${borderedCount} bordered, ${skippedBorderCount} had baked-in borders)`
+                : `Centered and bordered ${centeredCount} images`,
             count: centeredCount,
           });
         }
@@ -2166,13 +2367,13 @@ export class WordDocumentProcessor {
         const savedKB = (imageOptResult.totalSavedBytes / 1024).toFixed(1);
         this.log.info(`Optimized ${imageOptResult.optimizedCount} images, saved ${savedKB} KB`);
         result.changes?.push({
-          type: 'structure',
-          category: 'structure',
-          description: 'Compressed images',
+          type: "structure",
+          category: "structure",
+          description: "Compressed images",
           count: imageOptResult.optimizedCount,
         });
       } else {
-        this.log.info('No images needed optimization');
+        this.log.info("No images needed optimization");
       }
 
       if (options.removeHeadersFooters) {
@@ -2196,9 +2397,9 @@ export class WordDocumentProcessor {
         const totalCleared = headersFootersCleared + footnoteCount + endnoteCount;
         if (totalCleared > 0) {
           result.changes?.push({
-            type: 'structure',
-            category: 'structure',
-            description: 'Cleared headers, footers, footnotes, and endnotes',
+            type: "structure",
+            category: "structure",
+            description: "Cleared headers, footers, footnotes, and endnotes",
             count: totalCleared,
           });
         }
@@ -2214,63 +2415,73 @@ export class WordDocumentProcessor {
       if (options.normalizeTableLists) {
         // First, pre-process extended typed prefixes that DocXMLater doesn't handle
         // (parenthetical numbers, Roman numerals, etc.)
-        this.debugCaptureListState(doc, 'BEFORE preProcessExtendedTypedPrefixes');
+        this.debugCaptureListState(doc, "BEFORE preProcessExtendedTypedPrefixes");
         const extendedPrefixesConverted = this.preProcessExtendedTypedPrefixes(doc);
-        this.debugCaptureListState(doc, 'AFTER preProcessExtendedTypedPrefixes');
+        this.debugCaptureListState(doc, "AFTER preProcessExtendedTypedPrefixes");
 
         if (extendedPrefixesConverted > 0) {
           result.changes?.push({
-            type: 'structure',
-            category: 'list_fix',
-            description: 'Converted extended typed prefixes (Roman numerals, parenthetical) to Word numbering',
+            type: "structure",
+            category: "list_fix",
+            description:
+              "Converted extended typed prefixes (Roman numerals, parenthetical) to Word numbering",
             count: extendedPrefixesConverted,
           });
         }
 
         // Then run local ListNormalizer for standard patterns (moved from docxmlater)
-        this.debugCaptureListState(doc, 'BEFORE normalizeTableLists');
+        this.debugCaptureListState(doc, "BEFORE normalizeTableLists");
         this.log.debug("=== NORMALIZING TYPED LIST PREFIXES IN TABLES ===");
         // Use local ListNormalizer with bug fix for standalone typed list level assignment
         const listNormalizer = new ListNormalizer(doc.getNumberingManager());
         const normReport = listNormalizer.normalizeAllTables(
-          doc.getAllTables().filter(t => !tableProcessor.isHLPTable(t)), {
-          indentationLevels: options.listBulletSettings?.indentationLevels,
-          extraHangingIndentTwips: this.getExtraHangingTwips(),
-        });
+          doc.getAllTables().filter((t) => !tableProcessor.isHLPTable(t)),
+          {
+            indentationLevels: options.listBulletSettings?.indentationLevels,
+            extraHangingIndentTwips: this.getExtraHangingTwips(),
+          }
+        );
         if (normReport.normalized > 0) {
           this.log.info(
             `Normalized ${normReport.normalized} typed list items to proper Word lists (majority: ${normReport.appliedCategory})`
           );
           result.changes?.push({
-            type: 'structure',
-            category: 'list_fix',
-            description: 'Converted typed list prefixes to proper Word list formatting',
+            type: "structure",
+            category: "list_fix",
+            description: "Converted typed list prefixes to proper Word list formatting",
             count: normReport.normalized,
           });
         }
         if (normReport.errors.length > 0) {
-          this.log.warn(`List normalization had ${normReport.errors.length} errors:`, normReport.errors);
+          this.log.warn(
+            `List normalization had ${normReport.errors.length} errors:`,
+            normReport.errors
+          );
         }
-        this.debugCaptureListState(doc, 'AFTER normalizeTableLists');
+        this.debugCaptureListState(doc, "AFTER normalizeTableLists");
         if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-          this.log.debug(`  normalizeTableLists Report: normalized=${normReport.normalized}, category=${normReport.appliedCategory}`);
+          this.log.debug(
+            `  normalizeTableLists Report: normalized=${normReport.normalized}, category=${normReport.appliedCategory}`
+          );
         }
 
         // Step B.5: Context-aware typed prefix conversion (body + table cells)
         // This catches typed prefixes that Steps A/B missed (body paragraphs) and applies
         // context-aware conversion: typed prefixes after list items become sub-items
-        this.debugCaptureListState(doc, 'BEFORE convertTypedPrefixesWithContext');
+        this.debugCaptureListState(doc, "BEFORE convertTypedPrefixesWithContext");
         const contextPrefixesConverted = this.convertTypedPrefixesWithContext(doc, {
           indentationLevels: options.listBulletSettings?.indentationLevels,
         });
-        this.debugCaptureListState(doc, 'AFTER convertTypedPrefixesWithContext');
+        this.debugCaptureListState(doc, "AFTER convertTypedPrefixesWithContext");
 
         if (contextPrefixesConverted > 0) {
-          this.log.info(`Context-aware typed prefix conversion: ${contextPrefixesConverted} items converted`);
+          this.log.info(
+            `Context-aware typed prefix conversion: ${contextPrefixesConverted} items converted`
+          );
           result.changes?.push({
-            type: 'structure',
-            category: 'list_fix',
-            description: 'Context-aware conversion of typed list prefixes to Word numbering',
+            type: "structure",
+            category: "list_fix",
+            description: "Context-aware conversion of typed list prefixes to Word numbering",
             count: contextPrefixesConverted,
           });
         }
@@ -2282,7 +2493,7 @@ export class WordDocumentProcessor {
       // Normalize orphan Level 1+ bullets in table cells
       // If a cell's first bullet is Level 1+ with no preceding Level 0, shift all bullets down
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
-        this.debugCaptureListState(doc, 'BEFORE normalizeOrphanListLevelsInTable');
+        this.debugCaptureListState(doc, "BEFORE normalizeOrphanListLevelsInTable");
         this.log.debug("=== NORMALIZING ORPHAN LIST LEVELS IN TABLE CELLS ===");
         const tables = doc.getTables();
         let orphanLevelsFixed = 0;
@@ -2295,36 +2506,36 @@ export class WordDocumentProcessor {
         if (orphanLevelsFixed > 0) {
           this.log.info(`Normalized ${orphanLevelsFixed} orphan list levels in table cells`);
         }
-        this.debugCaptureListState(doc, 'AFTER normalizeOrphanListLevelsInTable');
+        this.debugCaptureListState(doc, "AFTER normalizeOrphanListLevelsInTable");
       }
 
       // Normalize orphan Level 1+ bullets in body paragraphs
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
-        this.debugCaptureListState(doc, 'BEFORE normalizeOrphanBodyListLevels');
+        this.debugCaptureListState(doc, "BEFORE normalizeOrphanBodyListLevels");
         this.log.debug("=== NORMALIZING ORPHAN LIST LEVELS IN BODY ===");
         const bodyOrphansFixed = this.normalizeOrphanBodyListLevels(doc);
         if (bodyOrphansFixed > 0) {
           this.log.info(`Normalized ${bodyOrphansFixed} orphan list levels in body paragraphs`);
         }
-        this.debugCaptureListState(doc, 'AFTER normalizeOrphanBodyListLevels');
+        this.debugCaptureListState(doc, "AFTER normalizeOrphanBodyListLevels");
       }
 
       // Collapse non-contiguous level gaps (e.g., 0→1→3→4 becomes 0→1→2→3)
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
-        this.debugCaptureListState(doc, 'BEFORE normalizeLevelGaps');
+        this.debugCaptureListState(doc, "BEFORE normalizeLevelGaps");
         this.log.debug("=== NORMALIZING LIST LEVEL GAPS ===");
         const gapsFixed = this.normalizeLevelGaps(doc);
         if (gapsFixed > 0) {
           this.log.info(`Collapsed ${gapsFixed} level gaps in list sequences`);
         }
-        this.debugCaptureListState(doc, 'AFTER normalizeLevelGaps');
+        this.debugCaptureListState(doc, "AFTER normalizeLevelGaps");
       }
 
       // Normalize list levels based on visual indentation (format clustering).
       // Runs AFTER orphan normalization and gap collapsing so those passes operate
       // on raw ilvl values and format clustering has the final say on sub-bullet levels.
       if (options.listBulletSettings?.enabled && options.listBulletSettings.indentationLevels) {
-        this.debugCaptureListState(doc, 'BEFORE normalizeListLevelsFromIndentation');
+        this.debugCaptureListState(doc, "BEFORE normalizeListLevelsFromIndentation");
         this.log.debug("=== NORMALIZING LIST LEVELS FROM VISUAL INDENTATION ===");
         const levelsNormalized = await this.normalizeListLevelsFromIndentation(doc, {
           indentationLevels: options.listBulletSettings.indentationLevels,
@@ -2332,18 +2543,18 @@ export class WordDocumentProcessor {
         if (levelsNormalized > 0) {
           this.log.info(`Normalized ${levelsNormalized} list item levels from visual indentation`);
         }
-        this.debugCaptureListState(doc, 'AFTER normalizeListLevelsFromIndentation');
+        this.debugCaptureListState(doc, "AFTER normalizeListLevelsFromIndentation");
       }
 
       if (options.listBulletSettings?.enabled) {
-        this.debugCaptureListState(doc, 'BEFORE applyListIndentationUniformity');
+        this.debugCaptureListState(doc, "BEFORE applyListIndentationUniformity");
         this.log.debug("=== APPLYING LIST INDENTATION UNIFORMITY ===");
         const listsFormatted = await this.applyListIndentationUniformity(
           doc,
           options.listBulletSettings
         );
         this.log.info(`Applied indentation to ${listsFormatted} list paragraphs`);
-        this.debugCaptureListState(doc, 'AFTER applyListIndentationUniformity');
+        this.debugCaptureListState(doc, "AFTER applyListIndentationUniformity");
       }
 
       this.log.debug("=== DEBUG: BULLET UNIFORMITY CHECK ===");
@@ -2363,9 +2574,9 @@ export class WordDocumentProcessor {
       // Format step-number and typed-number columns BEFORE bullet/numbered uniformity
       // so the tracking Set is populated when those methods check it
       {
-        const normalStyle = options.styles?.find((s: SessionStyle) => s.id === 'normal');
+        const normalStyle = options.styles?.find((s: SessionStyle) => s.id === "normal");
         const normalStyleInfo = {
-          fontFamily: normalStyle?.fontFamily ?? 'Verdana',
+          fontFamily: normalStyle?.fontFamily ?? "Verdana",
           fontSize: normalStyle?.fontSize ?? 12,
           spaceBefore: normalStyle?.spaceBefore ?? 3,
           spaceAfter: normalStyle?.spaceAfter ?? 3,
@@ -2383,7 +2594,7 @@ export class WordDocumentProcessor {
       }
 
       if (options.bulletUniformity && options.listBulletSettings) {
-        this.debugCaptureListState(doc, 'BEFORE applyBulletUniformity/applyNumberedUniformity');
+        this.debugCaptureListState(doc, "BEFORE applyBulletUniformity/applyNumberedUniformity");
         this.log.debug("=== APPLYING BULLET AND NUMBERED LIST UNIFORMITY ===");
         const bulletsStandardized = await this.applyBulletUniformity(
           doc,
@@ -2396,18 +2607,18 @@ export class WordDocumentProcessor {
           options.listBulletSettings
         );
         this.log.info(`Standardized ${numbersStandardized} numbered lists`);
-        this.debugCaptureListState(doc, 'AFTER applyBulletUniformity/applyNumberedUniformity');
+        this.debugCaptureListState(doc, "AFTER applyBulletUniformity/applyNumberedUniformity");
 
         // Convert mixed list formats to maintain consistency within each abstractNum
         // This ensures all levels within a list use the same format type (all bullets or all numbered)
         // based on what level 0 uses (the dominant format)
-        this.debugCaptureListState(doc, 'BEFORE convertMixedListFormats');
+        this.debugCaptureListState(doc, "BEFORE convertMixedListFormats");
         this.log.debug("=== CONVERTING MIXED LIST FORMATS ===");
         const mixedConverted = await this.convertMixedListFormats(doc, options.listBulletSettings);
         if (mixedConverted > 0) {
           this.log.info(`Converted ${mixedConverted} mixed list levels to uniform format`);
         }
-        this.debugCaptureListState(doc, 'AFTER convertMixedListFormats');
+        this.debugCaptureListState(doc, "AFTER convertMixedListFormats");
 
         // Remove w:tab val="num" tab stops from list level definitions in numbering.xml.
         // These tab stops create additional visual indentation that the indentation calculations
@@ -2424,9 +2635,9 @@ export class WordDocumentProcessor {
         const totalListsFixed = bulletsStandardized + numbersStandardized + mixedConverted;
         if (totalListsFixed > 0) {
           result.changes?.push({
-            type: 'structure',
-            category: 'list_fix',
-            description: 'Standardized list formatting and indentation',
+            type: "structure",
+            category: "list_fix",
+            description: "Standardized list formatting and indentation",
             count: totalListsFixed,
           });
         }
@@ -2441,13 +2652,15 @@ export class WordDocumentProcessor {
       // and incorrectly promoted to a full list-continuation indent.
       const smallIndentsRemoved = removeSmallIndents(doc);
       if (smallIndentsRemoved > 0) {
-        this.log.info(`Removed small indentation (< 0.25") from ${smallIndentsRemoved} non-list paragraphs`);
+        this.log.info(
+          `Removed small indentation (< 0.25") from ${smallIndentsRemoved} non-list paragraphs`
+        );
       }
 
       // Apply list continuation indentation to non-list paragraphs that follow list items
       // These are "continuation" paragraphs that should align with the list item's text
       if (options.listBulletSettings?.enabled) {
-        this.debugCaptureListState(doc, 'BEFORE applyListContinuationIndentation');
+        this.debugCaptureListState(doc, "BEFORE applyListContinuationIndentation");
         this.log.debug("=== APPLYING LIST CONTINUATION INDENTATION ===");
 
         // First, handle table cells with cell-scoped context
@@ -2465,9 +2678,11 @@ export class WordDocumentProcessor {
 
         const totalIndented = tableIndented + bodyIndented;
         if (totalIndented > 0) {
-          this.log.info(`Applied list continuation indentation to ${totalIndented} paragraphs (${tableIndented} in tables, ${bodyIndented} in body)`);
+          this.log.info(
+            `Applied list continuation indentation to ${totalIndented} paragraphs (${tableIndented} in tables, ${bodyIndented} in body)`
+          );
         }
-        this.debugCaptureListState(doc, 'AFTER applyListContinuationIndentation');
+        this.debugCaptureListState(doc, "AFTER applyListContinuationIndentation");
       }
 
       // Standardize numbering colors to fix green bullet issue
@@ -2475,7 +2690,9 @@ export class WordDocumentProcessor {
       // The old injectIndentationToNumbering() raw XML approach was ineffective (changes lost during save)
       if (options.listBulletSettings?.enabled || options.bulletUniformity) {
         if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-          this.log.debug('=== LIST DEBUG: BEFORE standardizeNumberingColors (modifies numbering.xml) ===');
+          this.log.debug(
+            "=== LIST DEBUG: BEFORE standardizeNumberingColors (modifies numbering.xml) ==="
+          );
         }
         this.log.debug("=== STANDARDIZING NUMBERING COLORS ===");
         const colorFixed = await this.standardizeNumberingColors(doc);
@@ -2483,7 +2700,7 @@ export class WordDocumentProcessor {
           this.log.info("Standardized all numbering colors to black");
         }
         if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
-          this.log.debug('=== LIST DEBUG: AFTER standardizeNumberingColors ===');
+          this.log.debug("=== LIST DEBUG: AFTER standardizeNumberingColors ===");
         }
       }
 
@@ -2498,9 +2715,9 @@ export class WordDocumentProcessor {
 
         if (listPrefixesStandardized > 0) {
           result.changes?.push({
-            type: 'style',
-            category: 'structure',
-            description: 'Standardized list prefix formatting (Verdana 12pt black, no bold)',
+            type: "style",
+            category: "structure",
+            description: "Standardized list prefix formatting (Verdana 12pt black, no bold)",
             count: listPrefixesStandardized,
           });
         }
@@ -2526,9 +2743,9 @@ export class WordDocumentProcessor {
         if (secondPassCleaned > 0) {
           this.log.info(`Second whitespace pass cleaned ${secondPassCleaned} additional runs`);
           result.changes?.push({
-            type: 'text',
-            category: 'structure',
-            description: 'Second-pass whitespace cleanup after list/style processing',
+            type: "text",
+            category: "structure",
+            description: "Second-pass whitespace cleanup after list/style processing",
             count: secondPassCleaned,
           });
         }
@@ -2547,23 +2764,27 @@ export class WordDocumentProcessor {
         // to protect TOC and other complex field structures
         const fieldParasMarked = this.markFieldParagraphsAsPreserved(doc);
         if (fieldParasMarked > 0) {
-          this.log.debug(`Marked ${fieldParasMarked} field paragraphs as preserved (TOC protection)`);
+          this.log.debug(
+            `Marked ${fieldParasMarked} field paragraphs as preserved (TOC protection)`
+          );
         }
 
         // Disable track changes - blank line operations should not appear as tracked changes
         doc.disableTrackChanges();
 
-        const normalStyle = options.styles?.find((s: any) => s.id === 'normal');
+        const normalStyle = options.styles?.find((s: any) => s.id === "normal");
         const blankLineResult = blankLineManager.processBlankLines(doc, blankLineSnapshot, {
           stopBoldColonAfterHeading: "Related Documents",
           listBulletSettings: options.listBulletSettings,
-          normalStyleFormatting: normalStyle ? {
-            spaceBefore: pointsToTwips(normalStyle.spaceBefore),
-            spaceAfter: pointsToTwips(normalStyle.spaceAfter),
-            lineSpacing: pointsToTwips(normalStyle.lineSpacing * 12),
-            fontSize: normalStyle.fontSize,
-            fontFamily: normalStyle.fontFamily,
-          } : undefined,
+          normalStyleFormatting: normalStyle
+            ? {
+                spaceBefore: pointsToTwips(normalStyle.spaceBefore),
+                spaceAfter: pointsToTwips(normalStyle.spaceAfter),
+                lineSpacing: pointsToTwips(normalStyle.lineSpacing * 12),
+                fontSize: normalStyle.fontSize,
+                fontFamily: normalStyle.fontFamily,
+              }
+            : undefined,
         });
 
         // Re-enable track changes
@@ -2576,17 +2797,17 @@ export class WordDocumentProcessor {
 
         this.log.info(
           `✓ Blank line processing: removed ${blankLineResult.removed}, ` +
-          `added ${blankLineResult.added}, preserved ${blankLineResult.preserved}, ` +
-          `indentation fixed ${blankLineResult.indentationFixed}`
+            `added ${blankLineResult.added}, preserved ${blankLineResult.preserved}, ` +
+            `indentation fixed ${blankLineResult.indentationFixed}`
         );
 
         // Track blank line changes in condensed format
         const totalBlankLineChanges = blankLineResult.removed + blankLineResult.added;
         if (totalBlankLineChanges > 0) {
           result.changes?.push({
-            type: 'structure',
-            category: 'blank_lines',
-            description: 'Standardized blank lines using rule-based engine',
+            type: "structure",
+            category: "blank_lines",
+            description: "Standardized blank lines using rule-based engine",
             count: totalBlankLineChanges,
           });
         }
@@ -2608,7 +2829,7 @@ export class WordDocumentProcessor {
         this.log.debug("=== SETTING LANDSCAPE ORIENTATION AND MARGINS ===");
 
         // Set landscape orientation
-        doc.setPageOrientation('landscape');
+        doc.setPageOrientation("landscape");
 
         // Set 1" margins on all sides (1440 twips = 1 inch)
         doc.setMargins({
@@ -2622,7 +2843,7 @@ export class WordDocumentProcessor {
         });
 
         // Force Print Layout view so Word doesn't open in Web Layout
-        doc.setDocumentView('print');
+        doc.setDocumentView("print");
 
         // Rescale table grids from portrait to landscape available width
         const section = doc.getSection();
@@ -2650,15 +2871,17 @@ export class WordDocumentProcessor {
 
         this.log.info('Set document to landscape orientation with 1" margins');
         result.changes?.push({
-          type: 'structure',
-          category: 'structure',
+          type: "structure",
+          category: "structure",
           description: 'Set landscape orientation with 1" margins',
         });
       }
 
       if (options.tableUniformity) {
         this.log.debug("=== APPLYING TABLE UNIFORMITY (DOCXMLATER 1.7.0) ===");
-        this.log.info(`[DEBUG] tableUniformity=true, smartTables=${options.smartTables} (BOTH will run if both true!)`);
+        this.log.info(
+          `[DEBUG] tableUniformity=true, smartTables=${options.smartTables} (BOTH will run if both true!)`
+        );
         const tablesFormatted = await this.applyTableUniformity(doc, options);
         this.log.info(
           `Applied standard formatting to ${tablesFormatted.tablesProcessed} tables (shading, borders, autofit, patterns)`
@@ -2672,10 +2895,13 @@ export class WordDocumentProcessor {
 
         // Apply cell padding based on "Adjust Table Padding" processing option
         // When disabled, tables keep their existing padding (no modification)
-        const adjustTablePadding = options.enabledOperations?.includes('adjust-table-padding');
+        const adjustTablePadding = options.enabledOperations?.includes("adjust-table-padding");
         if (adjustTablePadding) {
           // Apply custom padding from user settings
-          const cellPaddingApplied = await tableProcessor.applyTablePadding(doc, options.tableShadingSettings);
+          const cellPaddingApplied = await tableProcessor.applyTablePadding(
+            doc,
+            options.tableShadingSettings
+          );
           if (cellPaddingApplied > 0) {
             this.log.info(`Applied custom padding to ${cellPaddingApplied} table cells`);
           }
@@ -2688,9 +2914,9 @@ export class WordDocumentProcessor {
         // Track table formatting
         if (tablesFormatted.tablesProcessed > 0 || tablesFormatted.cellsRecolored > 0) {
           result.changes?.push({
-            type: 'table',
-            category: 'structure',
-            description: 'Applied table shading and formatting',
+            type: "table",
+            category: "structure",
+            description: "Applied table shading and formatting",
             count: tablesFormatted.tablesProcessed,
           });
         }
@@ -2707,9 +2933,9 @@ export class WordDocumentProcessor {
         // Track smart table formatting
         if (smartFormatted > 0) {
           result.changes?.push({
-            type: 'table',
-            category: 'structure',
-            description: 'Applied smart table detection and formatting',
+            type: "table",
+            category: "structure",
+            description: "Applied smart table detection and formatting",
             count: smartFormatted,
           });
         }
@@ -2721,13 +2947,13 @@ export class WordDocumentProcessor {
       // Runs AFTER table processing to restore any FFFFFF runs overwritten
       // ═══════════════════════════════════════════════════════════
       this.log.debug("=== APPLYING HIDDEN TEXT STYLE ===");
-      const normalStyle = options.styles?.find((s: SessionStyle) => s.id === 'normal');
+      const normalStyle = options.styles?.find((s: SessionStyle) => s.id === "normal");
       const hiddenTextCount = this.applyHiddenTextStyle(doc, normalStyle);
       if (hiddenTextCount > 0) {
         result.changes?.push({
-          type: 'style',
-          category: 'style_application',
-          description: 'Applied Hidden Text style to white font runs',
+          type: "style",
+          category: "style_application",
+          description: "Applied Hidden Text style to white font runs",
           count: hiddenTextCount,
         });
       }
@@ -2742,8 +2968,8 @@ export class WordDocumentProcessor {
       // ═══════════════════════════════════════════════════════════
       this.log.debug("=== PROCESSING HLP TABLES ===");
       // Build settings from session styles for HLP content formatting
-      const hlpNormalStyle = options.styles?.find((s: { id: string }) => s.id === 'normal');
-      const hlpHeading2Style = options.styles?.find((s: { id: string }) => s.id === 'header2');
+      const hlpNormalStyle = options.styles?.find((s: { id: string }) => s.id === "normal");
+      const hlpHeading2Style = options.styles?.find((s: { id: string }) => s.id === "header2");
       const hlpSettings = {
         header2Shading: options.tableShadingSettings?.header2Shading?.replace("#", "") || "BFBFBF",
         otherShading: options.tableShadingSettings?.otherShading?.replace("#", "") || "DFDFDF",
@@ -2759,16 +2985,18 @@ export class WordDocumentProcessor {
       const hlpResult = await tableProcessor.processHLPTables(
         doc,
         hlpSettings,
-        this._hlpSavedNumbering.size > 0 ? this._hlpSavedNumbering : undefined,
+        this._hlpSavedNumbering.size > 0 ? this._hlpSavedNumbering : undefined
       );
       this._hlpSavedNumbering.clear();
       tableProcessor.clearHLPTableCache();
 
       if (hlpResult.tablesFound > 0) {
-        this.log.info(`Processed ${hlpResult.tablesFound} HLP tables (${hlpResult.singleColumnTables} single-col, ${hlpResult.twoColumnTables} two-col), ${hlpResult.headersStyled} headers styled`);
+        this.log.info(
+          `Processed ${hlpResult.tablesFound} HLP tables (${hlpResult.singleColumnTables} single-col, ${hlpResult.twoColumnTables} two-col), ${hlpResult.headersStyled} headers styled`
+        );
         result.changes?.push({
-          type: 'table',
-          category: 'structure',
+          type: "table",
+          category: "structure",
           description: `Applied HLP formatting to ${hlpResult.tablesFound} table(s)`,
           count: hlpResult.tablesFound,
         });
@@ -2782,7 +3010,7 @@ export class WordDocumentProcessor {
       // are preserved.
       // ═══════════════════════════════════════════════════════════
       const tables = doc.getTables();
-      const stepTableSet = new Set<typeof tables[0]>();
+      const stepTableSet = new Set<(typeof tables)[0]>();
       let stepTablesFixed = 0;
 
       for (const table of tables) {
@@ -2815,7 +3043,9 @@ export class WordDocumentProcessor {
 
         if (isStepTable) {
           stepTableSet.add(table);
-          this.log.debug(`Detected "Step" table (${rows.length} rows) — will fix column width after autofit`);
+          this.log.debug(
+            `Detected "Step" table (${rows.length} rows) — will fix column width after autofit`
+          );
           stepTablesFixed++;
         }
       }
@@ -2823,8 +3053,8 @@ export class WordDocumentProcessor {
       if (stepTablesFixed > 0) {
         this.log.info(`Fixed ${stepTablesFixed} "Step" tables with 1" first column`);
         result.changes?.push({
-          type: 'table',
-          category: 'structure',
+          type: "table",
+          category: "structure",
           description: 'Set "Step" table first column to 1 inch',
           count: stepTablesFixed,
         });
@@ -2846,7 +3076,9 @@ export class WordDocumentProcessor {
         const rows = table.getRows();
 
         // 1. Save cell widths per row and clear tcW + trHeight
-        const savedWidths: Array<Array<{ width: number | undefined; widthType: string | undefined }>> = [];
+        const savedWidths: Array<
+          Array<{ width: number | undefined; widthType: string | undefined }>
+        > = [];
         for (const row of rows) {
           const rowWidths: Array<{ width: number | undefined; widthType: string | undefined }> = [];
           for (const cell of row.getCells()) {
@@ -2882,11 +3114,13 @@ export class WordDocumentProcessor {
       }
 
       if (autofitCount > 0) {
-        this.log.info(`Set ${autofitCount} tables to autofit window layout (widths preserved, heights cleared)`);
+        this.log.info(
+          `Set ${autofitCount} tables to autofit window layout (widths preserved, heights cleared)`
+        );
         result.changes?.push({
-          type: 'table',
-          category: 'structure',
-          description: 'Set tables to autofit window layout',
+          type: "table",
+          category: "structure",
+          description: "Set tables to autofit window layout",
           count: autofitCount,
         });
       }
@@ -2898,9 +3132,6 @@ export class WordDocumentProcessor {
       // ═══════════════════════════════════════════════════════════
       for (const table of doc.getTables()) {
         if (tableProcessor.shouldSkipTable(table)) continue;
-        // Skip step tables: their original tcW values must be preserved
-        // so pct-width tables render correctly in Word
-        if (stepTableSet.has(table)) continue;
         const grid = table.getTableGrid();
         if (!grid || grid.length === 0) continue;
 
@@ -2910,12 +3141,15 @@ export class WordDocumentProcessor {
             if (gridIdx >= grid.length) break;
             const span = cell.getColumnSpan() || 1;
             let expectedWidth = 0;
-            for (let s = 0; s < span && (gridIdx + s) < grid.length; s++) {
+            for (let s = 0; s < span && gridIdx + s < grid.length; s++) {
               expectedWidth += grid[gridIdx + s];
             }
             const currentWidth = cell.getWidth();
             const currentType = cell.getWidthType();
-            if (currentWidth !== undefined && (currentWidth !== expectedWidth || currentType !== 'dxa')) {
+            if (
+              currentWidth !== undefined &&
+              (currentWidth !== expectedWidth || currentType !== "dxa")
+            ) {
               cell.setWidthType(expectedWidth, "dxa");
             }
             gridIdx += span;
@@ -2925,19 +3159,77 @@ export class WordDocumentProcessor {
 
       // ═══════════════════════════════════════════════════════════
       // STEP COLUMN WIDTH FIX (runs AFTER autofit + normalize)
-      // Sets step column tcW to 1" and fixed layout. Grid is left
-      // untouched so pct-width tables preserve their original
-      // gridCol/tcW relationship.
+      // Sets step column to 1" and switches to fixed layout so Word
+      // uses gridCol values as exact widths instead of autofit hints.
+      // Also rescales tblGrid total to match available page width.
       // ═══════════════════════════════════════════════════════════
       const STEP_COLUMN_WIDTH = 1440; // 1 inch in twips
+
+      // Compute available page width for grid scaling
+      const section = doc.getSection();
+      const pageSize = section.getPageSize();
+      const sectionMargins = section.getMargins();
+      const availablePageWidth =
+        pageSize && sectionMargins
+          ? pageSize.width - (sectionMargins.left ?? 1440) - (sectionMargins.right ?? 1440)
+          : undefined;
+
       for (const table of stepTableSet) {
+        const grid = table.getTableGrid();
+        if (!grid || grid.length < 2) {
+          // Fallback: just set cell widths if no grid
+          for (const row of table.getRows()) {
+            const cell = row.getCells()[0];
+            if (cell) cell.setWidthType(STEP_COLUMN_WIDTH, "dxa");
+          }
+          continue;
+        }
+
+        // Target total: use available page width so autofit scale factor = 1:1
+        // Fall back to current grid total if page dimensions unavailable
+        const currentTotal = grid.reduce((sum, w) => sum + w, 0);
+        const targetTotal = availablePageWidth ?? currentTotal;
+        const remainingWidth = targetTotal - STEP_COLUMN_WIDTH;
+        const oldRemainingWidth = currentTotal - grid[0];
+
+        const newGrid = [STEP_COLUMN_WIDTH];
+        for (let i = 1; i < grid.length; i++) {
+          const proportion =
+            oldRemainingWidth > 0 ? grid[i] / oldRemainingWidth : 1 / (grid.length - 1);
+          newGrid.push(Math.round(proportion * remainingWidth));
+        }
+        table.setTableGrid(newGrid);
+
+        // Table fills available width in any view (Print or Web Layout)
+        table.setWidthType("pct");
+        table.setWidth(5000);
+
+        // Step column: explicit preferred width; action cells: auto (fill remaining)
+        // In autofit mode, dxa preferred widths are honored first, then auto
+        // columns expand to absorb excess table width — preventing step column
+        // inflation in Web Layout.
         for (const row of table.getRows()) {
-          const cell = row.getCells()[0];
-          if (cell) {
-            cell.setWidthType(STEP_COLUMN_WIDTH, "dxa");
+          const cells = row.getCells();
+          if (cells.length > 0) {
+            const span = cells[0].getColumnSpan() || 1;
+            if (span === 1) {
+              // Step column: exact preferred width
+              cells[0].setWidthType(STEP_COLUMN_WIDTH, "dxa");
+            }
+            // Non-step cells: auto width — Word sizes based on content
+            // and fills remaining table width, preventing step column inflation
+            for (let c = 1; c < cells.length; c++) {
+              cells[c].setWidthType(0, "auto");
+            }
           }
         }
-        table.setLayout("fixed");
+
+        // Autofit layout: gridCol + cell widths are preferred widths.
+        // Step column content is minimal ("Step","1","2"…) so Word keeps it
+        // near 1440 while expanding the content-heavy action column to fill
+        // the table.  Fixed layout would scale ALL columns proportionally
+        // when tblW is pct, inflating the step column in Web Layout.
+        table.setLayout("autofit");
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -2956,10 +3248,12 @@ export class WordDocumentProcessor {
         });
 
         if (tablesNormalized > 0) {
-          this.log.info(`Standardized borders on ${tablesNormalized} tables to ${borderThickness}pt`);
+          this.log.info(
+            `Standardized borders on ${tablesNormalized} tables to ${borderThickness}pt`
+          );
           result.changes?.push({
-            type: 'table',
-            category: 'structure',
+            type: "table",
+            category: "structure",
             description: `Standardized table borders to ${borderThickness}pt thickness`,
             count: tablesNormalized,
           });
@@ -2983,14 +3277,16 @@ export class WordDocumentProcessor {
       // Replace bolded "Parent SOP:" with "Parent Document:" preserving formatting
       // ═══════════════════════════════════════════════════════════
       this.log.debug("=== REPLACING 'PARENT SOP:' TEXT ===");
-      const parentSopReplaced = doc.replaceFormattedText('Parent SOP:', 'Parent Document:', {
+      const parentSopReplaced = doc.replaceFormattedText("Parent SOP:", "Parent Document:", {
         matchBold: true,
       });
       if (parentSopReplaced > 0) {
-        this.log.info(`Replaced ${parentSopReplaced} instances of "Parent SOP:" with "Parent Document:"`);
+        this.log.info(
+          `Replaced ${parentSopReplaced} instances of "Parent SOP:" with "Parent Document:"`
+        );
         result.changes?.push({
-          type: 'text',
-          category: 'structure',
+          type: "text",
+          category: "structure",
           description: 'Replaced "Parent SOP:" with "Parent Document:"',
           count: parentSopReplaced,
         });
@@ -3014,8 +3310,8 @@ export class WordDocumentProcessor {
         // Track Top of Document hyperlink creation
         if (topLinksAdded > 0) {
           result.changes?.push({
-            type: 'hyperlink',
-            category: 'structure',
+            type: "hyperlink",
+            category: "structure",
             description: 'Created "Top of Document" navigation links',
             count: topLinksAdded,
           });
@@ -3040,9 +3336,9 @@ export class WordDocumentProcessor {
         // Track hyperlink color standardization
         if (hyperlinksStandardized > 0) {
           result.changes?.push({
-            type: 'hyperlink',
-            category: 'structure',
-            description: 'Standardized hyperlink colors to blue',
+            type: "hyperlink",
+            category: "structure",
+            description: "Standardized hyperlink colors to blue",
             count: hyperlinksStandardized,
           });
         }
@@ -3056,9 +3352,9 @@ export class WordDocumentProcessor {
         // Track internal hyperlink fixes
         if (internalLinksFixed > 0) {
           result.changes?.push({
-            type: 'hyperlink',
-            category: 'structure',
-            description: 'Fixed internal hyperlink bookmarks',
+            type: "hyperlink",
+            category: "structure",
+            description: "Fixed internal hyperlink bookmarks",
             count: internalLinksFixed,
           });
         }
@@ -3102,9 +3398,9 @@ export class WordDocumentProcessor {
         // Track Table of Contents creation with heading names
         if (tocResult.count > 0) {
           result.changes?.push({
-            type: 'structure',
-            category: 'structure',
-            description: 'Rebuilt Table of Contents with styled hyperlinks',
+            type: "structure",
+            category: "structure",
+            description: "Rebuilt Table of Contents with styled hyperlinks",
             count: tocResult.count,
             affectedItems: tocResult.headings,
           });
@@ -3134,10 +3430,14 @@ export class WordDocumentProcessor {
         // ═══════════════════════════════════════════════════════════
         if (options.trackChanges) {
           const comparison = documentProcessingComparison.getCurrentComparison();
-          this.log.info(`Hyperlink tracking status: comparison=${comparison ? 'exists' : 'null'}, hyperlinkChanges=${comparison?.hyperlinkChanges?.length ?? 0}`);
+          this.log.info(
+            `Hyperlink tracking status: comparison=${comparison ? "exists" : "null"}, hyperlinkChanges=${comparison?.hyperlinkChanges?.length ?? 0}`
+          );
 
           if (comparison?.hyperlinkChanges && comparison.hyperlinkChanges.length > 0) {
-            this.log.info(`Adding ${comparison.hyperlinkChanges.length} DocHub hyperlink changes to changelog`);
+            this.log.info(
+              `Adding ${comparison.hyperlinkChanges.length} DocHub hyperlink changes to changelog`
+            );
 
             for (const hc of comparison.hyperlinkChanges) {
               const urlChanged = hc.originalUrl !== hc.modifiedUrl;
@@ -3191,12 +3491,14 @@ export class WordDocumentProcessor {
         // Calculate summary - need to cast back for docxmlater's getSummary, then cast result
         // The summary may not include all category counts, so ensure they're all present
         const rawSummary = ChangelogGenerator.getSummary(changelogEntries as any);
-        const hyperlinkCount = changelogEntries.filter(e => e.category === "hyperlink").length;
-        const imageCount = changelogEntries.filter(e => e.category === "image").length;
-        const fieldCount = changelogEntries.filter(e => e.category === "field").length;
-        const commentCount = changelogEntries.filter(e => e.category === "comment").length;
-        const bookmarkCount = changelogEntries.filter(e => e.category === "bookmark").length;
-        const contentControlCount = changelogEntries.filter(e => e.category === "contentControl").length;
+        const hyperlinkCount = changelogEntries.filter((e) => e.category === "hyperlink").length;
+        const imageCount = changelogEntries.filter((e) => e.category === "image").length;
+        const fieldCount = changelogEntries.filter((e) => e.category === "field").length;
+        const commentCount = changelogEntries.filter((e) => e.category === "comment").length;
+        const bookmarkCount = changelogEntries.filter((e) => e.category === "bookmark").length;
+        const contentControlCount = changelogEntries.filter(
+          (e) => e.category === "contentControl"
+        ).length;
         const summary: ChangelogSummary = {
           ...rawSummary,
           byCategory: {
@@ -3233,7 +3535,9 @@ export class WordDocumentProcessor {
       // Without this, Word's Review panel shows changes the app UI doesn't display.
       // ═══════════════════════════════════════════════════════════
       doc.disableTrackChanges();
-      this.log.debug("Track changes disabled after changelog extraction - post-extraction operations will not be tracked");
+      this.log.debug(
+        "Track changes disabled after changelog extraction - post-extraction operations will not be tracked"
+      );
 
       // ═══════════════════════════════════════════════════════════
       // OPTIONALLY AUTO-ACCEPT REVISIONS
@@ -3267,7 +3571,9 @@ export class WordDocumentProcessor {
           // Count total expected revisions (pre-existing + DocHub)
           const preExistingCount = result.previousRevisions?.entries.length || 0;
           const docHubCount = result.wordRevisions?.entries.length || 0;
-          this.log.info(`Auto-accept complete - ${preExistingCount + docHubCount} total revisions accepted (${preExistingCount} pre-existing + ${docHubCount} DocHub changes)`);
+          this.log.info(
+            `Auto-accept complete - ${preExistingCount + docHubCount} total revisions accepted (${preExistingCount} pre-existing + ${docHubCount} DocHub changes)`
+          );
 
           if (result.wordRevisions) {
             result.wordRevisions.handlingResult = {
@@ -3284,7 +3590,9 @@ export class WordDocumentProcessor {
         // When auto-accept is OFF, both pre-existing AND DocHub changes remain visible in Word
         const preExistingCount = result.previousRevisions?.entries.length || 0;
         const docHubCount = result.wordRevisions?.entries.length || 0;
-        this.log.info(`Auto-accept disabled - ${preExistingCount + docHubCount} tracked changes will be visible in Word (${preExistingCount} pre-existing + ${docHubCount} DocHub)`);
+        this.log.info(
+          `Auto-accept disabled - ${preExistingCount + docHubCount} tracked changes will be visible in Word (${preExistingCount} pre-existing + ${docHubCount} DocHub)`
+        );
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -3303,8 +3611,14 @@ export class WordDocumentProcessor {
           cleanupNumbering: false,
           cleanupRelationships: true,
         });
-        if (cleanupReport.hyperlinksDefragmented > 0 || cleanupReport.numberingRemoved > 0 || cleanupReport.relationshipsRemoved > 0) {
-          this.log.info(`Cleanup: ${cleanupReport.hyperlinksDefragmented} hyperlinks defragmented, ${cleanupReport.numberingRemoved} unused numbering removed, ${cleanupReport.relationshipsRemoved} orphaned relationships removed`);
+        if (
+          cleanupReport.hyperlinksDefragmented > 0 ||
+          cleanupReport.numberingRemoved > 0 ||
+          cleanupReport.relationshipsRemoved > 0
+        ) {
+          this.log.info(
+            `Cleanup: ${cleanupReport.hyperlinksDefragmented} hyperlinks defragmented, ${cleanupReport.numberingRemoved} unused numbering removed, ${cleanupReport.relationshipsRemoved} orphaned relationships removed`
+          );
         }
       } catch (cleanupError) {
         this.log.debug("Cleanup completed with warnings:", cleanupError);
@@ -3324,11 +3638,13 @@ export class WordDocumentProcessor {
       try {
         const dedupCount = this.deduplicateComplexFieldHyperlinks(doc);
         if (dedupCount > 0) {
-          this.log.info(`Removed ${dedupCount} duplicate hyperlink(s) from cross-paragraph field chains`);
+          this.log.info(
+            `Removed ${dedupCount} duplicate hyperlink(s) from cross-paragraph field chains`
+          );
           result.changes?.push({
-            type: 'hyperlink',
-            category: 'structure',
-            description: 'Removed duplicate hyperlinks from cross-paragraph field chains',
+            type: "hyperlink",
+            category: "structure",
+            description: "Removed duplicate hyperlinks from cross-paragraph field chains",
             count: dedupCount,
           });
         }
@@ -3357,14 +3673,20 @@ export class WordDocumentProcessor {
         // Model-based clearing (finalizeParagraphSpacing) is ineffective when
         // flattenFieldCodes() sets skipDocumentXmlRegeneration = true.
         doc.clearDirectSpacingForStyles([
-          'Normal',
-          'Heading1', 'Heading 1',
-          'Heading2', 'Heading 2',
-          'Heading3', 'Heading 3',
-          'ListParagraph', 'List Paragraph',
+          "Normal",
+          "Heading1",
+          "Heading 1",
+          "Heading2",
+          "Heading 2",
+          "Heading3",
+          "Heading 3",
+          "ListParagraph",
+          "List Paragraph",
         ]);
 
-        this.log.info("Document sanitization enabled (INCLUDEPICTURE flatten + orphan RSID strip + direct spacing clear)");
+        this.log.info(
+          "Document sanitization enabled (INCLUDEPICTURE flatten + orphan RSID strip + direct spacing clear)"
+        );
       } catch (sanitizeError) {
         this.log.debug("Sanitization setup completed with warnings:", sanitizeError);
         // Non-fatal - continue with save
@@ -3380,6 +3702,30 @@ export class WordDocumentProcessor {
         this.log.debug("=== FINALIZING PARAGRAPH SPACING ===");
         const spacingCount = this.finalizeParagraphSpacing(doc, options.styles);
         this.log.info(`Finalized paragraph spacing on ${spacingCount} paragraphs`);
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // LATE-STAGE HYPERLINK SPACE RELOCATION
+      // Move leading spaces from hyperlinks to preceding Runs.
+      // Must run LAST — earlier relocation gets undone by style application,
+      // whitespace normalization, and defragmentation.
+      // ═══════════════════════════════════════════════════════════
+      this.log.debug("=== RELOCATING HYPERLINK LEADING SPACES ===");
+      const spacesRelocated = this.relocateAllHyperlinkSpaces(doc);
+      if (spacesRelocated > 0) {
+        this.log.info(`Relocated leading spaces from ${spacesRelocated} hyperlinks`);
+      }
+
+      // Safety net: ensure no hyperlink is missing a preceding space
+      const spacesAdded = this.ensureSpaceBeforeHyperlinks(doc);
+      if (spacesAdded > 0) {
+        this.log.info(`Added missing spaces before ${spacesAdded} hyperlinks`);
+      }
+
+      // Safety net: ensure no hyperlink is missing a following space
+      const spacesAddedAfter = this.ensureSpaceAfterHyperlinks(doc);
+      if (spacesAddedAfter > 0) {
+        this.log.info(`Added missing spaces after ${spacesAddedAfter} hyperlinks`);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -3423,7 +3769,9 @@ export class WordDocumentProcessor {
         // Phase 1: Remove numbering definitions not referenced by any paragraph
         doc.cleanupUnusedNumbering();
         const mgr = doc.getNumberingManager();
-        this.log.debug(`After cleanup: ${mgr.getAbstractNumberingCount()} abstractNums, ${mgr.getInstanceCount()} instances`);
+        this.log.debug(
+          `After cleanup: ${mgr.getAbstractNumberingCount()} abstractNums, ${mgr.getInstanceCount()} instances`
+        );
 
         // Phase 2: Consolidate duplicate abstractNums with identical fingerprints
         // Protect HLP abstractNums from consolidation (they may have special formatting)
@@ -3433,7 +3781,7 @@ export class WordDocumentProcessor {
         if (consolidateResult.abstractNumsRemoved > 0) {
           this.log.info(
             `Consolidated numbering: removed ${consolidateResult.abstractNumsRemoved} duplicate abstractNums, ` +
-            `remapped ${consolidateResult.instancesRemapped} instances across ${consolidateResult.groupsConsolidated} group(s)`
+              `remapped ${consolidateResult.instancesRemapped} instances across ${consolidateResult.groupsConsolidated} group(s)`
           );
         }
 
@@ -3489,9 +3837,11 @@ export class WordDocumentProcessor {
         this.log.debug(`Skipped hyperlinks: ${result.skippedHyperlinks}`);
         this.log.debug(`Errors: ${result.errorCount}`);
         if (result.errorMessages.length > 0) {
-          this.log.debug(`Error messages: ${result.errorMessages.join(', ')}`);
+          this.log.debug(`Error messages: ${result.errorMessages.join(", ")}`);
         }
-        this.log.debug(`Processing rate: ${((result.totalHyperlinks || 1) / (result.duration / 1000)).toFixed(1)} hyperlinks/sec`);
+        this.log.debug(
+          `Processing rate: ${((result.totalHyperlinks || 1) / (result.duration / 1000)).toFixed(1)} hyperlinks/sec`
+        );
         this.log.debug("--- End Detailed Stats ---");
       }
 
@@ -3501,7 +3851,10 @@ export class WordDocumentProcessor {
       let errorMessage: string;
       if (this.isFileLockError(error)) {
         errorMessage = "Please close the file and try again";
-        this.log.error("ERROR (file locked):", error instanceof Error ? error.message : String(error));
+        this.log.error(
+          "ERROR (file locked):",
+          error instanceof Error ? error.message : String(error)
+        );
       } else {
         errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
         this.log.error("ERROR:", errorMessage);
@@ -3555,13 +3908,7 @@ export class WordDocumentProcessor {
    * Apply custom URL and text replacements
    */
   private async processCustomReplacements(
-    hyperlinks: Array<{
-      hyperlink: Hyperlink;
-      paragraph: any;
-      paragraphIndex: number;
-      url?: string;
-      text: string;
-    }>,
+    hyperlinks: ExtractedHyperlink[],
     replacements: Array<{
       find: string;
       replace: string;
@@ -3572,7 +3919,8 @@ export class WordDocumentProcessor {
     doc: Document,
     author: string
   ): Promise<void> {
-    for (const { hyperlink, paragraph, url, text } of hyperlinks) {
+    for (const entry of hyperlinks) {
+      const { hyperlink, isComplexField, paragraph, url, text } = entry;
       for (const rule of replacements) {
         let shouldApply = false;
 
@@ -3581,7 +3929,15 @@ export class WordDocumentProcessor {
             shouldApply = this.matchesPattern(url, rule.find, rule.matchType);
             if (shouldApply) {
               const newUrl = url.replace(rule.find, rule.replace);
-              this.setHyperlinkUrlTracked(doc, hyperlink, paragraph, newUrl, author);
+              if (isComplexField) {
+                const field = hyperlink as ComplexField;
+                const parsed = field.getParsedHyperlink();
+                field.setInstruction(
+                  buildHyperlinkInstruction(newUrl, parsed?.anchor, parsed?.tooltip)
+                );
+              } else {
+                this.setHyperlinkUrlTracked(doc, hyperlink as Hyperlink, paragraph, newUrl, author);
+              }
               if (result.updatedUrls !== undefined) {
                 result.updatedUrls++;
               }
@@ -3593,7 +3949,11 @@ export class WordDocumentProcessor {
           shouldApply = this.matchesPattern(text, rule.find, rule.matchType);
           if (shouldApply) {
             const newText = text.replace(rule.find, rule.replace);
-            this.setHyperlinkTextTracked(doc, hyperlink, paragraph, newText, author);
+            if (isComplexField) {
+              this.setComplexFieldTextTracked(doc, hyperlink as ComplexField, newText, author);
+            } else {
+              this.setHyperlinkTextTracked(doc, hyperlink as Hyperlink, paragraph, newText, author);
+            }
             if (result.updatedDisplayTexts !== undefined) {
               result.updatedDisplayTexts++;
             }
@@ -3601,6 +3961,62 @@ export class WordDocumentProcessor {
         }
       }
     }
+  }
+
+  /**
+   * Apply text replacements across all paragraphs (body + table cells).
+   * Uses getAllRunsFromParagraph() to exclude hyperlink-child runs
+   * (already handled by processCustomReplacements).
+   * Skips TOC and complex-field paragraphs to avoid corrupting field instructions.
+   */
+  private processTextReplacementsAllParagraphs(
+    doc: Document,
+    replacements: Array<{
+      find: string;
+      replace: string;
+      matchType: "contains" | "exact" | "startsWith";
+      applyTo: "url" | "text" | "both";
+    }>,
+  ): number {
+    let modifiedRunCount = 0;
+    const paragraphs = doc.getAllParagraphs();
+
+    for (const para of paragraphs) {
+      // Skip TOC paragraphs — field instructions must not be modified
+      const style = para.getStyle() || "";
+      if (style.startsWith("TOC") && style !== "TOCHeading") {
+        continue;
+      }
+
+      // Skip paragraphs with complex field content
+      if (this.hasComplexFieldContent(para)) {
+        continue;
+      }
+
+      // getAllRunsFromParagraph excludes hyperlink-child runs,
+      // preventing double-replacement with processCustomReplacements
+      const runs = this.getAllRunsFromParagraph(para);
+      for (const run of runs) {
+        let text = run.getText();
+        if (!text) continue;
+
+        let modified = false;
+        for (const rule of replacements) {
+          if (!rule.find) continue;
+          if (this.matchesPattern(text, rule.find, rule.matchType)) {
+            text = text.replaceAll(rule.find, rule.replace);
+            modified = true;
+          }
+        }
+
+        if (modified) {
+          run.setText(text);
+          modifiedRunCount++;
+        }
+      }
+    }
+
+    return modifiedRunCount;
   }
 
   /**
@@ -3641,7 +4057,7 @@ export class WordDocumentProcessor {
     const base = path.basename(filePath, ext);
 
     // Create DocHub_Backups folder if it doesn't exist
-    const backupDir = path.join(dir, 'DocHub_Backups');
+    const backupDir = path.join(dir, "DocHub_Backups");
     await fs.mkdir(backupDir, { recursive: true });
 
     // Count existing backups to determine next number
@@ -3666,8 +4082,8 @@ export class WordDocumentProcessor {
     try {
       const files = await fs.readdir(backupDir);
       // Escape special regex characters in baseName and ext
-      const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const escapedExt = ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escapedExt = ext.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const pattern = new RegExp(`^${escapedBase}_Backup_(\\d+)${escapedExt}$`);
 
       let maxNumber = 0;
@@ -3817,7 +4233,7 @@ export class WordDocumentProcessor {
     hyperlink: Hyperlink,
     paragraph: Paragraph,
     newText: string,
-    author: string,
+    author: string
   ): boolean {
     if (!doc.isTrackChangesEnabled()) {
       hyperlink.setText(newText);
@@ -3836,7 +4252,9 @@ export class WordDocumentProcessor {
       rm.register(deletion);
       rm.register(insertion);
     } else {
-      this.log.warn('Could not create tracked change for hyperlink text update, text updated without tracking');
+      this.log.warn(
+        "Could not create tracked change for hyperlink text update, text updated without tracking"
+      );
     }
 
     return replaced;
@@ -3852,7 +4270,7 @@ export class WordDocumentProcessor {
     hyperlink: Hyperlink,
     paragraph: Paragraph,
     newUrl: string,
-    author: string,
+    author: string
   ): boolean {
     if (!doc.isTrackChangesEnabled()) {
       hyperlink.setUrl(newUrl);
@@ -3871,10 +4289,29 @@ export class WordDocumentProcessor {
       rm.register(deletion);
       rm.register(insertion);
     } else {
-      this.log.warn('Could not create tracked change for hyperlink URL update, URL updated without tracking');
+      this.log.warn(
+        "Could not create tracked change for hyperlink URL update, URL updated without tracking"
+      );
     }
 
     return replaced;
+  }
+
+  /**
+   * Update ComplexField hyperlink display text (result) with optional tracked changes.
+   * ComplexField uses setResult() instead of setText().
+   */
+  private setComplexFieldTextTracked(
+    doc: Document,
+    field: ComplexField,
+    newText: string,
+    author: string
+  ): void {
+    if (doc.isTrackChangesEnabled()) {
+      field.setTrackedResult(newText, author, { preserveFormatting: true });
+    } else {
+      field.setResult(newText);
+    }
   }
 
   /**
@@ -3896,7 +4333,7 @@ export class WordDocumentProcessor {
   private async applyUrlUpdates(
     doc: Document,
     urlMap: Map<string, string>,
-    author: string = 'DocHub'
+    author: string = "DocHub"
   ): Promise<UrlUpdateResult> {
     if (urlMap.size === 0) {
       return { updated: 0, failed: [] };
@@ -3957,7 +4394,7 @@ export class WordDocumentProcessor {
         // Case 2: Hyperlinks inside Revision elements (w:ins, w:del tracked changes)
         // Only update URLs inside insertion Revisions — skip deletion Revisions
         // to preserve the original "before" state for genuine text-change pairs.
-        else if (item instanceof Revision && item.getType() === 'insert') {
+        else if (item instanceof Revision && item.getType() === "insert") {
           const revisionContent = item.getContent();
           for (const revContent of revisionContent) {
             if (revContent instanceof Hyperlink) {
@@ -3991,6 +4428,39 @@ export class WordDocumentProcessor {
                   });
                 }
               }
+            }
+          }
+        }
+        // Case 3: HYPERLINK field codes (ComplexField)
+        else if (item instanceof ComplexField && item.isHyperlinkField()) {
+          const oldUrl = item.getHyperlinkUrl();
+
+          if (oldUrl && urlMap.has(oldUrl)) {
+            const newUrl = urlMap.get(oldUrl)!;
+
+            if (oldUrl === newUrl) {
+              this.log.debug(`Skipping no-op ComplexField URL update: ${oldUrl}`);
+              continue;
+            }
+
+            try {
+              const parsed = item.getParsedHyperlink();
+              item.setInstruction(
+                buildHyperlinkInstruction(newUrl, parsed?.anchor, parsed?.tooltip)
+              );
+              updatedCount++;
+              this.log.debug(`Updated ComplexField URL: ${oldUrl} -> ${newUrl}`);
+            } catch (error) {
+              this.log.error(
+                `Failed to update ComplexField URL at paragraph ${paraIndex}: ${oldUrl} -> ${newUrl}`,
+                error
+              );
+              failedUrls.push({
+                oldUrl,
+                newUrl,
+                error,
+                paragraphIndex: paraIndex,
+              });
             }
           }
         }
@@ -4087,21 +4557,20 @@ export class WordDocumentProcessor {
         continue;
       }
 
-      let runs = para.getRuns();
+      let runs = this.getAllRunsFromParagraph(para);
 
       // Filter out field-marker runs instead of skipping the entire paragraph.
       // Always keep ImageRun and VML image runs — they have no field content
       // and dropping them prevents space-after-image insertion.
       if (this.hasComplexFieldContent(para)) {
-        runs = runs.filter(run => {
+        runs = runs.filter((run) => {
           if (run instanceof ImageRun) return true;
           try {
             const content = run.getContent();
             // Keep VML image runs (legacy format inline images)
             if (content.some((c: { type: string }) => c.type === "vml")) return true;
             return !content.some(
-              (c: { type: string }) =>
-                c.type === "instructionText" || c.type === "fieldChar"
+              (c: { type: string }) => c.type === "instructionText" || c.type === "fieldChar"
             );
           } catch {
             return false;
@@ -4197,8 +4666,7 @@ export class WordDocumentProcessor {
         // or fieldChar markers (begin/separate/end)
         if (
           content.some(
-            (c: { type: string }) =>
-              c.type === "instructionText" || c.type === "fieldChar"
+            (c: { type: string }) => c.type === "instructionText" || c.type === "fieldChar"
           )
         ) {
           return true;
@@ -4237,7 +4705,7 @@ export class WordDocumentProcessor {
       for (const item of content) {
         if (item instanceof ComplexField) {
           const instruction = item.getInstruction();
-          if (instruction && instruction.trim().toUpperCase().startsWith('TOC')) {
+          if (instruction && instruction.trim().toUpperCase().startsWith("TOC")) {
             hasTocField = true;
             break;
           }
@@ -4248,19 +4716,21 @@ export class WordDocumentProcessor {
 
       // Mark the TOC field paragraph itself
       realTocParagraphs.add(element);
-      this.log.debug(`[RealTOC] Phase 1: TOC field paragraph at body index ${i}: "${element.getText().substring(0, 60)}"`);
+      this.log.debug(
+        `[RealTOC] Phase 1: TOC field paragraph at body index ${i}: "${element.getText().substring(0, 60)}"`
+      );
 
       // Mark subsequent paragraphs that are part of this TOC
       for (let j = i + 1; j < bodyElements.length; j++) {
         const nextEl = bodyElements[j];
         if (!(nextEl instanceof Paragraph)) break;
 
-        const nextStyle = nextEl.getStyle() || '';
+        const nextStyle = nextEl.getStyle() || "";
         const nextText = nextEl.getText().trim();
         const hasField = this.hasComplexFieldContent(nextEl);
 
         // TOC entries have TOC styles, field content, or are empty spacer paragraphs
-        if (isTocStyle(nextStyle) || hasField || nextText === '') {
+        if (isTocStyle(nextStyle) || hasField || nextText === "") {
           realTocParagraphs.add(nextEl);
         } else {
           break; // End of TOC region
@@ -4276,7 +4746,7 @@ export class WordDocumentProcessor {
     for (let i = 0; i <= bodyElements.length; i++) {
       const element = i < bodyElements.length ? bodyElements[i] : null;
       const isParagraphWithTocStyle =
-        element instanceof Paragraph && isTocStyle(element.getStyle() || '');
+        element instanceof Paragraph && isTocStyle(element.getStyle() || "");
 
       if (isParagraphWithTocStyle) {
         if (groupStart === -1) groupStart = i;
@@ -4287,7 +4757,9 @@ export class WordDocumentProcessor {
           for (const p of groupParagraphs) {
             if (!realTocParagraphs.has(p)) {
               realTocParagraphs.add(p);
-              this.log.debug(`[RealTOC] Phase 2: Contiguous group member starting at body index ${groupStart}: "${p.getText().substring(0, 60)}"`);
+              this.log.debug(
+                `[RealTOC] Phase 2: Contiguous group member starting at body index ${groupStart}: "${p.getText().substring(0, 60)}"`
+              );
             }
           }
         }
@@ -4299,10 +4771,12 @@ export class WordDocumentProcessor {
     // Phase 3: Field content fallback
     // Catch SDT-wrapped TOC paragraphs not visible in getBodyElements()
     for (const para of doc.getAllParagraphs()) {
-      const style = para.getStyle() || '';
+      const style = para.getStyle() || "";
       if (isTocStyle(style) && this.hasComplexFieldContent(para) && !realTocParagraphs.has(para)) {
         realTocParagraphs.add(para);
-        this.log.debug(`[RealTOC] Phase 3: Field content fallback: "${para.getText().substring(0, 60)}"`);
+        this.log.debug(
+          `[RealTOC] Phase 3: Field content fallback: "${para.getText().substring(0, 60)}"`
+        );
       }
     }
 
@@ -4312,8 +4786,8 @@ export class WordDocumentProcessor {
       const element = bodyElements[i];
       if (!(element instanceof Paragraph)) continue;
 
-      const style = element.getStyle() || '';
-      if (style !== 'TOCHeading') continue;
+      const style = element.getStyle() || "";
+      if (style !== "TOCHeading") continue;
       if (realTocParagraphs.has(element)) continue;
 
       // Check previous body element
@@ -4325,7 +4799,9 @@ export class WordDocumentProcessor {
 
       if (prevIsRealToc || nextIsRealToc) {
         realTocParagraphs.add(element);
-        this.log.debug(`[RealTOC] Phase 4: TOCHeading adjacent to real TOC at body index ${i}: "${element.getText().substring(0, 60)}"`);
+        this.log.debug(
+          `[RealTOC] Phase 4: TOCHeading adjacent to real TOC at body index ${i}: "${element.getText().substring(0, 60)}"`
+        );
       }
     }
 
@@ -4352,13 +4828,13 @@ export class WordDocumentProcessor {
       let isMisapplied = false;
 
       // Check for misapplied TOC styles (not in a real TOC region)
-      if (styleLower.startsWith('toc') && !realTocParagraphs.has(para)) {
+      if (styleLower.startsWith("toc") && !realTocParagraphs.has(para)) {
         isMisapplied = true;
       }
 
       // Check for Hyperlink/FollowedHyperlink paragraph styles (always misapplied — these are character styles)
       // Do NOT touch "TopHyperlink" — it's a legitimate custom paragraph style used by the processor
-      if (style === 'Hyperlink' || style === 'FollowedHyperlink') {
+      if (style === "Hyperlink" || style === "FollowedHyperlink") {
         isMisapplied = true;
       }
 
@@ -4366,7 +4842,7 @@ export class WordDocumentProcessor {
 
       // Determine target style based on list detection
       const listInfo = detectListType(para);
-      const newStyle = listInfo.category !== 'none' ? 'ListParagraph' : 'Normal';
+      const newStyle = listInfo.category !== "none" ? "ListParagraph" : "Normal";
 
       const textPreview = para.getText().substring(0, 80);
       this.log.debug(`[MisappliedStyle] Correcting "${style}" → "${newStyle}": "${textPreview}"`);
@@ -4513,8 +4989,7 @@ export class WordDocumentProcessor {
         for (const run of runs) {
           const content = run.getContent();
           const hasFieldContent = content.some(
-            (c: { type: string }) =>
-              c.type === 'fieldChar' || c.type === 'instructionText'
+            (c: { type: string }) => c.type === "fieldChar" || c.type === "instructionText"
           );
           if (hasFieldContent) {
             para.setPreserved(true);
@@ -4529,8 +5004,8 @@ export class WordDocumentProcessor {
       // Also preserve TOC-styled paragraphs (TOC1, TOC2, etc.)
       // These are the actual TOC entries that should never be removed
       if (!para.isPreserved()) {
-        const style = para.getStyle() || '';
-        if (style.startsWith('TOC') && style !== 'TOCHeading') {
+        const style = para.getStyle() || "";
+        if (style.startsWith("TOC") && style !== "TOCHeading") {
           para.setPreserved(true);
           markedCount++;
         }
@@ -4548,7 +5023,7 @@ export class WordDocumentProcessor {
     const paragraphs = doc.getAllParagraphs();
 
     for (const para of paragraphs) {
-      const runs = para.getRuns();
+      const runs = this.getAllRunsFromParagraph(para);
       for (const run of runs) {
         // Check if run has italic formatting
         const formatting = run.getFormatting();
@@ -4575,7 +5050,7 @@ export class WordDocumentProcessor {
    * @returns Number of runs modified
    */
   private async removeEmEnVariants(doc: Document): Promise<number> {
-    const { removeEmEnVariants } = await import('@/utils/textSanitizer');
+    const { removeEmEnVariants } = await import("@/utils/textSanitizer");
     let normalizedCount = 0;
     const paragraphs = doc.getAllParagraphs();
 
@@ -4591,7 +5066,7 @@ export class WordDocumentProcessor {
         continue;
       }
 
-      const runs = para.getRuns();
+      const runs = this.getAllRunsFromParagraph(para);
 
       for (const run of runs) {
         const text = run.getText();
@@ -4643,22 +5118,30 @@ export class WordDocumentProcessor {
       for (const para of paragraphs) {
         const content = para.getContent();
 
-        for (const item of content) {
+        for (let ci = 0; ci < content.length; ci++) {
+          const item = content[ci];
           try {
             // Case 1: Direct Hyperlink instances
             if (item instanceof Hyperlink) {
               this.applyStandardHyperlinkFormatting(item);
               standardizedCount++;
-              this.log.debug(`Standardized direct hyperlink: "${sanitizeHyperlinkText(item.getText())}"`);
+              this.log.debug(
+                `Standardized direct hyperlink: "${sanitizeHyperlinkText(item.getText())}"`
+              );
             }
             // Case 2: Hyperlinks inside Revision elements (w:ins tracked changes)
             else if (item instanceof Revision) {
+              // Only format hyperlinks in insertion revisions — skip deletions
+              if (item.getType() === "delete" || item.getType() === "moveFrom") continue;
               const revisionContent = item.getContent();
-              for (const revContent of revisionContent) {
+              for (let ri = 0; ri < revisionContent.length; ri++) {
+                const revContent = revisionContent[ri];
                 if (revContent instanceof Hyperlink) {
                   this.applyStandardHyperlinkFormatting(revContent);
                   standardizedCount++;
-                  this.log.debug(`Standardized hyperlink inside Revision: "${sanitizeHyperlinkText(revContent.getText())}"`);
+                  this.log.debug(
+                    `Standardized hyperlink inside Revision: "${sanitizeHyperlinkText(revContent.getText())}"`
+                  );
                 }
               }
             }
@@ -4730,13 +5213,13 @@ export class WordDocumentProcessor {
           hyperlinkItems.push({
             item,
             anchor: parsed?.anchor || parsed?.url || item.getInstruction().trim(),
-            text: item.getResult() || '',
+            text: item.getResult() || "",
           });
         } else if (item instanceof Hyperlink) {
           hyperlinkItems.push({
             item,
-            anchor: item.getAnchor() || item.getUrl() || '',
-            text: item.getText() || '',
+            anchor: item.getAnchor() || item.getUrl() || "",
+            text: item.getText() || "",
           });
         }
       }
@@ -4751,9 +5234,9 @@ export class WordDocumentProcessor {
       }
 
       this.log.debug(
-        `Para has ${hyperlinkItems.length} hyperlink items: ${
-          hyperlinkItems.map(h => `${h.item.constructor.name}("${h.text}")`).join(', ')
-        }`,
+        `Para has ${hyperlinkItems.length} hyperlink items: ${hyperlinkItems
+          .map((h) => `${h.item.constructor.name}("${h.text}")`)
+          .join(", ")}`
       );
 
       // Compare adjacent items — remove duplicates
@@ -4770,11 +5253,9 @@ export class WordDocumentProcessor {
       for (const item of toRemove) {
         para.replaceContent(item, []);
         removed++;
-        const typeName = item instanceof ComplexField ? 'ComplexField' : 'Hyperlink';
+        const typeName = item instanceof ComplexField ? "ComplexField" : "Hyperlink";
         const displayText = item instanceof ComplexField ? item.getResult() : item.getText();
-        this.log.debug(
-          `Removed duplicate ${typeName} hyperlink: "${displayText}"`,
-        );
+        this.log.debug(`Removed duplicate ${typeName} hyperlink: "${displayText}"`);
       }
     }
 
@@ -4814,7 +5295,7 @@ export class WordDocumentProcessor {
 
         // Look for fieldChar begin
         const hasBegin = runContent.some(
-          (c: { type: string; value?: string }) => c.type === 'fieldChar' && c.value === 'begin',
+          (c: { type: string; value?: string }) => c.type === "fieldChar" && c.value === "begin"
         );
 
         if (!hasBegin) {
@@ -4824,8 +5305,8 @@ export class WordDocumentProcessor {
 
         // Collect runs until fieldChar end
         const groupRuns: Run[] = [run];
-        let instruction = '';
-        let resultText = '';
+        let instruction = "";
+        let resultText = "";
         let foundEnd = false;
         let pastSeparate = false;
 
@@ -4836,16 +5317,16 @@ export class WordDocumentProcessor {
 
           for (const c of rc) {
             const typedC = c as { type: string; value?: string; text?: string };
-            if (typedC.type === 'instructionText' && typedC.text) {
+            if (typedC.type === "instructionText" && typedC.text) {
               instruction += typedC.text;
             }
-            if (typedC.type === 'fieldChar' && typedC.value === 'separate') {
+            if (typedC.type === "fieldChar" && typedC.value === "separate") {
               pastSeparate = true;
             }
-            if (typedC.type === 'fieldChar' && typedC.value === 'end') {
+            if (typedC.type === "fieldChar" && typedC.value === "end") {
               foundEnd = true;
             }
-            if (pastSeparate && !foundEnd && typedC.type === 'text' && typedC.text) {
+            if (pastSeparate && !foundEnd && typedC.type === "text" && typedC.text) {
               resultText += typedC.text;
             }
           }
@@ -4880,9 +5361,7 @@ export class WordDocumentProcessor {
             para.replaceContent(run, []);
           }
           removed++;
-          this.log.debug(
-            `Removed duplicate raw field run group: "${curr.resultText}"`,
-          );
+          this.log.debug(`Removed duplicate raw field run group: "${curr.resultText}"`);
         }
       }
     } catch (error) {
@@ -4935,7 +5414,9 @@ export class WordDocumentProcessor {
     }
 
     if (standardized > 0) {
-      this.log.info(`Standardized ${standardized} "Return to" hyperlinks (indent removed + right-aligned)`);
+      this.log.info(
+        `Standardized ${standardized} "Return to" hyperlinks (indent removed + right-aligned)`
+      );
     }
 
     return standardized;
@@ -4955,7 +5436,7 @@ export class WordDocumentProcessor {
     let modified = 0;
 
     for (const para of doc.getAllParagraphs()) {
-      if (para.getAlignment() !== 'center') continue;
+      if (para.getAlignment() !== "center") continue;
 
       const formatting = para.getFormatting();
       const leftIndent = formatting?.indentation?.left || 0;
@@ -4985,13 +5466,16 @@ export class WordDocumentProcessor {
    * @param hyperlink - The hyperlink to format
    */
   private applyStandardHyperlinkFormatting(hyperlink: Hyperlink): void {
-    // Trim leading/trailing whitespace from hyperlink text.
+    // Trim trailing whitespace from hyperlink text.
     // Whitespace inside hyperlinks gets underlined (Hyperlink style),
-    // producing visual artifacts like underlined spaces before the text.
+    // producing visual artifacts. Leading spaces are handled separately
+    // by relocateHyperlinkLeadingSpace() to preserve word separation.
     const text = hyperlink.getText();
-    if (text && text !== text.trim()) {
-      hyperlink.setText(text.trim());
+    if (text && text !== text.trimEnd()) {
+      hyperlink.setText(text.trimEnd());
     }
+
+    const textBeforeFormatting = hyperlink.getText();
 
     hyperlink.setFormatting({
       font: "Verdana",
@@ -5001,6 +5485,337 @@ export class WordDocumentProcessor {
       bold: false,
       italic: false,
     });
+
+    // Guard: restore text if setFormatting() altered it (e.g. dropped xml:space="preserve")
+    const textAfterFormatting = hyperlink.getText();
+    if (textAfterFormatting !== textBeforeFormatting && textBeforeFormatting) {
+      hyperlink.setText(textBeforeFormatting);
+    }
+  }
+
+  /**
+   * Relocate leading spaces from hyperlink text to the preceding run.
+   *
+   * Word documents often store the space separating normal text from hyperlink
+   * text as a leading space inside the hyperlink element (e.g., hyperlink text
+   * = " Google" while the preceding run = "Test Table 2"). Without relocation,
+   * trimming the leading space merges the words ("Test Table 2Google").
+   *
+   * Moving the space to the preceding run preserves word separation without
+   * the underlined-space artifact that occurs when space inherits Hyperlink style.
+   *
+   * @param hyperlink - The hyperlink whose leading space to relocate
+   * @param content - The paragraph content array
+   * @param index - The hyperlink's index within the content array
+   */
+  private relocateHyperlinkLeadingSpace(
+    hyperlink: Hyperlink,
+    content: ParagraphContent[],
+    index: number
+  ): void {
+    const text = hyperlink.getText();
+    if (!text || !text.startsWith(" ")) return;
+
+    const prev = index > 0 ? content[index - 1] : null;
+
+    // No preceding content → trim (paragraph-start artifact)
+    if (!prev) {
+      hyperlink.setText(text.trimStart());
+      return;
+    }
+
+    // Preceding item is a Run → relocate space
+    if (prev instanceof Run) {
+      const prevText = prev.getText() || "";
+      if (!prevText.endsWith(" ")) {
+        prev.setText(prevText + " ");
+      }
+      hyperlink.setText(text.trimStart());
+      return;
+    }
+
+    // For other content types (Revision, ComplexField, PreservedElement),
+    // leave the leading space on the hyperlink — it's the word separator
+    // and removing it would merge words.
+  }
+
+  /**
+   * Late-stage pass: relocate leading spaces from hyperlinks to preceding Runs.
+   *
+   * Runs after ALL processing (style application, whitespace normalization,
+   * cleanup, defragmentation) to ensure relocated spaces aren't lost by
+   * intermediate pipeline steps.
+   *
+   * Leading spaces on hyperlinks render with blue underline formatting,
+   * which is a visual artifact. Moving them to the preceding Run gives
+   * them normal paragraph formatting while preserving word separation.
+   */
+  private relocateAllHyperlinkSpaces(doc: Document): number {
+    let relocated = 0;
+    const paragraphs = doc.getAllParagraphs();
+
+    for (const para of paragraphs) {
+      const content = para.getContent();
+
+      for (let ci = 0; ci < content.length; ci++) {
+        const item = content[ci];
+
+        if (item instanceof Hyperlink) {
+          const before = item.getText();
+          this.relocateHyperlinkLeadingSpace(item, content, ci);
+          if (item.getText() !== before) relocated++;
+        } else if (item instanceof Revision) {
+          if (item.getType() === "delete" || item.getType() === "moveFrom") continue;
+          const revisionContent = item.getContent();
+          for (let ri = 0; ri < revisionContent.length; ri++) {
+            const revContent = revisionContent[ri];
+            if (revContent instanceof Hyperlink) {
+              const before = revContent.getText();
+              if (ri > 0) {
+                this.relocateHyperlinkLeadingSpace(
+                  revContent,
+                  revisionContent as unknown as ParagraphContent[],
+                  ri
+                );
+              } else {
+                this.relocateHyperlinkLeadingSpace(revContent, content, ci);
+              }
+              if (revContent.getText() !== before) relocated++;
+            }
+          }
+        }
+      }
+    }
+
+    return relocated;
+  }
+
+  /**
+   * Check if a paragraph content item represents a hyperlink in any form:
+   * - Direct Hyperlink instance
+   * - ComplexField with HYPERLINK instruction
+   * - PreservedElement wrapping a w:hyperlink XML element
+   */
+  private isHyperlinkItem(item: ParagraphContent): boolean {
+    if (item instanceof Hyperlink) return true;
+    if (item instanceof ComplexField && item.isHyperlinkField()) return true;
+    if (item instanceof PreservedElement && item.getElementType() === "w:hyperlink") return true;
+    return false;
+  }
+
+  /**
+   * Extract visible text from any hyperlink representation.
+   */
+  private getHyperlinkItemText(item: ParagraphContent): string {
+    if (item instanceof Hyperlink) return item.getText() || "";
+    if (item instanceof ComplexField) return item.getResult() || "";
+    if (item instanceof PreservedElement) {
+      const raw = item.getRawXml();
+      const texts: string[] = [];
+      const re = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(raw)) !== null) texts.push(m[1]);
+      return texts.join("");
+    }
+    return "";
+  }
+
+  /**
+   * Search backward through content for the nearest Run before the given index.
+   * Skips non-Run items like RangeMarker, Bookmark wrappers, etc.
+   */
+  private findPrecedingRun(content: ParagraphContent[], index: number): Run | null {
+    for (let i = index - 1; i >= 0; i--) {
+      const item = content[i];
+      if (item instanceof Run) {
+        // Skip empty Runs — keep searching for one with text
+        if ((item.getText() || "").length > 0) return item;
+        continue;
+      }
+      // Stop at visible content boundaries
+      if (item instanceof Hyperlink || item instanceof ComplexField || item instanceof Revision) {
+        return null;
+      }
+      // Stop at hyperlink-type PreservedElement (visible content)
+      if (item instanceof PreservedElement && item.getElementType() === "w:hyperlink") {
+        return null;
+      }
+      // Skip non-hyperlink PreservedElements (invisible markup: bookmarks, proofing, etc.)
+    }
+    return null;
+  }
+
+  /**
+   * Search forward through content for the nearest Run after the given index.
+   * Skips non-Run items like RangeMarker, Bookmark wrappers, etc.
+   */
+  private findFollowingRun(content: ParagraphContent[], index: number): Run | null {
+    for (let i = index + 1; i < content.length; i++) {
+      const item = content[i];
+      if (item instanceof Run) {
+        // Skip empty Runs — keep searching for one with text
+        if ((item.getText() || "").length > 0) return item;
+        continue;
+      }
+      // Stop at visible content boundaries
+      if (item instanceof Hyperlink || item instanceof ComplexField || item instanceof Revision) {
+        return null;
+      }
+      // Stop at hyperlink-type PreservedElement (visible content)
+      if (item instanceof PreservedElement && item.getElementType() === "w:hyperlink") {
+        return null;
+      }
+      // Skip non-hyperlink PreservedElements (invisible markup: bookmarks, proofing, etc.)
+    }
+    return null;
+  }
+
+  /**
+   * Late-stage safety net: ensure a space exists before every hyperlink.
+   *
+   * If the preceding Run's text doesn't end with whitespace and the
+   * hyperlink text doesn't start with whitespace, appends a space to
+   * the preceding Run. This catches cases where leading spaces were
+   * lost during processing (style application, whitespace normalization,
+   * defragmentation) rather than just relocated.
+   */
+  private ensureSpaceBeforeHyperlinks(doc: Document): number {
+    let added = 0;
+    const paragraphs = doc.getAllParagraphs();
+
+    for (const para of paragraphs) {
+      const content = para.getContent();
+
+      for (let ci = 0; ci < content.length; ci++) {
+        const item = content[ci];
+
+        if (this.isHyperlinkItem(item)) {
+          if (this.ensureSpaceBefore(item, content, ci)) added++;
+        } else if (item instanceof Revision) {
+          if (item.getType() === "delete" || item.getType() === "moveFrom") continue;
+          const revisionContent = item.getContent();
+          for (let ri = 0; ri < revisionContent.length; ri++) {
+            const revContent = revisionContent[ri];
+            if (this.isHyperlinkItem(revContent)) {
+              if (ri > 0) {
+                if (this.ensureSpaceBefore(
+                  revContent,
+                  revisionContent as unknown as ParagraphContent[],
+                  ri
+                )) added++;
+              } else {
+                if (this.ensureSpaceBefore(revContent, content, ci)) added++;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return added;
+  }
+
+  /**
+   * Ensure a space exists between the preceding Run and this hyperlink item.
+   * Searches backward past non-visible items (RangeMarker, Bookmark, etc.)
+   * to find the nearest Run. Returns true if a space was added.
+   */
+  private ensureSpaceBefore(
+    hyperlinkItem: ParagraphContent,
+    content: ParagraphContent[],
+    index: number
+  ): boolean {
+    const hyperlinkText = this.getHyperlinkItemText(hyperlinkItem);
+    if (!hyperlinkText || hyperlinkText.startsWith(" ")) return false;
+
+    if (index === 0) return false;
+
+    const prev = this.findPrecedingRun(content, index);
+    if (!prev) {
+      if (isDebugEnabled(debugModes.HYPERLINKS)) {
+        const prevTypes = content.slice(Math.max(0, index - 3), index)
+          .map(c => c.constructor.name + (c instanceof PreservedElement ? `(${c.getElementType()})` : ""))
+          .join(", ");
+        this.log.debug(`No preceding Run found before hyperlink at index ${index}; preceding: [${prevTypes}]`);
+      }
+      return false;
+    }
+
+    const prevText = prev.getText() || "";
+    if (prevText.length === 0 || prevText.endsWith(" ")) return false;
+
+    prev.setText(prevText + " ");
+    return true;
+  }
+
+  /**
+   * Late-stage safety net: ensure a space exists after every hyperlink.
+   *
+   * If the following Run's text doesn't start with whitespace and the
+   * hyperlink text doesn't end with whitespace, prepends a space to
+   * the following Run. This catches cases where trailing spaces were
+   * lost during processing (trimming in applyStandardHyperlinkFormatting,
+   * whitespace normalization, defragmentation).
+   */
+  private ensureSpaceAfterHyperlinks(doc: Document): number {
+    let added = 0;
+    const paragraphs = doc.getAllParagraphs();
+
+    for (const para of paragraphs) {
+      const content = para.getContent();
+
+      for (let ci = 0; ci < content.length; ci++) {
+        const item = content[ci];
+
+        if (this.isHyperlinkItem(item)) {
+          if (this.ensureSpaceAfter(item, content, ci)) added++;
+        } else if (item instanceof Revision) {
+          if (item.getType() === "delete" || item.getType() === "moveFrom") continue;
+          const revisionContent = item.getContent();
+          for (let ri = 0; ri < revisionContent.length; ri++) {
+            const revContent = revisionContent[ri];
+            if (this.isHyperlinkItem(revContent)) {
+              if (ri < revisionContent.length - 1) {
+                if (this.ensureSpaceAfter(
+                  revContent,
+                  revisionContent as unknown as ParagraphContent[],
+                  ri
+                )) added++;
+              } else {
+                if (this.ensureSpaceAfter(revContent, content, ci)) added++;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return added;
+  }
+
+  /**
+   * Ensure a space exists between this hyperlink item and the following Run.
+   * Searches forward past non-visible items (RangeMarker, Bookmark, etc.)
+   * to find the nearest Run. Returns true if a space was added.
+   */
+  private ensureSpaceAfter(
+    hyperlinkItem: ParagraphContent,
+    content: ParagraphContent[],
+    index: number
+  ): boolean {
+    const hyperlinkText = this.getHyperlinkItemText(hyperlinkItem);
+    if (!hyperlinkText || hyperlinkText.endsWith(" ")) return false;
+
+    if (index >= content.length - 1) return false;
+
+    const next = this.findFollowingRun(content, index);
+    if (!next) return false;
+
+    const nextText = next.getText() || "";
+    if (nextText.length === 0 || nextText.startsWith(" ")) return false;
+
+    next.setText(" " + nextText);
+    return true;
   }
 
   /**
@@ -5022,10 +5837,7 @@ export class WordDocumentProcessor {
    * @param normalStyle - Normal style configuration (for line spacing inheritance)
    * @returns Number of hidden text runs styled
    */
-  private applyHiddenTextStyle(
-    doc: Document,
-    normalStyle?: SessionStyle
-  ): number {
+  private applyHiddenTextStyle(doc: Document, normalStyle?: SessionStyle): number {
     let hiddenTextCount = 0;
 
     // Get line spacing from Normal style (default to 1.0 if not provided)
@@ -5057,7 +5869,7 @@ export class WordDocumentProcessor {
       // Track if this paragraph has hidden text
       let paraHasHiddenText = false;
 
-      const runs = para.getRuns();
+      const runs = this.getAllRunsFromParagraph(para);
       for (const run of runs) {
         const currentColor = run.getFormatting().color?.toUpperCase();
 
@@ -5070,9 +5882,7 @@ export class WordDocumentProcessor {
           hiddenTextCount++;
           paraHasHiddenText = true;
 
-          this.log.debug(
-            `Applied HiddenText style to run: "${run.getText().substring(0, 30)}..."`
-          );
+          this.log.debug(`Applied HiddenText style to run: "${run.getText().substring(0, 30)}..."`);
         }
       }
 
@@ -5109,7 +5919,7 @@ export class WordDocumentProcessor {
   ): number {
     const tables = doc.getTables();
     let tablesProcessed = 0;
-    const DEFAULT_COLOR = '000000';
+    const DEFAULT_COLOR = "000000";
 
     this.log.debug(`Standardizing table borders: size=${options.size} (${options.size / 8}pt)`);
 
@@ -5117,26 +5927,26 @@ export class WordDocumentProcessor {
       try {
         // Skip floating tables and tables containing nested tables
         if (tableProcessor.shouldSkipTable(table)) {
-          this.log.debug('Skipping floating/nested table for border processing');
+          this.log.debug("Skipping floating/nested table for border processing");
           continue;
         }
 
         // Skip HLP tables - they get special border treatment
         if (tableProcessor.isHLPTable(table)) {
-          this.log.debug('Skipping HLP table for standard border processing');
+          this.log.debug("Skipping HLP table for standard border processing");
           continue;
         }
 
         // Create uniform border definition
         const border = {
-          style: 'single' as const,
+          style: "single" as const,
           size: options.size,
           color: DEFAULT_COLOR,
         };
 
         // setAllBorders applies to all 6 border types AND all cells
         table.setAllBorders(border);
-        table.setTblLook('0600');
+        table.setTblLook("0600");
 
         // Remove trailing empty rows — Word Web Layout collapses empty rows
         // to near-zero height, hiding the border above them
@@ -5144,9 +5954,9 @@ export class WordDocumentProcessor {
         for (let i = rows.length - 1; i >= 1; i--) {
           const row = rows[i]!;
           const cells = row.getCells();
-          const isEmpty = cells.every(cell => {
+          const isEmpty = cells.every((cell) => {
             const paragraphs = cell.getParagraphs();
-            return paragraphs.every(para => para.getContent().length === 0);
+            return paragraphs.every((para) => para.getContent().length === 0);
           });
           if (!isEmpty) break;
           table.removeRow(i);
@@ -5215,9 +6025,9 @@ export class WordDocumentProcessor {
           } else {
             // Numbered levels: full standardization to Verdana 12pt black
             level.setFont("Verdana");
-            level.setFontSize(24);      // 12pt = 24 half-points
-            level.setColor("000000");   // Black
-            level.setBold(false);       // Prefixes must never be bold
+            level.setFontSize(24); // 12pt = 24 half-points
+            level.setColor("000000"); // Black
+            level.setBold(false); // Prefixes must never be bold
             this.patchLevelBoldOff(level); // Explicit <w:b w:val="0"/> to prevent bold inheritance
           }
 
@@ -5268,10 +6078,10 @@ export class WordDocumentProcessor {
       const xml = origToXML();
       if (xml && Array.isArray(xml.children)) {
         for (const child of xml.children) {
-          if (typeof child === 'object' && child.name === 'w:rPr') {
+          if (typeof child === "object" && child.name === "w:rPr") {
             if (!Array.isArray(child.children)) child.children = [];
-            child.children.push({ name: 'w:b', attributes: { 'w:val': '0' } });
-            child.children.push({ name: 'w:bCs', attributes: { 'w:val': '0' } });
+            child.children.push({ name: "w:b", attributes: { "w:val": "0" } });
+            child.children.push({ name: "w:bCs", attributes: { "w:val": "0" } });
             break;
           }
         }
@@ -5285,7 +6095,10 @@ export class WordDocumentProcessor {
    * PUA characters require specific fonts — mismatches cause "unidentified symbol" boxes.
    */
   private ensureBulletFontMatch(level: unknown): void {
-    const lvl = level as { getProperties: () => { text: string; font: string }; setFont: (f: string) => void };
+    const lvl = level as {
+      getProperties: () => { text: string; font: string };
+      setFont: (f: string) => void;
+    };
     const props = lvl.getProperties();
     const text = props.text;
     const font = props.font;
@@ -5449,8 +6262,8 @@ export class WordDocumentProcessor {
 
       // Skip TOC-styled paragraphs (TOC1, TOC2, etc.)
       // These are table of contents entries that should not have styles reapplied
-      const paraStyle = para.getStyle() || '';
-      if (paraStyle.startsWith('TOC') && paraStyle !== 'TOCHeading') {
+      const paraStyle = para.getStyle() || "";
+      if (paraStyle.startsWith("TOC") && paraStyle !== "TOCHeading") {
         continue;
       }
 
@@ -5458,7 +6271,7 @@ export class WordDocumentProcessor {
 
       // PRIORITY 1: Check paragraph's existing Word style FIRST
       // This preserves Heading 1, Heading 2, etc. styles that already exist in the document
-      const currentStyle = paraStyle || (para.getFormatting()?.style) || '';
+      const currentStyle = paraStyle || para.getFormatting()?.style || "";
 
       if ((currentStyle === "Heading1" || currentStyle === "Heading 1") && header1Style) {
         // Preserve Heading 1 - apply user's Heading 1 formatting
@@ -5469,7 +6282,10 @@ export class WordDocumentProcessor {
       } else if ((currentStyle === "Heading3" || currentStyle === "Heading 3") && header3Style) {
         // Preserve Heading 3 - apply user's Heading 3 formatting
         styleToApply = header3Style;
-      } else if ((currentStyle === "ListParagraph" || currentStyle === "List Paragraph") && listParagraphStyle) {
+      } else if (
+        (currentStyle === "ListParagraph" || currentStyle === "List Paragraph") &&
+        listParagraphStyle
+      ) {
         // Preserve List Paragraph - apply user's List Paragraph formatting
         styleToApply = listParagraphStyle;
       } else if (currentStyle === "Normal" && normalStyle) {
@@ -5494,20 +6310,23 @@ export class WordDocumentProcessor {
         // Check if paragraph has an explicit Word style (e.g., "Normal", "Heading1", "ListParagraph")
         // Paragraphs without an explicit style should have their existing formatting preserved
         const explicitStyle = para.getStyle();
-        const hasNoExplicitStyle = !explicitStyle || explicitStyle === 'undefined' || explicitStyle === '';
+        const hasNoExplicitStyle =
+          !explicitStyle || explicitStyle === "undefined" || explicitStyle === "";
 
         // Preserve center alignment if:
         // 1. The style has preserveCenterAlignment=true AND paragraph is centered, OR
         // 2. The paragraph has no explicit style AND is already centered
         const shouldPreserveAlignment =
-          (styleToApply.preserveCenterAlignment && formatting.alignment === 'center') ||
-          (hasNoExplicitStyle && formatting.alignment === 'center');
+          (styleToApply.preserveCenterAlignment && formatting.alignment === "center") ||
+          (hasNoExplicitStyle && formatting.alignment === "center");
 
         if (!shouldPreserveAlignment) {
           para.setAlignment(styleToApply.alignment);
         } else {
-          this.log.debug(`[Alignment] Preserved center alignment for paragraph ` +
-            `(style: ${styleToApply.id}, explicitStyle: ${explicitStyle || 'none'})`);
+          this.log.debug(
+            `[Alignment] Preserved center alignment for paragraph ` +
+              `(style: ${styleToApply.id}, explicitStyle: ${explicitStyle || "none"})`
+          );
         }
 
         // Spacing is handled by style definitions (via doc.applyStyles()) for paragraphs
@@ -5534,7 +6353,7 @@ export class WordDocumentProcessor {
             run.setCharacterStyle(undefined as unknown as string);
             this.log.debug(
               `[FalseHyperlink] Stripped Hyperlink character style from run ` +
-              `in "${currentStyle || 'unstyled'}" paragraph: "${run.getText()?.substring(0, 40) || ''}"`
+                `in "${currentStyle || "unstyled"}" paragraph: "${run.getText()?.substring(0, 40) || ""}"`
             );
             // Fall through to apply proper formatting
           }
@@ -5559,9 +6378,10 @@ export class WordDocumentProcessor {
 
             // Set color (with white/red font preservation)
             const currentColor = runFormatting.color?.toUpperCase();
-            const isWhiteFont = currentColor === 'FFFFFF';
-            const isRedFont = currentColor === 'FF0000';
-            const isNormalOrListStyle = styleToApply.id === 'normal' || styleToApply.id === 'listParagraph';
+            const isWhiteFont = currentColor === "FFFFFF";
+            const isRedFont = currentColor === "FF0000";
+            const isNormalOrListStyle =
+              styleToApply.id === "normal" || styleToApply.id === "listParagraph";
             if (!isWhiteFont && !(isRedFont && preserveRedFont && isNormalOrListStyle)) {
               run.setColor(styleToApply.color.replace("#", ""));
             }
@@ -5587,17 +6407,18 @@ export class WordDocumentProcessor {
           // For styled paragraphs, preserve white/red font (doc.applyStyles handles font/size/color)
           if (!hasNoExplicitStyle) {
             const currentColor = runFormatting.color?.toUpperCase();
-            const isWhiteFont = currentColor === 'FFFFFF';
-            const isRedFont = currentColor === 'FF0000';
-            const isNormalOrListStyle = styleToApply.id === 'normal' || styleToApply.id === 'listParagraph';
+            const isWhiteFont = currentColor === "FFFFFF";
+            const isRedFont = currentColor === "FF0000";
+            const isNormalOrListStyle =
+              styleToApply.id === "normal" || styleToApply.id === "listParagraph";
 
             // Only override color for white/red font preservation when needed
             if (isWhiteFont) {
               // White font was potentially cleared by doc.applyStyles() — restore it
-              run.setColor('FFFFFF');
+              run.setColor("FFFFFF");
             } else if (isRedFont && preserveRedFont && isNormalOrListStyle) {
               // Red font preservation — restore it
-              run.setColor('FF0000');
+              run.setColor("FF0000");
             }
           }
 
@@ -5640,31 +6461,28 @@ export class WordDocumentProcessor {
    * (via doc.applyStyles()), so we only set direct spacing on unstyled paragraphs
    * to avoid direct formatting overriding style-based values.
    */
-  private finalizeParagraphSpacing(
-    doc: Document,
-    styles: SessionStyle[]
-  ): number {
-    const header1 = styles.find(s => s.id === 'header1');
-    const header2 = styles.find(s => s.id === 'header2');
-    const header3 = styles.find(s => s.id === 'header3');
-    const normal = styles.find(s => s.id === 'normal');
-    const listParagraph = styles.find(s => s.id === 'listParagraph');
+  private finalizeParagraphSpacing(doc: Document, styles: SessionStyle[]): number {
+    const header1 = styles.find((s) => s.id === "header1");
+    const header2 = styles.find((s) => s.id === "header2");
+    const header3 = styles.find((s) => s.id === "header3");
+    const normal = styles.find((s) => s.id === "normal");
+    const listParagraph = styles.find((s) => s.id === "listParagraph");
 
     let count = 0;
     for (const para of doc.getAllParagraphs()) {
       // Skip TOC and complex field paragraphs
       if (this.hasComplexFieldContent(para)) continue;
-      const style = para.getStyle() || '';
-      if (style.startsWith('TOC') && style !== 'TOCHeading') continue;
+      const style = para.getStyle() || "";
+      if (style.startsWith("TOC") && style !== "TOCHeading") continue;
 
       // Determine target style config based on paragraph's Word style
       let target: SessionStyle | undefined;
       let hasExplicitStyle = true;
-      if (style === 'Heading1' || style === 'Heading 1') target = header1;
-      else if (style === 'Heading2' || style === 'Heading 2') target = header2;
-      else if (style === 'Heading3' || style === 'Heading 3') target = header3;
-      else if (style === 'ListParagraph' || style === 'List Paragraph') target = listParagraph;
-      else if (style === 'Normal') target = normal;
+      if (style === "Heading1" || style === "Heading 1") target = header1;
+      else if (style === "Heading2" || style === "Heading 2") target = header2;
+      else if (style === "Heading3" || style === "Heading 3") target = header3;
+      else if (style === "ListParagraph" || style === "List Paragraph") target = listParagraph;
+      else if (style === "Normal") target = normal;
       else if (!style) {
         target = normal;
         hasExplicitStyle = false;
@@ -5870,11 +6688,11 @@ export class WordDocumentProcessor {
     // ═══════════════════════════════════════════════════════════
     this.log.debug("=== UPDATING STYLE DEFINITIONS IN STYLES.XML ===");
     const styleIdMap: Record<string, string> = {
-      'header1': 'Heading1',
-      'header2': 'Heading2',
-      'header3': 'Heading3',
-      'normal': 'Normal',
-      'listParagraph': 'ListParagraph',
+      header1: "Heading1",
+      header2: "Heading2",
+      header3: "Heading3",
+      normal: "Normal",
+      listParagraph: "ListParagraph",
     };
 
     for (const sessionStyle of styles) {
@@ -5886,22 +6704,26 @@ export class WordDocumentProcessor {
 
       try {
         // Determine outline level for TOC support (Heading 1 = 0, Heading 2 = 1, Heading 3 = 2)
-        const outlineLevel = wordStyleId === 'Heading1' ? 0
-          : wordStyleId === 'Heading2' ? 1
-          : wordStyleId === 'Heading3' ? 2
-          : undefined;
+        const outlineLevel =
+          wordStyleId === "Heading1"
+            ? 0
+            : wordStyleId === "Heading2"
+              ? 1
+              : wordStyleId === "Heading3"
+                ? 2
+                : undefined;
 
         const styleObj = Style.create({
           styleId: wordStyleId,
           name: sessionStyle.name,
-          type: 'paragraph',
+          type: "paragraph",
           runFormatting: {
             font: sessionStyle.fontFamily,
             size: sessionStyle.fontSize,
             bold: sessionStyle.bold,
             italic: sessionStyle.italic,
-            underline: sessionStyle.underline ? 'single' : false,
-            color: sessionStyle.color.replace('#', ''),
+            underline: sessionStyle.underline ? "single" : false,
+            color: sessionStyle.color.replace("#", ""),
           },
           paragraphFormatting: {
             alignment: sessionStyle.alignment,
@@ -5909,7 +6731,7 @@ export class WordDocumentProcessor {
               before: pointsToTwips(sessionStyle.spaceBefore),
               after: pointsToTwips(sessionStyle.spaceAfter),
               line: sessionStyle.lineSpacing ? pointsToTwips(sessionStyle.lineSpacing * 12) : 240,
-              lineRule: 'auto',
+              lineRule: "auto",
             },
             outlineLevel, // Required for TOC functionality
           },
@@ -5919,16 +6741,48 @@ export class WordDocumentProcessor {
         // Style.create() can't replicate. Replacing it strips numPr, breaking numbering
         // inheritance for HLP table paragraphs. Skip the style replacement — formatting
         // is still applied to individual paragraphs by applyStyles() run-level processing.
-        if (wordStyleId === 'ListParagraph') {
-          this.log.debug('Skipping addStyle for ListParagraph (preserving numPr in style definition)');
+        if (wordStyleId === "ListParagraph") {
+          this.log.debug(
+            "Skipping addStyle for ListParagraph (preserving numPr in style definition)"
+          );
           continue;
         }
 
         doc.addStyle(styleObj);
-        this.log.info(`✓ Updated style definition: ${wordStyleId} (${sessionStyle.fontFamily} ${sessionStyle.fontSize}pt)`);
+        this.log.info(
+          `✓ Updated style definition: ${wordStyleId} (${sessionStyle.fontFamily} ${sessionStyle.fontSize}pt)`
+        );
       } catch (error) {
         this.log.warn(`Failed to update style definition for ${wordStyleId}:`, error);
         // Continue with other styles
+      }
+    }
+
+    // Capture red font runs before framework call.
+    // The framework's applyStyles() only preserves white font (preserveWhiteFont option).
+    // Red font must be captured here and restored after the framework runs.
+    let redFontRuns: Set<Run> | null = null;
+    if (preserveRedFont) {
+      redFontRuns = new Set<Run>();
+      const allParas = doc.getAllParagraphs();
+      for (const para of allParas) {
+        const styleId = para.getStyle();
+        const isNormalOrList =
+          styleId === "Normal" ||
+          styleId === "ListParagraph" ||
+          styleId === "List Paragraph" ||
+          !styleId;
+        if (isNormalOrList) {
+          const runs = this.getAllRunsFromParagraph(para);
+          for (const run of runs) {
+            if (run.getFormatting().color?.toUpperCase() === "FF0000") {
+              redFontRuns.add(run);
+            }
+          }
+        }
+      }
+      if (redFontRuns.size > 0) {
+        this.log.debug(`Captured ${redFontRuns.size} red font runs for preservation`);
       }
     }
 
@@ -5947,9 +6801,15 @@ export class WordDocumentProcessor {
         // Fall through to manual implementation
       }
     } else {
-      this.log.warn(
-        "Framework method applyStyles not available, using manual fallback"
-      );
+      this.log.warn("Framework method applyStyles not available, using manual fallback");
+    }
+
+    // Restore red font runs that were overwritten by framework applyStyles()
+    if (redFontRuns && redFontRuns.size > 0) {
+      for (const run of redFontRuns) {
+        run.setColor("FF0000");
+      }
+      this.log.debug(`Restored ${redFontRuns.size} red font runs after framework applyStyles()`);
     }
 
     // ALWAYS run manual style assignment to catch unstyled paragraphs
@@ -6047,11 +6907,11 @@ export class WordDocumentProcessor {
       }
 
       // Add outline level for TOC support (Heading 1 = 0, Heading 2 = 1, Heading 3 = 2)
-      if (docStyleId === 'Heading1') {
+      if (docStyleId === "Heading1") {
         paragraphFormatting.outlineLevel = 0;
-      } else if (docStyleId === 'Heading2') {
+      } else if (docStyleId === "Heading2") {
         paragraphFormatting.outlineLevel = 1;
-      } else if (docStyleId === 'Heading3') {
+      } else if (docStyleId === "Heading3") {
         paragraphFormatting.outlineLevel = 2;
       }
 
@@ -6147,7 +7007,7 @@ export class WordDocumentProcessor {
           this.log.debug(`Skipping Header 2 validation for excluded 1x1 table`);
 
           // Clear existing shading from excluded tables
-          singleCell.setShading({ fill: 'auto', pattern: "clear", color: "auto" });
+          singleCell.setShading({ fill: "auto", pattern: "clear", color: "auto" });
 
           continue;
         }
@@ -6167,11 +7027,11 @@ export class WordDocumentProcessor {
               tableHasHeader2 = true;
               let cellNeedsUpdate = false;
               const formatting = para.getFormatting();
-              const runs = para.getRuns();
+              const runs = this.getAllRunsFromParagraph(para);
 
               // Validate and fix paragraph formatting
               // Preserve center alignment if paragraph is already centered
-              const preserveCenter = formatting.alignment === 'center';
+              const preserveCenter = formatting.alignment === "center";
               if (formatting.alignment !== header2Style.alignment && !preserveCenter) {
                 para.setAlignment(header2Style.alignment);
                 cellNeedsUpdate = true;
@@ -6232,7 +7092,7 @@ export class WordDocumentProcessor {
 
                 const expectedColor = header2Style.color.replace("#", "");
                 // Preserve white font - don't change color if run is white (FFFFFF)
-                const isWhiteFont = runFormatting.color?.toUpperCase() === 'FFFFFF';
+                const isWhiteFont = runFormatting.color?.toUpperCase() === "FFFFFF";
                 if (!isWhiteFont && runFormatting.color !== expectedColor) {
                   run.setColor(expectedColor);
                   runNeedsUpdate = true;
@@ -6382,7 +7242,7 @@ export class WordDocumentProcessor {
         continue;
       }
 
-      const runs = para.getRuns();
+      const runs = this.getAllRunsFromParagraph(para);
       for (const run of runs) {
         let text = run.getText();
         if (!text) continue;
@@ -6460,9 +7320,11 @@ export class WordDocumentProcessor {
    */
   private getTextIndentForLevel(
     level: number,
-    settings: { indentationLevels: Array<{ level: number; symbolIndent: number; textIndent: number }> }
+    settings: {
+      indentationLevels: Array<{ level: number; symbolIndent: number; textIndent: number }>;
+    }
   ): number {
-    const config = settings.indentationLevels.find(l => l.level === level);
+    const config = settings.indentationLevels.find((l) => l.level === level);
     if (config) return config.textIndent;
     if (settings.indentationLevels.length === 0) return 0.5 + level * 0.25;
     const lastConfig = settings.indentationLevels[settings.indentationLevels.length - 1];
@@ -6516,7 +7378,8 @@ export class WordDocumentProcessor {
           if (cellBaselineIndent === Infinity) cellBaselineIndent = 0;
 
           // Track list context within this cell only
-          let activeContext: { numId: number; level: number; textIndentTwips: number } | null = null;
+          let activeContext: { numId: number; level: number; textIndentTwips: number } | null =
+            null;
 
           for (let i = 0; i < paragraphs.length; i++) {
             const para = paragraphs[i];
@@ -6526,7 +7389,8 @@ export class WordDocumentProcessor {
               // This IS a list item - update context
               const level = numbering.level ?? 0;
               const actualIndent = this.getListTextIndent(doc, numbering.numId, level);
-              const textIndentTwips = actualIndent ?? Math.round(this.getTextIndentForLevel(level, settings) * 1440);
+              const textIndentTwips =
+                actualIndent ?? Math.round(this.getTextIndentForLevel(level, settings) * 1440);
               activeContext = { numId: numbering.numId, level, textIndentTwips };
               continue; // Don't modify list items themselves
             }
@@ -6578,9 +7442,8 @@ export class WordDocumentProcessor {
 
               // Always cap indent at safe maximum
               if (targetIndent > maxSafeIndent) {
-                targetIndent = existingLeftIndent > 0
-                  ? Math.min(rawLeftIndent, maxSafeIndent)
-                  : maxSafeIndent;
+                targetIndent =
+                  existingLeftIndent > 0 ? Math.min(rawLeftIndent, maxSafeIndent) : maxSafeIndent;
                 this.log.debug(
                   `  Capped indent to ${targetIndent} twips (cell: ${cellWidth}, margins: L${leftMargin}/R${rightMargin}, available: ${availableWidth})`
                 );
@@ -6592,8 +7455,8 @@ export class WordDocumentProcessor {
 
               this.log.debug(
                 `  Table cell continuation: para ${i}, numId=${activeContext.numId}, ` +
-                `level=${activeContext.level}, indent=${targetIndent}twips ` +
-                `(was ${rawLeftIndent}, baseline=${cellBaselineIndent})`
+                  `level=${activeContext.level}, indent=${targetIndent}twips ` +
+                  `(was ${rawLeftIndent}, baseline=${cellBaselineIndent})`
               );
               indentedCount++;
             }
@@ -6621,11 +7484,10 @@ export class WordDocumentProcessor {
     }
   ): Promise<number> {
     let indentedCount = 0;
-    const paragraphs = doc.getAllParagraphs();
 
     // Helper to get textIndent for any level (extrapolating if needed)
     const getTextIndentForLevel = (level: number): number => {
-      const levelConfig = settings.indentationLevels.find(l => l.level === level);
+      const levelConfig = settings.indentationLevels.find((l) => l.level === level);
       if (levelConfig) {
         return levelConfig.textIndent;
       }
@@ -6641,59 +7503,71 @@ export class WordDocumentProcessor {
       return lastConfig.textIndent + extraLevels * 0.25;
     };
 
-    for (let i = 1; i < paragraphs.length; i++) {
-      const currentPara = paragraphs[i];
-      const previousPara = paragraphs[i - 1];
+    // Track the active list context — set when we see a list item,
+    // cleared when we see a table, heading, or other non-continuation element.
+    let activeContext: { numId: number; level: number; textIndentTwips: number } | null = null;
 
-      // Skip if current paragraph IS a list item
-      if (currentPara.getNumbering()) continue;
+    // Iterate ONLY body-level elements to avoid double-processing table paragraphs
+    // (table cells are already handled by ListNormalizer)
+    const bodyElements = doc.getBodyElements();
 
-      // Check if current paragraph has SOME existing indentation
-      const formatting = currentPara.getFormatting();
+    for (const element of bodyElements) {
+      // Tables reset context — continuation doesn't span across tables
+      if (element instanceof Table) {
+        activeContext = null;
+        continue;
+      }
+
+      // Only process Paragraphs
+      if (!(element instanceof Paragraph)) {
+        activeContext = null;
+        continue;
+      }
+
+      const para = element;
+      const numbering = para.getNumbering();
+
+      // If this is a list item, update activeContext
+      if (numbering) {
+        const level = numbering.level ?? 0;
+        const actualIndent = this.getListTextIndent(doc, numbering.numId, level);
+        const textIndentTwips =
+          actualIndent ?? Math.round(getTextIndentForLevel(level) * 1440);
+
+        activeContext = { numId: numbering.numId, level, textIndentTwips };
+        continue;
+      }
+
+      // Headings reset context
+      const style = para.getStyle() ?? "";
+      if (style.startsWith("Heading") || style.startsWith("heading")) {
+        activeContext = null;
+        continue;
+      }
+
+      // No active list context — nothing to continue from
+      if (!activeContext) continue;
+
+      // Check if this paragraph has existing indentation (continuation candidate)
+      const formatting = para.getFormatting();
       const existingLeftIndent = formatting.indentation?.left || 0;
       if (existingLeftIndent === 0) continue;
 
-      // Check previous paragraph's state
-      const previousNumbering = previousPara.getNumbering();
-      const previousFormatting = previousPara.getFormatting();
-      const previousLeftIndent = previousFormatting.indentation?.left || 0;
+      // Blank paragraphs don't reset context but shouldn't be indented
+      const text = para.getText().trim();
+      if (text.length === 0) continue;
 
-      // Case 1: Previous is a list item - get indent from list definition
-      if (previousNumbering) {
-        const previousLevel = previousNumbering.level ?? 0;
-        const numId = previousNumbering.numId;
+      // Apply the active list context's textIndent
+      para.setLeftIndent(activeContext.textIndentTwips);
+      para.setHangingIndent(0);
+      para.setFirstLineIndent(0);
 
-        // Try to get actual indent from numbering definition, fall back to UI settings
-        const actualIndent = this.getListTextIndent(doc, numId, previousLevel);
-        const textIndentTwips = actualIndent ?? Math.round(getTextIndentForLevel(previousLevel) * 1440);
+      this.log.debug(
+        `List continuation indent: level=${activeContext.level}, ` +
+          `textIndent=${activeContext.textIndentTwips}twips, was ${existingLeftIndent}twips`
+      );
 
-        // Apply the list's textIndent as the paragraph's left indent
-        currentPara.setLeftIndent(textIndentTwips);
-        currentPara.setHangingIndent(0);
-        currentPara.setFirstLineIndent(0);
-
-        const source = actualIndent !== undefined ? 'numbering.xml' : 'UI settings';
-        this.log.debug(
-          `List continuation indent: para ${i}, level=${previousLevel}, ` +
-          `textIndent=${textIndentTwips}twips (from ${source}), was ${existingLeftIndent}twips`
-        );
-
-        indentedCount++;
-      }
-      // Case 2: Previous is an indented non-list paragraph - match its indent
-      else if (previousLeftIndent > 0) {
-        currentPara.setLeftIndent(previousLeftIndent);
-        currentPara.setHangingIndent(0);
-        currentPara.setFirstLineIndent(0);
-
-        this.log.debug(
-          `List continuation indent: para ${i}, matching previous text indent ` +
-          `${previousLeftIndent}twips, was ${existingLeftIndent}twips`
-        );
-
-        indentedCount++;
-      }
-      // Case 3: Previous has no indent - skip this paragraph
+      indentedCount++;
     }
 
     return indentedCount;
@@ -6837,7 +7711,11 @@ export class WordDocumentProcessor {
    * Returns paragraph-level indent if set, otherwise the numbering definition's
    * leftIndent for the item's current ilvl.
    */
-  private getEffectiveListIndent(doc: Document, para: Paragraph, numbering: { numId: number; level: number }): number {
+  private getEffectiveListIndent(
+    doc: Document,
+    para: Paragraph,
+    numbering: { numId: number; level: number }
+  ): number {
     const formatting = para.getFormatting();
     const paraLeft = formatting.indentation?.left || 0;
     if (paraLeft > 0) return paraLeft;
@@ -6905,10 +7783,13 @@ export class WordDocumentProcessor {
     const manager = doc.getNumberingManager();
 
     // Collect and group body list paragraphs by numId
-    const bodyNumIdGroups = new Map<number, Array<{
-      para: Paragraph;
-      numbering: NonNullable<ReturnType<Paragraph['getNumbering']>>;
-    }>>();
+    const bodyNumIdGroups = new Map<
+      number,
+      Array<{
+        para: Paragraph;
+        numbering: NonNullable<ReturnType<Paragraph["getNumbering"]>>;
+      }>
+    >();
 
     for (const para of bodyParagraphs) {
       const numbering = para.getNumbering();
@@ -6918,13 +7799,17 @@ export class WordDocumentProcessor {
       try {
         const instance = manager.getInstance(numbering.numId);
         if (instance && this._hlpAbstractNumIds.has(instance.getAbstractNumId())) continue;
-      } catch { /* proceed if check fails */ }
+      } catch {
+        /* proceed if check fails */
+      }
 
       // Skip row-number column numbering
       try {
         const instance = manager.getInstance(numbering.numId);
         if (instance && this._rowNumberAbstractNumIds.has(instance.getAbstractNumId())) continue;
-      } catch { /* proceed if check fails */ }
+      } catch {
+        /* proceed if check fails */
+      }
 
       if (!bodyNumIdGroups.has(numbering.numId)) {
         bodyNumIdGroups.set(numbering.numId, []);
@@ -6937,27 +7822,29 @@ export class WordDocumentProcessor {
     const flatGroups: Array<{
       numId: number;
       items: Array<{
-        para: typeof bodyParagraphs[0];
-        numbering: NonNullable<ReturnType<typeof bodyParagraphs[0]['getNumbering']>>;
+        para: (typeof bodyParagraphs)[0];
+        numbering: NonNullable<ReturnType<(typeof bodyParagraphs)[0]["getNumbering"]>>;
         effectiveIndent: number;
       }>;
       representativeIndent: number;
     }> = [];
 
     for (const [numId, items] of bodyNumIdGroups) {
-      const uniqueLevels = new Set(items.map(i => i.numbering.level));
+      const uniqueLevels = new Set(items.map((i) => i.numbering.level));
       if (uniqueLevels.size > 1) {
-        this.log.debug(`  Skipping body numId ${numId}: already has multi-level structure (levels: ${[...uniqueLevels].join(', ')})`);
+        this.log.debug(
+          `  Skipping body numId ${numId}: already has multi-level structure (levels: ${[...uniqueLevels].join(", ")})`
+        );
         continue;
       }
 
-      const itemsWithIndent = items.map(item => ({
+      const itemsWithIndent = items.map((item) => ({
         ...item,
         effectiveIndent: this.getEffectiveListIndent(doc, item.para, item.numbering),
       }));
 
-      const minIndent = Math.min(...itemsWithIndent.map(i => i.effectiveIndent));
-      const maxIndent = Math.max(...itemsWithIndent.map(i => i.effectiveIndent));
+      const minIndent = Math.min(...itemsWithIndent.map((i) => i.effectiveIndent));
+      const maxIndent = Math.max(...itemsWithIndent.map((i) => i.effectiveIndent));
 
       if (maxIndent - minIndent >= 200) {
         // Phase 1: Internal variation — per-group relative approach (360tw/level)
@@ -6968,11 +7855,11 @@ export class WordDocumentProcessor {
           if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
             const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
             const paraLeft = para.getFormatting().indentation?.left || 0;
-            const textSnippet = para.getText().substring(0, 35).replace(/\n/g, ' ');
+            const textSnippet = para.getText().substring(0, 35).replace(/\n/g, " ");
             this.log.debug(
               `  [BODY ITEM] "${textSnippet}..." ` +
                 `origLevel=${numbering.level}, paraLeft=${paraLeft}tw, ` +
-                `numDefIndent=${numDefIndent ?? 'N/A'}tw, ` +
+                `numDefIndent=${numDefIndent ?? "N/A"}tw, ` +
                 `effectiveIndent=${effectiveIndent}tw, relativeIndent=${relativeIndent}tw`
             );
           }
@@ -6994,7 +7881,9 @@ export class WordDocumentProcessor {
         }
       } else {
         // Phase 2: Flat group — collect for cross-group clustering
-        this.log.debug(`  Flat group numId ${numId}: representativeIndent=${minIndent}tw (range=${maxIndent - minIndent}tw, ${items.length} items)`);
+        this.log.debug(
+          `  Flat group numId ${numId}: representativeIndent=${minIndent}tw (range=${maxIndent - minIndent}tw, ${items.length} items)`
+        );
         flatGroups.push({ numId, items: itemsWithIndent, representativeIndent: minIndent });
       }
     }
@@ -7018,18 +7907,24 @@ export class WordDocumentProcessor {
         const levelDef = abstractNum.getLevel(ilvl);
         if (!levelDef) continue;
         const props = levelDef.getProperties();
-        const formatKey = `${props.font || ''}|${props.text || ''}`;
+        const formatKey = `${props.font || ""}|${props.text || ""}`;
         groupFormatKeys.set(group.numId, formatKey);
         // Track the minimum representative indentation across all groups sharing this format
         const existing = formatMinIndent.get(formatKey);
         if (existing === undefined || group.representativeIndent < existing) {
           formatMinIndent.set(formatKey, group.representativeIndent);
         }
-        this.log.debug(`  Format: numId ${group.numId} → "${formatKey}" indent=${group.representativeIndent}tw (${group.items.length} items)`);
-      } catch { /* skip groups where numbering lookup fails */ }
+        this.log.debug(
+          `  Format: numId ${group.numId} → "${formatKey}" indent=${group.representativeIndent}tw (${group.items.length} items)`
+        );
+      } catch {
+        /* skip groups where numbering lookup fails */
+      }
     }
 
-    this.log.debug(`  Bullet-format clustering: ${flatGroups.length} flat groups → ${formatMinIndent.size} distinct formats`);
+    this.log.debug(
+      `  Bullet-format clustering: ${flatGroups.length} flat groups → ${formatMinIndent.size} distinct formats`
+    );
 
     // Map each format group to a level using textThresholds applied to its minimum indent.
     // Same visual bullet → same level (from the lowest-indented instance of that bullet).
@@ -7077,9 +7972,7 @@ export class WordDocumentProcessor {
     for (let i = 0; i < levels.length; i++) {
       const currentTwips = Math.round(levels[i].symbolIndent * 1440);
       const nextTwips =
-        i < levels.length - 1
-          ? Math.round(levels[i + 1].symbolIndent * 1440)
-          : currentTwips + 720; // Default 0.5" increment for extrapolation
+        i < levels.length - 1 ? Math.round(levels[i + 1].symbolIndent * 1440) : currentTwips + 720; // Default 0.5" increment for extrapolation
 
       // This level owns from midpoint with previous level to midpoint with next level
       const midpointToNext = Math.round((currentTwips + nextTwips) / 2);
@@ -7117,9 +8010,7 @@ export class WordDocumentProcessor {
     for (let i = 0; i < levels.length; i++) {
       const currentTwips = Math.round(levels[i].textIndent * 1440);
       const nextTwips =
-        i < levels.length - 1
-          ? Math.round(levels[i + 1].textIndent * 1440)
-          : currentTwips + 720;
+        i < levels.length - 1 ? Math.round(levels[i + 1].textIndent * 1440) : currentTwips + 720;
 
       const midpointToNext = Math.round((currentTwips + nextTwips) / 2);
       const prevTwips = i > 0 ? Math.round(levels[i - 1].textIndent * 1440) : 0;
@@ -7251,7 +8142,9 @@ export class WordDocumentProcessor {
           if (this._hlpAbstractNumIds.has(instance.getAbstractNumId())) isProtected = true;
           if (this._rowNumberAbstractNumIds.has(instance.getAbstractNumId())) isProtected = true;
         }
-      } catch { /* proceed */ }
+      } catch {
+        /* proceed */
+      }
 
       if (isProtected) {
         flushRun();
@@ -7298,8 +8191,8 @@ export class WordDocumentProcessor {
         for (const cell of row.getCells()) {
           const paragraphs = cell.getParagraphs();
           const listItems: Array<{
-            para: typeof paragraphs[0];
-            numbering: NonNullable<ReturnType<typeof paragraphs[0]['getNumbering']>>;
+            para: (typeof paragraphs)[0];
+            numbering: NonNullable<ReturnType<(typeof paragraphs)[0]["getNumbering"]>>;
           }> = [];
 
           for (const para of paragraphs) {
@@ -7313,7 +8206,9 @@ export class WordDocumentProcessor {
                 if (this._hlpAbstractNumIds.has(instance.getAbstractNumId())) continue;
                 if (this._rowNumberAbstractNumIds.has(instance.getAbstractNumId())) continue;
               }
-            } catch { /* proceed */ }
+            } catch {
+              /* proceed */
+            }
 
             listItems.push({ para, numbering });
           }
@@ -7329,10 +8224,13 @@ export class WordDocumentProcessor {
     for (const el of doc.getBodyElements()) {
       if (el instanceof Paragraph) bodyParagraphs.push(el);
     }
-    const bodyGroups = new Map<number, Array<{
-      para: Paragraph;
-      numbering: NonNullable<ReturnType<Paragraph['getNumbering']>>;
-    }>>();
+    const bodyGroups = new Map<
+      number,
+      Array<{
+        para: Paragraph;
+        numbering: NonNullable<ReturnType<Paragraph["getNumbering"]>>;
+      }>
+    >();
 
     for (const para of bodyParagraphs) {
       const numbering = para.getNumbering();
@@ -7345,7 +8243,9 @@ export class WordDocumentProcessor {
           if (this._hlpAbstractNumIds.has(instance.getAbstractNumId())) continue;
           if (this._rowNumberAbstractNumIds.has(instance.getAbstractNumId())) continue;
         }
-      } catch { /* proceed */ }
+      } catch {
+        /* proceed */
+      }
 
       if (!bodyGroups.has(numbering.numId)) {
         bodyGroups.set(numbering.numId, []);
@@ -7368,12 +8268,15 @@ export class WordDocumentProcessor {
    */
   private collapseLevelGapsInGroup(
     items: Array<{
-      para: { getNumbering(): { numId: number; level: number } | undefined; setNumbering(numId: number, level: number): void };
+      para: {
+        getNumbering(): { numId: number; level: number } | undefined;
+        setNumbering(numId: number, level: number): void;
+      };
       numbering: { numId: number; level: number };
     }>
   ): number {
     // Collect unique used levels sorted ascending
-    const usedLevels = [...new Set(items.map(i => i.numbering.level))].sort((a, b) => a - b);
+    const usedLevels = [...new Set(items.map((i) => i.numbering.level))].sort((a, b) => a - b);
 
     if (usedLevels.length < 2) return 0;
 
@@ -7396,7 +8299,7 @@ export class WordDocumentProcessor {
     });
 
     this.log.debug(
-      `  Collapsing level gaps: [${usedLevels.join(', ')}] → [${usedLevels.map((_, i) => usedLevels[0] + i).join(', ')}]`
+      `  Collapsing level gaps: [${usedLevels.join(", ")}] → [${usedLevels.map((_, i) => usedLevels[0] + i).join(", ")}]`
     );
 
     let changed = 0;
@@ -7437,9 +8340,9 @@ export class WordDocumentProcessor {
 
     // Trace indentation config values for debugging level 0 mismatch issues
     this.log.info(
-      `Bullet uniformity config: ${settings.indentationLevels.map((l, i) =>
-        `L${i}(sym=${l.symbolIndent}", txt=${l.textIndent}")`
-      ).join(', ')}`
+      `Bullet uniformity config: ${settings.indentationLevels
+        .map((l, i) => `L${i}(sym=${l.symbolIndent}", txt=${l.textIndent}")`)
+        .join(", ")}`
     );
 
     // DIAGNOSTIC: Log what UI is passing for bullet characters
@@ -7473,7 +8376,9 @@ export class WordDocumentProcessor {
     }
     // Create at least 9 levels (Word's max) or enough to cover all existing levels
     const totalLevelsNeeded = Math.max(settings.indentationLevels.length, maxLevel + 1, 9);
-    this.log.debug(`Max bullet level in document: ${maxLevel}, creating ${totalLevelsNeeded} levels`);
+    this.log.debug(
+      `Max bullet level in document: ${maxLevel}, creating ${totalLevelsNeeded} levels`
+    );
 
     // Create custom levels with font specified and UI indentation
     // Extend to cover all levels needed, extrapolating indentation for unconfigured levels
@@ -7486,14 +8391,16 @@ export class WordDocumentProcessor {
 
       // Use configured settings if available, otherwise extrapolate from last configured level
       // Each additional level adds 0.25 inches of indentation
-      const symbolIndent = configLevel?.symbolIndent
-        ?? (lastConfig.symbolIndent + (index - settings.indentationLevels.length + 1) * 0.25);
-      const textIndent = configLevel?.textIndent
-        ?? (lastConfig.textIndent + (index - settings.indentationLevels.length + 1) * 0.25);
+      const symbolIndent =
+        configLevel?.symbolIndent ??
+        lastConfig.symbolIndent + (index - settings.indentationLevels.length + 1) * 0.25;
+      const textIndent =
+        configLevel?.textIndent ??
+        lastConfig.textIndent + (index - settings.indentationLevels.length + 1) * 0.25;
 
       this.log.debug(
         `  Level ${index}: bulletChar="${bullet}" (U+${bullet.charCodeAt(0).toString(16).toUpperCase()}), ` +
-        `symbolIndent=${symbolIndent}", textIndent=${textIndent}"${configLevel ? "" : " (extrapolated)"}`
+          `symbolIndent=${symbolIndent}", textIndent=${textIndent}"${configLevel ? "" : " (extrapolated)"}`
       );
 
       const symbolTwips = Math.round(symbolIndent * 1440);
@@ -7509,14 +8416,16 @@ export class WordDocumentProcessor {
       // - leftIndent (w:left): where TEXT starts (in twips from left margin)
       // - hangingIndent (w:hanging): how far the BULLET/NUMBER hangs back from text position
       // So if symbolIndent=0.5" and textIndent=0.75", bullet is at 0.5" and text at 0.75"
-      levels.push(new NumberingLevel({
-        level: index,
-        format: "bullet",
-        text: mapping.char, // Font-specific character (e.g., · for Symbol, 'o' for Courier New)
-        font: mapping.font, // Correct font for this bullet type
-        leftIndent: textTwips, // Text starts at textIndent position
-        hangingIndent: hangingTwips, // Bullet hangs back by (textIndent - symbolIndent)
-      }));
+      levels.push(
+        new NumberingLevel({
+          level: index,
+          format: "bullet",
+          text: mapping.char, // Font-specific character (e.g., · for Symbol, 'o' for Courier New)
+          font: mapping.font, // Correct font for this bullet type
+          leftIndent: textTwips, // Text starts at textIndent position
+          hangingIndent: hangingTwips, // Bullet hangs back by (textIndent - symbolIndent)
+        })
+      );
     }
 
     // Create custom list with all UI-configured levels
@@ -7573,12 +8482,12 @@ export class WordDocumentProcessor {
               const extraTwips = this.getExtraHangingTwips();
               const textTwips = Math.round(levelConfig.textIndent * 1440) + extraTwips;
               const hangingTwips = textTwips - symbolTwips;
-              level.setLeftIndent(textTwips);      // Text starts at textIndent
+              level.setLeftIndent(textTwips); // Text starts at textIndent
               level.setHangingIndent(hangingTwips); // Number hangs back by (textIndent - symbolIndent)
 
               this.log.info(
                 `Level ${levelIndex}: config symbol=${levelConfig.symbolIndent}", text=${levelConfig.textIndent}" ` +
-                `→ left=${textTwips}tw, hanging=${hangingTwips}tw, bullet@${textTwips - hangingTwips}tw (${((textTwips - hangingTwips) / 1440).toFixed(2)}")`
+                  `→ left=${textTwips}tw, hanging=${hangingTwips}tw, bullet@${textTwips - hangingTwips}tw (${((textTwips - hangingTwips) / 1440).toFixed(2)}")`
               );
             }
 
@@ -7587,7 +8496,7 @@ export class WordDocumentProcessor {
             this.log.debug(
               `  Updated abstractNum level ${levelIndex}: ` +
                 `char="${mapping.char}", font=${mapping.font}, ` +
-                `textIndent=${levelConfig?.textIndent || 'default'}", symbolIndent=${levelConfig?.symbolIndent || 'default'}", color=#000000`
+                `textIndent=${levelConfig?.textIndent || "default"}", symbolIndent=${levelConfig?.symbolIndent || "default"}", color=#000000`
             );
           }
         }
@@ -7672,43 +8581,27 @@ export class WordDocumentProcessor {
         // Remove <w:tab w:val="num" .../> elements (self-closing)
         // Handles variations like: <w:tab w:val="num" w:pos="720"/>
         // and: <w:tab w:pos="720" w:val="num"/>
-        updatedContent = updatedContent.replace(
-          /<w:tab\s[^>]*w:val="num"[^/]*\/>\s*/g,
-          ""
-        );
+        updatedContent = updatedContent.replace(/<w:tab\s[^>]*w:val="num"[^/]*\/>\s*/g, "");
         // Also handle case where w:val="num" comes before other attributes
-        updatedContent = updatedContent.replace(
-          /<w:tab\s+w:val="num"[^/]*\/>\s*/g,
-          ""
-        );
+        updatedContent = updatedContent.replace(/<w:tab\s+w:val="num"[^/]*\/>\s*/g, "");
 
         // If <w:tabs> is now empty, remove the entire <w:tabs> element
-        updatedContent = updatedContent.replace(
-          /<w:tabs>\s*<\/w:tabs>/g,
-          ""
-        );
+        updatedContent = updatedContent.replace(/<w:tabs>\s*<\/w:tabs>/g, "");
         // Also handle self-closing empty tabs (defensive)
-        updatedContent = updatedContent.replace(
-          /<w:tabs\s*\/>/g,
-          ""
-        );
+        updatedContent = updatedContent.replace(/<w:tabs\s*\/>/g, "");
 
         if (updatedContent !== levelContent) {
           const updatedLevel = fullMatch.replace(levelContent, updatedContent);
           xmlContent = xmlContent.replace(fullMatch, updatedLevel);
           tabStopsRemoved++;
 
-          this.log.debug(
-            `Removed w:tab val="num" from list level ${match[1]}`
-          );
+          this.log.debug(`Removed w:tab val="num" from list level ${match[1]}`);
         }
       }
 
       if (tabStopsRemoved > 0) {
         await doc.setPart("word/numbering.xml", xmlContent);
-        this.log.info(
-          `Removed numbering tab stops from ${tabStopsRemoved} list levels`
-        );
+        this.log.info(`Removed numbering tab stops from ${tabStopsRemoved} list levels`);
       }
 
       return tabStopsRemoved;
@@ -7804,7 +8697,9 @@ export class WordDocumentProcessor {
     }
     // Create at least 9 levels (Word's max) or enough to cover all existing levels
     const totalLevelsNeeded = Math.max(settings.indentationLevels.length, maxLevel + 1, 9);
-    this.log.debug(`Max numbered level in document: ${maxLevel}, creating ${totalLevelsNeeded} levels`);
+    this.log.debug(
+      `Max numbered level in document: ${maxLevel}, creating ${totalLevelsNeeded} levels`
+    );
 
     // Create custom levels with UI indentation
     // Extend to cover all levels needed, extrapolating indentation for unconfigured levels
@@ -7816,10 +8711,12 @@ export class WordDocumentProcessor {
 
       // Use configured settings if available, otherwise extrapolate from last configured level
       // Each additional level adds 0.25 inches of indentation
-      const symbolIndent = configLevel?.symbolIndent
-        ?? (lastConfig.symbolIndent + (index - settings.indentationLevels.length + 1) * 0.25);
-      const textIndent = configLevel?.textIndent
-        ?? (lastConfig.textIndent + (index - settings.indentationLevels.length + 1) * 0.25);
+      const symbolIndent =
+        configLevel?.symbolIndent ??
+        lastConfig.symbolIndent + (index - settings.indentationLevels.length + 1) * 0.25;
+      const textIndent =
+        configLevel?.textIndent ??
+        lastConfig.textIndent + (index - settings.indentationLevels.length + 1) * 0.25;
       const format = formats[index] || formats[formats.length - 1] || "decimal";
 
       const symbolTwips = Math.round(symbolIndent * 1440);
@@ -7830,13 +8727,15 @@ export class WordDocumentProcessor {
       // OOXML indentation semantics:
       // - leftIndent (w:left): where TEXT starts (in twips from left margin)
       // - hangingIndent (w:hanging): how far the NUMBER hangs back from text position
-      levels.push(new NumberingLevel({
-        level: index,
-        format: format,
-        text: `%${index + 1}.`, // Standard template (e.g., %1., %2.)
-        leftIndent: textTwips, // Text starts at textIndent position
-        hangingIndent: hangingTwips, // Number hangs back by (textIndent - symbolIndent)
-      }));
+      levels.push(
+        new NumberingLevel({
+          level: index,
+          format: format,
+          text: `%${index + 1}.`, // Standard template (e.g., %1., %2.)
+          leftIndent: textTwips, // Text starts at textIndent position
+          hangingIndent: hangingTwips, // Number hangs back by (textIndent - symbolIndent)
+        })
+      );
     }
 
     // Create custom numbered list with all UI-configured levels
@@ -7921,7 +8820,7 @@ export class WordDocumentProcessor {
             const extraTwips = this.getExtraHangingTwips();
             const textTwips = Math.round(configLevel.textIndent * 1440) + extraTwips;
             const hangingTwips = textTwips - symbolTwips;
-            level.setLeftIndent(textTwips);      // Text starts at textIndent
+            level.setLeftIndent(textTwips); // Text starts at textIndent
             level.setHangingIndent(hangingTwips); // Number hangs back by (textIndent - symbolIndent)
             this.log.debug(
               `  Set numbered level ${levelIndex} indentation: textIndent=${textTwips}twips, hanging=${hangingTwips}twips (number at ${symbolTwips}twips)`
@@ -7998,7 +8897,7 @@ export class WordDocumentProcessor {
 
             // Skip completely empty cells (no text, no numbering) — these are
             // trailing empty rows that shouldn't count toward the detection threshold
-            if (text === '' && !numbering) {
+            if (text === "" && !numbering) {
               continue;
             }
 
@@ -8022,17 +8921,17 @@ export class WordDocumentProcessor {
         // Typed-number column: at least 2 matches and all (or all-but-one) cells match
         if (typedNumberCount >= 2 && typedNumberCount >= totalCells - 1) {
           for (const para of typedNumberParas) {
-            para.setAlignment('center');
+            para.setAlignment("center");
             para.setLeftIndent(0);
             para.setFirstLineIndent(0);
             para.setSpaceBefore(pointsToTwips(normalStyle.spaceBefore));
             para.setSpaceAfter(pointsToTwips(normalStyle.spaceAfter));
 
             // Format runs
-            for (const run of para.getRuns()) {
+            for (const run of this.getAllRunsFromParagraph(para)) {
               run.setFont(normalStyle.fontFamily);
               run.setSize(normalStyle.fontSize);
-              run.setColor('000000');
+              run.setColor("000000");
               run.setBold(true);
               run.setUnderline(false);
             }
@@ -8105,13 +9004,15 @@ export class WordDocumentProcessor {
             const text = para.getText().trim();
 
             // Empty cell with no numbering — skip entirely
-            if (text === '' && !numbering) {
+            if (text === "" && !numbering) {
               // Check if it's a ListParagraph with no explicit numbering:
               // convert to Normal to prevent style-inherited phantom numbering
-              const style = para.getStyle() || '';
-              if (style === 'ListParagraph' || style === 'List Paragraph') {
-                para.setStyle('Normal');
-                this.log.debug(`Converted empty ListParagraph to Normal in col ${col} to prevent phantom numbering`);
+              const style = para.getStyle() || "";
+              if (style === "ListParagraph" || style === "List Paragraph") {
+                para.setStyle("Normal");
+                this.log.debug(
+                  `Converted empty ListParagraph to Normal in col ${col} to prevent phantom numbering`
+                );
               }
               continue;
             }
@@ -8119,7 +9020,12 @@ export class WordDocumentProcessor {
             totalCells++;
 
             // Word numbered list paragraph with no text content (just the list number)
-            if (numbering && numbering.numId !== undefined && numbering.numId !== 0 && text === '') {
+            if (
+              numbering &&
+              numbering.numId !== undefined &&
+              numbering.numId !== 0 &&
+              text === ""
+            ) {
               if (this.isNumberedList(doc, numbering.numId)) {
                 matchCount++;
                 matchingParas.push(para);
@@ -8149,19 +9055,21 @@ export class WordDocumentProcessor {
             const level = abstractNum.getLevel(0);
             if (level) {
               abstractNum.removeLevel(0);
-              abstractNum.addLevel(NumberingLevel.create({
-                level: 0,
-                format: 'decimal',
-                text: '%1',
-                alignment: 'center',
-                leftIndent: 0,
-                hangingIndent: 0,
-                suffix: 'nothing',
-                font: normalStyle.fontFamily,
-                fontSize: normalStyle.fontSize * 2, // half-points
-                bold: true,
-                color: '000000',
-              }));
+              abstractNum.addLevel(
+                NumberingLevel.create({
+                  level: 0,
+                  format: "decimal",
+                  text: "%1",
+                  alignment: "center",
+                  leftIndent: 0,
+                  hangingIndent: 0,
+                  suffix: "nothing",
+                  font: normalStyle.fontFamily,
+                  fontSize: normalStyle.fontSize * 2, // half-points
+                  bold: true,
+                  color: "000000",
+                })
+              );
             }
 
             // Re-register with the manager to mark as modified —
@@ -8174,7 +9082,7 @@ export class WordDocumentProcessor {
 
           // Format each matched paragraph
           for (const para of matchingParas) {
-            para.setAlignment('center');
+            para.setAlignment("center");
             para.setSpaceBefore(pointsToTwips(normalStyle.spaceBefore));
             para.setSpaceAfter(pointsToTwips(normalStyle.spaceAfter));
             // Set indentation AFTER spacing — spacing setters can drop <w:ind>
@@ -8183,10 +9091,10 @@ export class WordDocumentProcessor {
             para.setHangingIndent(0);
 
             // Format runs if any exist
-            for (const run of para.getRuns()) {
+            for (const run of this.getAllRunsFromParagraph(para)) {
               run.setFont(normalStyle.fontFamily);
               run.setSize(normalStyle.fontSize);
-              run.setColor('000000');
+              run.setColor("000000");
               run.setBold(true);
               run.setUnderline(false);
             }
@@ -8233,44 +9141,44 @@ export class WordDocumentProcessor {
       // Parenthetical numbers: (1), (2), etc.
       {
         regex: /^\((\d+)\)\s*/,
-        getFormat: () => 'decimal',
+        getFormat: () => "decimal",
         getLevel: () => 0,
-        description: 'parenthetical decimal'
+        description: "parenthetical decimal",
       },
       // Number with closing paren: 1), 2), etc.
       {
         regex: /^(\d+)\)\s*/,
-        getFormat: () => 'decimal',
+        getFormat: () => "decimal",
         getLevel: () => 0,
-        description: 'decimal with paren'
+        description: "decimal with paren",
       },
       // Parenthetical letters: (a), (b), (A), (B), etc.
       {
         regex: /^\(([a-zA-Z])\)\s*/,
-        getFormat: (m) => m[1] === m[1].toUpperCase() ? 'upperLetter' : 'lowerLetter',
+        getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperLetter" : "lowerLetter"),
         getLevel: () => 1,
-        description: 'parenthetical letter'
+        description: "parenthetical letter",
       },
       // Letter with closing paren: a), b), A), B), etc.
       {
         regex: /^([a-zA-Z])\)\s*/,
-        getFormat: (m) => m[1] === m[1].toUpperCase() ? 'upperLetter' : 'lowerLetter',
+        getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperLetter" : "lowerLetter"),
         getLevel: () => 1,
-        description: 'letter with paren'
+        description: "letter with paren",
       },
       // Lowercase Roman numerals with period: i., ii., iii., iv., v., vi., vii., viii., ix., x., xi., xii., xiii.
       {
         regex: /^(i{1,3}|iv|vi{0,3}|ix|xi{1,3}|xiv|xv)\.\s*/i,
-        getFormat: (m) => m[1] === m[1].toUpperCase() ? 'upperRoman' : 'lowerRoman',
+        getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperRoman" : "lowerRoman"),
         getLevel: () => 2,
-        description: 'Roman numeral'
+        description: "Roman numeral",
       },
       // Parenthetical Roman: (i), (ii), (iii), (I), (II), etc.
       {
         regex: /^\((i{1,3}|iv|vi{0,3}|ix|xi{1,3}|xiv|xv)\)\s*/i,
-        getFormat: (m) => m[1] === m[1].toUpperCase() ? 'upperRoman' : 'lowerRoman',
+        getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperRoman" : "lowerRoman"),
         getLevel: () => 2,
-        description: 'parenthetical Roman'
+        description: "parenthetical Roman",
       },
     ];
 
@@ -8354,7 +9262,7 @@ export class WordDocumentProcessor {
 
                 if (numId !== undefined) {
                   // Remove the prefix from text
-                  const newText = text.replace(pattern.regex, '');
+                  const newText = text.replace(pattern.regex, "");
                   para.setText(newText);
 
                   // Apply numbering
@@ -8444,11 +9352,16 @@ export class WordDocumentProcessor {
       // fixed so all sibling typed prefixes get the SAME level (parentLevel + 1).
       // indentTwips tracks the parent's indentation so typed prefixes can compare their own
       // indent to decide whether they're genuinely deeper or at the same level.
-      let parentListContext: { isBullet: boolean; level: number; numId: number; indentTwips: number } | null = null;
+      let parentListContext: {
+        isBullet: boolean;
+        level: number;
+        numId: number;
+        indentTwips: number;
+      } | null = null;
       let gapSinceLastList = 0;
       // Sequence tracking: reuse numId for consecutive typed-prefix conversions at same type/level
       let seqNumId: number | null = null;
-      let seqType: 'bullet' | 'numbered' | null = null;
+      let seqType: "bullet" | "numbered" | null = null;
       let seqLevel: number | null = null;
 
       for (const para of paragraphs) {
@@ -8457,9 +9370,10 @@ export class WordDocumentProcessor {
         if (numbering && numbering.numId !== undefined && numbering.numId !== 0) {
           // Get indentation: paragraph-level first, then fall back to numbering definition
           const paraIndent = getParagraphIndentation(para);
-          const numDefIndent = paraIndent > 0
-            ? paraIndent
-            : (this.getListTextIndent(doc, numbering.numId, numbering.level ?? 0) ?? 0);
+          const numDefIndent =
+            paraIndent > 0
+              ? paraIndent
+              : (this.getListTextIndent(doc, numbering.numId, numbering.level ?? 0) ?? 0);
           const ctx = {
             isBullet: this.isBulletList(doc, numbering.numId),
             level: numbering.level ?? 0,
@@ -8515,7 +9429,7 @@ export class WordDocumentProcessor {
         // Use parentListContext (the original Word list item) for level calculation,
         // NOT lastListContext which may point to a previously converted sibling.
         // This ensures all siblings in a typed-prefix group get the SAME level.
-        let targetType: 'bullet' | 'numbered';
+        let targetType: "bullet" | "numbered";
         let targetLevel: number;
 
         if (parentListContext) {
@@ -8525,16 +9439,16 @@ export class WordDocumentProcessor {
 
           if (typedPrefixIndent > parentListContext.indentTwips + INDENT_THRESHOLD) {
             // Genuinely deeper indentation → sub-item
-            targetType = parentListContext.isBullet ? 'bullet' : 'numbered';
+            targetType = parentListContext.isBullet ? "bullet" : "numbered";
             targetLevel = Math.min(parentListContext.level + 1, 8);
           } else {
             // Same or less indent → same level as parent
-            targetType = detection.category === 'bullet' ? 'bullet' : 'numbered';
+            targetType = detection.category === "bullet" ? "bullet" : "numbered";
             targetLevel = parentListContext.level;
           }
         } else {
           // No context: native type at level 0
-          targetType = detection.category === 'bullet' ? 'bullet' : 'numbered';
+          targetType = detection.category === "bullet" ? "bullet" : "numbered";
           targetLevel = 0;
         }
 
@@ -8545,13 +9459,13 @@ export class WordDocumentProcessor {
         if (seqType === targetType && seqLevel === targetLevel && seqNumId !== null) {
           numId = seqNumId;
         } else {
-          if (targetType === 'bullet') {
+          if (targetType === "bullet") {
             numId = manager.createBulletList();
           } else {
             numId = manager.createNumberedList();
             // Apply the correct numbering format from the detected prefix type
             // This ensures "A." creates an upperLetter list, not a decimal list
-            if (detectedFormat && detectedFormat !== 'decimal') {
+            if (detectedFormat && detectedFormat !== "decimal") {
               try {
                 const instance = manager.getInstance(numId);
                 if (instance) {
@@ -8560,27 +9474,34 @@ export class WordDocumentProcessor {
                     const level = abstractNum.getLevel(targetLevel);
                     if (level) {
                       const format = this.parseNumberedFormat(
-                        detectedFormat === 'upperLetter' ? 'A' :
-                        detectedFormat === 'lowerLetter' ? 'a' :
-                        detectedFormat === 'lowerRoman' ? 'i' :
-                        detectedFormat === 'upperRoman' ? 'I' : '1'
+                        detectedFormat === "upperLetter"
+                          ? "A"
+                          : detectedFormat === "lowerLetter"
+                            ? "a"
+                            : detectedFormat === "lowerRoman"
+                              ? "i"
+                              : detectedFormat === "upperRoman"
+                                ? "I"
+                                : "1"
                       );
                       level.setFormat(format);
                       // Set text template: %1. for level 0, %2. for level 1, etc.
-                      const separator = detection.prefix?.includes(')') ? ')' : '.';
+                      const separator = detection.prefix?.includes(")") ? ")" : ".";
                       level.setText(`%${targetLevel + 1}${separator}`);
                     }
                   }
                 }
               } catch (fmtError) {
-                this.log.warn(`Failed to apply format ${detectedFormat} to numId ${numId}: ${fmtError}`);
+                this.log.warn(
+                  `Failed to apply format ${detectedFormat} to numId ${numId}: ${fmtError}`
+                );
               }
             }
           }
           applyIndentation(numId);
           // Restart numbering so converted typed-prefix lists start at 1
           // instead of continuing from a previous sequence's counter
-          if (targetType === 'numbered') {
+          if (targetType === "numbered") {
             numId = manager.restartNumbering(numId);
           }
           seqNumId = numId;
@@ -8595,17 +9516,17 @@ export class WordDocumentProcessor {
 
         this.log.debug(
           `  Context-converted: "${text.substring(0, 40)}..." -> ` +
-          `${targetType} level ${targetLevel} (numId=${numId})` +
-          (parentListContext
-            ? ` [parent: ${parentListContext.isBullet ? 'bullet' : 'numbered'} level ${parentListContext.level}]`
-            : ' [no prior context]')
+            `${targetType} level ${targetLevel} (numId=${numId})` +
+            (parentListContext
+              ? ` [parent: ${parentListContext.isBullet ? "bullet" : "numbered"} level ${parentListContext.level}]`
+              : " [no prior context]")
         );
 
         // Update lastListContext to track the converted item for downstream uses,
         // but do NOT update parentListContext — all siblings in this typed-prefix
         // group must reference the same original parent to get the same level.
         lastListContext = {
-          isBullet: targetType === 'bullet',
+          isBullet: targetType === "bullet",
           level: targetLevel,
           numId: numId,
         };
@@ -8693,12 +9614,12 @@ export class WordDocumentProcessor {
    * @returns The appropriate fallback format string ('A.' or 'a.')
    */
   private getFormatFallbackString(level0Format: string | undefined): string {
-    if (!level0Format) return 'a.';
+    if (!level0Format) return "a.";
 
-    const upperFormats = ['upperLetter', 'upperRoman'];
+    const upperFormats = ["upperLetter", "upperRoman"];
     const isUpperFamily = upperFormats.includes(level0Format);
 
-    return isUpperFamily ? 'A.' : 'a.';
+    return isUpperFamily ? "A." : "a.";
   }
 
   private async convertMixedListFormats(
@@ -8735,7 +9656,13 @@ export class WordDocumentProcessor {
 
         const dominantFormat = level0.getFormat();
         const isBulletList = dominantFormat === "bullet";
-        const numberedFormats = ["decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"];
+        const numberedFormats = [
+          "decimal",
+          "lowerLetter",
+          "upperLetter",
+          "lowerRoman",
+          "upperRoman",
+        ];
 
         // Collect all level formats to determine if this is intentionally mixed
         const levelFormats: Array<{ level: number; format: string }> = [];
@@ -8752,9 +9679,10 @@ export class WordDocumentProcessor {
         //   - Numbered (decimal) at level 0 + bullet at deeper levels
         //   - Numbered hierarchy: decimal→letter→roman
         // These should be PRESERVED, not flattened to uniform format.
-        const hasAnyMix = levelFormats.some(lf =>
-          (isBulletList && lf.format !== "bullet" && numberedFormats.includes(lf.format)) ||
-          (!isBulletList && lf.format === "bullet")
+        const hasAnyMix = levelFormats.some(
+          (lf) =>
+            (isBulletList && lf.format !== "bullet" && numberedFormats.includes(lf.format)) ||
+            (!isBulletList && lf.format === "bullet")
         );
 
         if (!hasAnyMix) continue;
@@ -8812,6 +9740,7 @@ export class WordDocumentProcessor {
         level: number;
         symbolIndent: number;
         textIndent: number;
+        numberedFormat?: string;
       }>;
     }
   ): Promise<number> {
@@ -8824,7 +9753,11 @@ export class WordDocumentProcessor {
     const hybridNumIds = new Set<number>();
     for (const para of doc.getAllParagraphs()) {
       const numbering = para.getNumbering();
-      if (numbering && numbering.numId !== undefined && this.isHybridNumberedBulletList(doc, numbering.numId)) {
+      if (
+        numbering &&
+        numbering.numId !== undefined &&
+        this.isHybridNumberedBulletList(doc, numbering.numId)
+      ) {
         hybridNumIds.add(numbering.numId);
       }
     }
@@ -8844,36 +9777,33 @@ export class WordDocumentProcessor {
       const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
       if (!abstractNum) continue;
 
-      // Determine letter case from level 0 format (upper vs lower family)
-      const level0 = abstractNum.getLevel(0);
-      const level0Format = level0?.getFormat();
-      const useUpperCase = level0Format && ['upperLetter', 'upperRoman'].includes(level0Format);
-      const letterFormat = useUpperCase ? 'upperLetter' : 'lowerLetter';
-
-      // Convert each bullet level (1-8) to letter format
+      // Convert each bullet level (1-8) to the configured format from settings
       for (let levelIndex = 1; levelIndex < 9; levelIndex++) {
         const level = abstractNum.getLevel(levelIndex);
         if (level && level.getFormat() === "bullet") {
-          // Convert to letter format (respecting upper/lower case from level 0)
-          level.setFormat(letterFormat);
-          level.setText(`%${levelIndex + 1}.`); // a., b., c. or A., B., C. format
+          // Use per-level format from settings, fall back to lowerLetter
+          const levelConfig = settings.indentationLevels[levelIndex];
+          const levelFormat = levelConfig?.numberedFormat
+            ? this.parseNumberedFormat(levelConfig.numberedFormat)
+            : "lowerLetter";
+          level.setFormat(levelFormat);
+          level.setText(`%${levelIndex + 1}.`);
           level.setFont("Verdana"); // Standard font for letters
           level.setFontSize(24); // 12pt = 24 half-points
           level.setColor("000000");
 
           // Apply UI-configured indentation if available
           // OOXML semantics: w:left = where TEXT starts, w:hanging = how far NUMBER hangs back
-          const config = settings.indentationLevels[levelIndex];
-          if (config) {
-            const symbolTwips = Math.round(config.symbolIndent * 1440);
-            const textTwips = Math.round(config.textIndent * 1440);
-            level.setLeftIndent(textTwips);      // Text starts at textIndent
+          if (levelConfig) {
+            const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
+            const textTwips = Math.round(levelConfig.textIndent * 1440);
+            level.setLeftIndent(textTwips); // Text starts at textIndent
             level.setHangingIndent(textTwips - symbolTwips);
           }
 
           conversions++;
           this.log.debug(
-            `  Converted level ${levelIndex} in numId ${numId}: bullet -> ${letterFormat}`
+            `  Converted level ${levelIndex} in numId ${numId}: bullet -> ${levelFormat}`
           );
         }
       }
@@ -8937,7 +9867,9 @@ export class WordDocumentProcessor {
           // Skip if bullets are not majority or equal (favor bullets when equal)
           if (bulletCount < numberedCount || bulletCount === 0) continue;
 
-          this.log.debug(`  Cell has bullets >= numbers (${bulletCount} bullet, ${numberedCount} numbered)`);
+          this.log.debug(
+            `  Cell has bullets >= numbers (${bulletCount} bullet, ${numberedCount} numbered)`
+          );
 
           // Convert numbered sub-levels in hybrid lists to bullets
           for (const numId of numIdsInCell) {
@@ -8949,13 +9881,20 @@ export class WordDocumentProcessor {
             const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
             if (!abstractNum) continue;
 
-            const numberedFormats = ["decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"];
+            const numberedFormats = [
+              "decimal",
+              "lowerLetter",
+              "upperLetter",
+              "lowerRoman",
+              "upperRoman",
+            ];
             for (let levelIndex = 1; levelIndex < 9; levelIndex++) {
               const level = abstractNum.getLevel(levelIndex);
               if (level && numberedFormats.includes(level.getFormat())) {
                 // Get UI-configured bullet for this level
                 const levelConfig = settings.indentationLevels[levelIndex];
-                const bulletChar = levelConfig?.bulletChar || settings.indentationLevels[1]?.bulletChar || "○";
+                const bulletChar =
+                  levelConfig?.bulletChar || settings.indentationLevels[1]?.bulletChar || "○";
 
                 const mapping = getBulletMapping(bulletChar);
 
@@ -8969,7 +9908,7 @@ export class WordDocumentProcessor {
                 if (levelConfig) {
                   const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
                   const textTwips = Math.round(levelConfig.textIndent * 1440);
-                  level.setLeftIndent(textTwips);      // Text starts at textIndent
+                  level.setLeftIndent(textTwips); // Text starts at textIndent
                   level.setHangingIndent(textTwips - symbolTwips);
                 }
 
@@ -9064,7 +10003,9 @@ export class WordDocumentProcessor {
       if (counts.bulletCount < counts.numberedCount || counts.bulletCount === 0) continue;
       if (!this.isHybridBulletNumberedList(doc, numId)) continue;
 
-      this.log.debug(`  List numId ${numId} has bullets >= numbers (${counts.bulletCount} bullet, ${counts.numberedCount} numbered)`);
+      this.log.debug(
+        `  List numId ${numId} has bullets >= numbers (${counts.bulletCount} bullet, ${counts.numberedCount} numbered)`
+      );
 
       const instance = manager.getInstance(numId);
       if (!instance) continue;
@@ -9077,7 +10018,8 @@ export class WordDocumentProcessor {
         const level = abstractNum.getLevel(levelIndex);
         if (level && numberedFormats.includes(level.getFormat())) {
           const levelConfig = settings.indentationLevels[levelIndex];
-          const bulletChar = levelConfig?.bulletChar || settings.indentationLevels[1]?.bulletChar || "○";
+          const bulletChar =
+            levelConfig?.bulletChar || settings.indentationLevels[1]?.bulletChar || "○";
 
           const mapping = getBulletMapping(bulletChar);
 
@@ -9091,7 +10033,7 @@ export class WordDocumentProcessor {
           if (levelConfig) {
             const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
             const textTwips = Math.round(levelConfig.textIndent * 1440);
-            level.setLeftIndent(textTwips);      // Text starts at textIndent
+            level.setLeftIndent(textTwips); // Text starts at textIndent
             level.setHangingIndent(textTwips - symbolTwips);
           }
 
@@ -9133,7 +10075,7 @@ export class WordDocumentProcessor {
 
     // Get preserveBold from Normal style (table cells use Normal style formatting)
     // Use DIRECT formatting check only (not getEffectiveBold) to avoid table style inheritance issues
-    const normalStyle = options.styles?.find((s: { id: string }) => s.id === 'normal');
+    const normalStyle = options.styles?.find((s: { id: string }) => s.id === "normal");
     const preserveBold = normalStyle?.preserveBold ?? true; // Default to preserve if not specified
 
     // Get Normal style font and alignment values for shaded cells and first row cells
@@ -9143,16 +10085,22 @@ export class WordDocumentProcessor {
     const preserveCenterAlignment = normalStyle?.preserveCenterAlignment ?? false;
 
     // Get Normal style spacing values for shaded cells and first row cells
-    const normalSpaceBefore = normalStyle?.spaceBefore ?? 3;  // Default 3pt
-    const normalSpaceAfter = normalStyle?.spaceAfter ?? 3;    // Default 3pt
+    const normalSpaceBefore = normalStyle?.spaceBefore ?? 3; // Default 3pt
+    const normalSpaceAfter = normalStyle?.spaceAfter ?? 3; // Default 3pt
     const normalLineSpacing = normalStyle?.lineSpacing ?? 1.0; // Default single spacing
 
-    this.log.info(`[DEBUG] applyTableUniformity: preserveBold=${preserveBold} (normalStyle?.preserveBold=${normalStyle?.preserveBold})`);
-    this.log.debug(`[DEBUG] options.styles: ${JSON.stringify(options.styles?.map(s => ({ id: s.id, preserveBold: s.preserveBold })) || 'undefined')}`);
-    this.log.debug(`[DEBUG] Normal style spacing: before=${normalSpaceBefore}pt, after=${normalSpaceAfter}pt, line=${normalLineSpacing}`);
+    this.log.info(
+      `[DEBUG] applyTableUniformity: preserveBold=${preserveBold} (normalStyle?.preserveBold=${normalStyle?.preserveBold})`
+    );
+    this.log.debug(
+      `[DEBUG] options.styles: ${JSON.stringify(options.styles?.map((s) => ({ id: s.id, preserveBold: s.preserveBold })) || "undefined")}`
+    );
+    this.log.debug(
+      `[DEBUG] Normal style spacing: before=${normalSpaceBefore}pt, after=${normalSpaceAfter}pt, line=${normalLineSpacing}`
+    );
 
     // Get Heading 2 style configuration for 1x1 tables
-    const heading2Style = options.styles?.find((s: { id: string }) => s.id === 'header2');
+    const heading2Style = options.styles?.find((s: { id: string }) => s.id === "header2");
     const heading2FontFamily = heading2Style?.fontFamily ?? "Verdana";
     const heading2FontSize = heading2Style?.fontSize ?? 14; // 14pt default for Heading 2
 
@@ -9227,10 +10175,7 @@ export class WordDocumentProcessor {
 
           // Also apply to _originalStylesXml so changes survive mergeStylesWithOriginal()
           if (docAny._originalStylesXml) {
-            const fillPattern = new RegExp(
-              `(w:fill=["'])${oldColor}(["'])`,
-              "gi"
-            );
+            const fillPattern = new RegExp(`(w:fill=["'])${oldColor}(["'])`, "gi");
             docAny._originalStylesXml = docAny._originalStylesXml.replace(
               fillPattern,
               `$1${newColor}$2`
@@ -9404,7 +10349,8 @@ export class WordDocumentProcessor {
     // Bullet characters (including dash variants)
     if (/^[•●○◦▪▫‣⁃\-–—]\s/.test(text)) return true;
     // Numbered: "1.", "1)", "(1)", "a.", "a)", "(a)", "i.", etc.
-    if (/^(\d+[\.\):]|\(\d+\)|[a-zA-Z][\.\):]|\([a-zA-Z]\)|[ivxIVX]+[\.\):])/.test(text)) return true;
+    if (/^(\d+[\.\):]|\(\d+\)|[a-zA-Z][\.\):]|\([a-zA-Z]\)|[ivxIVX]+[\.\):])/.test(text))
+      return true;
     return false;
   }
 
@@ -9426,23 +10372,29 @@ export class WordDocumentProcessor {
     for (let i = 0; i < paragraphs.length; i++) {
       const para = paragraphs[i];
       const numbering = para.getNumbering();
-      const text = para.getText()?.trim() || '';
+      const text = para.getText()?.trim() || "";
 
       // Method 1: Check Word list formatting via getNumbering()
       if (numbering && numbering.numId) {
-        this.log.info(`  Para ${i}: FOUND LIST via getNumbering() numId=${numbering.numId}, text="${text.substring(0, 40)}..."`);
+        this.log.info(
+          `  Para ${i}: FOUND LIST via getNumbering() numId=${numbering.numId}, text="${text.substring(0, 40)}..."`
+        );
         return true;
       }
 
       // Method 2: Check Word list formatting via hasNumbering() (handles edge cases)
-      if (typeof para.hasNumbering === 'function' && para.hasNumbering()) {
-        this.log.info(`  Para ${i}: FOUND LIST via hasNumbering(), text="${text.substring(0, 40)}..."`);
+      if (typeof para.hasNumbering === "function" && para.hasNumbering()) {
+        this.log.info(
+          `  Para ${i}: FOUND LIST via hasNumbering(), text="${text.substring(0, 40)}..."`
+        );
         return true;
       }
 
       // Method 3: Check for typed list prefixes (fallback)
       if (this.hasTypedListPrefix(text)) {
-        this.log.info(`  Para ${i}: FOUND LIST via typed prefix, text="${text.substring(0, 40)}..."`);
+        this.log.info(
+          `  Para ${i}: FOUND LIST via typed prefix, text="${text.substring(0, 40)}..."`
+        );
         return true;
       }
     }
@@ -9496,8 +10448,12 @@ export class WordDocumentProcessor {
     const normalStyle = options.styles?.find((s: { id: string }) => s.id === "normal");
     const preserveBold = normalStyle?.preserveBold ?? true;
 
-    this.log.info(`[DEBUG] applySmartTableFormatting: preserveBold=${preserveBold} (normalStyle?.preserveBold=${normalStyle?.preserveBold})`);
-    this.log.debug(`[DEBUG] options.styles: ${JSON.stringify(options.styles?.map(s => ({ id: s.id, preserveBold: s.preserveBold })) || 'undefined')}`);
+    this.log.info(
+      `[DEBUG] applySmartTableFormatting: preserveBold=${preserveBold} (normalStyle?.preserveBold=${normalStyle?.preserveBold})`
+    );
+    this.log.debug(
+      `[DEBUG] options.styles: ${JSON.stringify(options.styles?.map((s) => ({ id: s.id, preserveBold: s.preserveBold })) || "undefined")}`
+    );
 
     // Get Heading 2 style configuration for 1x1 tables
     const heading2Style = options.styles?.find((s: { id: string }) => s.id === "header2");
@@ -9557,7 +10513,7 @@ export class WordDocumentProcessor {
               this.log.debug(`Skipping 1x1 table styling (${lineCount} lines)`);
 
               // Clear existing shading from excluded tables
-              singleCell.setShading({ fill: 'auto', pattern: "clear", color: "auto" });
+              singleCell.setShading({ fill: "auto", pattern: "clear", color: "auto" });
 
               // Still apply cell margins even for excluded tables
               singleCell.setMargins(cellMargins);
@@ -9579,7 +10535,7 @@ export class WordDocumentProcessor {
 
               // Apply Heading 2 font/size and bold formatting
               for (const para of singleCell.getParagraphs()) {
-                for (const run of para.getRuns()) {
+                for (const run of this.getAllRunsFromParagraph(para)) {
                   run.setFont(heading2FontFamily);
                   run.setSize(heading2FontSize);
                   if (!preserveBold) {
@@ -9588,7 +10544,9 @@ export class WordDocumentProcessor {
                 }
               }
 
-              this.log.debug(`Applied Header 2 formatting (#${header2Color}, ${heading2FontFamily} ${heading2FontSize}pt) to 1x1 table`);
+              this.log.debug(
+                `Applied Header 2 formatting (#${header2Color}, ${heading2FontFamily} ${heading2FontSize}pt) to 1x1 table`
+              );
             } else {
               this.log.debug(
                 `Skipped shading for 1x1 table - no existing shading and no Heading 2 style`
@@ -9611,12 +10569,16 @@ export class WordDocumentProcessor {
 
             for (const cell of row.getCells()) {
               // Check cell shading using resolved shading detection (direct fill only)
-              const { hasShading, fill: originalColor } = this.getResolvedCellShading(cell, table, doc);
+              const { hasShading, fill: originalColor } = this.getResolvedCellShading(
+                cell,
+                table,
+                doc
+              );
 
               // DEBUG: Log each cell's color evaluation
               this.log.debug(
                 `[Table ${formattedCount}] Row ${rowIndex}, Cell ${cellIndex}: ` +
-                `isFirstRow=${isFirstRow}, resolvedShading=${hasShading}, originalColor="${originalColor || "NONE"}"`
+                  `isFirstRow=${isFirstRow}, resolvedShading=${hasShading}, originalColor="${originalColor || "NONE"}"`
               );
 
               if (isFirstRow) {
@@ -9629,7 +10591,7 @@ export class WordDocumentProcessor {
                 // Set all text in the header to bold (unless preserveBold is enabled)
                 for (const para of cell.getParagraphs()) {
                   if (!preserveBold) {
-                    for (const run of para.getRuns()) {
+                    for (const run of this.getAllRunsFromParagraph(para)) {
                       run.setBold(true);
                     }
                   }
@@ -9648,7 +10610,7 @@ export class WordDocumentProcessor {
                 // Set all text in shaded data cells to bold (unless preserveBold is enabled)
                 for (const para of cell.getParagraphs()) {
                   if (!preserveBold) {
-                    for (const run of para.getRuns()) {
+                    for (const run of this.getAllRunsFromParagraph(para)) {
                       run.setBold(true);
                     }
                   }
@@ -9688,20 +10650,41 @@ export class WordDocumentProcessor {
   /**
    * Standardize hyperlink colors - Set all hyperlinks to #0000FF (blue)
    *
-   * Iterates paragraphs and modifies hyperlink-styled runs obtained via
-   * para.getRuns() (which have proper tracking context) instead of using
-   * doc.updateAllHyperlinkColors() which creates non-standard revision types
-   * that Word doesn't recognize.
+   * Traverses paragraph content and modifies hyperlink-styled runs while
+   * skipping runs inside w:del/w:moveFrom revisions — modifying those runs
+   * corrupts the revision XML structure and causes deleted text to reappear.
    */
   private async standardizeHyperlinkColors(doc: Document): Promise<number> {
     this.log.debug("=== STANDARDIZING HYPERLINK COLORS ===");
 
     let updatedCount = 0;
+
+    const setBlue = (run: Run) => {
+      if (run.isHyperlinkStyled() && run.getColor() !== "0000FF") {
+        run.setColor("0000FF");
+        updatedCount++;
+      }
+    };
+
     for (const para of doc.getAllParagraphs()) {
-      for (const run of para.getRuns()) {
-        if (run.isHyperlinkStyled() && run.getColor() !== "0000FF") {
-          run.setColor("0000FF");
-          updatedCount++;
+      const content = para.getContent();
+      for (const item of content) {
+        if (item instanceof Run) {
+          setBlue(item);
+        } else if (item instanceof Hyperlink) {
+          const run = item.getRun();
+          if (run) setBlue(run);
+        } else if (item instanceof Revision) {
+          if (item.getType() === "delete" || item.getType() === "moveFrom") continue;
+          const revContent = item.getContent();
+          for (const revItem of revContent) {
+            if (revItem instanceof Run) {
+              setBlue(revItem);
+            } else if (revItem instanceof Hyperlink) {
+              const run = revItem.getRun();
+              if (run) setBlue(run);
+            }
+          }
         }
       }
     }
@@ -9724,8 +10707,10 @@ export class WordDocumentProcessor {
     const hyperlinks = await this.docXMLater.extractHyperlinks(doc);
     let fixedCount = 0;
 
-    for (const { hyperlink, text: sanitizedLinkText } of hyperlinks) {
-      const anchor = hyperlink.getAnchor();
+    for (const { hyperlink, isComplexField, text: sanitizedLinkText } of hyperlinks) {
+      // ComplexField hyperlinks don't have getAnchor() — skip for internal link repair
+      if (isComplexField) continue;
+      const anchor = (hyperlink as Hyperlink).getAnchor();
       if (!anchor) continue; // Not an internal hyperlink
 
       // Check if bookmark exists
@@ -9801,7 +10786,7 @@ export class WordDocumentProcessor {
       // This handles paragraphs with unaccepted tracked changes where getText() returns empty
       if (para instanceof Paragraph) {
         const runs = this.getAllRunsFromParagraph(para);
-        return runs.map(r => r.getText() || "").join("");
+        return runs.map((r) => r.getText() || "").join("");
       }
       return "";
     } catch (error) {
@@ -9892,9 +10877,9 @@ export class WordDocumentProcessor {
     // - Direct formatting precedence over styles
     // By applying both style AND explicit formatting, we ensure the result is correct.
     para.setAlignment("right");
-    para.setSpaceBefore(60);     // 3pt = 60 twips
-    para.setSpaceAfter(0);       // 0pt
-    para.setLineSpacing(240, "exact");  // 12pt exact
+    para.setSpaceBefore(60); // 3pt = 60 twips
+    para.setSpaceAfter(0); // 0pt
+    para.setLineSpacing(240, "exact"); // 12pt exact
 
     return para;
   }
@@ -9938,10 +10923,12 @@ export class WordDocumentProcessor {
       const content = para.getContent();
       let foundTopHyperlink = false;
 
-      // Check each content item for hyperlinks - handles 3 cases:
+      // Check each content item for hyperlinks - handles 5 cases:
       // 1. Direct Hyperlink instances
       // 2. Hyperlinks inside Revision elements (w:ins, w:del)
       // 3. HYPERLINK field codes (ComplexField)
+      // 4. Plain Run text (unassembled field runs or manually-formatted hyperlink text)
+      // 5. PreservedElement (nested tracked changes wrapping hyperlink content)
       for (const item of content) {
         // Case 1: Direct Hyperlink instances
         if (item instanceof Hyperlink) {
@@ -9962,6 +10949,11 @@ export class WordDocumentProcessor {
                 this.log.debug("Applied formatting to Hyperlink inside Revision");
               }
             }
+          }
+          // Fallback: check revision text for non-Hyperlink content (e.g., unassembled field runs)
+          if (!foundTopHyperlink && this.isTopOfDocumentHyperlink(item.getText())) {
+            foundTopHyperlink = true;
+            this.log.debug("Found Top of Document text in Revision runs");
           }
         }
         // Case 3: HYPERLINK field codes (ComplexField)
@@ -9987,9 +10979,9 @@ export class WordDocumentProcessor {
               // ComplexField uses setInstruction() with buildHyperlinkInstruction()
               if (parsedHyperlink?.anchor !== "_top") {
                 const newInstruction = buildHyperlinkInstruction(
-                  parsedHyperlink?.url || "",  // Keep URL (empty for internal links)
-                  "_top",                       // New anchor
-                  parsedHyperlink?.tooltip      // Preserve tooltip if any
+                  parsedHyperlink?.url || "", // Keep URL (empty for internal links)
+                  "_top", // New anchor
+                  parsedHyperlink?.tooltip // Preserve tooltip if any
                 );
                 item.setInstruction(newInstruction);
                 this.log.debug(`Updated ComplexField instruction to use "_top" anchor`);
@@ -9998,6 +10990,27 @@ export class WordDocumentProcessor {
               foundTopHyperlink = true;
               this.log.debug("Applied formatting to HYPERLINK field code");
             }
+          }
+        }
+        // Case 4: Plain Run text (unassembled complex field runs or manually-formatted text)
+        // Matches the duplicate detection's Run check to ensure symmetric behavior
+        else if (item instanceof Run) {
+          if (this.isTopOfDocumentHyperlink(item.getText())) {
+            foundTopHyperlink = true;
+            this.log.debug("Found Top of Document text in plain Run");
+          }
+        }
+        // Case 5: PreservedElement (nested tracked changes wrapping hyperlink content)
+        // Raw XML from nested revisions (e.g., w:ins containing w:del) is opaque;
+        // check the XML text for "Top of" to detect preserved hyperlinks
+        else if (item instanceof PreservedElement) {
+          const rawXml = item.getRawXml().toLowerCase();
+          if (
+            rawXml.includes("top of") &&
+            (rawXml.includes("document") || rawXml.includes("_top"))
+          ) {
+            foundTopHyperlink = true;
+            this.log.debug("Found Top of Document hyperlink in PreservedElement");
           }
         }
       }
@@ -10015,12 +11028,14 @@ export class WordDocumentProcessor {
         // Style-only approach has proven unreliable (attempted 20+ times).
         // By applying both style AND explicit formatting, we ensure the result is correct.
         para.setAlignment("right");
-        para.setSpaceBefore(60);     // 3pt = 60 twips
-        para.setSpaceAfter(0);       // 0pt
-        para.setLineSpacing(240, "exact");  // 12pt exact
+        para.setSpaceBefore(60); // 3pt = 60 twips
+        para.setSpaceAfter(0); // 0pt
+        para.setLineSpacing(240, "exact"); // 12pt exact
 
         fixedCount++;
-        this.log.debug("Cleared direct formatting, applied TopHyperlink style, and explicit formatting");
+        this.log.debug(
+          "Cleared direct formatting, applied TopHyperlink style, and explicit formatting"
+        );
       }
     }
 
@@ -10036,8 +11051,10 @@ export class WordDocumentProcessor {
    */
   private isTopOfDocumentHyperlink(text: string): boolean {
     const cleanText = sanitizeHyperlinkText(text).toLowerCase();
-    return cleanText.includes("top of") &&
-           (cleanText.includes("document") || cleanText === "top of the document");
+    return (
+      cleanText.includes("top of") &&
+      (cleanText.includes("document") || cleanText === "top of the document")
+    );
   }
 
   /**
@@ -10050,14 +11067,17 @@ export class WordDocumentProcessor {
     // Use replace: true to clear any existing characterStyle reference (e.g., "Hyperlink")
     // This ensures the explicit formatting takes precedence in Word
     // Explicitly set bold/italic to false to prevent formatting bleed
-    hyperlink.setFormatting({
-      font: "Verdana",
-      size: 12,
-      color: "0000FF",
-      underline: "single",
-      bold: false,
-      italic: false,
-    }, { replace: true });
+    hyperlink.setFormatting(
+      {
+        font: "Verdana",
+        size: 12,
+        color: "0000FF",
+        underline: "single",
+        bold: false,
+        italic: false,
+      },
+      { replace: true }
+    );
 
     // Ensure text is "Top of the Document" (with "the")
     const currentText = sanitizeHyperlinkText(hyperlink.getText());
@@ -10070,7 +11090,7 @@ export class WordDocumentProcessor {
     const currentAnchor = hyperlink.getAnchor();
     if (currentAnchor !== "_top") {
       hyperlink.setAnchor("_top");
-      this.log.debug(`Updated hyperlink anchor from "${currentAnchor || 'none'}" to "_top"`);
+      this.log.debug(`Updated hyperlink anchor from "${currentAnchor || "none"}" to "_top"`);
     }
   }
 
@@ -10146,11 +11166,15 @@ export class WordDocumentProcessor {
         const isShaded = shadingFill && shadingFill !== "AUTO" && shadingFill !== "FFFFFF";
 
         if (isShaded) {
-          this.log.debug(`Table ${tableIndex} is a shaded 1x1 table (fill: ${shadingFill}) - skipping Top of Document link`);
+          this.log.debug(
+            `Table ${tableIndex} is a shaded 1x1 table (fill: ${shadingFill}) - skipping Top of Document link`
+          );
         } else {
           // Treat unshaded 1x1 tables the same as Header 2 tables
           hasHeader2 = true;
-          this.log.debug(`Table ${tableIndex} is an unshaded 1x1 table - will add Top of Document link`);
+          this.log.debug(
+            `Table ${tableIndex} is an unshaded 1x1 table - will add Top of Document link`
+          );
         }
       } else {
         // Original Header 2 detection for non-1x1 tables
@@ -10242,6 +11266,23 @@ export class WordDocumentProcessor {
                   return true;
                 }
               }
+              // Also check PreservedElement raw XML (nested tracked changes wrapping hyperlinks)
+              if (item instanceof PreservedElement) {
+                const rawXml = item.getRawXml().toLowerCase();
+                if (
+                  rawXml.includes("top of") &&
+                  (rawXml.includes("document") || rawXml.includes("_top"))
+                ) {
+                  return true;
+                }
+              }
+              // Check Revision text (unassembled field runs inside tracked changes)
+              if (item instanceof Revision) {
+                const revText = item.getText().toLowerCase();
+                if (revText.includes("top of")) {
+                  return true;
+                }
+              }
               return false;
             });
 
@@ -10249,7 +11290,9 @@ export class WordDocumentProcessor {
               // SAFE: Skip existing hyperlinks (never modify existing document objects)
               // Modifying existing objects with setText() corrupts DocXMLater's internal state
               // See CORRUPTION_FIX.md for detailed explanation of this principle
-              this.log.debug(`Hyperlink already exists at position ${tablePosition - lookback} before table ${tableIndex}, skipping`);
+              this.log.debug(
+                `Hyperlink already exists at position ${tablePosition - lookback} before table ${tableIndex}, skipping`
+              );
               shouldInsert = false;
               break;
             }
@@ -10308,7 +11351,7 @@ export class WordDocumentProcessor {
       matchType: "contains" | "exact" | "startsWith";
       applyTo: "url" | "text" | "both";
     }>,
-    author: string = 'DocHub'
+    author: string = "DocHub"
   ): Promise<number> {
     if (!customReplacements || customReplacements.length === 0) {
       this.log.debug("No custom replacements configured - skipping outdated title replacement");
@@ -10318,7 +11361,7 @@ export class WordDocumentProcessor {
     let replacedCount = 0;
     const hyperlinks = await this.docXMLater.extractHyperlinks(doc);
 
-    for (const { hyperlink, paragraph, text } of hyperlinks) {
+    for (const { hyperlink, isComplexField, paragraph, text } of hyperlinks) {
       for (const rule of customReplacements) {
         // Only apply rules that target text or both
         if (rule.applyTo === "text" || rule.applyTo === "both") {
@@ -10326,7 +11369,11 @@ export class WordDocumentProcessor {
 
           if (shouldApply) {
             const newText = text.replace(rule.find, rule.replace);
-            this.setHyperlinkTextTracked(doc, hyperlink, paragraph, newText, author);
+            if (isComplexField) {
+              this.setComplexFieldTextTracked(doc, hyperlink as ComplexField, newText, author);
+            } else {
+              this.setHyperlinkTextTracked(doc, hyperlink as Hyperlink, paragraph, newText, author);
+            }
             replacedCount++;
 
             this.log.debug(`Replaced title: "${text}" → "${newText}"`);
@@ -10368,8 +11415,10 @@ export class WordDocumentProcessor {
     let existingWarningIndices: number[] = [];
 
     // Use precise matching for the two disclaimer lines
-    const disclaimerLine1Pattern = "not to be reproduced or disclosed to others without prior written approval";
-    const disclaimerLine2Pattern = "electronic data = official version / paper copy = informational only";
+    const disclaimerLine1Pattern =
+      "not to be reproduced or disclosed to others without prior written approval";
+    const disclaimerLine2Pattern =
+      "electronic data = official version / paper copy = informational only";
 
     // Also keep broader patterns for catching malformed/partial disclaimers
     const additionalPatterns = [
@@ -10381,9 +11430,9 @@ export class WordDocumentProcessor {
 
     for (let i = 0; i < paragraphs.length; i++) {
       const text = this.getParagraphText(paragraphs[i])
-        .replace(/[\u00A0\u2002\u2003\u2009\u200B]/g, ' ')
+        .replace(/[\u00A0\u2002\u2003\u2009\u200B]/g, " ")
         .toLowerCase()
-        .replace(/-/g, '/'); // Normalize dashes to slashes for matching both "-" and "/" variants
+        .replace(/-/g, "/"); // Normalize dashes to slashes for matching both "-" and "/" variants
 
       // Check for exact disclaimer lines first
       const matchesLine1 = text.includes(disclaimerLine1Pattern);
@@ -10393,15 +11442,21 @@ export class WordDocumentProcessor {
 
       if (matchesLine1 || matchesLine2 || matchesAdditional) {
         existingWarningIndices.push(i);
-        this.log.debug(`Found existing disclaimer paragraph at index ${i}: "${text.substring(0, 50)}..."`);
+        this.log.debug(
+          `Found existing disclaimer paragraph at index ${i}: "${text.substring(0, 50)}..."`
+        );
       }
     }
 
-    this.log.debug(`Disclaimer detection: scanned ${paragraphs.length} paragraphs, found ${existingWarningIndices.length} match(es)`);
+    this.log.debug(
+      `Disclaimer detection: scanned ${paragraphs.length} paragraphs, found ${existingWarningIndices.length} match(es)`
+    );
 
     // Step 2: Remove existing disclaimer paragraphs if found
     if (existingWarningIndices.length > 0) {
-      this.log.debug(`Found ${existingWarningIndices.length} existing disclaimer paragraph(s) to remove`);
+      this.log.debug(
+        `Found ${existingWarningIndices.length} existing disclaimer paragraph(s) to remove`
+      );
       // Remove in reverse order to maintain indices
       existingWarningIndices.sort((a, b) => b - a);
       for (const index of existingWarningIndices) {
@@ -10431,6 +11486,33 @@ export class WordDocumentProcessor {
         if (item instanceof ComplexField && item.isHyperlinkField()) {
           const text = (item.getResult() || "").toLowerCase();
           if (text.includes("top of")) {
+            hasTopHyperlinkNearEnd = true;
+            break;
+          }
+        }
+        // Check plain Run text (unassembled field runs)
+        if (item instanceof Run) {
+          const runText = item.getText().toLowerCase();
+          if (runText.includes("top of the document")) {
+            hasTopHyperlinkNearEnd = true;
+            break;
+          }
+        }
+        // Check PreservedElement raw XML (nested tracked changes)
+        if (item instanceof PreservedElement) {
+          const rawXml = item.getRawXml().toLowerCase();
+          if (
+            rawXml.includes("top of") &&
+            (rawXml.includes("document") || rawXml.includes("_top"))
+          ) {
+            hasTopHyperlinkNearEnd = true;
+            break;
+          }
+        }
+        // Check Revision text (unassembled field runs inside tracked changes)
+        if (item instanceof Revision) {
+          const revText = item.getText().toLowerCase();
+          if (revText.includes("top of")) {
             hasTopHyperlinkNearEnd = true;
             break;
           }
@@ -10858,7 +11940,9 @@ export class WordDocumentProcessor {
       },
       levels: tocLevels,
     });
-    this.log.debug(`✓ Step 4: formatTOCStyles() formatted levels: [${formatResult.formatted.join(", ")}]`);
+    this.log.debug(
+      `✓ Step 4: formatTOCStyles() formatted levels: [${formatResult.formatted.join(", ")}]`
+    );
 
     // Extract heading counts from results
     let totalCount = 0;
@@ -10919,7 +12003,7 @@ export class WordDocumentProcessor {
         // Modify \o "1-N" to \o "2-N" in the preserved field instruction
         const updatedInstruction = originalInstruction
           .replace(/\\o\s*"1(-\d+)"/, '\\o "2$1"')
-          .replace(/\\o\s*&quot;1(-\d+)&quot;/, '\\o &quot;2$1&quot;');
+          .replace(/\\o\s*&quot;1(-\d+)&quot;/, "\\o &quot;2$1&quot;");
 
         if (updatedInstruction !== originalInstruction) {
           toc.setOriginalFieldInstruction(updatedInstruction);
@@ -10932,8 +12016,10 @@ export class WordDocumentProcessor {
         // We need to set an explicit instruction with "2-N".
         const levels = toc.getLevels();
         const computedInstruction = toc.getFieldInstruction();
-        const updatedInstruction = computedInstruction
-          .replace(/\\o\s*"1(-\d+)"/, `\\o "2-${levels}"`);
+        const updatedInstruction = computedInstruction.replace(
+          /\\o\s*"1(-\d+)"/,
+          `\\o "2-${levels}"`
+        );
 
         if (updatedInstruction !== computedInstruction) {
           toc.setOriginalFieldInstruction(updatedInstruction);
@@ -10990,7 +12076,10 @@ export class WordDocumentProcessor {
    * @param precomputedLevels - Optional pre-parsed TOC levels to avoid re-parsing
    * @returns Object with count of TOC entries created and list of heading names included
    */
-  private async manuallyPopulateTOC(doc: Document, precomputedLevels?: number[]): Promise<{ count: number; headings: string[] }> {
+  private async manuallyPopulateTOC(
+    doc: Document,
+    precomputedLevels?: number[]
+  ): Promise<{ count: number; headings: string[] }> {
     let totalEntriesCreated = 0;
     const includedHeadings: string[] = [];
 
@@ -11011,18 +12100,20 @@ export class WordDocumentProcessor {
       // SAFEGUARD: Capture first Heading1 before any modifications
       // This protects against accidental removal during TOC processing
       let firstHeading1: Paragraph | null = null;
-      let firstHeading1Text = '';
+      let firstHeading1Text = "";
       let firstHeading1BodyIndex = -1;
       const bodyElements = doc.getBodyElements();
       for (let i = 0; i < bodyElements.length; i++) {
         const element = bodyElements[i];
         if (element instanceof Paragraph) {
           const style = element.getStyle();
-          if (style === 'Heading1' || style === 'Heading 1') {
+          if (style === "Heading1" || style === "Heading 1") {
             firstHeading1 = element;
             firstHeading1Text = element.getText().trim();
             firstHeading1BodyIndex = i;
-            this.log.debug(`Protected Heading1 at index ${i}: "${firstHeading1Text.substring(0, 50)}..."`);
+            this.log.debug(
+              `Protected Heading1 at index ${i}: "${firstHeading1Text.substring(0, 50)}..."`
+            );
             break;
           }
         }
@@ -11030,13 +12121,13 @@ export class WordDocumentProcessor {
 
       // FALLBACK: If no Heading 1 found, look for 18pt font paragraphs and convert ALL of them
       if (!firstHeading1) {
-        this.log.debug('No Heading 1 found - searching for 18pt font paragraphs');
+        this.log.debug("No Heading 1 found - searching for 18pt font paragraphs");
         const paragraphs18pt = this.find18ptParagraphs(doc);
 
         if (paragraphs18pt.length > 0) {
           // Apply Heading 1 style to ALL 18pt paragraphs
           for (const para of paragraphs18pt) {
-            para.setStyle('Heading1');
+            para.setStyle("Heading1");
             this.log.info(
               `Applied Heading 1 style to 18pt paragraph: "${para.getText().trim().substring(0, 50)}..."`
             );
@@ -11056,7 +12147,7 @@ export class WordDocumentProcessor {
 
           this.log.info(`Converted ${paragraphs18pt.length} 18pt paragraph(s) to Heading 1`);
         } else {
-          this.log.info('No Heading 1 or 18pt font found - TOC insertion will be skipped');
+          this.log.info("No Heading 1 or 18pt font found - TOC insertion will be skipped");
         }
       }
 
@@ -11144,7 +12235,7 @@ export class WordDocumentProcessor {
           for (const item of content) {
             if (item instanceof ComplexField) {
               const instruction = item.getInstruction();
-              if (instruction && instruction.trim().toUpperCase().startsWith('TOC')) {
+              if (instruction && instruction.trim().toUpperCase().startsWith("TOC")) {
                 nonSdtTocStartIndex = i;
                 this.log.info(`Found non-SDT TOC field at body element index ${i}`);
                 break;
@@ -11163,9 +12254,9 @@ export class WordDocumentProcessor {
           if (element instanceof Paragraph) {
             const content = element.getContent();
             // Check if this paragraph is part of TOC (has hyperlinks pointing to TOC bookmarks)
-            const hasHyperlink = content.some(item => item instanceof Hyperlink);
+            const hasHyperlink = content.some((item) => item instanceof Hyperlink);
             const text = element.getText().trim();
-            const isEmpty = text === '';
+            const isEmpty = text === "";
 
             // TOC entries typically have hyperlinks or are empty spacer paragraphs
             // Stop when we hit a non-empty paragraph without hyperlinks
@@ -11178,7 +12269,9 @@ export class WordDocumentProcessor {
             break; // Hit a table or other element - end of TOC
           }
         }
-        this.log.info(`Non-SDT TOC spans body elements ${nonSdtTocStartIndex} to ${nonSdtTocEndIndex}`);
+        this.log.info(
+          `Non-SDT TOC spans body elements ${nonSdtTocStartIndex} to ${nonSdtTocEndIndex}`
+        );
       }
 
       this.log.info(`Found ${tocElements.length} TOC field element(s) in document`);
@@ -11298,7 +12391,9 @@ export class WordDocumentProcessor {
         // PROTECTION: Never remove paragraphs at or before the Heading1 index
         if (firstHeading1BodyIndex >= 0 && nonSdtTocStartIndex <= firstHeading1BodyIndex) {
           effectiveStartIndex = firstHeading1BodyIndex + 1;
-          this.log.warn(`Adjusting non-SDT TOC removal to protect Heading1 at index ${firstHeading1BodyIndex}`);
+          this.log.warn(
+            `Adjusting non-SDT TOC removal to protect Heading1 at index ${firstHeading1BodyIndex}`
+          );
         }
 
         if (effectiveStartIndex <= nonSdtTocEndIndex) {
@@ -11322,7 +12417,9 @@ export class WordDocumentProcessor {
           if (!tocRemoved) {
             insertPosition = effectiveStartIndex;
           }
-          this.log.info(`Removed non-SDT TOC (${elementsToRemove} elements) starting at index ${effectiveStartIndex}`);
+          this.log.info(
+            `Removed non-SDT TOC (${elementsToRemove} elements) starting at index ${effectiveStartIndex}`
+          );
           tocRemoved = true;
         }
       }
@@ -11332,10 +12429,12 @@ export class WordDocumentProcessor {
         if (firstHeading1BodyIndex >= 0) {
           // Insert after the first Heading 1
           insertPosition = firstHeading1BodyIndex + 1;
-          this.log.info(`No existing TOC found - creating new TOC after first Heading 1 at position ${insertPosition}`);
+          this.log.info(
+            `No existing TOC found - creating new TOC after first Heading 1 at position ${insertPosition}`
+          );
         } else {
           // No Heading 1 found (and no 18pt font was converted) - SKIP TOC insertion
-          this.log.warn('No Heading 1 or 18pt font found - skipping TOC creation');
+          this.log.warn("No Heading 1 or 18pt font found - skipping TOC creation");
           return { count: 0, headings: [] };
         }
       }
@@ -11353,7 +12452,9 @@ export class WordDocumentProcessor {
       if (tocParagraphs.length > 0) {
         const blankPara = new Paragraph();
         doc.insertParagraphAt(insertPosition + tocParagraphs.length, blankPara);
-        this.log.debug(`Added blank line after TOC at position ${insertPosition + tocParagraphs.length}`);
+        this.log.debug(
+          `Added blank line after TOC at position ${insertPosition + tocParagraphs.length}`
+        );
       }
 
       // ============================================
@@ -11369,7 +12470,7 @@ export class WordDocumentProcessor {
           const element = newBodyElements[i];
           if (element instanceof Paragraph) {
             const style = element.getStyle();
-            if (style === 'Heading1' || style === 'Heading 1') {
+            if (style === "Heading1" || style === "Heading 1") {
               heading1Found = true;
               heading1NewIndex = i;
               break;
@@ -11378,18 +12479,26 @@ export class WordDocumentProcessor {
         }
 
         if (!heading1Found) {
-          this.log.error(`CRITICAL: Heading1 was lost during TOC processing! Original: "${firstHeading1Text}"`);
+          this.log.error(
+            `CRITICAL: Heading1 was lost during TOC processing! Original: "${firstHeading1Text}"`
+          );
           // Attempt recovery by re-inserting the Heading1 at position 0
           try {
             doc.insertParagraphAt(0, firstHeading1);
             this.log.warn(`Recovered Heading1 by re-inserting at position 0`);
           } catch (recoveryError) {
-            this.log.error(`Failed to recover Heading1: ${recoveryError instanceof Error ? recoveryError.message : 'Unknown error'}`);
+            this.log.error(
+              `Failed to recover Heading1: ${recoveryError instanceof Error ? recoveryError.message : "Unknown error"}`
+            );
           }
         } else if (heading1NewIndex !== 0) {
-          this.log.warn(`Heading1 is at index ${heading1NewIndex} instead of 0 (this may be expected if document structure was modified)`);
+          this.log.warn(
+            `Heading1 is at index ${heading1NewIndex} instead of 0 (this may be expected if document structure was modified)`
+          );
         } else {
-          this.log.debug(`Heading1 preserved at index 0: "${firstHeading1Text.substring(0, 30)}..."`);
+          this.log.debug(
+            `Heading1 preserved at index 0: "${firstHeading1Text.substring(0, 30)}..."`
+          );
         }
       }
 
@@ -11425,7 +12534,10 @@ export class WordDocumentProcessor {
         const style = para?.getStyle();
 
         // Check if this is a Header 2 (handles various format variations)
-        if (style && (style === 'Heading2' || style === 'Heading 2' || style.includes('Heading2'))) {
+        if (
+          style &&
+          (style === "Heading2" || style === "Heading 2" || style.includes("Heading2"))
+        ) {
           const text = para.getText().trim();
           if (text) {
             return text;
@@ -11487,7 +12599,12 @@ export class WordDocumentProcessor {
       if (item instanceof Run) {
         allRuns.push(item);
       } else if (item instanceof Revision) {
-        // Get runs from inside revision elements (w:ins, w:moveTo, w:del, etc.)
+        const type = item.getType();
+        // Only include runs from insert/moveTo revisions.
+        // Runs inside w:del/w:moveFrom are deleted content — modifying them
+        // (e.g., setFont/setSize during style application) can corrupt the
+        // revision XML structure, causing deleted text to appear as normal text.
+        if (type === "delete" || type === "moveFrom") continue;
         const revRuns = item.getRuns();
         allRuns.push(...revRuns);
       }
@@ -11499,66 +12616,6 @@ export class WordDocumentProcessor {
     }
 
     return allRuns;
-  }
-
-  /**
-   * Checks if a paragraph contains an image, either directly or inside revision elements.
-   *
-   * Images can appear as:
-   * - Direct Image content in the paragraph
-   * - ImageRun objects inside Revision elements (w:ins, w:moveTo, etc.)
-   *
-   * @param para - The paragraph to check
-   * @returns True if the paragraph contains an image
-   */
-  private paragraphContainsImage(para: Paragraph): boolean {
-    for (const item of para.getContent()) {
-      if (item instanceof Image) {
-        return true;
-      }
-      // Images in runs are stored as ImageRun objects (w:r > w:drawing)
-      if (item instanceof ImageRun) {
-        return true;
-      }
-      if (item instanceof Revision) {
-        // Images inside revisions are stored as ImageRun objects
-        for (const run of item.getRuns()) {
-          if (run instanceof ImageRun) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Applies a border to all images in a paragraph.
-   *
-   * Handles images in:
-   * - Direct Image content
-   * - ImageRun objects (w:r > w:drawing)
-   * - Images inside Revision elements (w:ins, w:moveTo, etc.)
-   *
-   * @param para - The paragraph containing images
-   * @param borderPt - Border thickness in points (default: 2)
-   */
-  private applyBorderToImages(para: Paragraph, borderPt: number = 2): void {
-    for (const item of para.getContent()) {
-      if (item instanceof Image) {
-        item.setBorder(borderPt);
-      }
-      if (item instanceof ImageRun) {
-        item.getImageElement().setBorder(borderPt);
-      }
-      if (item instanceof Revision) {
-        for (const run of item.getRuns()) {
-          if (run instanceof ImageRun) {
-            run.getImageElement().setBorder(borderPt);
-          }
-        }
-      }
-    }
   }
 
   /**

@@ -12,18 +12,19 @@
  */
 
 import { createCanvas, loadImage } from "canvas";
-import { Document, Image, ImageRun, Revision } from "docxmlater";
+import { Document, Image, ImageRun, Paragraph, Revision } from "docxmlater";
 
 // ── Detection constants ──────────────────────────────────────────────
-const DARK_THRESHOLD = 80;        // luminance <= this = border pixel
-const LIGHT_THRESHOLD = 230;      // luminance >= this = gap/padding pixel
-const EDGE_CONSENSUS = 0.65;      // 65 % of scan lines must detect border
-const MIN_BORDERED_EDGES = 3;     // at least 3 of 4 edges
-const MAX_BORDER_THICKNESS = 4;   // border line max 4 px
-const MIN_GAP_THICKNESS = 5;      // white gap at least 5 px
-const SAMPLE_INTERVAL = 5;        // sample every 5th column / row
-const MAX_CROP_FRACTION = 0.15;   // never crop > 15 % from one edge
-const MIN_DIMENSION_PX = 80;      // skip images < 80 px
+const DARK_THRESHOLD = 80; // luminance <= this = border pixel
+const LIGHT_THRESHOLD = 230; // luminance >= this = gap/padding pixel
+const EDGE_CONSENSUS = 0.65; // 65 % of scan lines must detect border
+const MIN_BORDERED_EDGES = 3; // at least 3 of 4 edges
+const MAX_BORDER_THICKNESS = 4; // border line max 4 px
+const MIN_GAP_THICKNESS = 5; // white gap at least 5 px
+const SAMPLE_INTERVAL = 5; // sample every 5th column / row
+const MAX_CROP_FRACTION = 0.15; // never crop > 15 % from one edge
+const MIN_DIMENSION_PX = 80; // skip images < 80 px
+const TRANSITION_DEPTH = 10; // check pixels at depth 4-10 for light transition
 
 const EMUS_PER_PIXEL = 9525;
 
@@ -35,6 +36,8 @@ export interface CropResult {
   croppedCount: number;
   skippedCount: number;
   errorCount: number;
+  /** Images detected as having baked-in dark borders on all 4 sides. */
+  allSideBakedBorderImages: Set<Image>;
 }
 
 interface CropRect {
@@ -55,9 +58,9 @@ interface EdgeResult {
  */
 export async function cropEmbeddedImageBorders(
   doc: Document,
-  log: { debug: Function; info: Function; warn: Function },
+  log: { debug: Function; info: Function; warn: Function }
 ): Promise<CropResult> {
-  const result: CropResult = { croppedCount: 0, skippedCount: 0, errorCount: 0 };
+  const result: CropResult = { croppedCount: 0, skippedCount: 0, errorCount: 0, allSideBakedBorderImages: new Set() };
 
   const images = collectImages(doc);
   log.debug(`Found ${images.length} images to analyse for embedded borders`);
@@ -68,7 +71,7 @@ export async function cropEmbeddedImageBorders(
     } catch (err) {
       result.errorCount++;
       log.warn(
-        `Error processing image for embedded border crop: ${err instanceof Error ? err.message : String(err)}`,
+        `Error processing image for embedded border crop: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   }
@@ -76,34 +79,11 @@ export async function cropEmbeddedImageBorders(
   return result;
 }
 
-/**
- * Detect whether an image has a baked-in dark border on ALL 4 sides.
- * Unlike the cropper (which looks for dark border + white gap), this only
- * checks whether the outermost pixels are consistently dark.
- */
-export async function hasAllSideBakedBorder(image: Image): Promise<boolean> {
-  const ext = image.getExtension()?.toLowerCase();
-  if (ext === "svg" || ext === "emf" || ext === "wmf") return false;
-
-  const buf = image.getImageDataSafe();
-  if (!buf || buf.length === 0) return false;
-
-  const img = await loadImage(buf);
-  const w = img.width;
-  const h = img.height;
-  if (w < MIN_DIMENSION_PX || h < MIN_DIMENSION_PX) return false;
-
-  const canvas = createCanvas(w, h);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0, 0);
-  const pixels = ctx.getImageData(0, 0, w, h).data;
-
-  return pixelsHaveAllSideBakedBorder(pixels, w, h);
-}
-
 /** Pixel-level check: are all 4 edges predominantly dark? */
 function pixelsHaveAllSideBakedBorder(
-  pixels: Uint8ClampedArray, width: number, height: number,
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number
 ): boolean {
   const edges: Edge[] = ["top", "bottom", "left", "right"];
   for (const edge of edges) {
@@ -114,24 +94,34 @@ function pixelsHaveAllSideBakedBorder(
 
 // ── Image collection ─────────────────────────────────────────────────
 
-function collectImages(doc: Document): Image[] {
+/**
+ * Collect all Image elements from a single paragraph, including those
+ * nested inside ImageRun and Revision containers.
+ */
+export function collectParagraphImages(para: Paragraph): Image[] {
   const images: Image[] = [];
-  for (const para of doc.getAllParagraphs()) {
-    for (const item of para.getContent()) {
-      if (item instanceof Image) {
-        images.push(item);
-      }
-      if (item instanceof ImageRun) {
-        images.push(item.getImageElement());
-      }
-      if (item instanceof Revision) {
-        for (const run of item.getRuns()) {
-          if (run instanceof ImageRun) {
-            images.push(run.getImageElement());
-          }
+  for (const item of para.getContent()) {
+    if (item instanceof Image) {
+      images.push(item);
+    }
+    if (item instanceof ImageRun) {
+      images.push(item.getImageElement());
+    }
+    if (item instanceof Revision) {
+      for (const revItem of item.getContent()) {
+        if (revItem instanceof ImageRun) {
+          images.push(revItem.getImageElement());
         }
       }
     }
+  }
+  return images;
+}
+
+function collectImages(doc: Document): Image[] {
+  const images: Image[] = [];
+  for (const para of doc.getAllParagraphs()) {
+    images.push(...collectParagraphImages(para));
   }
   return images;
 }
@@ -141,7 +131,7 @@ function collectImages(doc: Document): Image[] {
 async function processOneImage(
   image: Image,
   result: CropResult,
-  log: { debug: Function; info: Function; warn: Function },
+  log: { debug: Function; info: Function; warn: Function }
 ): Promise<void> {
   const ext = image.getExtension()?.toLowerCase();
 
@@ -173,13 +163,14 @@ async function processOneImage(
   const imageData = ctx.getImageData(0, 0, w, h);
   const pixels = imageData.data; // Uint8ClampedArray [r,g,b,a, ...]
 
-  // Check for baked-in border on all 4 sides — skip cropping if present
+  // Record all-side baked border for bordering decisions (cache for later)
   if (pixelsHaveAllSideBakedBorder(pixels, w, h)) {
-    log.debug("Skipped crop: image has baked-in border on all 4 sides");
-    result.skippedCount++;
-    return;
+    result.allSideBakedBorderImages.add(image);
+    log.debug("Image has baked-in border on all 4 sides (recorded for bordering)");
   }
 
+  // Proceed with crop detection unconditionally — detectEmbeddedBorder's
+  // own strict pattern matching (border+gap, 3+ edges, consensus) is sufficient
   const cropRect = detectEmbeddedBorder(pixels, w, h);
   if (!cropRect) {
     result.skippedCount++;
@@ -210,17 +201,7 @@ async function processOneImage(
   // Crop via canvas
   const cropCanvas = createCanvas(newW, newH);
   const cropCtx = cropCanvas.getContext("2d");
-  cropCtx.drawImage(
-    canvas,
-    cropRect.left,
-    cropRect.top,
-    newW,
-    newH,
-    0,
-    0,
-    newW,
-    newH,
-  );
+  cropCtx.drawImage(canvas, cropRect.left, cropRect.top, newW, newH, 0, 0, newW, newH);
 
   // Preserve format: JPEG for JPEG inputs, PNG otherwise
   const isJpeg = ext === "jpeg" || ext === "jpg";
@@ -239,7 +220,7 @@ async function processOneImage(
   image.setSize(newWidthEMU, newHeightEMU);
 
   log.debug(
-    `Cropped embedded border: ${w}x${h} → ${newW}x${newH} (removed T:${cropRect.top} B:${cropRect.bottom} L:${cropRect.left} R:${cropRect.right})`,
+    `Cropped embedded border: ${w}x${h} → ${newW}x${newH} (removed T:${cropRect.top} B:${cropRect.bottom} L:${cropRect.left} R:${cropRect.right})`
   );
   result.croppedCount++;
 }
@@ -249,7 +230,7 @@ async function processOneImage(
 function detectEmbeddedBorder(
   pixels: Uint8ClampedArray,
   width: number,
-  height: number,
+  height: number
 ): CropRect | null {
   const edges: Edge[] = ["top", "bottom", "left", "right"];
   const results: Record<Edge, EdgeResult> = {} as Record<Edge, EdgeResult>;
@@ -281,7 +262,7 @@ function analyzeEdge(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
-  edge: Edge,
+  edge: Edge
 ): EdgeResult {
   const perpLength = edge === "top" || edge === "bottom" ? width : height;
   const sampleCount = Math.floor(perpLength / SAMPLE_INTERVAL);
@@ -309,27 +290,44 @@ function analyzeEdge(
 
 /**
  * Check whether the outermost 1-MAX_BORDER_THICKNESS pixels of one edge
- * are predominantly dark. Samples every SAMPLE_INTERVAL-th pixel.
- * Returns true if >= EDGE_CONSENSUS fraction of samples have dark pixels.
+ * are predominantly dark AND transition to lighter content just beyond
+ * the border zone (depth MAX_BORDER_THICKNESS to TRANSITION_DEPTH).
+ *
+ * The transition check prevents false positives on dark-themed screenshots
+ * where the edge content itself is dark but is not a thin border line.
  */
-function edgeIsDark(
-  pixels: Uint8ClampedArray, width: number, height: number, edge: Edge,
-): boolean {
+function edgeIsDark(pixels: Uint8ClampedArray, width: number, height: number, edge: Edge): boolean {
   const perpLength = edge === "top" || edge === "bottom" ? width : height;
+  const depthDimension = edge === "top" || edge === "bottom" ? height : width;
   const sampleCount = Math.floor(perpLength / SAMPLE_INTERVAL);
   if (sampleCount === 0) return false;
 
-  let darkCount = 0;
+  let darkWithTransitionCount = 0;
   for (let s = 0; s < sampleCount; s++) {
     const lineIndex = s * SAMPLE_INTERVAL;
+
+    // Step 1: Check outer pixels (0..MAX_BORDER_THICKNESS-1) are dark
+    let hasDarkEdge = false;
     for (let depth = 0; depth < MAX_BORDER_THICKNESS; depth++) {
       if (getPixelLuminance(pixels, width, height, edge, lineIndex, depth) <= DARK_THRESHOLD) {
-        darkCount++;
+        hasDarkEdge = true;
         break;
       }
     }
+    if (!hasDarkEdge) continue;
+
+    // Step 2: Check transition — pixels just beyond border zone should be lighter
+    let hasTransition = false;
+    const maxCheck = Math.min(TRANSITION_DEPTH, depthDimension - 1);
+    for (let depth = MAX_BORDER_THICKNESS; depth <= maxCheck; depth++) {
+      if (getPixelLuminance(pixels, width, height, edge, lineIndex, depth) > DARK_THRESHOLD) {
+        hasTransition = true;
+        break;
+      }
+    }
+    if (hasTransition) darkWithTransitionCount++;
   }
-  return darkCount >= Math.ceil(sampleCount * EDGE_CONSENSUS);
+  return darkWithTransitionCount >= Math.ceil(sampleCount * EDGE_CONSENSUS);
 }
 
 /**
@@ -343,7 +341,7 @@ function scanLine(
   width: number,
   height: number,
   edge: Edge,
-  lineIndex: number,
+  lineIndex: number
 ): number | null {
   const depthDimension = edge === "top" || edge === "bottom" ? height : width;
   const maxDepth = Math.floor(depthDimension * MAX_CROP_FRACTION);
@@ -386,9 +384,9 @@ function scanLine(
     }
   }
 
-  // Reached max scan depth while still in gap — content starts just past gap
+  // Reached max scan depth while still in gap — content starts at maxDepth
   if (!inBorder && gapPixels >= MIN_GAP_THICKNESS) {
-    return borderPixels + gapPixels;
+    return maxDepth;
   }
 
   return null;
@@ -404,7 +402,7 @@ function getPixelLuminance(
   height: number,
   edge: Edge,
   lineIndex: number,
-  depth: number,
+  depth: number
 ): number {
   let x: number;
   let y: number;
