@@ -18,10 +18,12 @@ Based on the comprehensive analysis of docxmlater usage (2025-11-13), create the
 Document objects from `Document.load()` and `Document.create()` are not consistently disposed in all code paths, leading to memory leaks during batch document processing operations.
 
 **Affected Files:**
+
 - `src/services/document/WordDocumentProcessor.ts:843-850, 794-800`
 - Any method creating Document objects
 
 **Current Pattern:**
+
 ```typescript
 finally {
   if (doc) {
@@ -35,23 +37,26 @@ finally {
 ```
 
 **Issues:**
+
 - dispose() not called if exception before doc assignment
 - Early returns bypass cleanup
 - Nested operations don't cleanup
 - Conditional disposal inconsistent
 
 **Recommended Pattern:**
+
 ```typescript
 let doc: Document | null = null;
 try {
   doc = await Document.load(filePath, { strictParsing: false });
   // ... processing ...
 } finally {
-  doc?.dispose();  // Always cleanup
+  doc?.dispose(); // Always cleanup
 }
 ```
 
 **Tasks:**
+
 - [ ] Audit ALL methods using Document objects
 - [ ] Ensure every Document.load()/create() has matching dispose()
 - [ ] Check for early returns that skip dispose()
@@ -72,12 +77,13 @@ The `Hyperlink.getText()` method in docxmlater v1.15.0 returns text with embedde
 
 **Current Workaround:**
 We've implemented defensive sanitization in `src/utils/textSanitizer.ts`:
+
 ```typescript
 export function sanitizeHyperlinkText(text: string): string {
   return text
-    .replace(/<w:t[^>]*>/g, '')
-    .replace(/<\/w:t>/g, '')
-    .replace(/xml:space="preserve"/g, '')
+    .replace(/<w:t[^>]*>/g, "")
+    .replace(/<\/w:t>/g, "")
+    .replace(/xml:space="preserve"/g, "")
     .trim();
 }
 ```
@@ -86,6 +92,7 @@ export function sanitizeHyperlinkText(text: string): string {
 Bug in docxmlater - `Run()` constructor auto-cleans with `cleanXmlFromText: true` by default, but `Hyperlink.getText()` doesn't apply the same cleanup.
 
 **Tasks:**
+
 - [ ] Create GitHub issue in docxmlater repository
 - [ ] Add detection logging to sanitization function
 - [ ] Create integration test to auto-detect when bug is fixed
@@ -106,8 +113,9 @@ Bug in docxmlater - `Run()` constructor auto-cleans with `cleanXmlFromText: true
 The `applyUrlUpdates()` method lacks error handling around `setUrl()` calls, which can leave documents in an inconsistent state if some updates fail while others succeed.
 
 **Current Code:**
+
 ```typescript
-item.setUrl(newUrl);  // ⚠️ No error handling
+item.setUrl(newUrl); // ⚠️ No error handling
 updatedCount++;
 ```
 
@@ -115,6 +123,7 @@ updatedCount++;
 If `setUrl()` throws, partial updates occur with no tracking of failures.
 
 **Recommended Solution:**
+
 ```typescript
 try {
   item.setUrl(newUrl);
@@ -126,6 +135,7 @@ try {
 ```
 
 **Tasks:**
+
 - [ ] Implement error handling with failure tracking
 - [ ] Update return type to include failed URLs
 - [ ] Add tests for error scenarios
@@ -146,16 +156,18 @@ try {
 **Description:**
 The codebase manually loops through paragraphs and hyperlinks to update URLs (30+ lines), which is inefficient and misses hyperlinks in tables/headers/footers. docxmlater provides a built-in optimized method.
 
-**Current:** 30+ lines of manual O(n*m) loop
+**Current:** 30+ lines of manual O(n\*m) loop
 **Better:** `doc.updateHyperlinkUrls(urlMap)` (1 line, optimized)
 
 **Benefits:**
+
 - 30-50% faster performance
 - Handles all hyperlink locations (tables, headers, footers)
 - Less code to maintain
 - Library-tested functionality
 
 **Tasks:**
+
 - [ ] Verify API availability in v1.15.0
 - [ ] Replace manual implementation
 - [ ] Add tests for all hyperlink locations
@@ -178,12 +190,14 @@ The `extractHyperlinks()` method manually loops through paragraphs (46 lines) to
 **Better:** `doc.getHyperlinks()` + mapping (5 lines)
 
 **Benefits:**
+
 - 89% code reduction
 - Comprehensive coverage (all document parts)
 - Library-tested code
 - Easier to maintain
 
 **Tasks:**
+
 - [ ] Replace manual implementation
 - [ ] Add tests for tables, headers, footers
 - [ ] Verify all existing tests pass
@@ -195,6 +209,7 @@ The `extractHyperlinks()` method manually loops through paragraphs (46 lines) to
 ## Sprint Planning
 
 ### Sprint 1 (Critical Issues)
+
 **Focus:** Fix memory leaks and data integrity issues
 **Total Effort:** 5-8 hours
 
@@ -203,6 +218,7 @@ The `extractHyperlinks()` method manually loops through paragraphs (46 lines) to
 3. Issue #2 - Report bug + monitoring (1 hour)
 
 ### Sprint 2 (High Priority)
+
 **Focus:** Code optimization and quality improvements
 **Total Effort:** 1.5-2.5 hours
 

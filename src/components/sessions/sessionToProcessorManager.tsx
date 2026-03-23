@@ -5,8 +5,8 @@
  * Prevents style transposition by ensuring all properties are correctly mapped and validated
  */
 
-import type { WordProcessingOptions } from '../../services/document/WordDocumentProcessor';
-import type { Session, SessionStyle, TableShadingSettings } from '../../types/session';
+import type { WordProcessingOptions } from "../../services/document/WordDocumentProcessor";
+import type { Session, SessionStyle, TableShadingSettings } from "../../types/session";
 
 /**
  * Normalize color from UI format (#RRGGBB) to OOXML format (RRGGBB)
@@ -15,7 +15,7 @@ import type { Session, SessionStyle, TableShadingSettings } from '../../types/se
  * @returns Color in OOXML format (6 hex digits, uppercase, no # prefix)
  */
 function normalizeColor(color: string): string {
-  return color.replace('#', '').toUpperCase();
+  return color.replace("#", "").toUpperCase();
 }
 
 /**
@@ -42,7 +42,7 @@ function isValidOOXMLColor(color: string): boolean {
  */
 export function mapSessionStylesToProcessor(
   sessionStyles: SessionStyle[]
-): NonNullable<WordProcessingOptions['styles']> {
+): NonNullable<WordProcessingOptions["styles"]> {
   return sessionStyles.map((style) => ({
     // Identity
     id: style.id,
@@ -83,7 +83,7 @@ export function mapSessionStylesToProcessor(
  */
 function mapTableShadingSettings(
   settings: TableShadingSettings | undefined
-): WordProcessingOptions['tableShadingSettings'] {
+): WordProcessingOptions["tableShadingSettings"] {
   if (!settings) return undefined;
 
   return {
@@ -111,22 +111,22 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
   // ═══════════════════════════════════════════════════════════
   // Text Formatting Group
   // ═══════════════════════════════════════════════════════════
-  if (enabled.has('remove-italics')) flags.removeItalics = true;
-  if (enabled.has('remove-em-en-variants')) flags.removeEmEnVariants = true;
-  if (enabled.has('remove-whitespace')) flags.removeWhitespace = true;
+  if (enabled.has("remove-italics")) flags.removeItalics = true;
+  if (enabled.has("remove-em-en-variants")) flags.removeEmEnVariants = true;
+  if (enabled.has("remove-whitespace")) flags.removeWhitespace = true;
 
   // ═══════════════════════════════════════════════════════════
   // Content Structure Group
   // ═══════════════════════════════════════════════════════════
-  if (enabled.has('remove-paragraph-lines')) flags.removeParagraphLines = true;
-  if (enabled.has('remove-headers-footers')) flags.removeHeadersFooters = true;
-  if (enabled.has('add-document-warning')) flags.addDocumentWarning = true;
-  if (enabled.has('center-border-images')) flags.centerAndBorderImages = true;
+  if (enabled.has("remove-paragraph-lines")) flags.removeParagraphLines = true;
+  if (enabled.has("remove-headers-footers")) flags.removeHeadersFooters = true;
+  if (enabled.has("add-document-warning")) flags.addDocumentWarning = true;
+  if (enabled.has("center-border-images")) flags.centerAndBorderImages = true;
 
   // ═══════════════════════════════════════════════════════════
   // Lists & Tables Group
   // ═══════════════════════════════════════════════════════════
-  if (enabled.has('list-indentation')) {
+  if (enabled.has("list-indentation")) {
     // Special case: list-indentation sets listBulletSettings.enabled
     // CRITICAL FIX: Do NOT create the object here - just set the enabled flag
     // The actual indentationLevels will be populated from session.listBulletSettings
@@ -137,14 +137,17 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
       flags.listBulletSettings.enabled = true;
     }
   }
-  if (enabled.has('bullet-uniformity')) flags.bulletUniformity = true;
-  if (enabled.has('smart-tables')) {
+  if (enabled.has("bullet-uniformity")) flags.bulletUniformity = true;
+  if (enabled.has("smart-tables")) {
     flags.smartTables = true;
     flags.tableUniformity = true; // Auto-enable table uniformity with smart tables
   }
-  if (enabled.has('standardize-table-borders')) {
+  if (enabled.has("standardize-table-borders")) {
     flags.standardizeTableBorders = true;
   }
+  if (enabled.has("normalize-table-lists")) flags.normalizeTableLists = true;
+  if (enabled.has("set-landscape-margins")) flags.setLandscapeMargins = true;
+  if (enabled.has("correct-misapplied-styles")) flags.correctMisappliedStyles = true;
 
   // ═══════════════════════════════════════════════════════════
   // Hyperlink Operations (nested under operations object)
@@ -152,14 +155,14 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
   // Using type assertion to work with inherited property
   // ═══════════════════════════════════════════════════════════
   const operations: any = {};
-  if (enabled.has('update-top-hyperlinks')) operations.updateTopHyperlinks = true;
-  if (enabled.has('update-toc-hyperlinks')) operations.updateTocHyperlinks = true;
-  if (enabled.has('force-remove-heading1-toc')) operations.forceRemoveHeading1FromTOC = true;
-  if (enabled.has('fix-internal-hyperlinks')) operations.fixInternalHyperlinks = true;
-  if (enabled.has('fix-content-ids')) operations.fixContentIds = true;
-  if (enabled.has('replace-outdated-titles')) operations.replaceOutdatedTitles = true;
-  if (enabled.has('validate-document-styles')) operations.validateDocumentStyles = true;
-  if (enabled.has('validate-header2-tables')) operations.validateHeader2Tables = true;
+  if (enabled.has("update-top-hyperlinks")) operations.updateTopHyperlinks = true;
+  if (enabled.has("update-toc-hyperlinks")) operations.updateTocHyperlinks = true;
+  if (enabled.has("force-remove-heading1-toc")) operations.forceRemoveHeading1FromTOC = true;
+  if (enabled.has("fix-internal-hyperlinks")) operations.fixInternalHyperlinks = true;
+  if (enabled.has("fix-content-ids")) operations.fixContentIds = true;
+  if (enabled.has("replace-outdated-titles")) operations.replaceOutdatedTitles = true;
+  if (enabled.has("validate-document-styles")) operations.validateDocumentStyles = true;
+  if (enabled.has("validate-header2-tables")) operations.validateHeader2Tables = true;
 
   // Assign operations object using type assertion
   (flags as any).operations = operations;
@@ -192,11 +195,14 @@ export function sessionToProcessorOptions(session: Session): WordProcessingOptio
   const enabledOps = session.processingOptions?.enabledOperations || [];
   Object.assign(options, mapEnabledOperationsToFlags(enabledOps));
 
+  // Pass through enabledOperations array for inline checks (e.g., adjust-table-padding, preserve-red-font)
+  options.enabledOperations = enabledOps;
+
   // Map styles with ALL properties (prevents transposition)
   if (session.styles && session.styles.length > 0) {
     options.styles = mapSessionStylesToProcessor(session.styles);
     // Only apply styles if the 'validate-document-styles' option is checked
-    options.assignStyles = enabledOps.includes('validate-document-styles');
+    options.assignStyles = enabledOps.includes("validate-document-styles");
   }
 
   // Map list settings (direct copy - interfaces are compatible)
@@ -329,7 +335,7 @@ export function validateProcessingOptions(options: WordProcessingOptions): {
       !options.listBulletSettings.indentationLevels ||
       options.listBulletSettings.indentationLevels.length === 0
     ) {
-      errors.push('List settings enabled but indentationLevels array is empty or undefined');
+      errors.push("List settings enabled but indentationLevels array is empty or undefined");
     } else {
       // Validate each indentation level
       for (const level of options.listBulletSettings.indentationLevels) {
@@ -381,12 +387,12 @@ export function validateAndLog(options: WordProcessingOptions): boolean {
   const result = validateProcessingOptions(options);
 
   if (!result.valid) {
-    console.error('❌ WordProcessingOptions validation failed:');
+    console.error("❌ WordProcessingOptions validation failed:");
     result.errors.forEach((error, index) => {
       console.error(`  ${index + 1}. ${error}`);
     });
   } else {
-    console.log('✅ WordProcessingOptions validation passed');
+    console.log("✅ WordProcessingOptions validation passed");
   }
 
   return result.valid;
@@ -403,18 +409,18 @@ export function describeEnabledOperations(session: Session): string {
   const enabledOps = session.processingOptions?.enabledOperations || [];
 
   if (enabledOps.length === 0) {
-    return 'No operations enabled';
+    return "No operations enabled";
   }
 
   const opNames = enabledOps.map((op) => {
     // Convert kebab-case to Title Case
     return op
-      .split('-')
+      .split("-")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+      .join(" ");
   });
 
-  return `${enabledOps.length} operations: ${opNames.slice(0, 5).join(', ')}${
-    enabledOps.length > 5 ? '...' : ''
+  return `${enabledOps.length} operations: ${opNames.slice(0, 5).join(", ")}${
+    enabledOps.length > 5 ? "..." : ""
   }`;
 }

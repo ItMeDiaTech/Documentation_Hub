@@ -27,17 +27,18 @@ Built for professional documentation work, docXMLater provides a complete soluti
 
 ### Implementation Phases - All Complete ✅
 
-| Phase                            | Status      | Features                                              |
-| -------------------------------- | ----------- | ----------------------------------------------------- |
-| **Phase 1: Foundation**          | ✅ Complete | ZIP handling, XML generation, validation              |
-| **Phase 2: Core Elements**       | ✅ Complete | Paragraph, Run, text formatting                       |
-| **Phase 3: Advanced Formatting** | ✅ Complete | Styles, tables, sections, lists                       |
-| **Phase 4: Rich Content**        | ✅ Complete | Images, headers, footers, hyperlinks                  |
+| Phase                            | Status      | Features                                                |
+| -------------------------------- | ----------- | ------------------------------------------------------- |
+| **Phase 1: Foundation**          | ✅ Complete | ZIP handling, XML generation, validation                |
+| **Phase 2: Core Elements**       | ✅ Complete | Paragraph, Run, text formatting                         |
+| **Phase 3: Advanced Formatting** | ✅ Complete | Styles, tables, sections, lists                         |
+| **Phase 4: Rich Content**        | ✅ Complete | Images, headers, footers, hyperlinks                    |
 | **Phase 5: Polish**              | ✅ Complete | Track changes, comments, TOC, hyperlink defragmentation |
 
 ### Phase 4 & 5 Highlights (v1.13.0 - v1.16.0)
 
 #### Phase 4: Rich Content Features
+
 - **Images**: PNG, JPEG, GIF support with positioning and sizing
 - **Headers & Footers**: Different first/odd/even pages with dynamic fields
 - **Hyperlinks**: External, internal, and email links with full relationship management
@@ -45,6 +46,7 @@ Built for professional documentation work, docXMLater provides a complete soluti
 - **Batch URL Updates**: Efficient bulk hyperlink URL modification with error tracking
 
 #### Phase 5: Polish & Advanced Features
+
 - **Hyperlink Defragmentation** (v1.15.0): Fix fragmented hyperlinks from Google Docs imports
 - **List Formatting Helpers** (v1.14.0): Smart bullet and numbering with proper indentation
 - **Special Character Support** (v1.14.0): Tabs, newlines, non-breaking hyphens serialize correctly
@@ -486,10 +488,7 @@ const customToc = TableOfContents.createWithStyles(["Heading1", "Heading3"]);
 const flatToc = TableOfContents.createFlat("Contents");
 
 // Numbered TOC with roman numerals
-const numberedToc = TableOfContents.createNumbered(
-  "Table of Contents",
-  "roman"
-);
+const numberedToc = TableOfContents.createNumbered("Table of Contents", "roman");
 
 // Custom hyperlink color (red instead of blue)
 const coloredToc = TableOfContents.createWithHyperlinkColor("FF0000");
@@ -544,28 +543,30 @@ doc.insertTocAt(0, toc);
 
 Fix fragmented hyperlinks caused by Google Docs imports or formatting changes:
 
-| Method                                     | Description                          | Example                                            |
-| ------------------------------------------ | ------------------------------------ | -------------------------------------------------- |
-| `doc.defragmentHyperlinks(options?)`       | Merge fragmented hyperlinks by URL   | `doc.defragmentHyperlinks({ resetFormatting: true })` |
-| `hyperlink.resetToStandardFormatting()`    | Reset to standard blue underlined    | `hyperlink.resetToStandardFormatting()`            |
+| Method                                  | Description                        | Example                                               |
+| --------------------------------------- | ---------------------------------- | ----------------------------------------------------- |
+| `doc.defragmentHyperlinks(options?)`    | Merge fragmented hyperlinks by URL | `doc.defragmentHyperlinks({ resetFormatting: true })` |
+| `hyperlink.resetToStandardFormatting()` | Reset to standard blue underlined  | `hyperlink.resetToStandardFormatting()`               |
 
 **Options:**
+
 - `resetFormatting?: boolean` - Reset hyperlinks to standard style (Calibri, blue, underline)
 - `cleanupRelationships?: boolean` - Remove orphaned relationship entries
 
 **Example:**
+
 ```typescript
 // Load document with fragmented hyperlinks from Google Docs
-const doc = await Document.load('google-docs-export.docx');
+const doc = await Document.load("google-docs-export.docx");
 
 // Fix fragmented hyperlinks and reset corrupted formatting
 doc.defragmentHyperlinks({
-  resetFormatting: true,      // Fix Caveat font and other issues
-  cleanupRelationships: true  // Clean up relationship table
+  resetFormatting: true, // Fix Caveat font and other issues
+  cleanupRelationships: true, // Clean up relationship table
 });
 
 // Save cleaned document
-await doc.save('fixed.docx');
+await doc.save("fixed.docx");
 ```
 
 ### Headers & Footers
@@ -648,103 +649,114 @@ await doc.save('fixed.docx');
 ### Unit Conversion Utilities
 
 #### Twips Conversions
-| Function                  | Description         | Example                     |
-| ------------------------- | ------------------- | --------------------------- |
-| `twipsToPoints(twips)`    | Twips to points     | `twipsToPoints(240)` // 12  |
-| `twipsToInches(twips)`    | Twips to inches     | `twipsToInches(1440)` // 1  |
-| `twipsToCm(twips)`        | Twips to cm         | `twipsToCm(1440)` // 2.54   |
-| `twipsToEmus(twips)`      | Twips to EMUs       | `twipsToEmus(1440)`         |
+
+| Function               | Description     | Example                    |
+| ---------------------- | --------------- | -------------------------- |
+| `twipsToPoints(twips)` | Twips to points | `twipsToPoints(240)` // 12 |
+| `twipsToInches(twips)` | Twips to inches | `twipsToInches(1440)` // 1 |
+| `twipsToCm(twips)`     | Twips to cm     | `twipsToCm(1440)` // 2.54  |
+| `twipsToEmus(twips)`   | Twips to EMUs   | `twipsToEmus(1440)`        |
 
 #### EMUs (English Metric Units) Conversions
-| Function                    | Description          | Example                       |
-| --------------------------- | -------------------- | ----------------------------- |
-| `emusToTwips(emus)`         | EMUs to twips        | `emusToTwips(914400)` // 1440 |
-| `emusToInches(emus)`        | EMUs to inches       | `emusToInches(914400)` // 1   |
-| `emusToCm(emus)`            | EMUs to cm           | `emusToCm(914400)` // 2.54    |
-| `emusToPoints(emus)`        | EMUs to points       | `emusToPoints(914400)` // 72  |
-| `emusToPixels(emus, dpi?)`  | EMUs to pixels       | `emusToPixels(914400)` // 96  |
+
+| Function                   | Description    | Example                       |
+| -------------------------- | -------------- | ----------------------------- |
+| `emusToTwips(emus)`        | EMUs to twips  | `emusToTwips(914400)` // 1440 |
+| `emusToInches(emus)`       | EMUs to inches | `emusToInches(914400)` // 1   |
+| `emusToCm(emus)`           | EMUs to cm     | `emusToCm(914400)` // 2.54    |
+| `emusToPoints(emus)`       | EMUs to points | `emusToPoints(914400)` // 72  |
+| `emusToPixels(emus, dpi?)` | EMUs to pixels | `emusToPixels(914400)` // 96  |
 
 #### Points Conversions
-| Function                 | Description        | Example                    |
-| ------------------------ | ------------------ | -------------------------- |
-| `pointsToTwips(points)`  | Points to twips    | `pointsToTwips(12)` // 240 |
-| `pointsToEmus(points)`   | Points to EMUs     | `pointsToEmus(72)`         |
-| `pointsToInches(points)` | Points to inches   | `pointsToInches(72)` // 1  |
-| `pointsToCm(points)`     | Points to cm       | `pointsToCm(72)` // 2.54   |
+
+| Function                 | Description      | Example                    |
+| ------------------------ | ---------------- | -------------------------- |
+| `pointsToTwips(points)`  | Points to twips  | `pointsToTwips(12)` // 240 |
+| `pointsToEmus(points)`   | Points to EMUs   | `pointsToEmus(72)`         |
+| `pointsToInches(points)` | Points to inches | `pointsToInches(72)` // 1  |
+| `pointsToCm(points)`     | Points to cm     | `pointsToCm(72)` // 2.54   |
 
 #### Inches Conversions
-| Function                      | Description         | Example                       |
-| ----------------------------- | ------------------- | ----------------------------- |
-| `inchesToTwips(inches)`       | Inches to twips     | `inchesToTwips(1)` // 1440    |
-| `inchesToEmus(inches)`        | Inches to EMUs      | `inchesToEmus(1)` // 914400   |
-| `inchesToPoints(inches)`      | Inches to points    | `inchesToPoints(1)` // 72     |
-| `inchesToCm(inches)`          | Inches to cm        | `inchesToCm(1)` // 2.54       |
-| `inchesToPixels(inches, dpi)` | Inches to pixels    | `inchesToPixels(1, 96)` // 96 |
+
+| Function                      | Description      | Example                       |
+| ----------------------------- | ---------------- | ----------------------------- |
+| `inchesToTwips(inches)`       | Inches to twips  | `inchesToTwips(1)` // 1440    |
+| `inchesToEmus(inches)`        | Inches to EMUs   | `inchesToEmus(1)` // 914400   |
+| `inchesToPoints(inches)`      | Inches to points | `inchesToPoints(1)` // 72     |
+| `inchesToCm(inches)`          | Inches to cm     | `inchesToCm(1)` // 2.54       |
+| `inchesToPixels(inches, dpi)` | Inches to pixels | `inchesToPixels(1, 96)` // 96 |
 
 #### Centimeters Conversions
-| Function                | Description      | Example                     |
-| ----------------------- | ---------------- | --------------------------- |
-| `cmToTwips(cm)`         | cm to twips      | `cmToTwips(2.54)` // 1440   |
-| `cmToEmus(cm)`          | cm to EMUs       | `cmToEmus(2.54)` // 914400  |
-| `cmToInches(cm)`        | cm to inches     | `cmToInches(2.54)` // 1     |
-| `cmToPoints(cm)`        | cm to points     | `cmToPoints(2.54)` // 72    |
-| `cmToPixels(cm, dpi?)`  | cm to pixels     | `cmToPixels(2.54, 96)` // 96|
+
+| Function               | Description  | Example                      |
+| ---------------------- | ------------ | ---------------------------- |
+| `cmToTwips(cm)`        | cm to twips  | `cmToTwips(2.54)` // 1440    |
+| `cmToEmus(cm)`         | cm to EMUs   | `cmToEmus(2.54)` // 914400   |
+| `cmToInches(cm)`       | cm to inches | `cmToInches(2.54)` // 1      |
+| `cmToPoints(cm)`       | cm to points | `cmToPoints(2.54)` // 72     |
+| `cmToPixels(cm, dpi?)` | cm to pixels | `cmToPixels(2.54, 96)` // 96 |
 
 #### Pixels Conversions
-| Function                     | Description         | Example                        |
-| ---------------------------- | ------------------- | ------------------------------ |
-| `pixelsToEmus(pixels, dpi?)` | Pixels to EMUs      | `pixelsToEmus(96)` // 914400   |
-| `pixelsToInches(pixels, dpi?)`| Pixels to inches   | `pixelsToInches(96, 96)` // 1  |
-| `pixelsToTwips(pixels, dpi?)`| Pixels to twips     | `pixelsToTwips(96, 96)` // 1440|
-| `pixelsToCm(pixels, dpi?)`   | Pixels to cm        | `pixelsToCm(96, 96)` // 2.54   |
-| `pixelsToPoints(pixels, dpi?)`| Pixels to points   | `pixelsToPoints(96, 96)` // 72 |
+
+| Function                       | Description      | Example                         |
+| ------------------------------ | ---------------- | ------------------------------- |
+| `pixelsToEmus(pixels, dpi?)`   | Pixels to EMUs   | `pixelsToEmus(96)` // 914400    |
+| `pixelsToInches(pixels, dpi?)` | Pixels to inches | `pixelsToInches(96, 96)` // 1   |
+| `pixelsToTwips(pixels, dpi?)`  | Pixels to twips  | `pixelsToTwips(96, 96)` // 1440 |
+| `pixelsToCm(pixels, dpi?)`     | Pixels to cm     | `pixelsToCm(96, 96)` // 2.54    |
+| `pixelsToPoints(pixels, dpi?)` | Pixels to points | `pixelsToPoints(96, 96)` // 72  |
 
 **Note:** Default DPI is 96 for pixel conversions
 
 ### ZIP Archive Helper Methods
 
 #### File Operations
-| Method                          | Description               | Example                                      |
-| ------------------------------- | ------------------------- | -------------------------------------------- |
-| `addFile(path, content)`        | Add file to archive       | `handler.addFile('doc.xml', xmlContent)`     |
-| `updateFile(path, content)`     | Update existing file      | `handler.updateFile('doc.xml', newContent)`  |
-| `removeFile(path)`              | Remove file from archive  | `handler.removeFile('old.xml')`              |
-| `renameFile(oldPath, newPath)`  | Rename file               | `handler.renameFile('a.xml', 'b.xml')`       |
-| `copyFile(srcPath, destPath)`   | Copy file                 | `handler.copyFile('a.xml', 'copy-a.xml')`    |
-| `moveFile(srcPath, destPath)`   | Move file                 | `handler.moveFile('a.xml', 'folder/a.xml')`  |
+
+| Method                         | Description              | Example                                     |
+| ------------------------------ | ------------------------ | ------------------------------------------- |
+| `addFile(path, content)`       | Add file to archive      | `handler.addFile('doc.xml', xmlContent)`    |
+| `updateFile(path, content)`    | Update existing file     | `handler.updateFile('doc.xml', newContent)` |
+| `removeFile(path)`             | Remove file from archive | `handler.removeFile('old.xml')`             |
+| `renameFile(oldPath, newPath)` | Rename file              | `handler.renameFile('a.xml', 'b.xml')`      |
+| `copyFile(srcPath, destPath)`  | Copy file                | `handler.copyFile('a.xml', 'copy-a.xml')`   |
+| `moveFile(srcPath, destPath)`  | Move file                | `handler.moveFile('a.xml', 'folder/a.xml')` |
 
 #### File Retrieval
-| Method                    | Description            | Returns         |
-| ------------------------- | ---------------------- | --------------- |
-| `getFile(path)`           | Get file object        | `ZipFile`       |
-| `getFileAsString(path)`   | Get file as string     | `string`        |
-| `getFileAsBuffer(path)`   | Get file as buffer     | `Buffer`        |
-| `hasFile(path)`           | Check if file exists   | `boolean`       |
-| `getFilePaths()`          | Get all file paths     | `string[]`      |
-| `getAllFiles()`           | Get all files          | `FileMap`       |
+
+| Method                  | Description          | Returns    |
+| ----------------------- | -------------------- | ---------- |
+| `getFile(path)`         | Get file object      | `ZipFile`  |
+| `getFileAsString(path)` | Get file as string   | `string`   |
+| `getFileAsBuffer(path)` | Get file as buffer   | `Buffer`   |
+| `hasFile(path)`         | Check if file exists | `boolean`  |
+| `getFilePaths()`        | Get all file paths   | `string[]` |
+| `getAllFiles()`         | Get all files        | `FileMap`  |
 
 #### Batch Operations
-| Method                          | Description                  | Returns        |
-| ------------------------------- | ---------------------------- | -------------- |
-| `removeFiles(paths[])`          | Remove multiple files        | `number`       |
-| `getFilesByExtension(ext)`      | Get files by extension       | `ZipFile[]`    |
-| `getTextFiles()`                | Get all text files           | `ZipFile[]`    |
-| `getBinaryFiles()`              | Get all binary files         | `ZipFile[]`    |
-| `getMediaFiles()`               | Get media files              | `ZipFile[]`    |
+
+| Method                     | Description            | Returns     |
+| -------------------------- | ---------------------- | ----------- |
+| `removeFiles(paths[])`     | Remove multiple files  | `number`    |
+| `getFilesByExtension(ext)` | Get files by extension | `ZipFile[]` |
+| `getTextFiles()`           | Get all text files     | `ZipFile[]` |
+| `getBinaryFiles()`         | Get all binary files   | `ZipFile[]` |
+| `getMediaFiles()`          | Get media files        | `ZipFile[]` |
 
 #### Archive Information
-| Method             | Description               | Returns                  |
-| ------------------ | ------------------------- | ------------------------ |
-| `getFileCount()`   | Count files in archive    | `number`                 |
-| `getTotalSize()`   | Get total size in bytes   | `number`                 |
-| `getStats()`       | Get detailed statistics   | `{fileCount, size, ...}` |
-| `isEmpty()`        | Check if archive is empty | `boolean`                |
+
+| Method           | Description               | Returns                  |
+| ---------------- | ------------------------- | ------------------------ |
+| `getFileCount()` | Count files in archive    | `number`                 |
+| `getTotalSize()` | Get total size in bytes   | `number`                 |
+| `getStats()`     | Get detailed statistics   | `{fileCount, size, ...}` |
+| `isEmpty()`      | Check if archive is empty | `boolean`                |
 
 #### Import/Export
-| Method                           | Description              | Returns              |
-| -------------------------------- | ------------------------ | -------------------- |
-| `exportFile(internal, external)` | Export file from archive | `Promise<void>`      |
-| `importFile(external, internal)` | Import file to archive   | `Promise<void>`      |
+
+| Method                           | Description              | Returns         |
+| -------------------------------- | ------------------------ | --------------- |
+| `exportFile(internal, external)` | Export file from archive | `Promise<void>` |
+| `importFile(external, internal)` | Import file to archive   | `Promise<void>` |
 
 ## Common Recipes
 
@@ -790,9 +802,7 @@ doc.addImage(image);
 ```typescript
 const para = doc.createParagraph();
 para.addText("Visit ");
-para.addHyperlink(
-  Hyperlink.createExternal("https://example.com", "our website")
-);
+para.addHyperlink(Hyperlink.createExternal("https://example.com", "our website"));
 ```
 
 ### Search and Replace Text
@@ -979,8 +989,8 @@ async function fixGoogleDocsHyperlinks(inputPath: string, outputPath: string) {
 
   // Defragment hyperlinks and reset formatting
   doc.defragmentHyperlinks({
-    resetFormatting: true,      // Fix corrupted fonts (Caveat → Calibri)
-    cleanupRelationships: true  // Remove orphaned relationships
+    resetFormatting: true, // Fix corrupted fonts (Caveat → Calibri)
+    cleanupRelationships: true, // Remove orphaned relationships
   });
 
   // Check results
@@ -996,10 +1006,11 @@ async function fixGoogleDocsHyperlinks(inputPath: string, outputPath: string) {
 }
 
 // Example usage
-await fixGoogleDocsHyperlinks('input.docx', 'output.docx');
+await fixGoogleDocsHyperlinks("input.docx", "output.docx");
 ```
 
 **What it fixes:**
+
 - Merges hyperlinks with the same URL across paragraphs and tables
 - Handles non-consecutive fragments (hyperlinks separated by other content)
 - Resets corrupted fonts to standard Calibri
@@ -1007,6 +1018,7 @@ await fixGoogleDocsHyperlinks('input.docx', 'output.docx');
 - Removes orphaned relationship entries
 
 **Advanced usage - Manual control:**
+
 ```typescript
 // Get all hyperlinks grouped by URL
 const hyperlinks = doc.getHyperlinks();
@@ -1032,7 +1044,7 @@ urlGroups.forEach((group, url) => {
   }
 });
 
-await doc.save('manually-fixed.docx');
+await doc.save("manually-fixed.docx");
 ```
 
 ## Features

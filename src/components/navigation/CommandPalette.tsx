@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Command } from 'cmdk';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { Command } from "cmdk";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
   Home,
@@ -13,10 +13,10 @@ import {
   Sun,
   X,
   ArrowRight,
-} from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { useTheme } from '@/contexts/ThemeContext';
-import { cn } from '@/utils/cn';
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useTheme } from "@/contexts/ThemeContext";
+import { cn } from "@/utils/cn";
 
 interface CommandItem {
   id: string;
@@ -34,7 +34,7 @@ export function CommandPalette({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const navigate = useNavigate();
   const { setTheme } = useTheme();
 
@@ -49,74 +49,74 @@ export function CommandPalette({
   const items: CommandItem[] = useMemo(
     () => [
       {
-        id: 'home',
-        label: 'Go to Dashboard',
-        category: 'Navigation',
+        id: "home",
+        label: "Go to Dashboard",
+        category: "Navigation",
         icon: Home,
-        action: () => handleNavigate('/'),
-        keywords: ['dashboard', 'home', 'main'],
+        action: () => handleNavigate("/"),
+        keywords: ["dashboard", "home", "main"],
       },
       {
-        id: 'projects',
-        label: 'Open Projects',
-        category: 'Navigation',
+        id: "projects",
+        label: "Open Projects",
+        category: "Navigation",
         icon: FolderOpen,
-        action: () => handleNavigate('/projects'),
-        keywords: ['project', 'folder', 'workspace'],
+        action: () => handleNavigate("/projects"),
+        keywords: ["project", "folder", "workspace"],
       },
       {
-        id: 'documents',
-        label: 'Browse Documents',
-        category: 'Navigation',
+        id: "documents",
+        label: "Browse Documents",
+        category: "Navigation",
         icon: FileText,
-        action: () => handleNavigate('/documents'),
-        keywords: ['docs', 'files', 'text'],
+        action: () => handleNavigate("/documents"),
+        keywords: ["docs", "files", "text"],
       },
       {
-        id: 'plugins',
-        label: 'View Plugins',
-        category: 'Navigation',
+        id: "plugins",
+        label: "View Plugins",
+        category: "Navigation",
         icon: Plug,
-        action: () => handleNavigate('/plugins'),
-        keywords: ['plugins', 'extensions', 'addons', 'modules'],
+        action: () => handleNavigate("/plugins"),
+        keywords: ["plugins", "extensions", "addons", "modules"],
       },
       {
-        id: 'profile',
-        label: 'View Profile',
-        category: 'Account',
+        id: "profile",
+        label: "View Profile",
+        category: "Account",
         icon: User,
-        action: () => handleNavigate('/profile'),
-        keywords: ['user', 'account', 'me'],
+        action: () => handleNavigate("/profile"),
+        keywords: ["user", "account", "me"],
       },
       {
-        id: 'settings',
-        label: 'Open Settings',
-        category: 'Account',
+        id: "settings",
+        label: "Open Settings",
+        category: "Account",
         icon: Settings,
-        action: () => handleNavigate('/settings'),
-        keywords: ['preferences', 'config', 'options'],
+        action: () => handleNavigate("/settings"),
+        keywords: ["preferences", "config", "options"],
       },
       {
-        id: 'theme-light',
-        label: 'Switch to Light Theme',
-        category: 'Theme',
+        id: "theme-light",
+        label: "Switch to Light Theme",
+        category: "Theme",
         icon: Sun,
         action: () => {
-          setTheme('light');
+          setTheme("light");
           onOpenChange(false);
         },
-        keywords: ['light', 'bright', 'day'],
+        keywords: ["light", "bright", "day"],
       },
       {
-        id: 'theme-dark',
-        label: 'Switch to Dark Theme',
-        category: 'Theme',
+        id: "theme-dark",
+        label: "Switch to Dark Theme",
+        category: "Theme",
         icon: Moon,
         action: () => {
-          setTheme('dark');
+          setTheme("dark");
           onOpenChange(false);
         },
-        keywords: ['dark', 'night', 'dim'],
+        keywords: ["dark", "night", "dim"],
       },
     ],
     [handleNavigate, setTheme, onOpenChange]
@@ -135,17 +135,17 @@ export function CommandPalette({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         onOpenChange(!open);
       }
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onOpenChange(false);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onOpenChange]);
 
   const handleSelect = useCallback(
@@ -207,12 +207,12 @@ export function CommandPalette({
                       return (
                         <Command.Item
                           key={item.id}
-                          value={`${item.label} ${item.keywords?.join(' ') || ''}`}
+                          value={`${item.label} ${item.keywords?.join(" ") || ""}`}
                           onSelect={() => handleSelect(item.id)}
                           className={cn(
-                            'flex items-center gap-3 px-2 py-2 rounded-md cursor-pointer',
-                            'hover:bg-accent hover:text-accent-foreground',
-                            'aria-selected:bg-accent aria-selected:text-accent-foreground'
+                            "flex items-center gap-3 px-2 py-2 rounded-md cursor-pointer",
+                            "hover:bg-accent hover:text-accent-foreground",
+                            "aria-selected:bg-accent aria-selected:text-accent-foreground"
                           )}
                         >
                           <Icon className="w-4 h-4 text-muted-foreground" />

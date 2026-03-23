@@ -3,10 +3,10 @@
  * Implements the two-part OpenXML hyperlink reference system
  */
 
-import type { XMLElement } from './document-processing';
+import type { XMLElement } from "./document-processing";
 
 // Hyperlink types
-export type HyperlinkType = 'external' | 'internal' | 'bookmark' | 'email' | 'file';
+export type HyperlinkType = "external" | "internal" | "bookmark" | "email" | "file";
 
 // Hyperlink data structure
 export interface HyperlinkData {
@@ -45,7 +45,7 @@ export interface URLPattern {
   name: string;
   pattern: RegExp;
   description: string;
-  action?: 'append' | 'replace' | 'validate';
+  action?: "append" | "replace" | "validate";
 }
 
 // Pre-defined patterns for theSource URLs
@@ -55,22 +55,22 @@ export const URL_PATTERNS: Readonly<{
   THE_SOURCE: URLPattern;
 }> = {
   CONTENT_ID: {
-    name: 'ContentId',
+    name: "ContentId",
     pattern: /(TSRC|CMS)-([a-zA-Z0-9]+)-(\d{6})/i,
-    description: 'Matches theSource Content IDs',
-    action: 'append',
+    description: "Matches theSource Content IDs",
+    action: "append",
   },
   DOCUMENT_ID: {
-    name: 'DocumentId',
+    name: "DocumentId",
     pattern: /docid=([a-zA-Z0-9-]+)(?:[^a-zA-Z0-9-]|$)/i,
-    description: 'Matches theSource Document IDs',
-    action: 'append',
+    description: "Matches theSource Document IDs",
+    action: "append",
   },
   THE_SOURCE: {
-    name: 'TheSource',
+    name: "TheSource",
     pattern: /thesource\.cvshealth\.com/i,
-    description: 'Matches theSource domain URLs',
-    action: 'validate',
+    description: "Matches theSource domain URLs",
+    action: "validate",
   },
 };
 
@@ -87,7 +87,7 @@ export interface HyperlinkProcessingOptions {
   preserveTooltips?: boolean;
   urlPattern?: string | RegExp;
   displayTextPattern?: string | RegExp;
-  trackChanges?: boolean;  // Enable DocHub change tracking for Document Changes UI
+  trackChanges?: boolean; // Enable DocHub change tracking for Document Changes UI
   apiEndpoint?: string;
   operations?: {
     fixContentIds?: boolean;
@@ -119,7 +119,12 @@ export interface HyperlinkProcessingOptions {
     validateDocumentStyles?: boolean; // NEW in 1.6.0: Validate all document styles using applyStylesFromObjects()
     processHyperlinks?: boolean; // Enable hyperlink defragmentation using docxmlater v1.15.0+
   };
-  textReplacements?: any[];
+  customReplacements?: Array<{
+    find: string;
+    replace: string;
+    matchType: "contains" | "exact" | "startsWith";
+    applyTo: "url" | "text" | "both";
+  }>;
   styles?: any;
   header2Spacing?: {
     spaceBefore: number;
@@ -155,7 +160,7 @@ export interface HyperlinkModificationResult {
   newUrl?: string;
   originalDisplayText: string;
   newDisplayText?: string;
-  modificationType: 'url' | 'text' | 'both' | 'removed';
+  modificationType: "url" | "text" | "both" | "removed";
   success: boolean;
   error?: string;
 }
@@ -195,7 +200,7 @@ export interface HyperlinkSummary {
   displayText: string;
   type: HyperlinkType;
   location: string; // e.g., 'Main Document', 'Header', 'Footer'
-  status: 'processed' | 'skipped' | 'error';
+  status: "processed" | "skipped" | "error";
   modifications?: string[];
   before?: string;
   after?: string;
@@ -205,8 +210,8 @@ export interface HyperlinkSummary {
 export interface HyperlinkValidationIssue {
   hyperlinkId: string;
   url: string;
-  issueType: 'invalid_url' | 'broken_link' | 'missing_relationship' | 'duplicate' | 'orphaned';
-  severity: 'error' | 'warning' | 'info';
+  issueType: "invalid_url" | "broken_link" | "missing_relationship" | "duplicate" | "orphaned";
+  severity: "error" | "warning" | "info";
   message: string;
   suggestion?: string;
   autoFixable: boolean;
@@ -227,12 +232,12 @@ export interface HyperlinkChange {
 }
 
 export enum HyperlinkChangeType {
-  URL_UPDATED = 'url_updated',
-  TEXT_UPDATED = 'text_updated',
-  BOTH_UPDATED = 'both_updated',
-  ADDED = 'added',
-  REMOVED = 'removed',
-  CONTENT_ID_APPENDED = 'content_id_appended',
+  URL_UPDATED = "url_updated",
+  TEXT_UPDATED = "text_updated",
+  BOTH_UPDATED = "both_updated",
+  ADDED = "added",
+  REMOVED = "removed",
+  CONTENT_ID_APPENDED = "content_id_appended",
 }
 
 // Hyperlink API integration
@@ -248,7 +253,7 @@ export interface HyperlinkApiSettings {
 
 export interface HyperlinkApiRequest {
   urls: string[];
-  requestType?: 'validate' | 'update' | 'fetch_metadata';
+  requestType?: "validate" | "update" | "fetch_metadata";
   options?: Record<string, unknown>;
 }
 
@@ -268,7 +273,7 @@ export interface HyperlinkApiResult {
   documentId: string;
   contentId: string;
   title?: string;
-  status: 'active' | 'deprecated' | 'expired' | 'moved' | 'not_found';
+  status: "active" | "deprecated" | "expired" | "moved" | "not_found";
   suggestedUrl?: string;
   metadata?: Record<string, unknown>;
 }
@@ -279,7 +284,7 @@ export interface HyperlinkReplacementRule {
   enabled: boolean;
   pattern: string | RegExp;
   replacement: string;
-  scope: 'url' | 'text' | 'both';
+  scope: "url" | "text" | "both";
   caseSensitive?: boolean;
   wholeWord?: boolean;
   description?: string;
@@ -293,7 +298,7 @@ export interface HyperlinkBatchOperation {
 }
 
 export interface HyperlinkOperation {
-  type: 'update' | 'validate' | 'remove' | 'append_content_id';
+  type: "update" | "validate" | "remove" | "append_content_id";
   target?: string | RegExp;
   value?: string;
   options?: Record<string, unknown>;
@@ -304,7 +309,7 @@ export interface HyperlinkSearchCriteria {
   urlPattern?: string | RegExp;
   displayTextPattern?: string | RegExp;
   type?: HyperlinkType;
-  location?: 'document' | 'header' | 'footer' | 'all';
+  location?: "document" | "header" | "footer" | "all";
   isValid?: boolean;
   hasContentId?: boolean;
 }
@@ -347,7 +352,7 @@ export interface BatchProgress {
   total: number;
   percentage: number;
   currentFile?: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: "pending" | "processing" | "completed" | "failed";
 }
 
 export interface BatchProcessingResult {
@@ -365,7 +370,7 @@ export interface BatchProcessingResult {
 
 export interface FileProcessingStatus {
   filePath: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: "pending" | "processing" | "completed" | "failed";
   result?: HyperlinkProcessingResult;
   error?: string;
   startTime?: number;
@@ -380,7 +385,7 @@ export interface PowerAutomateRequest {
 export interface PowerAutomateResponse {
   StatusCode: string;
   Headers: {
-    'Content-Type': string;
+    "Content-Type": string;
   };
   Body: {
     Results: Array<{
@@ -396,21 +401,21 @@ export interface PowerAutomateResponse {
 
 // IPC channel types for Electron integration
 export interface IpcChannels {
-  'hyperlink:process-document': {
+  "hyperlink:process-document": {
     request: {
       filePath: string;
       options: HyperlinkProcessingOptions;
     };
     response: HyperlinkProcessingResult;
   };
-  'hyperlink:batch-process': {
+  "hyperlink:batch-process": {
     request: {
       filePaths: string[];
       options: BatchProcessingOptions;
     };
     response: BatchProcessingResult;
   };
-  'hyperlink:validate-api': {
+  "hyperlink:validate-api": {
     request: {
       apiUrl: string;
     };
@@ -420,7 +425,7 @@ export interface IpcChannels {
       responseTime?: number;
     };
   };
-  'hyperlink:cancel-operation': {
+  "hyperlink:cancel-operation": {
     request: {
       operationId: string;
     };
@@ -429,7 +434,7 @@ export interface IpcChannels {
       message?: string;
     };
   };
-  'hyperlink:get-progress': {
+  "hyperlink:get-progress": {
     request: {
       operationId: string;
     };

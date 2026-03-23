@@ -1,6 +1,6 @@
-import type { DocumentChange } from '@/types/session';
-import { cn } from '@/utils/cn';
-import { motion } from 'framer-motion';
+import type { DocumentChange } from "@/types/session";
+import { cn } from "@/utils/cn";
+import { motion } from "framer-motion";
 import {
   AlertTriangle,
   CheckCircle,
@@ -11,8 +11,8 @@ import {
   Link,
   List,
   XCircle,
-} from 'lucide-react';
-import { useState } from 'react';
+} from "lucide-react";
+import { useState } from "react";
 
 interface TrackedChangesDetailProps {
   changes: DocumentChange[];
@@ -48,14 +48,14 @@ export function TrackedChangesDetail({ changes, className }: TrackedChangesDetai
 
   if (groupedChanges.length === 0) {
     return (
-      <div className={cn('text-center py-4 text-sm text-muted-foreground', className)}>
+      <div className={cn("text-center py-4 text-sm text-muted-foreground", className)}>
         No tracked changes to display
       </div>
     );
   }
 
   return (
-    <div className={cn('space-y-3', className)}>
+    <div className={cn("space-y-3", className)}>
       <div className="flex items-center justify-between mb-2">
         <h4 className="font-semibold text-sm">Tracked Changes ({changes.length})</h4>
         <button
@@ -68,7 +68,7 @@ export function TrackedChangesDetail({ changes, className }: TrackedChangesDetai
           }}
           className="text-xs text-muted-foreground hover:text-foreground"
         >
-          {expandedCategories.size === groupedChanges.length ? 'Collapse All' : 'Expand All'}
+          {expandedCategories.size === groupedChanges.length ? "Collapse All" : "Expand All"}
         </button>
       </div>
 
@@ -107,7 +107,7 @@ function ChangeGroup({
         onClick={onToggle}
         className="w-full flex items-center gap-3 p-3 hover:bg-muted/40 transition-colors text-left"
       >
-        <Icon className={cn('w-5 h-5 shrink-0', group.iconColor)} />
+        <Icon className={cn("w-5 h-5 shrink-0", group.iconColor)} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm">{group.title}</span>
@@ -127,17 +127,17 @@ function ChangeGroup({
       {isExpanded && (
         <motion.div
           initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
+          animate={{ height: "auto", opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
           className="border-t border-border"
         >
-          {group.category === 'hyperlink_update' ? (
+          {group.category === "hyperlink_update" ? (
             <HyperlinkUpdatesView items={group.items} />
-          ) : group.category === 'hyperlink_failed' ? (
+          ) : group.category === "hyperlink_failed" ? (
             <HyperlinkFailedView items={group.items} />
-          ) : group.category === 'list_fix' ? (
+          ) : group.category === "list_fix" ? (
             <ListFixesView items={group.items} />
-          ) : group.category === 'blank_lines' ? (
+          ) : group.category === "blank_lines" ? (
             <BlankLinesView items={group.items} />
           ) : (
             <DefaultChangesView items={group.items} />
@@ -244,7 +244,7 @@ function HyperlinkFailedView({ items }: { items: DocumentChange[] }) {
           <div className="space-y-1.5 pl-5">
             {section.items.map((change, itemIdx) => (
               <div key={itemIdx} className="flex items-start gap-2 text-xs">
-                {change.hyperlinkStatus === 'expired' ? (
+                {change.hyperlinkStatus === "expired" ? (
                   <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
                 ) : (
                   <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
@@ -256,13 +256,13 @@ function HyperlinkFailedView({ items }: { items: DocumentChange[] }) {
                   )}
                   <span
                     className={cn(
-                      'ml-2 text-[10px] px-1.5 py-0.5 rounded',
-                      change.hyperlinkStatus === 'expired'
-                        ? 'bg-orange-500/10 text-orange-600'
-                        : 'bg-red-500/10 text-red-600'
+                      "ml-2 text-[10px] px-1.5 py-0.5 rounded",
+                      change.hyperlinkStatus === "expired"
+                        ? "bg-orange-500/10 text-orange-600"
+                        : "bg-red-500/10 text-red-600"
                     )}
                   >
-                    {change.hyperlinkStatus === 'expired' ? 'Expired' : 'Not Found'}
+                    {change.hyperlinkStatus === "expired" ? "Expired" : "Not Found"}
                   </span>
                 </div>
               </div>
@@ -306,8 +306,8 @@ function ListFixesView({ items }: { items: DocumentChange[] }) {
 
 function BlankLinesView({ items }: { items: DocumentChange[] }) {
   // Aggregate blank line changes
-  const removed = items.filter((c) => c.description.toLowerCase().includes('removed'));
-  const added = items.filter((c) => c.description.toLowerCase().includes('added'));
+  const removed = items.filter((c) => c.description.toLowerCase().includes("removed"));
+  const added = items.filter((c) => c.description.toLowerCase().includes("added"));
 
   const totalRemoved = removed.reduce((sum, c) => sum + (c.count || 1), 0);
   const totalAdded = added.reduce((sum, c) => sum + (c.count || 1), 0);
@@ -317,14 +317,16 @@ function BlankLinesView({ items }: { items: DocumentChange[] }) {
       {totalRemoved > 0 && (
         <div className="flex items-center gap-2">
           <XCircle className="w-4 h-4 text-red-500" />
-          <span>Removed {totalRemoved} blank line{totalRemoved !== 1 ? 's' : ''}</span>
+          <span>
+            Removed {totalRemoved} blank line{totalRemoved !== 1 ? "s" : ""}
+          </span>
         </div>
       )}
       {totalAdded > 0 && (
         <div className="flex items-center gap-2">
           <CheckCircle className="w-4 h-4 text-green-500" />
           <span>
-            Added {totalAdded} standardized line{totalAdded !== 1 ? 's' : ''} for structure
+            Added {totalAdded} standardized line{totalAdded !== 1 ? "s" : ""} for structure
           </span>
         </div>
       )}
@@ -363,7 +365,7 @@ function DefaultChangesView({ items }: { items: DocumentChange[] }) {
             )}
             {change.count !== undefined && change.count > 0 && (
               <p className="text-muted-foreground text-[10px] mt-0.5">
-                {change.count} occurrence{change.count !== 1 ? 's' : ''}
+                {change.count} occurrence{change.count !== 1 ? "s" : ""}
               </p>
             )}
           </div>
@@ -379,22 +381,22 @@ function groupChangesByCategory(changes: DocumentChange[]): GroupedChange[] {
 
   // Separate changes by category
   const hyperlinksUpdated = changes.filter(
-    (c) => c.category === 'hyperlink_update' && c.hyperlinkStatus === 'updated'
+    (c) => c.category === "hyperlink_update" && c.hyperlinkStatus === "updated"
   );
   const hyperlinksFailed = changes.filter(
     (c) =>
-      c.category === 'hyperlink_failed' ||
-      c.hyperlinkStatus === 'expired' ||
-      c.hyperlinkStatus === 'not_found'
+      c.category === "hyperlink_failed" ||
+      c.hyperlinkStatus === "expired" ||
+      c.hyperlinkStatus === "not_found"
   );
-  const listFixes = changes.filter((c) => c.category === 'list_fix');
-  const blankLines = changes.filter((c) => c.category === 'blank_lines');
-  const styleChanges = changes.filter((c) => c.category === 'style_application');
-  const structureChanges = changes.filter((c) => c.category === 'structure');
+  const listFixes = changes.filter((c) => c.category === "list_fix");
+  const blankLines = changes.filter((c) => c.category === "blank_lines");
+  const styleChanges = changes.filter((c) => c.category === "style_application");
+  const structureChanges = changes.filter((c) => c.category === "structure");
   const otherChanges = changes.filter(
     (c) =>
       !c.category ||
-      (c.category === 'other' &&
+      (c.category === "other" &&
         !hyperlinksUpdated.includes(c) &&
         !hyperlinksFailed.includes(c) &&
         !listFixes.includes(c) &&
@@ -406,23 +408,21 @@ function groupChangesByCategory(changes: DocumentChange[]): GroupedChange[] {
   // Hyperlink updates
   if (hyperlinksUpdated.length > 0) {
     groups.push({
-      category: 'hyperlink_update',
-      title: 'Updated Hyperlink URLs / Content IDs',
+      category: "hyperlink_update",
+      title: "Updated Hyperlink URLs / Content IDs",
       icon: Link,
-      iconColor: 'text-blue-500',
+      iconColor: "text-blue-500",
       items: hyperlinksUpdated,
-      summary: `${hyperlinksUpdated.length} hyperlink${hyperlinksUpdated.length !== 1 ? 's' : ''} updated`,
+      summary: `${hyperlinksUpdated.length} hyperlink${hyperlinksUpdated.length !== 1 ? "s" : ""} updated`,
     });
   }
 
   // Failed/Expired hyperlinks
   if (hyperlinksFailed.length > 0) {
-    const expiredCount = hyperlinksFailed.filter((c) => c.hyperlinkStatus === 'expired').length;
-    const notFoundCount = hyperlinksFailed.filter(
-      (c) => c.hyperlinkStatus === 'not_found'
-    ).length;
+    const expiredCount = hyperlinksFailed.filter((c) => c.hyperlinkStatus === "expired").length;
+    const notFoundCount = hyperlinksFailed.filter((c) => c.hyperlinkStatus === "not_found").length;
 
-    let summary = '';
+    let summary = "";
     if (expiredCount > 0 && notFoundCount > 0) {
       summary = `${expiredCount} expired, ${notFoundCount} not found`;
     } else if (expiredCount > 0) {
@@ -432,10 +432,10 @@ function groupChangesByCategory(changes: DocumentChange[]): GroupedChange[] {
     }
 
     groups.push({
-      category: 'hyperlink_failed',
-      title: 'Hyperlink Issues Found',
+      category: "hyperlink_failed",
+      title: "Hyperlink Issues Found",
       icon: AlertTriangle,
-      iconColor: 'text-orange-500',
+      iconColor: "text-orange-500",
       items: hyperlinksFailed,
       summary,
     });
@@ -445,60 +445,60 @@ function groupChangesByCategory(changes: DocumentChange[]): GroupedChange[] {
   if (listFixes.length > 0) {
     const totalListsFixed = listFixes.reduce((sum, c) => sum + (c.count || 1), 0);
     groups.push({
-      category: 'list_fix',
-      title: 'List Formatting',
+      category: "list_fix",
+      title: "List Formatting",
       icon: List,
-      iconColor: 'text-purple-500',
+      iconColor: "text-purple-500",
       items: listFixes,
-      summary: `Fixed ${totalListsFixed} list${totalListsFixed !== 1 ? 's' : ''}`,
+      summary: `Fixed ${totalListsFixed} list${totalListsFixed !== 1 ? "s" : ""}`,
     });
   }
 
   // Blank lines (condensed)
   if (blankLines.length > 0) {
     groups.push({
-      category: 'blank_lines',
-      title: 'Structure Changes',
+      category: "blank_lines",
+      title: "Structure Changes",
       icon: FileText,
-      iconColor: 'text-gray-500',
+      iconColor: "text-gray-500",
       items: blankLines,
-      summary: 'Blank line adjustments',
+      summary: "Blank line adjustments",
     });
   }
 
   // Style applications
   if (styleChanges.length > 0) {
     groups.push({
-      category: 'style_application',
-      title: 'Style Applications',
+      category: "style_application",
+      title: "Style Applications",
       icon: Hash,
-      iconColor: 'text-indigo-500',
+      iconColor: "text-indigo-500",
       items: styleChanges,
-      summary: `${styleChanges.length} style${styleChanges.length !== 1 ? 's' : ''} applied`,
+      summary: `${styleChanges.length} style${styleChanges.length !== 1 ? "s" : ""} applied`,
     });
   }
 
   // Other structure changes
   if (structureChanges.length > 0) {
     groups.push({
-      category: 'structure',
-      title: 'Other Structure Changes',
+      category: "structure",
+      title: "Other Structure Changes",
       icon: FileText,
-      iconColor: 'text-teal-500',
+      iconColor: "text-teal-500",
       items: structureChanges,
-      summary: `${structureChanges.length} change${structureChanges.length !== 1 ? 's' : ''}`,
+      summary: `${structureChanges.length} change${structureChanges.length !== 1 ? "s" : ""}`,
     });
   }
 
   // Other changes
   if (otherChanges.length > 0) {
     groups.push({
-      category: 'other',
-      title: 'Other Changes',
+      category: "other",
+      title: "Other Changes",
       icon: FileText,
-      iconColor: 'text-gray-500',
+      iconColor: "text-gray-500",
       items: otherChanges,
-      summary: `${otherChanges.length} miscellaneous change${otherChanges.length !== 1 ? 's' : ''}`,
+      summary: `${otherChanges.length} miscellaneous change${otherChanges.length !== 1 ? "s" : ""}`,
     });
   }
 

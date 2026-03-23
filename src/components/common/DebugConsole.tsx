@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Terminal, AlertTriangle, Network, Shield, Download, Trash2, Copy } from 'lucide-react';
-import { cn } from '@/utils/cn';
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Terminal, AlertTriangle, Network, Shield, Download, Trash2, Copy } from "lucide-react";
+import { cn } from "@/utils/cn";
 
 interface LogEntry {
   id: string;
   timestamp: string;
-  type: 'network' | 'cert-error' | 'network-error' | 'tls-error' | 'info' | 'warning';
+  type: "network" | "cert-error" | "network-error" | "tls-error" | "info" | "warning";
   message: string;
   details?: any;
 }
@@ -14,7 +14,7 @@ interface LogEntry {
 export function DebugConsole() {
   const [isVisible, setIsVisible] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [filter, setFilter] = useState<'all' | 'network' | 'errors'>('all');
+  const [filter, setFilter] = useState<"all" | "network" | "errors">("all");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -22,42 +22,42 @@ export function DebugConsole() {
     // Listen for debug mode activation (triggered by 5 clicks on logo)
     const handleKeyPress = (e: KeyboardEvent) => {
       // Ctrl+Shift+D to toggle debug console
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      if (e.ctrlKey && e.shiftKey && e.key === "D") {
         setIsVisible(!isVisible);
       }
     };
 
-    window.addEventListener('keydown', handleKeyPress);
+    window.addEventListener("keydown", handleKeyPress);
 
     // Listen for network requests
     const unsubNetworkRequest = window.electronAPI?.onDebugNetworkRequest?.((data: any) => {
-      addLog('network', `${data.method} ${data.url}`, data);
+      addLog("network", `${data.method} ${data.url}`, data);
     });
 
     // Listen for certificate errors
     const unsubCertError = window.electronAPI?.onDebugCertError?.((data: any) => {
-      addLog('cert-error', `Certificate Error: ${data.url}`, data);
+      addLog("cert-error", `Certificate Error: ${data.url}`, data);
     });
 
     // Listen for network errors
     const unsubNetworkError = window.electronAPI?.onDebugNetworkError?.((data: any) => {
-      addLog('network-error', `Network Error: ${data.error}`, data);
+      addLog("network-error", `Network Error: ${data.error}`, data);
     });
 
     // Listen for TLS errors
     const unsubTLSError = window.electronAPI?.onDebugTLSError?.((data: any) => {
-      addLog('tls-error', `TLS Error: ${data.message}`, data);
+      addLog("tls-error", `TLS Error: ${data.message}`, data);
     });
 
     // Listen for update status
     const unsubUpdateStatus = window.electronAPI?.onUpdateStatus?.((data: any) => {
-      if (data.message?.includes('PowerShell') || data.message?.includes('Mutual TLS')) {
-        addLog('info', `Update: ${data.message}`, data);
+      if (data.message?.includes("PowerShell") || data.message?.includes("Mutual TLS")) {
+        addLog("info", `Update: ${data.message}`, data);
       }
     });
 
     return () => {
-      window.removeEventListener('keydown', handleKeyPress);
+      window.removeEventListener("keydown", handleKeyPress);
       unsubNetworkRequest?.();
       unsubCertError?.();
       unsubNetworkError?.();
@@ -73,7 +73,7 @@ export function DebugConsole() {
     }
   }, [logs, autoScroll]);
 
-  const addLog = (type: LogEntry['type'], message: string, details?: any) => {
+  const addLog = (type: LogEntry["type"], message: string, details?: any) => {
     const newLog: LogEntry = {
       id: `${Date.now()}-${Math.random()}`,
       timestamp: new Date().toISOString(),
@@ -90,9 +90,9 @@ export function DebugConsole() {
 
   const exportLogs = () => {
     const logsJson = JSON.stringify(logs, null, 2);
-    const blob = new Blob([logsJson], { type: 'application/json' });
+    const blob = new Blob([logsJson], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `debug-logs-${Date.now()}.json`;
     a.click();
@@ -102,42 +102,42 @@ export function DebugConsole() {
   const copyLogs = () => {
     const logsText = logs
       .map((log) => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}`)
-      .join('\n');
+      .join("\n");
     navigator.clipboard.writeText(logsText);
   };
 
   const filteredLogs = logs.filter((log) => {
-    if (filter === 'all') return true;
-    if (filter === 'network') return log.type === 'network';
-    if (filter === 'errors') return log.type.includes('error');
+    if (filter === "all") return true;
+    if (filter === "network") return log.type === "network";
+    if (filter === "errors") return log.type.includes("error");
     return true;
   });
 
-  const getLogIcon = (type: LogEntry['type']) => {
+  const getLogIcon = (type: LogEntry["type"]) => {
     switch (type) {
-      case 'network':
+      case "network":
         return <Network className="w-3 h-3" />;
-      case 'cert-error':
+      case "cert-error":
         return <Shield className="w-3 h-3 text-red-500" />;
-      case 'network-error':
-      case 'tls-error':
+      case "network-error":
+      case "tls-error":
         return <AlertTriangle className="w-3 h-3 text-yellow-500" />;
       default:
         return <Terminal className="w-3 h-3" />;
     }
   };
 
-  const getLogColor = (type: LogEntry['type']) => {
+  const getLogColor = (type: LogEntry["type"]) => {
     switch (type) {
-      case 'cert-error':
-      case 'tls-error':
-        return 'text-red-400';
-      case 'network-error':
-        return 'text-yellow-400';
-      case 'network':
-        return 'text-blue-400';
+      case "cert-error":
+      case "tls-error":
+        return "text-red-400";
+      case "network-error":
+        return "text-yellow-400";
+      case "network":
+        return "text-blue-400";
       default:
-        return 'text-muted-foreground';
+        return "text-muted-foreground";
     }
   };
 
@@ -160,28 +160,28 @@ export function DebugConsole() {
             <div className="flex items-center gap-1">
               {/* Filter buttons */}
               <button
-                onClick={() => setFilter('all')}
+                onClick={() => setFilter("all")}
                 className={cn(
-                  'px-2 py-1 text-xs rounded transition-colors',
-                  filter === 'all' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  "px-2 py-1 text-xs rounded transition-colors",
+                  filter === "all" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                 )}
               >
                 All
               </button>
               <button
-                onClick={() => setFilter('network')}
+                onClick={() => setFilter("network")}
                 className={cn(
-                  'px-2 py-1 text-xs rounded transition-colors',
-                  filter === 'network' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  "px-2 py-1 text-xs rounded transition-colors",
+                  filter === "network" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                 )}
               >
                 Network
               </button>
               <button
-                onClick={() => setFilter('errors')}
+                onClick={() => setFilter("errors")}
                 className={cn(
-                  'px-2 py-1 text-xs rounded transition-colors',
-                  filter === 'errors' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  "px-2 py-1 text-xs rounded transition-colors",
+                  filter === "errors" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                 )}
               >
                 Errors
@@ -239,9 +239,9 @@ export function DebugConsole() {
                 >
                   <span className="flex-shrink-0 mt-0.5">{getLogIcon(log.type)}</span>
                   <span className="text-muted-foreground flex-shrink-0">
-                    {log.timestamp.split('T')[1].split('.')[0]}
+                    {log.timestamp.split("T")[1].split(".")[0]}
                   </span>
-                  <span className={cn('flex-1 break-all', getLogColor(log.type))}>
+                  <span className={cn("flex-1 break-all", getLogColor(log.type))}>
                     {log.message}
                   </span>
                 </div>

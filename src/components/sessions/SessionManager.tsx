@@ -1,14 +1,14 @@
-import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
-import { useSession } from '@/contexts/SessionContext';
-import { cn } from '@/utils/cn';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Calendar, FileText, FolderOpen, Plus, X } from 'lucide-react';
-import { useState } from 'react';
-import { flushSync } from 'react-dom';
+import { Button } from "@/components/common/Button";
+import { Input } from "@/components/common/Input";
+import { useSession } from "@/contexts/SessionContext";
+import { cn } from "@/utils/cn";
+import { AnimatePresence, motion } from "framer-motion";
+import { Calendar, FileText, FolderOpen, Plus, X } from "lucide-react";
+import { useState } from "react";
+import { flushSync } from "react-dom";
 
 interface SessionManagerProps {
-  mode: 'new' | 'load';
+  mode: "new" | "load";
   onClose: () => void;
   onSessionCreated: (sessionId: string) => void;
   onSessionLoaded: (sessionId: string) => void;
@@ -21,7 +21,7 @@ export function SessionManager({
   onSessionLoaded,
 }: SessionManagerProps) {
   const { sessions, createSession, loadSession } = useSession();
-  const [sessionName, setSessionName] = useState('');
+  const [sessionName, setSessionName] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   const handleCreateSession = () => {
@@ -49,12 +49,12 @@ export function SessionManager({
   };
 
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     }).format(date);
   };
 
@@ -77,12 +77,12 @@ export function SessionManager({
           <div className="flex items-center justify-between p-6 border-b border-border">
             <div>
               <h2 className="text-xl font-semibold">
-                {mode === 'new' ? 'New Session' : 'Load Session'}
+                {mode === "new" ? "New Session" : "Load Session"}
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                {mode === 'new'
-                  ? 'Create a new document processing session'
-                  : 'Select a session to continue working'}
+                {mode === "new"
+                  ? "Create a new document processing session"
+                  : "Select a session to continue working"}
               </p>
             </div>
             <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors">
@@ -91,7 +91,7 @@ export function SessionManager({
           </div>
 
           <div className="p-6">
-            {mode === 'new' ? (
+            {mode === "new" ? (
               <div className="space-y-4">
                 <Input
                   label="Session Name"
@@ -99,7 +99,7 @@ export function SessionManager({
                   value={sessionName}
                   onChange={(e) => setSessionName(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === "Enter") {
                       handleCreateSession();
                     }
                   }}
@@ -131,10 +131,10 @@ export function SessionManager({
                         <motion.div
                           key={session.id}
                           className={cn(
-                            'p-4 rounded-lg border cursor-pointer transition-all',
+                            "p-4 rounded-lg border cursor-pointer transition-all",
                             selectedSessionId === session.id
-                              ? 'border-primary bg-primary/5'
-                              : 'border-border hover:bg-muted/50'
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:bg-muted/50"
                           )}
                           onClick={() => setSelectedSessionId(session.id)}
                           whileHover={{ scale: 1.02 }}
@@ -156,10 +156,10 @@ export function SessionManager({
                             </div>
                             <span
                               className={cn(
-                                'text-xs px-2 py-1 rounded-full',
-                                session.status === 'active'
-                                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+                                "text-xs px-2 py-1 rounded-full",
+                                session.status === "active"
+                                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                  : "bg-muted text-muted-foreground"
                               )}
                             >
                               {session.status}

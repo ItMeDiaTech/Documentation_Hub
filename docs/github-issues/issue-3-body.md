@@ -227,8 +227,8 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
 }
 
 // Cleanup on app shutdown
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
     statsPool.close();
   });
 }

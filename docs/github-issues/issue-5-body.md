@@ -20,17 +20,17 @@ useEffect(() => {
 
   if (useCustomColors) {
     try {
-      root.setAttribute('data-custom-colors', 'true');
+      root.setAttribute("data-custom-colors", "true");
 
       const foregroundColor = getContrastTextColor(customBackgroundColor);
-      root.style.setProperty('--custom-primary', hexToHSL(customPrimaryColor));
+      root.style.setProperty("--custom-primary", hexToHSL(customPrimaryColor));
       // ... more color applications
     } catch (error) {
-      log.error('[ThemeContext] Error applying custom colors:', error);
+      log.error("[ThemeContext] Error applying custom colors:", error);
 
       // ❌ INFINITE LOOP TRAP!
       setUseCustomColors(false); // Triggers useEffect again!
-      root.removeAttribute('data-custom-colors');
+      root.removeAttribute("data-custom-colors");
     }
   }
 }, [useCustomColors, customPrimaryColor, customBackgroundColor /* deps */]);
@@ -67,7 +67,7 @@ All running simultaneously during initial mount = potential race conditions
 Colors applied directly without validation:
 
 ```typescript
-root.style.setProperty('--custom-primary', hexToHSL(customPrimaryColor));
+root.style.setProperty("--custom-primary", hexToHSL(customPrimaryColor));
 ```
 
 If `hexToHSL()` throws, entire effect fails and triggers recovery via setState.
@@ -99,8 +99,8 @@ function isValidHexColor(color: string): boolean {
 
 // REFACTORED: Validate in state setter, not in effect
 const [customPrimaryColor, setCustomPrimaryColor] = useState<string>(() => {
-  const stored = localStorage.getItem('customPrimaryColor') || '#3b82f6';
-  return isValidHexColor(stored) ? stored : '#3b82f6'; // Validate on load
+  const stored = localStorage.getItem("customPrimaryColor") || "#3b82f6";
+  return isValidHexColor(stored) ? stored : "#3b82f6"; // Validate on load
 });
 
 // Validate in setter
@@ -109,7 +109,7 @@ const updateCustomPrimaryColor = (color: string) => {
     setCustomPrimaryColor(color);
   } else {
     log.warn(`Invalid hex color: ${color}, using default`);
-    setCustomPrimaryColor('#3b82f6');
+    setCustomPrimaryColor("#3b82f6");
   }
 };
 
@@ -120,7 +120,7 @@ useEffect(() => {
   if (useCustomColors) {
     // Safe to apply - already validated
     const foregroundColor = getContrastTextColor(customBackgroundColor);
-    root.style.setProperty('--custom-primary', hexToHSL(customPrimaryColor));
+    root.style.setProperty("--custom-primary", hexToHSL(customPrimaryColor));
   }
 }, [useCustomColors, customPrimaryColor, customBackgroundColor]);
 ```
@@ -141,7 +141,7 @@ useEffect(() => {
     applyBlur(root, blur);
     applyTypography(root, { fontSize, fontFamily /* ... */ });
   } catch (error) {
-    log.error('[ThemeContext] Failed to apply theme:', error);
+    log.error("[ThemeContext] Failed to apply theme:", error);
     // DON'T call setState here - just log and use defaults
   }
 }, [theme, accentColor /* all deps */]);

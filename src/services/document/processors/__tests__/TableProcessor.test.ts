@@ -4,15 +4,24 @@
  * Tests table formatting, uniformity, and Header2 handling.
  */
 
-
-import { TableProcessor } from '../TableProcessor';
-import type { HLPTableAnalysis } from '../TableProcessor';
-import { Document, Table, Paragraph, Run, Hyperlink, PreservedElement, TableCell, TableRow, inchesToTwips } from 'docxmlater';
+import { TableProcessor } from "../TableProcessor";
+import type { HLPTableAnalysis } from "../TableProcessor";
+import {
+  Document,
+  Table,
+  Paragraph,
+  Run,
+  Hyperlink,
+  PreservedElement,
+  TableCell,
+  TableRow,
+  inchesToTwips,
+} from "docxmlater";
 
 // Mock docxmlater
-jest.mock('docxmlater');
+jest.mock("docxmlater");
 
-describe('TableProcessor', () => {
+describe("TableProcessor", () => {
   let processor: TableProcessor;
   let mockDoc: jest.Mocked<Document>;
 
@@ -26,9 +35,9 @@ describe('TableProcessor', () => {
     } as unknown as jest.Mocked<Document>;
   });
 
-  describe('applyTableUniformity', () => {
-    it('should process tables and recolor cells', async () => {
-      const mockCell = createMockCell('CCCCCC');
+  describe("applyTableUniformity", () => {
+    it("should process tables and recolor cells", async () => {
+      const mockCell = createMockCell("CCCCCC");
       const mockRow = createMockRow([mockCell]);
       const mockTable = createMockTable([mockRow]);
 
@@ -40,17 +49,17 @@ describe('TableProcessor', () => {
       expect(result.cellsRecolored).toBeGreaterThanOrEqual(0);
     });
 
-    it('should apply Header2 shading to 1x1 tables', async () => {
+    it("should apply Header2 shading to 1x1 tables", async () => {
       // Cell has Heading2 style paragraph — triggers Header2 shading
-      const mockH2Paragraph = createMockParagraph('Heading2');
+      const mockH2Paragraph = createMockParagraph("Heading2");
       const mockCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         getParagraphs: jest.fn().mockReturnValue([mockH2Paragraph]),
-        getFormatting: jest.fn().mockReturnValue({ shading: { fill: 'FFFFFF' } }),
+        getFormatting: jest.fn().mockReturnValue({ shading: { fill: "FFFFFF" } }),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('Section Header'),
+        getText: jest.fn().mockReturnValue("Section Header"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
       const mockRow = createMockRow([mockCell]);
@@ -59,17 +68,21 @@ describe('TableProcessor', () => {
       mockDoc.getTables.mockReturnValue([mockTable]);
 
       const result = await processor.applyTableUniformity(mockDoc, {
-        header2Shading: 'BFBFBF',
-        otherShading: 'DFDFDF',
+        header2Shading: "BFBFBF",
+        otherShading: "DFDFDF",
       });
 
       expect(result.tablesProcessed).toBe(1);
-      expect(mockCell.setShading).toHaveBeenCalledWith({ fill: 'BFBFBF', pattern: 'clear', color: 'auto' });
+      expect(mockCell.setShading).toHaveBeenCalledWith({
+        fill: "BFBFBF",
+        pattern: "clear",
+        color: "auto",
+      });
     });
 
-    it('should preserve cells without shading', async () => {
-      const mockCell = createMockCell('FFFFFF'); // White/no shading
-      const mockRow = createMockRow([mockCell, createMockCell('FFFFFF')]);
+    it("should preserve cells without shading", async () => {
+      const mockCell = createMockCell("FFFFFF"); // White/no shading
+      const mockRow = createMockRow([mockCell, createMockCell("FFFFFF")]);
       const mockTable = createMockTable([mockRow, mockRow]); // 2x2 table
 
       mockDoc.getTables.mockReturnValue([mockTable]);
@@ -80,7 +93,7 @@ describe('TableProcessor', () => {
       // White cells should not be recolored
     });
 
-    it('should handle tables with no rows', async () => {
+    it("should handle tables with no rows", async () => {
       const mockTable = createMockTable([]);
 
       mockDoc.getTables.mockReturnValue([mockTable]);
@@ -90,7 +103,7 @@ describe('TableProcessor', () => {
       expect(result.tablesProcessed).toBe(0);
     });
 
-    it('should handle empty document', async () => {
+    it("should handle empty document", async () => {
       mockDoc.getTables.mockReturnValue([]);
 
       const result = await processor.applyTableUniformity(mockDoc);
@@ -100,9 +113,9 @@ describe('TableProcessor', () => {
     });
   });
 
-  describe('detect1x1Tables', () => {
-    it('should detect 1x1 tables', () => {
-      const mockCell = createMockCell('BFBFBF');
+  describe("detect1x1Tables", () => {
+    it("should detect 1x1 tables", () => {
+      const mockCell = createMockCell("BFBFBF");
       const mockRow = createMockRow([mockCell]);
       const mockTable = createMockTable([mockRow]);
 
@@ -113,8 +126,8 @@ describe('TableProcessor', () => {
       expect(tables).toHaveLength(1);
     });
 
-    it('should return empty array for no 1x1 tables', () => {
-      const mockCell = createMockCell('BFBFBF');
+    it("should return empty array for no 1x1 tables", () => {
+      const mockCell = createMockCell("BFBFBF");
       const mockRow = createMockRow([mockCell, mockCell]);
       const mockTable = createMockTable([mockRow, mockRow]);
 
@@ -126,9 +139,9 @@ describe('TableProcessor', () => {
     });
   });
 
-  describe('tableHasHeader2Content', () => {
-    it('should detect Header2 styled content in table', () => {
-      const mockParagraph = createMockParagraph('Heading2');
+  describe("tableHasHeader2Content", () => {
+    it("should detect Header2 styled content in table", () => {
+      const mockParagraph = createMockParagraph("Heading2");
       const mockCell = createMockCellWithParagraphs([mockParagraph]);
       const mockRow = createMockRow([mockCell]);
       const mockTable = createMockTable([mockRow]);
@@ -138,8 +151,8 @@ describe('TableProcessor', () => {
       expect(hasHeader2).toBe(true);
     });
 
-    it('should return false for tables without Header2', () => {
-      const mockParagraph = createMockParagraph('Normal');
+    it("should return false for tables without Header2", () => {
+      const mockParagraph = createMockParagraph("Normal");
       const mockCell = createMockCellWithParagraphs([mockParagraph]);
       const mockRow = createMockRow([mockCell]);
       const mockTable = createMockTable([mockRow]);
@@ -150,13 +163,13 @@ describe('TableProcessor', () => {
     });
   });
 
-  describe('applySmartTableFormatting', () => {
-    it('should detect and format header rows', async () => {
+  describe("applySmartTableFormatting", () => {
+    it("should detect and format header rows", async () => {
       const boldRun = createMockRun(true);
       const mockParagraph = createMockParagraphWithRuns([boldRun]);
       const headerCell = createMockCellWithParagraphs([mockParagraph]);
       const headerRow = createMockRow([headerCell]);
-      const dataRow = createMockRow([createMockCell('FFFFFF')]);
+      const dataRow = createMockRow([createMockCell("FFFFFF")]);
       const mockTable = createMockTable([headerRow, dataRow]);
 
       mockDoc.getTables.mockReturnValue([mockTable]);
@@ -164,10 +177,14 @@ describe('TableProcessor', () => {
       const count = await processor.applySmartTableFormatting(mockDoc);
 
       expect(count).toBe(1);
-      expect(headerCell.setShading).toHaveBeenCalledWith({ fill: 'BFBFBF', pattern: 'clear', color: 'auto' });
+      expect(headerCell.setShading).toHaveBeenCalledWith({
+        fill: "BFBFBF",
+        pattern: "clear",
+        color: "auto",
+      });
     });
 
-    it('should handle tables without header rows', async () => {
+    it("should handle tables without header rows", async () => {
       const normalRun = createMockRun(false);
       const mockParagraph = createMockParagraphWithRuns([normalRun]);
       const normalCell = createMockCellWithParagraphs([mockParagraph]);
@@ -188,7 +205,7 @@ describe('TableProcessor', () => {
 // Helper functions
 
 function createMockCell(shading: string): jest.Mocked<TableCell> {
-  const mockParagraph = createMockParagraph('Normal');
+  const mockParagraph = createMockParagraph("Normal");
   return {
     getShading: jest.fn().mockReturnValue(shading),
     setShading: jest.fn(),
@@ -196,20 +213,20 @@ function createMockCell(shading: string): jest.Mocked<TableCell> {
     getFormatting: jest.fn().mockReturnValue({ shading: { fill: shading } }),
     setAllRunsFont: jest.fn(),
     setAllRunsSize: jest.fn(),
-    getText: jest.fn().mockReturnValue('Sample text'),
+    getText: jest.fn().mockReturnValue("Sample text"),
     hasNestedTables: jest.fn().mockReturnValue(false),
   } as unknown as jest.Mocked<TableCell>;
 }
 
 function createMockCellWithParagraphs(paragraphs: any[]): jest.Mocked<TableCell> {
   return {
-    getShading: jest.fn().mockReturnValue('FFFFFF'),
+    getShading: jest.fn().mockReturnValue("FFFFFF"),
     setShading: jest.fn(),
     getParagraphs: jest.fn().mockReturnValue(paragraphs),
     getFormatting: jest.fn().mockReturnValue({}),
     setAllRunsFont: jest.fn(),
     setAllRunsSize: jest.fn(),
-    getText: jest.fn().mockReturnValue('Sample text'),
+    getText: jest.fn().mockReturnValue("Sample text"),
     hasNestedTables: jest.fn().mockReturnValue(false),
   } as unknown as jest.Mocked<TableCell>;
 }
@@ -231,7 +248,7 @@ function createMockParagraph(style: string): jest.Mocked<Paragraph> {
   return {
     getStyle: jest.fn().mockReturnValue(style),
     setStyle: jest.fn(),
-    getText: jest.fn().mockReturnValue('Sample text'),
+    getText: jest.fn().mockReturnValue("Sample text"),
     getRuns: jest.fn().mockReturnValue([]),
     getNumbering: jest.fn().mockReturnValue(null),
     getContent: jest.fn().mockReturnValue([]),
@@ -246,11 +263,11 @@ function createMockParagraph(style: string): jest.Mocked<Paragraph> {
   } as unknown as jest.Mocked<Paragraph>;
 }
 
-function createMockParagraphWithRuns(runs: any[], style = 'Normal'): jest.Mocked<Paragraph> {
+function createMockParagraphWithRuns(runs: any[], style = "Normal"): jest.Mocked<Paragraph> {
   return {
     getStyle: jest.fn().mockReturnValue(style),
     setStyle: jest.fn(),
-    getText: jest.fn().mockReturnValue('Sample text'),
+    getText: jest.fn().mockReturnValue("Sample text"),
     getRuns: jest.fn().mockReturnValue(runs),
     getNumbering: jest.fn().mockReturnValue(null),
     getContent: jest.fn().mockReturnValue(runs),
@@ -267,7 +284,7 @@ function createMockParagraphWithRuns(runs: any[], style = 'Normal'): jest.Mocked
 
 function createMockRun(bold: boolean, characterStyle?: string): jest.Mocked<Run> {
   return {
-    getText: jest.fn().mockReturnValue('Text'),
+    getText: jest.fn().mockReturnValue("Text"),
     getFormatting: jest.fn().mockReturnValue({ bold, characterStyle }),
     setFont: jest.fn(),
     setSize: jest.fn(),
@@ -286,26 +303,26 @@ function createMockHyperlink(): jest.Mocked<Hyperlink> {
   const mockHyperlink = {
     setFormatting: jest.fn(),
     getRun: jest.fn().mockReturnValue(createMockRun(true)),
-    getText: jest.fn().mockReturnValue('Link text'),
-    getUrl: jest.fn().mockReturnValue('https://example.com'),
+    getText: jest.fn().mockReturnValue("Link text"),
+    getUrl: jest.fn().mockReturnValue("https://example.com"),
     // Mark as Hyperlink instance for isHyperlink() type guard
-    constructor: { name: 'Hyperlink' },
+    constructor: { name: "Hyperlink" },
   } as unknown as jest.Mocked<Hyperlink>;
   // Make instanceof check work with mock
   Object.setPrototypeOf(mockHyperlink, Hyperlink.prototype);
   return mockHyperlink;
 }
 
-function createHLPHeaderCell(text = 'High Level Process'): jest.Mocked<TableCell> {
-  const mockParagraph = createMockParagraph('Heading2');
+function createHLPHeaderCell(text = "High Level Process"): jest.Mocked<TableCell> {
+  const mockParagraph = createMockParagraph("Heading2");
   mockParagraph.getText.mockReturnValue(text);
   return {
-    getShading: jest.fn().mockReturnValue('FFC000'),
+    getShading: jest.fn().mockReturnValue("FFC000"),
     setShading: jest.fn(),
     setBorders: jest.fn(),
     setMargins: jest.fn(),
     getParagraphs: jest.fn().mockReturnValue([mockParagraph]),
-    getFormatting: jest.fn().mockReturnValue({ shading: { fill: 'FFC000' } }),
+    getFormatting: jest.fn().mockReturnValue({ shading: { fill: "FFC000" } }),
     getColumnSpan: jest.fn().mockReturnValue(1),
     setAllRunsFont: jest.fn(),
     setAllRunsSize: jest.fn(),
@@ -321,7 +338,7 @@ function createHLPDataCell(shading?: string): jest.Mocked<TableCell> {
   const mainPara = createMockParagraphWithRuns([mainRun]);
   // Level-0 items in HLP tables are ListParagraph without explicit numbering.
   // The code converts them to Normal + explicit numbering via setNumbering().
-  mainPara.getStyle.mockReturnValue('ListParagraph');
+  mainPara.getStyle.mockReturnValue("ListParagraph");
   let mainParaNumbering: { numId: number; level: number } | null = null;
   mainPara.getNumbering.mockImplementation(() => mainParaNumbering);
   mainPara.setNumbering.mockImplementation((numId: number, level: number) => {
@@ -332,7 +349,7 @@ function createHLPDataCell(shading?: string): jest.Mocked<TableCell> {
   numberedPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
 
   return {
-    getShading: jest.fn().mockReturnValue(shading || 'FFFFFF'),
+    getShading: jest.fn().mockReturnValue(shading || "FFFFFF"),
     setShading: jest.fn(),
     setBorders: jest.fn(),
     setMargins: jest.fn(),
@@ -341,7 +358,7 @@ function createHLPDataCell(shading?: string): jest.Mocked<TableCell> {
     getColumnSpan: jest.fn().mockReturnValue(1),
     setAllRunsFont: jest.fn(),
     setAllRunsSize: jest.fn(),
-    getText: jest.fn().mockReturnValue('Item1\nA1'),
+    getText: jest.fn().mockReturnValue("Item1\nA1"),
     hasNestedTables: jest.fn().mockReturnValue(false),
   } as unknown as jest.Mocked<TableCell>;
 }
@@ -349,33 +366,33 @@ function createHLPDataCell(shading?: string): jest.Mocked<TableCell> {
 function createHLPTipsCell(): jest.Mocked<TableCell> {
   const tipRun = createMockRun(false);
   const tipPara = createMockParagraphWithRuns([tipRun]);
-  tipPara.getText.mockReturnValue('[TIP] Some tip text');
+  tipPara.getText.mockReturnValue("[TIP] Some tip text");
 
   return {
-    getShading: jest.fn().mockReturnValue('FFF2CC'),
+    getShading: jest.fn().mockReturnValue("FFF2CC"),
     setShading: jest.fn(),
     setBorders: jest.fn(),
     setMargins: jest.fn(),
     getParagraphs: jest.fn().mockReturnValue([tipPara]),
-    getFormatting: jest.fn().mockReturnValue({ shading: { fill: 'FFF2CC' } }),
+    getFormatting: jest.fn().mockReturnValue({ shading: { fill: "FFF2CC" } }),
     getColumnSpan: jest.fn().mockReturnValue(1),
     setAllRunsFont: jest.fn(),
     setAllRunsSize: jest.fn(),
-    getText: jest.fn().mockReturnValue('[TIP] Some tip text'),
+    getText: jest.fn().mockReturnValue("[TIP] Some tip text"),
     hasNestedTables: jest.fn().mockReturnValue(false),
   } as unknown as jest.Mocked<TableCell>;
 }
 
-function createMockHLPTable(variant: 'single-column' | 'two-column'): jest.Mocked<Table> {
+function createMockHLPTable(variant: "single-column" | "two-column"): jest.Mocked<Table> {
   const headerCell = createHLPHeaderCell();
-  if (variant === 'two-column') {
+  if (variant === "two-column") {
     headerCell.getColumnSpan.mockReturnValue(2);
   }
   const headerRow = createMockRow([headerCell]);
 
   const dataRows: jest.Mocked<TableRow>[] = [];
   for (let i = 0; i < 3; i++) {
-    if (variant === 'single-column') {
+    if (variant === "single-column") {
       dataRows.push(createMockRow([createHLPDataCell()]));
     } else {
       dataRows.push(createMockRow([createHLPDataCell(), createHLPTipsCell()]));
@@ -385,7 +402,7 @@ function createMockHLPTable(variant: 'single-column' | 'two-column'): jest.Mocke
   const allRows = [headerRow, ...dataRows];
   return {
     getRows: jest.fn().mockReturnValue(allRows),
-    getColumnCount: jest.fn().mockReturnValue(variant === 'single-column' ? 1 : 2),
+    getColumnCount: jest.fn().mockReturnValue(variant === "single-column" ? 1 : 2),
     isFloating: jest.fn().mockReturnValue(false),
     setBorders: jest.fn(),
     setShading: jest.fn(),
@@ -396,7 +413,7 @@ function createMockHLPTable(variant: 'single-column' | 'two-column'): jest.Mocke
 // HLP Table Tests
 // ═══════════════════════════════════════════════════════════
 
-describe('HLP Table Processing', () => {
+describe("HLP Table Processing", () => {
   let processor: TableProcessor;
   let mockDoc: jest.Mocked<Document>;
 
@@ -408,39 +425,39 @@ describe('HLP Table Processing', () => {
       // getBodyElements returns same tables — fixPostHLPTableNumbering
       // is a no-op when there are no post-table paragraphs in the array
       getBodyElements: jest.fn().mockReturnValue([]),
-      // getNumberingManager — convertHLPBulletsToLettered gracefully handles null
+      // getNumberingManager — convertHLPBulletsToNumbered gracefully handles null
       getNumberingManager: jest.fn().mockReturnValue(null),
     } as unknown as jest.Mocked<Document>;
   });
 
-  describe('analyzeHLPTable', () => {
-    it('should identify a single-column HLP table', () => {
-      const table = createMockHLPTable('single-column');
+  describe("analyzeHLPTable", () => {
+    it("should identify a single-column HLP table", () => {
+      const table = createMockHLPTable("single-column");
       const analysis = processor.analyzeHLPTable(table);
 
       expect(analysis.isHLP).toBe(true);
-      expect(analysis.variant).toBe('single-column');
+      expect(analysis.variant).toBe("single-column");
       expect(analysis.columnCount).toBe(1);
       expect(analysis.rowCount).toBe(4); // 1 header + 3 data
       expect(analysis.hasTipsColumn).toBe(false);
-      expect(analysis.headerText).toBe('High Level Process');
+      expect(analysis.headerText).toBe("High Level Process");
     });
 
-    it('should identify a two-column HLP table with tips', () => {
-      const table = createMockHLPTable('two-column');
+    it("should identify a two-column HLP table with tips", () => {
+      const table = createMockHLPTable("two-column");
       const analysis = processor.analyzeHLPTable(table);
 
       expect(analysis.isHLP).toBe(true);
-      expect(analysis.variant).toBe('two-column');
+      expect(analysis.variant).toBe("two-column");
       expect(analysis.columnCount).toBe(2);
       expect(analysis.hasTipsColumn).toBe(true);
       expect(analysis.headerCellSpan).toBe(2);
     });
 
-    it('should reject tables without FFC000 shading', () => {
-      const normalCell = createMockCell('BFBFBF');
+    it("should reject tables without FFC000 shading", () => {
+      const normalCell = createMockCell("BFBFBF");
       const row1 = createMockRow([normalCell]);
-      const row2 = createMockRow([createMockCell('FFFFFF')]);
+      const row2 = createMockRow([createMockCell("FFFFFF")]);
       const table = createMockTable([row1, row2]);
 
       const analysis = processor.analyzeHLPTable(table);
@@ -449,7 +466,7 @@ describe('HLP Table Processing', () => {
       expect(analysis.variant).toBeNull();
     });
 
-    it('should reject tables with only 1 row (header only)', () => {
+    it("should reject tables with only 1 row (header only)", () => {
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);
       const table = createMockTable([headerRow]);
@@ -459,7 +476,7 @@ describe('HLP Table Processing', () => {
       expect(analysis.isHLP).toBe(false);
     });
 
-    it('should reject empty tables', () => {
+    it("should reject empty tables", () => {
       const table = createMockTable([]);
 
       const analysis = processor.analyzeHLPTable(table);
@@ -469,9 +486,9 @@ describe('HLP Table Processing', () => {
 
     it('should reject tables with FFC000 shading but without "High Level Process" text', () => {
       // A non-HLP table that happens to use FFC000 in its header cell
-      const headerCell = createHLPHeaderCell('Project Schedule');
+      const headerCell = createHLPHeaderCell("Project Schedule");
       const headerRow = createMockRow([headerCell]);
-      const dataRow = createMockRow([createMockCell('FFFFFF')]);
+      const dataRow = createMockRow([createMockCell("FFFFFF")]);
       const table = createMockTable([headerRow, dataRow]);
 
       const analysis = processor.analyzeHLPTable(table);
@@ -481,24 +498,24 @@ describe('HLP Table Processing', () => {
     });
   });
 
-  describe('isHLPTable (backward compatibility)', () => {
-    it('should return true for HLP tables', () => {
-      const table = createMockHLPTable('single-column');
+  describe("isHLPTable (backward compatibility)", () => {
+    it("should return true for HLP tables", () => {
+      const table = createMockHLPTable("single-column");
       expect(processor.isHLPTable(table)).toBe(true);
     });
 
-    it('should return false for non-HLP tables', () => {
-      const normalCell = createMockCell('BFBFBF');
+    it("should return false for non-HLP tables", () => {
+      const normalCell = createMockCell("BFBFBF");
       const row1 = createMockRow([normalCell]);
-      const row2 = createMockRow([createMockCell('FFFFFF')]);
+      const row2 = createMockRow([createMockCell("FFFFFF")]);
       const table = createMockTable([row1, row2]);
       expect(processor.isHLPTable(table)).toBe(false);
     });
   });
 
-  describe('processHLPTables', () => {
-    it('should apply table-level borders for single-column variant', async () => {
-      const table = createMockHLPTable('single-column');
+  describe("processHLPTables", () => {
+    it("should apply table-level borders for single-column variant", async () => {
+      const table = createMockHLPTable("single-column");
       mockDoc.getTables.mockReturnValue([table]);
 
       const result = await processor.processHLPTables(mockDoc);
@@ -509,14 +526,14 @@ describe('HLP Table Processing', () => {
       // Table-level borders should be set
       expect(table.setBorders).toHaveBeenCalledWith(
         expect.objectContaining({
-          top: expect.objectContaining({ style: 'single', color: 'FFC000' }),
-          bottom: expect.objectContaining({ style: 'single', color: 'FFC000' }),
+          top: expect.objectContaining({ style: "single", color: "FFC000" }),
+          bottom: expect.objectContaining({ style: "single", color: "FFC000" }),
         })
       );
     });
 
-    it('should clear table-level borders for two-column variant', async () => {
-      const table = createMockHLPTable('two-column');
+    it("should clear table-level borders for two-column variant", async () => {
+      const table = createMockHLPTable("two-column");
       mockDoc.getTables.mockReturnValue([table]);
 
       const result = await processor.processHLPTables(mockDoc);
@@ -527,14 +544,14 @@ describe('HLP Table Processing', () => {
       // Table-level borders should be cleared (none)
       expect(table.setBorders).toHaveBeenCalledWith(
         expect.objectContaining({
-          top: expect.objectContaining({ style: 'none' }),
-          bottom: expect.objectContaining({ style: 'none' }),
+          top: expect.objectContaining({ style: "none" }),
+          bottom: expect.objectContaining({ style: "none" }),
         })
       );
     });
 
-    it('should apply Heading2 style to header row', async () => {
-      const table = createMockHLPTable('single-column');
+    it("should apply Heading2 style to header row", async () => {
+      const table = createMockHLPTable("single-column");
       mockDoc.getTables.mockReturnValue([table]);
 
       const result = await processor.processHLPTables(mockDoc);
@@ -543,17 +560,17 @@ describe('HLP Table Processing', () => {
       // Header cell paragraph should have Heading2 style set
       const headerCell = table.getRows()[0].getCells()[0];
       const headerPara = headerCell.getParagraphs()[0];
-      expect(headerPara.setStyle).toHaveBeenCalledWith('Heading2');
+      expect(headerPara.setStyle).toHaveBeenCalledWith("Heading2");
     });
 
-    it('should NOT apply bold to numbered sub-item runs', async () => {
-      const table = createMockHLPTable('single-column');
+    it("should NOT apply bold to numbered sub-item runs", async () => {
+      const table = createMockHLPTable("single-column");
       mockDoc.getTables.mockReturnValue([table]);
 
       await processor.processHLPTables(mockDoc, {
-        header2Shading: 'BFBFBF',
-        otherShading: 'DFDFDF',
-        normalFontFamily: 'Arial',
+        header2Shading: "BFBFBF",
+        otherShading: "DFDFDF",
+        normalFontFamily: "Arial",
         normalFontSize: 11,
       });
 
@@ -567,18 +584,18 @@ describe('HLP Table Processing', () => {
 
       // Sub-items should NOT be bold (only P[0] main action items are bold)
       expect(numberedRuns[0].setBold).not.toHaveBeenCalled();
-      expect(numberedRuns[0].setFont).toHaveBeenCalledWith('Arial');
+      expect(numberedRuns[0].setFont).toHaveBeenCalledWith("Arial");
       expect(numberedRuns[0].setSize).toHaveBeenCalledWith(11);
     });
 
-    it('should apply heading2 font/size to main action item (P[0])', async () => {
-      const table = createMockHLPTable('single-column');
+    it("should apply heading2 font/size to main action item (P[0])", async () => {
+      const table = createMockHLPTable("single-column");
       mockDoc.getTables.mockReturnValue([table]);
 
       await processor.processHLPTables(mockDoc, {
-        header2Shading: 'BFBFBF',
-        otherShading: 'DFDFDF',
-        heading2FontFamily: 'Georgia',
+        header2Shading: "BFBFBF",
+        otherShading: "DFDFDF",
+        heading2FontFamily: "Georgia",
         heading2FontSize: 16,
       });
 
@@ -589,27 +606,27 @@ describe('HLP Table Processing', () => {
 
       // Main action items use normalFont/normalSize (not heading2 font/size)
       // heading2 settings only affect the header row, not content runs
-      expect(mainRuns[0].setFont).toHaveBeenCalledWith('Verdana');
+      expect(mainRuns[0].setFont).toHaveBeenCalledWith("Verdana");
       expect(mainRuns[0].setSize).toHaveBeenCalledWith(12);
       expect(mainRuns[0].setBold).toHaveBeenCalledWith(true);
     });
 
-    it('should clear Hyperlink character style and restore blue on all hyperlink runs', async () => {
+    it("should clear Hyperlink character style and restore blue on all hyperlink runs", async () => {
       // Any run with characterStyle=Hyperlink is a real hyperlink.
       // Even internal bookmark hyperlinks with color=auto should get blue restored.
-      const hyperlinkRun = createMockRun(true, 'Hyperlink');
+      const hyperlinkRun = createMockRun(true, "Hyperlink");
       hyperlinkRun.getFormatting.mockReturnValue({
         bold: true,
-        characterStyle: 'Hyperlink',
+        characterStyle: "Hyperlink",
         color: undefined,
-        underline: 'none',
+        underline: "none",
       });
 
-      const mainPara = createMockParagraphWithRuns([hyperlinkRun], 'ListParagraph');
+      const mainPara = createMockParagraphWithRuns([hyperlinkRun], "ListParagraph");
       mainPara.getNumbering.mockReturnValue(null);
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -618,7 +635,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('Item with Hyperlink style'),
+        getText: jest.fn().mockReturnValue("Item with Hyperlink style"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -639,27 +656,27 @@ describe('HLP Table Processing', () => {
       expect(hyperlinkRun.setCharacterStyle).toHaveBeenCalledWith(undefined);
       // After clearing charStyle, setFont/setSize can drop run properties,
       // so restoreHyperlink re-applies blue color and underline
-      expect(hyperlinkRun.setColor).toHaveBeenCalledWith('0000FF');
-      expect(hyperlinkRun.setUnderline).toHaveBeenCalledWith('single');
+      expect(hyperlinkRun.setColor).toHaveBeenCalledWith("0000FF");
+      expect(hyperlinkRun.setUnderline).toHaveBeenCalledWith("single");
     });
 
-    it('should restore blue+underline on internal bookmark hyperlinks (color=auto)', async () => {
+    it("should restore blue+underline on internal bookmark hyperlinks (color=auto)", async () => {
       // Internal bookmark hyperlinks have characterStyle=Hyperlink with color=auto.
       // Previously these were treated as "placeholders" and NOT restored.
       // Now all Hyperlink-styled runs get blue+underline restored.
-      const bookmarkRun = createMockRun(true, 'Hyperlink');
+      const bookmarkRun = createMockRun(true, "Hyperlink");
       bookmarkRun.getFormatting.mockReturnValue({
         bold: true,
-        characterStyle: 'Hyperlink',
-        color: 'auto',
-        underline: 'single',
+        characterStyle: "Hyperlink",
+        color: "auto",
+        underline: "single",
       });
 
-      const mainPara = createMockParagraphWithRuns([bookmarkRun], 'ListParagraph');
+      const mainPara = createMockParagraphWithRuns([bookmarkRun], "ListParagraph");
       mainPara.getNumbering.mockReturnValue(null);
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -668,7 +685,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('Determine something'),
+        getText: jest.fn().mockReturnValue("Determine something"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -687,11 +704,11 @@ describe('HLP Table Processing', () => {
 
       // Even though color was 'auto', it should still get blue+underline restored
       expect(bookmarkRun.setCharacterStyle).toHaveBeenCalledWith(undefined);
-      expect(bookmarkRun.setColor).toHaveBeenCalledWith('0000FF');
-      expect(bookmarkRun.setUnderline).toHaveBeenCalledWith('single');
+      expect(bookmarkRun.setColor).toHaveBeenCalledWith("0000FF");
+      expect(bookmarkRun.setUnderline).toHaveBeenCalledWith("single");
     });
 
-    it('should detect hyperlinks via paragraph content structure when characterStyle and color are missing', async () => {
+    it("should detect hyperlinks via paragraph content structure when characterStyle and color are missing", async () => {
       // Simulate a hyperlink run whose characterStyle was cleared by
       // standardizeHyperlinkFormatting() and whose blue color was dropped
       // by assignStylesToDocument() calling setFont()/setSize().
@@ -701,8 +718,8 @@ describe('HLP Table Processing', () => {
       orphanedHyperlinkRun.getFormatting.mockReturnValue({
         bold: false,
         characterStyle: undefined,
-        color: '000000', // Black — not blue
-        underline: 'none',
+        color: "000000", // Black — not blue
+        underline: "none",
       });
 
       // A direct paragraph run (not inside any container)
@@ -712,7 +729,7 @@ describe('HLP Table Processing', () => {
       directRun.getFormatting.mockReturnValue({
         bold: false,
         characterStyle: undefined,
-        color: '000000',
+        color: "000000",
       });
 
       // Create a mock Hyperlink container that holds the orphanedHyperlinkRun
@@ -721,13 +738,13 @@ describe('HLP Table Processing', () => {
 
       // Paragraph content: directRun (direct child) + Hyperlink container
       // para.getRuns() returns both runs (direct + hyperlink children)
-      const mainPara = createMockParagraph('ListParagraph');
+      const mainPara = createMockParagraph("ListParagraph");
       mainPara.getContent.mockReturnValue([directRun, mockHyperlink]);
       mainPara.getRuns.mockReturnValue([directRun, orphanedHyperlinkRun]);
       mainPara.getNumbering.mockReturnValue(null);
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -736,7 +753,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('Text with link'),
+        getText: jest.fn().mockReturnValue("Text with link"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -755,30 +772,30 @@ describe('HLP Table Processing', () => {
 
       // The orphaned hyperlink run (not in directRuns, hasHyperlinkContainer=true)
       // should be detected structurally and get blue+underline restored
-      expect(orphanedHyperlinkRun.setColor).toHaveBeenCalledWith('0000FF');
-      expect(orphanedHyperlinkRun.setUnderline).toHaveBeenCalledWith('single');
+      expect(orphanedHyperlinkRun.setColor).toHaveBeenCalledWith("0000FF");
+      expect(orphanedHyperlinkRun.setUnderline).toHaveBeenCalledWith("single");
 
       // The direct run should NOT get hyperlink formatting
-      expect(directRun.setColor).not.toHaveBeenCalledWith('0000FF');
+      expect(directRun.setColor).not.toHaveBeenCalledWith("0000FF");
     });
 
-    it('should change ListParagraph to Normal for non-numbered paragraphs', async () => {
+    it("should change ListParagraph to Normal for non-numbered paragraphs", async () => {
       // ListParagraph paragraphs without numbering would inherit the style's
       // numId=33 because docxmlater strips numId=0 on save. Fix by switching
       // to Normal style and preserving indentation.
       const noteRun = createMockRun(true);
-      const notePara = createMockParagraphWithRuns([noteRun], 'ListParagraph');
+      const notePara = createMockParagraphWithRuns([noteRun], "ListParagraph");
       notePara.getNumbering.mockReturnValue(null); // No numbering (had numId=0)
       notePara.getLeftIndent.mockReturnValue(1440);
-      notePara.getText.mockReturnValue('Note: some text');
+      notePara.getText.mockReturnValue("Note: some text");
 
       const mainRun = createMockRun(true);
-      const mainPara = createMockParagraphWithRuns([mainRun], 'ListParagraph');
+      const mainPara = createMockParagraphWithRuns([mainRun], "ListParagraph");
       mainPara.getNumbering.mockReturnValue(null);
       mainPara.getLeftIndent.mockReturnValue(720);
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -787,7 +804,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('Item\nNote: text'),
+        getText: jest.fn().mockReturnValue("Item\nNote: text"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -805,17 +822,17 @@ describe('HLP Table Processing', () => {
       await processor.processHLPTables(mockDoc);
 
       // Both ListParagraph paragraphs without numbering get changed to Normal
-      expect(notePara.setStyle).toHaveBeenCalledWith('Normal');
+      expect(notePara.setStyle).toHaveBeenCalledWith("Normal");
       expect(notePara.setLeftIndent).toHaveBeenCalledWith(1440);
-      expect(mainPara.setStyle).toHaveBeenCalledWith('Normal');
+      expect(mainPara.setStyle).toHaveBeenCalledWith("Normal");
       expect(mainPara.setLeftIndent).toHaveBeenCalledWith(720);
       // No discoveredNumId in this table (no sub-items with numbering),
       // so P[0] does NOT get explicit numbering set
       expect(mainPara.setNumbering).not.toHaveBeenCalled();
     });
 
-    it('should ensure tips column has FFF2CC shading', async () => {
-      const table = createMockHLPTable('two-column');
+    it("should ensure tips column has FFF2CC shading", async () => {
+      const table = createMockHLPTable("two-column");
       mockDoc.getTables.mockReturnValue([table]);
 
       await processor.processHLPTables(mockDoc);
@@ -823,23 +840,27 @@ describe('HLP Table Processing', () => {
       // Tips cells should have setShading called with FFF2CC
       const dataRow = table.getRows()[1];
       const tipsCell = dataRow.getCells()[1];
-      expect(tipsCell.setShading).toHaveBeenCalledWith({ fill: 'FFF2CC', pattern: 'clear', color: 'auto' });
+      expect(tipsCell.setShading).toHaveBeenCalledWith({
+        fill: "FFF2CC",
+        pattern: "clear",
+        color: "auto",
+      });
     });
 
-    it('should discover numId from sub-items and set explicit numbering on P[0]', async () => {
+    it("should discover numId from sub-items and set explicit numbering on P[0]", async () => {
       // P[0] is ListParagraph with no explicit numbering (inherits from style).
       // P[1] is a numbered sub-item with numId=33, level=1.
       // The processor should discover numId=33 from P[1] and set it on P[0] at level 0.
       const mainRun = createMockRun(true);
-      const mainPara = createMockParagraphWithRuns([mainRun], 'ListParagraph');
+      const mainPara = createMockParagraphWithRuns([mainRun], "ListParagraph");
       mainPara.getNumbering.mockReturnValue(null);
 
       const subRun = createMockRun(false);
-      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      const subPara = createMockParagraphWithRuns([subRun], "ListParagraph");
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -848,7 +869,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('Item\na. Sub'),
+        getText: jest.fn().mockReturnValue("Item\na. Sub"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -866,23 +887,23 @@ describe('HLP Table Processing', () => {
       await processor.processHLPTables(mockDoc);
 
       // P[0] should be converted to Normal and given explicit numbering
-      expect(mainPara.setStyle).toHaveBeenCalledWith('Normal');
+      expect(mainPara.setStyle).toHaveBeenCalledWith("Normal");
       expect(mainPara.setNumbering).toHaveBeenCalledWith(33, 0);
     });
 
-    it('should apply list indentation levels to numbered paragraphs', async () => {
+    it("should apply list indentation levels to numbered paragraphs", async () => {
       // Provide real implementation for inchesToTwips (auto-mocked by jest.mock)
       jest.mocked(inchesToTwips).mockImplementation((inches: number) => Math.round(inches * 1440));
 
-      const table = createMockHLPTable('single-column');
+      const table = createMockHLPTable("single-column");
       mockDoc.getTables.mockReturnValue([table]);
 
       await processor.processHLPTables(mockDoc, {
-        header2Shading: 'BFBFBF',
-        otherShading: 'DFDFDF',
+        header2Shading: "BFBFBF",
+        otherShading: "DFDFDF",
         listIndentationLevels: [
-          { level: 0, symbolIndent: 0.25, textIndent: 0.50 },
-          { level: 1, symbolIndent: 0.75, textIndent: 1.00 },
+          { level: 0, symbolIndent: 0.25, textIndent: 0.5 },
+          { level: 1, symbolIndent: 0.75, textIndent: 1.0 },
         ],
       });
 
@@ -897,8 +918,8 @@ describe('HLP Table Processing', () => {
       expect(subPara.setFirstLineIndent).toHaveBeenCalledWith(-360);
     });
 
-    it('should process floating HLP tables (not skip them)', async () => {
-      const table = createMockHLPTable('single-column');
+    it("should process floating HLP tables (not skip them)", async () => {
+      const table = createMockHLPTable("single-column");
       table.isFloating.mockReturnValue(true);
       mockDoc.getTables.mockReturnValue([table]);
 
@@ -909,9 +930,9 @@ describe('HLP Table Processing', () => {
       expect(result.tablesFound).toBe(1);
     });
 
-    it('should handle multiple HLP tables of different variants', async () => {
-      const singleColTable = createMockHLPTable('single-column');
-      const twoColTable = createMockHLPTable('two-column');
+    it("should handle multiple HLP tables of different variants", async () => {
+      const singleColTable = createMockHLPTable("single-column");
+      const twoColTable = createMockHLPTable("two-column");
       mockDoc.getTables.mockReturnValue([singleColTable, twoColTable]);
 
       const result = await processor.processHLPTables(mockDoc);
@@ -921,8 +942,8 @@ describe('HLP Table Processing', () => {
       expect(result.twoColumnTables).toBe(1);
     });
 
-    it('should use default font settings when no settings provided', async () => {
-      const table = createMockHLPTable('single-column');
+    it("should use default font settings when no settings provided", async () => {
+      const table = createMockHLPTable("single-column");
       mockDoc.getTables.mockReturnValue([table]);
 
       await processor.processHLPTables(mockDoc); // No settings
@@ -933,14 +954,14 @@ describe('HLP Table Processing', () => {
       const mainRuns = mainPara.getRuns();
 
       // Should use defaults: Verdana 12 for main item (normalFont/normalSize)
-      expect(mainRuns[0].setFont).toHaveBeenCalledWith('Verdana');
+      expect(mainRuns[0].setFont).toHaveBeenCalledWith("Verdana");
       expect(mainRuns[0].setSize).toHaveBeenCalledWith(12);
     });
 
-    it('should fix post-table ListParagraph paragraphs to prevent phantom numbering', async () => {
-      const table = createMockHLPTable('single-column');
+    it("should fix post-table ListParagraph paragraphs to prevent phantom numbering", async () => {
+      const table = createMockHLPTable("single-column");
       // Create a mock paragraph after the table with ListParagraph style and no numbering
-      const postTablePara = createMockParagraph('ListParagraph');
+      const postTablePara = createMockParagraph("ListParagraph");
       postTablePara.getNumbering.mockReturnValue(null);
       postTablePara.getRuns.mockReturnValue([]);
 
@@ -951,12 +972,12 @@ describe('HLP Table Processing', () => {
       await processor.processHLPTables(mockDoc);
 
       // The post-table paragraph should be converted to Normal
-      expect(postTablePara.setStyle).toHaveBeenCalledWith('Normal');
+      expect(postTablePara.setStyle).toHaveBeenCalledWith("Normal");
     });
 
-    it('should NOT convert post-table paragraph if it has explicit numbering', async () => {
-      const table = createMockHLPTable('single-column');
-      const postTablePara = createMockParagraph('ListParagraph');
+    it("should NOT convert post-table paragraph if it has explicit numbering", async () => {
+      const table = createMockHLPTable("single-column");
+      const postTablePara = createMockParagraph("ListParagraph");
       postTablePara.getNumbering.mockReturnValue({ numId: 5, level: 0 });
       postTablePara.getRuns.mockReturnValue([]);
 
@@ -966,13 +987,13 @@ describe('HLP Table Processing', () => {
       await processor.processHLPTables(mockDoc);
 
       // Should NOT be converted — it has its own numbering
-      expect(postTablePara.setStyle).not.toHaveBeenCalledWith('Normal');
+      expect(postTablePara.setStyle).not.toHaveBeenCalledWith("Normal");
     });
 
-    it('should set setBold(false) on converted sub-item numbering levels', async () => {
-      // Create a mock numbering manager with bullet abstractNums
-      const mockLevel0 = {
-        getFormat: jest.fn().mockReturnValue('bullet'),
+    it("should set setBold(false) on main list sub-levels and reassign bullet paragraphs", async () => {
+      // Main list abstractNum (decimal at level 0, bullet at levels 1-3)
+      const mainLevel0 = {
+        getFormat: jest.fn().mockReturnValue("decimal"),
         setFormat: jest.fn(),
         setText: jest.fn(),
         setFont: jest.fn(),
@@ -981,10 +1002,12 @@ describe('HLP Table Processing', () => {
         setBold: jest.fn(),
         setLeftIndent: jest.fn(),
         setHangingIndent: jest.fn(),
-        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
+        toXML: jest
+          .fn()
+          .mockReturnValue({ name: "w:lvl", children: [{ name: "w:rPr", children: [] }] }),
       };
-      const mockLevel1 = {
-        getFormat: jest.fn().mockReturnValue('bullet'),
+      const mainLevel1 = {
+        getFormat: jest.fn().mockReturnValue("bullet"),
         setFormat: jest.fn(),
         setText: jest.fn(),
         setFont: jest.fn(),
@@ -993,10 +1016,12 @@ describe('HLP Table Processing', () => {
         setBold: jest.fn(),
         setLeftIndent: jest.fn(),
         setHangingIndent: jest.fn(),
-        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
+        toXML: jest
+          .fn()
+          .mockReturnValue({ name: "w:lvl", children: [{ name: "w:rPr", children: [] }] }),
       };
-      const mockLevel2 = {
-        getFormat: jest.fn().mockReturnValue('bullet'),
+      const mainLevel2 = {
+        getFormat: jest.fn().mockReturnValue("bullet"),
         setFormat: jest.fn(),
         setText: jest.fn(),
         setFont: jest.fn(),
@@ -1005,47 +1030,93 @@ describe('HLP Table Processing', () => {
         setBold: jest.fn(),
         setLeftIndent: jest.fn(),
         setHangingIndent: jest.fn(),
-        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [{ name: 'w:rPr', children: [] }] }),
+        toXML: jest
+          .fn()
+          .mockReturnValue({ name: "w:lvl", children: [{ name: "w:rPr", children: [] }] }),
+      };
+      const mainLevel3 = {
+        getFormat: jest.fn().mockReturnValue("bullet"),
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest
+          .fn()
+          .mockReturnValue({ name: "w:lvl", children: [{ name: "w:rPr", children: [] }] }),
       };
 
-      const mockAbstractNum = {
+      const mainAbstractNum = {
         getLevel: jest.fn().mockImplementation((level: number) => {
-          if (level === 0) return mockLevel0;
-          if (level === 1) return mockLevel1;
-          if (level === 2) return mockLevel2;
+          if (level === 0) return mainLevel0;
+          if (level === 1) return mainLevel1;
+          if (level === 2) return mainLevel2;
+          if (level === 3) return mainLevel3;
           return null;
         }),
       };
 
-      const mockInstance = {
-        getAbstractNumId: jest.fn().mockReturnValue(42),
+      // Bullet abstractNum (for the sub-item paragraph)
+      const bulletLevel0 = {
+        getFormat: jest.fn().mockReturnValue("bullet"),
+      };
+      const bulletAbstractNum = {
+        getLevel: jest.fn().mockImplementation((level: number) => {
+          if (level === 0) return bulletLevel0;
+          return null;
+        }),
       };
 
+      const mainInstance = { getAbstractNumId: jest.fn().mockReturnValue(10) };
+      const bulletInstance = { getAbstractNumId: jest.fn().mockReturnValue(42) };
+
       const mockManager = {
-        getInstance: jest.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
+        getInstance: jest.fn().mockImplementation((numId: number) => {
+          if (numId === 1) return mainInstance;
+          if (numId === 7) return bulletInstance;
+          return null;
+        }),
+        getAbstractNumbering: jest.fn().mockImplementation((absId: number) => {
+          if (absId === 10) return mainAbstractNum;
+          if (absId === 42) return bulletAbstractNum;
+          return null;
+        }),
+        addAbstractNumbering: jest.fn(),
         createCustomList: jest.fn().mockReturnValue(0),
       };
 
       (mockDoc as any).getNumberingManager = jest.fn().mockReturnValue(mockManager);
 
-      // Build a table with a sub-item paragraph that has numbering
+      // Main item paragraph (decimal, level 0, numId=1)
+      const mainRun = createMockRun(true);
+      const mainPara = createMockParagraphWithRuns([mainRun], "Normal");
+      mainPara.getNumbering.mockReturnValue({ numId: 1, level: 0 });
+
+      // Sub-item paragraph (bullet, level 0, numId=7 — will be reassigned)
       const subRun = createMockRun(false);
-      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      const subPara = createMockParagraphWithRuns([subRun], "ListParagraph");
       subPara.getNumbering.mockReturnValue({ numId: 7, level: 0 });
 
+      // Mock Paragraph.create() for insertHLPBlankLines
+      const mockBlankPara = createMockParagraph("Normal");
+      (Paragraph as any).create = jest.fn().mockReturnValue(mockBlankPara);
+
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
-        getParagraphs: jest.fn().mockReturnValue([subPara]),
+        getParagraphs: jest.fn().mockReturnValue([mainPara, subPara]),
         getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        getText: jest.fn().mockReturnValue("1. Main\na. Sub-item"),
         hasNestedTables: jest.fn().mockReturnValue(false),
+        addParagraphAt: jest.fn(),
       } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
@@ -1061,16 +1132,20 @@ describe('HLP Table Processing', () => {
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
 
-      // All three levels should have setBold(false) called
-      expect(mockLevel0.setBold).toHaveBeenCalledWith(false);
-      expect(mockLevel1.setBold).toHaveBeenCalledWith(false);
-      expect(mockLevel2.setBold).toHaveBeenCalledWith(false);
+      // Sub-levels 1, 2, 3 of main list should have setBold(false) called
+      expect(mainLevel1.setBold).toHaveBeenCalledWith(false);
+      expect(mainLevel2.setBold).toHaveBeenCalledWith(false);
+      expect(mainLevel3.setBold).toHaveBeenCalledWith(false);
+
+      // Bullet paragraph should be reassigned to main list at level 1
+      expect(subPara.setNumbering).toHaveBeenCalledWith(1, 1);
     });
 
-    it('should patch converted level toXML to include <w:b w:val="0"/>', async () => {
-      // Create a mock level with a toXML() that returns an rPr child
-      const mockLevel0 = {
-        getFormat: jest.fn().mockReturnValue('bullet'),
+    it('should patch main list sub-level toXML to replace pre-existing <w:b/> with <w:b w:val="0"/>', async () => {
+      // Main list abstractNum: level 0 is decimal, levels 1-3 are bullet (will be patched)
+      // Sub-levels include pre-existing <w:b/> (bold ON) that must be removed
+      const mainLevel0 = {
+        getFormat: jest.fn().mockReturnValue("decimal"),
         setFormat: jest.fn(),
         setText: jest.fn(),
         setFont: jest.fn(),
@@ -1080,14 +1155,36 @@ describe('HLP Table Processing', () => {
         setLeftIndent: jest.fn(),
         setHangingIndent: jest.fn(),
         toXML: jest.fn().mockReturnValue({
-          name: 'w:lvl',
+          name: "w:lvl",
+          children: [{ name: "w:rPr", children: [] }],
+        }),
+      };
+      const mainLevel1 = {
+        getFormat: jest.fn().mockReturnValue("bullet"),
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({
+          name: "w:lvl",
           children: [
-            { name: 'w:rPr', children: [{ name: 'w:rFonts', attributes: { 'w:ascii': 'Verdana' } }] },
+            {
+              name: "w:rPr",
+              children: [
+                { name: "w:rFonts", attributes: { "w:ascii": "Verdana" } },
+                { name: "w:b" },         // pre-existing bold ON — must be removed
+                { name: "w:bCs" },        // pre-existing bold complex script — must be removed
+              ],
+            },
           ],
         }),
       };
-      const mockLevel1 = {
-        getFormat: jest.fn().mockReturnValue('bullet'),
+      const mainLevel2 = {
+        getFormat: jest.fn().mockReturnValue("bullet"),
         setFormat: jest.fn(),
         setText: jest.fn(),
         setFont: jest.fn(),
@@ -1097,14 +1194,12 @@ describe('HLP Table Processing', () => {
         setLeftIndent: jest.fn(),
         setHangingIndent: jest.fn(),
         toXML: jest.fn().mockReturnValue({
-          name: 'w:lvl',
-          children: [
-            { name: 'w:rPr', children: [] },
-          ],
+          name: "w:lvl",
+          children: [{ name: "w:rPr", children: [{ name: "w:b" }] }],
         }),
       };
-      const mockLevel2 = {
-        getFormat: jest.fn().mockReturnValue('bullet'),
+      const mainLevel3 = {
+        getFormat: jest.fn().mockReturnValue("bullet"),
         setFormat: jest.fn(),
         setText: jest.fn(),
         setFont: jest.fn(),
@@ -1114,51 +1209,77 @@ describe('HLP Table Processing', () => {
         setLeftIndent: jest.fn(),
         setHangingIndent: jest.fn(),
         toXML: jest.fn().mockReturnValue({
-          name: 'w:lvl',
-          children: [
-            { name: 'w:rPr', children: [] },
-          ],
+          name: "w:lvl",
+          children: [{ name: "w:rPr", children: [] }],
         }),
       };
 
-      const mockAbstractNum = {
+      const mainAbstractNum = {
         getLevel: jest.fn().mockImplementation((level: number) => {
-          if (level === 0) return mockLevel0;
-          if (level === 1) return mockLevel1;
-          if (level === 2) return mockLevel2;
+          if (level === 0) return mainLevel0;
+          if (level === 1) return mainLevel1;
+          if (level === 2) return mainLevel2;
+          if (level === 3) return mainLevel3;
           return null;
         }),
       };
 
-      const mockInstance = {
-        getAbstractNumId: jest.fn().mockReturnValue(99),
+      // Bullet abstractNum for the sub-item paragraph
+      const bulletLevel0 = { getFormat: jest.fn().mockReturnValue("bullet") };
+      const bulletAbstractNum = {
+        getLevel: jest.fn().mockImplementation((level: number) => {
+          if (level === 0) return bulletLevel0;
+          return null;
+        }),
       };
 
+      const mainInstance = { getAbstractNumId: jest.fn().mockReturnValue(10) };
+      const bulletInstance = { getAbstractNumId: jest.fn().mockReturnValue(99) };
+
       const mockManager = {
-        getInstance: jest.fn().mockReturnValue(mockInstance),
-        getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
+        getInstance: jest.fn().mockImplementation((numId: number) => {
+          if (numId === 1) return mainInstance;
+          if (numId === 7) return bulletInstance;
+          return null;
+        }),
+        getAbstractNumbering: jest.fn().mockImplementation((absId: number) => {
+          if (absId === 10) return mainAbstractNum;
+          if (absId === 99) return bulletAbstractNum;
+          return null;
+        }),
+        addAbstractNumbering: jest.fn(),
         createCustomList: jest.fn().mockReturnValue(0),
       };
 
       (mockDoc as any).getNumberingManager = jest.fn().mockReturnValue(mockManager);
 
-      // Build a table with a sub-item paragraph that triggers bullet conversion
+      // Mock Paragraph.create() for insertHLPBlankLines
+      const mockBlankPara = createMockParagraph("Normal");
+      (Paragraph as any).create = jest.fn().mockReturnValue(mockBlankPara);
+
+      // Main item paragraph (decimal, level 0, numId=1)
+      const mainRun = createMockRun(true);
+      const mainPara = createMockParagraphWithRuns([mainRun], "Normal");
+      mainPara.getNumbering.mockReturnValue({ numId: 1, level: 0 });
+
+      // Sub-item paragraph (bullet, level 0, numId=7 — triggers conversion)
       const subRun = createMockRun(false);
-      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      const subPara = createMockParagraphWithRuns([subRun], "ListParagraph");
       subPara.getNumbering.mockReturnValue({ numId: 7, level: 0 });
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
-        getParagraphs: jest.fn().mockReturnValue([subPara]),
+        getParagraphs: jest.fn().mockReturnValue([mainPara, subPara]),
         getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        getText: jest.fn().mockReturnValue("1. Main\na. Sub-item"),
         hasNestedTables: jest.fn().mockReturnValue(false),
+        addParagraphAt: jest.fn(),
       } as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
@@ -1174,54 +1295,61 @@ describe('HLP Table Processing', () => {
       mockDoc.getTables.mockReturnValue([table]);
       await processor.processHLPTables(mockDoc);
 
-      // After processing, level0's toXML should be monkey-patched.
-      // Call it and verify the rPr now contains <w:b w:val="0"/> and <w:bCs w:val="0"/>
-      const xml0 = mockLevel0.toXML();
-      const rPr0 = xml0.children.find((c: any) => c.name === 'w:rPr');
-      expect(rPr0).toBeDefined();
-      const bElement = rPr0.children.find((c: any) => c.name === 'w:b');
-      const bCsElement = rPr0.children.find((c: any) => c.name === 'w:bCs');
-      expect(bElement).toEqual({ name: 'w:b', attributes: { 'w:val': '0' } });
-      expect(bCsElement).toEqual({ name: 'w:bCs', attributes: { 'w:val': '0' } });
+      // After processing, main list sub-levels' toXML should be monkey-patched.
+      // Pre-existing <w:b/> and <w:bCs/> should be removed, replaced by <w:b w:val="0"/>
+      const xml1 = mainLevel1.toXML();
+      const rPr1 = xml1.children.find((c: any) => c.name === "w:rPr");
+      expect(rPr1).toBeDefined();
+      // Only one <w:b> should exist (the bold-off), not the original <w:b/> too
+      const bElements1 = rPr1.children.filter((c: any) => c.name === "w:b");
+      const bCsElements1 = rPr1.children.filter((c: any) => c.name === "w:bCs");
+      expect(bElements1).toHaveLength(1);
+      expect(bElements1[0]).toEqual({ name: "w:b", attributes: { "w:val": "0" } });
+      expect(bCsElements1).toHaveLength(1);
+      expect(bCsElements1[0]).toEqual({ name: "w:bCs", attributes: { "w:val": "0" } });
+      // Non-bold elements like rFonts should be preserved
+      expect(rPr1.children.find((c: any) => c.name === "w:rFonts")).toBeDefined();
 
-      // Verify level1 also got patched
-      const xml1 = mockLevel1.toXML();
-      const rPr1 = xml1.children.find((c: any) => c.name === 'w:rPr');
-      expect(rPr1.children.find((c: any) => c.name === 'w:b')).toEqual({ name: 'w:b', attributes: { 'w:val': '0' } });
+      // Verify level2 also got patched (had pre-existing <w:b/>)
+      const xml2 = mainLevel2.toXML();
+      const rPr2 = xml2.children.find((c: any) => c.name === "w:rPr");
+      const bElements2 = rPr2.children.filter((c: any) => c.name === "w:b");
+      expect(bElements2).toHaveLength(1);
+      expect(bElements2[0]).toEqual({ name: "w:b", attributes: { "w:val": "0" } });
     });
 
-    it('should NOT insert blank line when previous paragraph is already blank', async () => {
+    it("should NOT insert blank line when previous paragraph is already blank", async () => {
       // Simulate: blank paragraph already exists between two level-0 items.
       // insertHLPBlankLines should skip insertion to avoid double blank lines.
       const mainRun1 = createMockRun(true);
-      const para1 = createMockParagraphWithRuns([mainRun1], 'Normal');
+      const para1 = createMockParagraphWithRuns([mainRun1], "Normal");
       let para1Numbering: { numId: number; level: number } | null = null;
       para1.getNumbering.mockImplementation(() => para1Numbering);
       para1.setNumbering.mockImplementation((numId: number, level: number) => {
         para1Numbering = { numId, level };
       });
-      para1.getStyle.mockReturnValue('ListParagraph');
+      para1.getStyle.mockReturnValue("ListParagraph");
 
       // Blank paragraph between items (already converted to Normal in step 6)
-      const blankPara = createMockParagraph('Normal');
-      blankPara.getText.mockReturnValue('');
+      const blankPara = createMockParagraph("Normal");
+      blankPara.getText.mockReturnValue("");
       blankPara.getNumbering.mockReturnValue(null);
 
       const mainRun2 = createMockRun(true);
-      const para2 = createMockParagraphWithRuns([mainRun2], 'Normal');
+      const para2 = createMockParagraphWithRuns([mainRun2], "Normal");
       let para2Numbering: { numId: number; level: number } | null = null;
       para2.getNumbering.mockImplementation(() => para2Numbering);
       para2.setNumbering.mockImplementation((numId: number, level: number) => {
         para2Numbering = { numId, level };
       });
-      para2.getStyle.mockReturnValue('ListParagraph');
+      para2.getStyle.mockReturnValue("ListParagraph");
 
       // The cell has addParagraphAt to track insertions
       const addParagraphAtCalls: any[] = [];
       const allParas = [para1, blankPara, para2];
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -1230,7 +1358,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('Item1\n\nItem2'),
+        getText: jest.fn().mockReturnValue("Item1\n\nItem2"),
         hasNestedTables: jest.fn().mockReturnValue(false),
         addParagraphAt: jest.fn().mockImplementation((idx: number, p: any) => {
           addParagraphAtCalls.push({ idx, p });
@@ -1243,7 +1371,7 @@ describe('HLP Table Processing', () => {
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
 
       const dataCell2 = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -1252,7 +1380,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('a. sub'),
+        getText: jest.fn().mockReturnValue("a. sub"),
         hasNestedTables: jest.fn().mockReturnValue(false),
         addParagraphAt: jest.fn(),
       } as unknown as jest.Mocked<TableCell>;
@@ -1279,14 +1407,14 @@ describe('HLP Table Processing', () => {
     // savedNumbering restoration tests (step 5.1)
     // ═══════════════════════════════════════════════════════════
 
-    it('should restore corrupted numbering from savedNumbering map', async () => {
+    it("should restore corrupted numbering from savedNumbering map", async () => {
       const subRun = createMockRun(false);
-      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      const subPara = createMockParagraphWithRuns([subRun], "ListParagraph");
       // Current numbering is corrupted (ilvl changed from 1 to 0)
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 0 });
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -1295,7 +1423,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        getText: jest.fn().mockReturnValue("a. Sub-item"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -1321,14 +1449,14 @@ describe('HLP Table Processing', () => {
       expect(subPara.setNumbering).toHaveBeenCalledWith(33, 1);
     });
 
-    it('should skip restoration when current numbering already matches saved values', async () => {
+    it("should skip restoration when current numbering already matches saved values", async () => {
       const subRun = createMockRun(false);
-      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      const subPara = createMockParagraphWithRuns([subRun], "ListParagraph");
       // Current numbering already matches saved (no corruption occurred)
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 1 });
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -1337,7 +1465,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        getText: jest.fn().mockReturnValue("a. Sub-item"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -1362,13 +1490,13 @@ describe('HLP Table Processing', () => {
       expect(subPara.setNumbering).not.toHaveBeenCalled();
     });
 
-    it('should skip restoration entirely when savedNumbering is undefined', async () => {
+    it("should skip restoration entirely when savedNumbering is undefined", async () => {
       const subRun = createMockRun(false);
-      const subPara = createMockParagraphWithRuns([subRun], 'ListParagraph');
+      const subPara = createMockParagraphWithRuns([subRun], "ListParagraph");
       subPara.getNumbering.mockReturnValue({ numId: 33, level: 0 });
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -1377,7 +1505,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('a. Sub-item'),
+        getText: jest.fn().mockReturnValue("a. Sub-item"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -1400,36 +1528,36 @@ describe('HLP Table Processing', () => {
       // The key assertion: no restoration-specific setNumbering(33, 0→1) call
       const setNumberingCalls = subPara.setNumbering.mock.calls;
       const restorationCall = setNumberingCalls.find(
-        (args: any[]) => args[0] === 33 && args[1] === 1,
+        (args: any[]) => args[0] === 33 && args[1] === 1
       );
       expect(restorationCall).toBeUndefined();
     });
 
-    it('should only restore data row paragraphs (skip header row ri=0)', async () => {
+    it("should only restore data row paragraphs (skip header row ri=0)", async () => {
       const headerParaRun = createMockRun(true);
-      const headerPara = createMockParagraphWithRuns([headerParaRun], 'Heading2');
-      headerPara.getText.mockReturnValue('High Level Process');
+      const headerPara = createMockParagraphWithRuns([headerParaRun], "Heading2");
+      headerPara.getText.mockReturnValue("High Level Process");
 
       const headerCell = {
-        getShading: jest.fn().mockReturnValue('FFC000'),
+        getShading: jest.fn().mockReturnValue("FFC000"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
         getParagraphs: jest.fn().mockReturnValue([headerPara]),
-        getFormatting: jest.fn().mockReturnValue({ shading: { fill: 'FFC000' } }),
+        getFormatting: jest.fn().mockReturnValue({ shading: { fill: "FFC000" } }),
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('High Level Process'),
+        getText: jest.fn().mockReturnValue("High Level Process"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
       const dataRun = createMockRun(false);
-      const dataPara = createMockParagraphWithRuns([dataRun], 'ListParagraph');
+      const dataPara = createMockParagraphWithRuns([dataRun], "ListParagraph");
       dataPara.getNumbering.mockReturnValue({ numId: 33, level: 0 });
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -1438,7 +1566,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('Item'),
+        getText: jest.fn().mockReturnValue("Item"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -1463,7 +1591,7 @@ describe('HLP Table Processing', () => {
       // Header paragraph should NOT have restoration applied (ri=0 is skipped)
       // Only check that headerPara.setNumbering was NOT called with the saved values
       const headerCalls = headerPara.setNumbering.mock.calls.filter(
-        (args: any[]) => args[0] === 33 && args[1] === 1,
+        (args: any[]) => args[0] === 33 && args[1] === 1
       );
       expect(headerCalls).toHaveLength(0);
 
@@ -1475,23 +1603,31 @@ describe('HLP Table Processing', () => {
     // discoverHLPMainNumId Pass 2 tests (all-sub-items scenario)
     // ═══════════════════════════════════════════════════════════
 
-    it('should discover numId via Pass 2 when all paragraphs are sub-items (ilvl=1+)', async () => {
+    it("should discover numId via Pass 2 when all paragraphs are sub-items (ilvl=1+)", async () => {
       // All content paragraphs are sub-items at level 1 — no level-0 decimal exists.
       // Pass 2 should return the most common numId among them.
       const mockLevel0 = {
-        getFormat: jest.fn().mockReturnValue('decimal'),
-        setFormat: jest.fn(), setText: jest.fn(), setFont: jest.fn(),
-        setFontSize: jest.fn(), setColor: jest.fn(), setBold: jest.fn(),
-        setLeftIndent: jest.fn(), setHangingIndent: jest.fn(),
-        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [] }),
+        getFormat: jest.fn().mockReturnValue("decimal"),
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({ name: "w:lvl", children: [] }),
       };
       const mockAbstractNum = {
-        getLevel: jest.fn().mockImplementation((level: number) => level === 0 ? mockLevel0 : null),
+        getLevel: jest
+          .fn()
+          .mockImplementation((level: number) => (level === 0 ? mockLevel0 : null)),
       };
       const mockInstance = { getAbstractNumId: jest.fn().mockReturnValue(10) };
       const mockManager = {
         getInstance: jest.fn().mockReturnValue(mockInstance),
         getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
+        addAbstractNumbering: jest.fn(),
         createCustomList: jest.fn().mockReturnValue(0),
       };
       (mockDoc as any).getNumberingManager = jest.fn().mockReturnValue(mockManager);
@@ -1499,13 +1635,13 @@ describe('HLP Table Processing', () => {
       // Three sub-item paragraphs all at numId=33, level=1
       const paras = [1, 2, 3].map(() => {
         const run = createMockRun(false);
-        const p = createMockParagraphWithRuns([run], 'ListParagraph');
+        const p = createMockParagraphWithRuns([run], "ListParagraph");
         p.getNumbering.mockReturnValue({ numId: 33, level: 1 });
         return p;
       });
 
       const dataCell = {
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
+        getShading: jest.fn().mockReturnValue("FFFFFF"),
         setShading: jest.fn(),
         setBorders: jest.fn(),
         setMargins: jest.fn(),
@@ -1514,7 +1650,7 @@ describe('HLP Table Processing', () => {
         getColumnSpan: jest.fn().mockReturnValue(1),
         setAllRunsFont: jest.fn(),
         setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('a. Sub1\nb. Sub2\nc. Sub3'),
+        getText: jest.fn().mockReturnValue("a. Sub1\nb. Sub2\nc. Sub3"),
         hasNestedTables: jest.fn().mockReturnValue(false),
       } as unknown as jest.Mocked<TableCell>;
 
@@ -1537,49 +1673,58 @@ describe('HLP Table Processing', () => {
       expect(paras[0].getRuns()[0].setFont).toHaveBeenCalled();
     });
 
-    it('should discover the highest-count numId via Pass 2 when mixed numIds exist', async () => {
+    it("should discover the highest-count numId via Pass 2 when mixed numIds exist", async () => {
       // Two paragraphs with numId=33 and one with numId=44 — should pick 33
       const mockLevel0 = {
-        getFormat: jest.fn().mockReturnValue('lowerLetter'), // NOT decimal, so Pass 1 skips
-        setFormat: jest.fn(), setText: jest.fn(), setFont: jest.fn(),
-        setFontSize: jest.fn(), setColor: jest.fn(), setBold: jest.fn(),
-        setLeftIndent: jest.fn(), setHangingIndent: jest.fn(),
-        toXML: jest.fn().mockReturnValue({ name: 'w:lvl', children: [] }),
+        getFormat: jest.fn().mockReturnValue("lowerLetter"), // NOT decimal, so Pass 1 skips
+        setFormat: jest.fn(),
+        setText: jest.fn(),
+        setFont: jest.fn(),
+        setFontSize: jest.fn(),
+        setColor: jest.fn(),
+        setBold: jest.fn(),
+        setLeftIndent: jest.fn(),
+        setHangingIndent: jest.fn(),
+        toXML: jest.fn().mockReturnValue({ name: "w:lvl", children: [] }),
       };
       const mockAbstractNum = {
-        getLevel: jest.fn().mockImplementation((level: number) => level === 0 ? mockLevel0 : null),
+        getLevel: jest
+          .fn()
+          .mockImplementation((level: number) => (level === 0 ? mockLevel0 : null)),
       };
       const mockInstance = { getAbstractNumId: jest.fn().mockReturnValue(10) };
       const mockManager = {
         getInstance: jest.fn().mockReturnValue(mockInstance),
         getAbstractNumbering: jest.fn().mockReturnValue(mockAbstractNum),
+        addAbstractNumbering: jest.fn(),
         createCustomList: jest.fn().mockReturnValue(0),
       };
       (mockDoc as any).getNumberingManager = jest.fn().mockReturnValue(mockManager);
 
       // Row 1: two paragraphs with numId=33
-      const para1 = createMockParagraphWithRuns([createMockRun(false)], 'ListParagraph');
+      const para1 = createMockParagraphWithRuns([createMockRun(false)], "ListParagraph");
       para1.getNumbering.mockReturnValue({ numId: 33, level: 1 });
-      const para2 = createMockParagraphWithRuns([createMockRun(false)], 'ListParagraph');
+      const para2 = createMockParagraphWithRuns([createMockRun(false)], "ListParagraph");
       para2.getNumbering.mockReturnValue({ numId: 33, level: 1 });
 
       // Row 2: one paragraph with numId=44
-      const para3 = createMockParagraphWithRuns([createMockRun(false)], 'ListParagraph');
+      const para3 = createMockParagraphWithRuns([createMockRun(false)], "ListParagraph");
       para3.getNumbering.mockReturnValue({ numId: 44, level: 1 });
 
-      const makeCell = (paras: any[]) => ({
-        getShading: jest.fn().mockReturnValue('FFFFFF'),
-        setShading: jest.fn(),
-        setBorders: jest.fn(),
-        setMargins: jest.fn(),
-        getParagraphs: jest.fn().mockReturnValue(paras),
-        getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
-        getColumnSpan: jest.fn().mockReturnValue(1),
-        setAllRunsFont: jest.fn(),
-        setAllRunsSize: jest.fn(),
-        getText: jest.fn().mockReturnValue('sub items'),
-        hasNestedTables: jest.fn().mockReturnValue(false),
-      }) as unknown as jest.Mocked<TableCell>;
+      const makeCell = (paras: any[]) =>
+        ({
+          getShading: jest.fn().mockReturnValue("FFFFFF"),
+          setShading: jest.fn(),
+          setBorders: jest.fn(),
+          setMargins: jest.fn(),
+          getParagraphs: jest.fn().mockReturnValue(paras),
+          getFormatting: jest.fn().mockReturnValue({ shading: undefined }),
+          getColumnSpan: jest.fn().mockReturnValue(1),
+          setAllRunsFont: jest.fn(),
+          setAllRunsSize: jest.fn(),
+          getText: jest.fn().mockReturnValue("sub items"),
+          hasNestedTables: jest.fn().mockReturnValue(false),
+        }) as unknown as jest.Mocked<TableCell>;
 
       const headerCell = createHLPHeaderCell();
       const headerRow = createMockRow([headerCell]);

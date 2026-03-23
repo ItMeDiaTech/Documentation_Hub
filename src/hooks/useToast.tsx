@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 
 export interface Toast {
   id: string;
   title: string;
   description?: string;
-  variant?: 'default' | 'destructive' | 'success';
+  variant?: "default" | "destructive" | "success";
   duration?: number;
 }
 
@@ -17,9 +17,10 @@ export function useToast() {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const toast = useCallback(
-    ({ title, description, variant = 'default', duration }: Omit<Toast, 'id'>) => {
+    ({ title, description, variant = "default", duration }: Omit<Toast, "id">) => {
       // Use provided duration, or default based on variant
-      const effectiveDuration = duration ?? (variant === 'destructive' ? ERROR_DURATION : DEFAULT_DURATION);
+      const effectiveDuration =
+        duration ?? (variant === "destructive" ? ERROR_DURATION : DEFAULT_DURATION);
 
       const id = Math.random().toString(36).substring(7);
       const newToast: Toast = { id, title, description, variant, duration: effectiveDuration };

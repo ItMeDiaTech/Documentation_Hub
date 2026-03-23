@@ -140,11 +140,11 @@ if (orderedChildren && orderedChildren.length > 0) {
   for (const childInfo of orderedChildren) {
     const elementType = childInfo.type;
 
-    if (elementType === 'w:r') {
+    if (elementType === "w:r") {
       // ✅ Runs are parsed
-    } else if (elementType === 'w:hyperlink') {
+    } else if (elementType === "w:hyperlink") {
       // ✅ Hyperlinks are parsed
-    } else if (elementType === 'w:fldSimple') {
+    } else if (elementType === "w:fldSimple") {
       // ✅ Simple fields are parsed
     }
     // ❌ NO HANDLING FOR w:fldChar - complex fields are ignored!
@@ -209,7 +209,7 @@ const orderedChildren: Array<{ type: string; index: number }> = [];
 
 // ❌ BUG: Only adds metadata if multiple child types exist
 if (uniqueTypes.length > 1 && orderedChildren.length > 0) {
-  result['_orderedChildren'] = orderedChildren;
+  result["_orderedChildren"] = orderedChildren;
 }
 ```
 
@@ -321,7 +321,7 @@ for (let i = 0; i < this.content.length; i++) {
 
   if (item instanceof Field) {
     // ❌ BUG: Fields are wrapped in a run - converts to <w:fldSimple>
-    paragraphChildren.push(XMLBuilder.w('r', undefined, [item.toXML()]));
+    paragraphChildren.push(XMLBuilder.w("r", undefined, [item.toXML()]));
   } else if (item instanceof Hyperlink) {
     // ✅ Hyperlinks are standalone elements
     paragraphChildren.push(item.toXML());
@@ -457,7 +457,7 @@ for (let i = 0; i < this.content.length; i++) {
   const item = this.content[i];
 
   if (item instanceof Field) {
-    paragraphChildren.push(XMLBuilder.w('r', undefined, [item.toXML()]));
+    paragraphChildren.push(XMLBuilder.w("r", undefined, [item.toXML()]));
   } else if (item instanceof Hyperlink) {
     paragraphChildren.push(item.toXML());
   } else if (item instanceof Revision) {
@@ -524,12 +524,12 @@ The `_orderedChildren` metadata is meant to preserve element order, but the cond
 ```typescript
 // ❌ FLAWED LOGIC: Assumes order only matters with multiple types
 if (uniqueTypes.length > 1 && orderedChildren.length > 0) {
-  result['_orderedChildren'] = orderedChildren;
+  result["_orderedChildren"] = orderedChildren;
 }
 
 // ✅ CORRECT LOGIC: Order always matters
 if (orderedChildren.length > 0) {
-  result['_orderedChildren'] = orderedChildren;
+  result["_orderedChildren"] = orderedChildren;
 }
 ```
 
@@ -690,7 +690,7 @@ private parseComplexFieldFromBuffer(): ComplexField | null {
 ```typescript
 // ❌ BUG: Only adds metadata if multiple child types exist
 if (uniqueTypes.length > 1 && orderedChildren.length > 0) {
-  result['_orderedChildren'] = orderedChildren;
+  result["_orderedChildren"] = orderedChildren;
 }
 ```
 
@@ -699,7 +699,7 @@ if (uniqueTypes.length > 1 && orderedChildren.length > 0) {
 ```typescript
 // ✅ FIX: Always add metadata to preserve element order
 if (orderedChildren.length > 0) {
-  result['_orderedChildren'] = orderedChildren;
+  result["_orderedChildren"] = orderedChildren;
 }
 ```
 
@@ -715,33 +715,33 @@ if (orderedChildren.length > 0) {
 
 ```typescript
 switch (elementType) {
-  case 'w:t':
+  case "w:t":
     // Existing text handling
     break;
 
-  case 'w:tab':
+  case "w:tab":
     // Existing tab handling
     break;
 
-  case 'w:fldChar':
+  case "w:fldChar":
     // ✅ NEW: Handle field character markers
-    const fldChar = runObj['w:fldChar'];
-    const fldCharType = fldChar?.['@_w:fldCharType'];
+    const fldChar = runObj["w:fldChar"];
+    const fldCharType = fldChar?.["@_w:fldCharType"];
     content.push({
-      type: 'fieldCharacter',
+      type: "fieldCharacter",
       value: fldCharType, // 'begin', 'separate', or 'end'
     });
     break;
 
-  case 'w:instrText':
+  case "w:instrText":
     // ✅ NEW: Handle field instruction text
-    const instrText = runObj['w:instrText'];
+    const instrText = runObj["w:instrText"];
     const instruction =
-      typeof instrText === 'object' && instrText !== null
-        ? instrText['#text'] || ''
-        : instrText || '';
+      typeof instrText === "object" && instrText !== null
+        ? instrText["#text"] || ""
+        : instrText || "";
     content.push({
-      type: 'fieldInstruction',
+      type: "fieldInstruction",
       value: instruction,
     });
     break;
@@ -756,36 +756,36 @@ switch (elementType) {
 
 ```typescript
 export type RunContentType =
-  | 'text'
-  | 'tab'
-  | 'break'
-  | 'carriageReturn'
-  | 'softHyphen'
-  | 'noBreakHyphen'
-  | 'fieldCharacter' // ✅ NEW: w:fldChar elements
-  | 'fieldInstruction'; // ✅ NEW: w:instrText elements
+  | "text"
+  | "tab"
+  | "break"
+  | "carriageReturn"
+  | "softHyphen"
+  | "noBreakHyphen"
+  | "fieldCharacter" // ✅ NEW: w:fldChar elements
+  | "fieldInstruction"; // ✅ NEW: w:instrText elements
 ```
 
 **Update Run.toXML()**:
 
 ```typescript
 switch (contentElement.type) {
-  case 'fieldCharacter':
+  case "fieldCharacter":
     runChildren.push(
-      XMLBuilder.wSelf('fldChar', {
-        'w:fldCharType': contentElement.value,
+      XMLBuilder.wSelf("fldChar", {
+        "w:fldCharType": contentElement.value,
       })
     );
     break;
 
-  case 'fieldInstruction':
+  case "fieldInstruction":
     runChildren.push(
       XMLBuilder.w(
-        'instrText',
+        "instrText",
         {
-          'xml:space': 'preserve',
+          "xml:space": "preserve",
         },
-        [contentElement.value || '']
+        [contentElement.value || ""]
       )
     );
     break;
@@ -808,8 +808,8 @@ para.addField(Field.createPageNumber());
 doc.addParagraph(para);
 
 // Save and reload
-await doc.save('test.docx');
-const doc2 = await Document.load('test.docx');
+await doc.save("test.docx");
+const doc2 = await Document.load("test.docx");
 
 // Verify field exists
 const paras = doc2.getParagraphs();
@@ -823,15 +823,15 @@ assert(paras[0].getContent().some((item) => item instanceof Field));
 const doc = Document.create();
 const para = new Paragraph();
 const complexField = new ComplexField({
-  instruction: ' PAGE \\* MERGEFORMAT ',
-  result: '1',
+  instruction: " PAGE \\* MERGEFORMAT ",
+  result: "1",
 });
 para.addField(complexField);
 doc.addParagraph(para);
 
 // Save and reload
-await doc.save('test-complex.docx');
-const doc2 = await Document.load('test-complex.docx');
+await doc.save("test-complex.docx");
+const doc2 = await Document.load("test-complex.docx");
 
 // Verify complex field preserved
 const content = doc2.getParagraphs()[0].getContent();
@@ -843,9 +843,9 @@ assert(content.some((item) => item instanceof ComplexField));
 ```typescript
 // Create paragraph with interleaved content
 const para = new Paragraph();
-para.addText('Page ');
+para.addText("Page ");
 para.addField(Field.createPageNumber());
-para.addText(' of ');
+para.addText(" of ");
 para.addField(Field.createTotalPages());
 
 // Save and reload

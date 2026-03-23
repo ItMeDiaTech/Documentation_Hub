@@ -5,11 +5,11 @@
 // ========== Document Operations ==========
 
 export enum DocumentOperation {
-  CREATE = 'create',
-  READ = 'read',
-  MODIFY = 'modify',
-  MODIFY_TEMPLATE = 'modify_template',
-  MODIFY_XML = 'modify_xml',
+  CREATE = "create",
+  READ = "read",
+  MODIFY = "modify",
+  MODIFY_TEMPLATE = "modify_template",
+  MODIFY_XML = "modify_xml",
 }
 
 // ========== Style Definitions ==========
@@ -28,7 +28,7 @@ export interface TextStyle {
 }
 
 export interface ParagraphStyle {
-  alignment?: 'left' | 'center' | 'right' | 'justify';
+  alignment?: "left" | "center" | "right" | "justify";
   indentLeft?: number; // in twips (1/20th of a point)
   indentRight?: number;
   indentFirstLine?: number;
@@ -41,9 +41,9 @@ export interface ParagraphStyle {
 
 export interface NumberingStyle {
   level: number; // 0-8 (9 levels)
-  format: 'bullet' | 'decimal' | 'lowerLetter' | 'upperLetter' | 'lowerRoman' | 'upperRoman';
+  format: "bullet" | "decimal" | "lowerLetter" | "upperLetter" | "lowerRoman" | "upperRoman";
   text?: string; // for bullets, the character to use
-  alignment?: 'left' | 'center' | 'right';
+  alignment?: "left" | "center" | "right";
   indentLeft?: number;
   indentHanging?: number;
 }
@@ -165,7 +165,7 @@ export interface TemplateData {
 // ========== Style Application ==========
 
 export interface StyleApplication {
-  target: 'all' | 'pattern' | 'indices';
+  target: "all" | "pattern" | "indices";
   styleId: string;
   pattern?: string | RegExp;
   indices?: number[];
@@ -205,85 +205,85 @@ export interface DocumentModifyResult extends ProcessorResult {
 // ========== XML Structure Types ==========
 
 export interface DocumentXml {
-  'w:document': {
-    'w:body': {
-      'w:p': ParagraphXml[];
-      'w:tbl'?: TableXml[];
-      'w:sectPr'?: SectionXml;
+  "w:document": {
+    "w:body": {
+      "w:p": ParagraphXml[];
+      "w:tbl"?: TableXml[];
+      "w:sectPr"?: SectionXml;
     };
   };
 }
 
 export interface ParagraphXml {
-  'w:pPr'?: {
-    'w:pStyle'?: { '@_w:val': string };
-    'w:numPr'?: {
-      'w:ilvl': { '@_w:val': string };
-      'w:numId': { '@_w:val': string };
+  "w:pPr"?: {
+    "w:pStyle"?: { "@_w:val": string };
+    "w:numPr"?: {
+      "w:ilvl": { "@_w:val": string };
+      "w:numId": { "@_w:val": string };
     };
     [key: string]: any; // Allow other properties
   };
-  'w:r'?: RunXml | RunXml[];
-  'w:hyperlink'?: any | any[];
+  "w:r"?: RunXml | RunXml[];
+  "w:hyperlink"?: any | any[];
   [key: string]: any; // Allow other children (bookmarks, etc.)
 }
 
 export interface RunXml {
-  'w:rPr'?: any;
-  'w:t'?: { '#text': string } | string;
+  "w:rPr"?: any;
+  "w:t"?: { "#text": string } | string;
 }
 
 export interface TableXml {
-  'w:tblPr'?: any;
-  'w:tr'?: any[];
+  "w:tblPr"?: any;
+  "w:tr"?: any[];
 }
 
 export interface SectionXml {
-  'w:pgSz'?: any;
-  'w:pgMar'?: any;
+  "w:pgSz"?: any;
+  "w:pgMar"?: any;
 }
 
 export interface StylesXml {
-  'w:styles': {
-    'w:style': StyleXml[];
-    'w:docDefaults'?: any;
+  "w:styles": {
+    "w:style": StyleXml[];
+    "w:docDefaults"?: any;
   };
 }
 
 export interface StyleXml {
-  '@_w:type': 'paragraph' | 'character' | 'table';
-  '@_w:styleId': string;
-  'w:name'?: { '@_w:val': string };
-  'w:basedOn'?: { '@_w:val': string };
-  'w:pPr'?: any;
-  'w:rPr'?: any;
+  "@_w:type": "paragraph" | "character" | "table";
+  "@_w:styleId": string;
+  "w:name"?: { "@_w:val": string };
+  "w:basedOn"?: { "@_w:val": string };
+  "w:pPr"?: any;
+  "w:rPr"?: any;
 }
 
 export interface NumberingXml {
-  'w:numbering': {
-    'w:abstractNum'?: AbstractNumXml[];
-    'w:num'?: NumXml[];
+  "w:numbering": {
+    "w:abstractNum"?: AbstractNumXml[];
+    "w:num"?: NumXml[];
   };
 }
 
 export interface AbstractNumXml {
-  '@_w:abstractNumId': string;
-  'w:lvl': LevelXml[];
+  "@_w:abstractNumId": string;
+  "w:lvl": LevelXml[];
 }
 
 export interface LevelXml {
-  '@_w:ilvl': string;
-  'w:start'?: { '@_w:val': string };
-  'w:numFmt'?: { '@_w:val': string };
-  'w:lvlText'?: { '@_w:val': string };
-  'w:lvlJc'?: { '@_w:val': string };
-  'w:pPr'?: any;
-  'w:rPr'?: any;
+  "@_w:ilvl": string;
+  "w:start"?: { "@_w:val": string };
+  "w:numFmt"?: { "@_w:val": string };
+  "w:lvlText"?: { "@_w:val": string };
+  "w:lvlJc"?: { "@_w:val": string };
+  "w:pPr"?: any;
+  "w:rPr"?: any;
 }
 
 export interface NumXml {
-  '@_w:numId': string;
-  'w:abstractNumId': { '@_w:val': string };
+  "@_w:numId": string;
+  "w:abstractNumId": { "@_w:val": string };
 }
 
 // ========== Error Types ==========
@@ -295,16 +295,16 @@ export class DocxProcessingError extends Error {
     public details?: any
   ) {
     super(message);
-    this.name = 'DocxProcessingError';
+    this.name = "DocxProcessingError";
   }
 }
 
 export enum ErrorCode {
-  INVALID_DOCX = 'INVALID_DOCX',
-  FILE_NOT_FOUND = 'FILE_NOT_FOUND',
-  PARSE_ERROR = 'PARSE_ERROR',
-  XML_ERROR = 'XML_ERROR',
-  STYLE_NOT_FOUND = 'STYLE_NOT_FOUND',
-  NUMBERING_NOT_FOUND = 'NUMBERING_NOT_FOUND',
-  UNSUPPORTED_OPERATION = 'UNSUPPORTED_OPERATION',
+  INVALID_DOCX = "INVALID_DOCX",
+  FILE_NOT_FOUND = "FILE_NOT_FOUND",
+  PARSE_ERROR = "PARSE_ERROR",
+  XML_ERROR = "XML_ERROR",
+  STYLE_NOT_FOUND = "STYLE_NOT_FOUND",
+  NUMBERING_NOT_FOUND = "NUMBERING_NOT_FOUND",
+  UNSUPPORTED_OPERATION = "UNSUPPORTED_OPERATION",
 }

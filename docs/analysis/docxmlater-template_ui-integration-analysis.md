@@ -138,11 +138,11 @@ async processDocument(filePath: string): Promise<Result> {
 **Required Coverage**:
 
 ```typescript
-describe('DocXMLater-Template_UI Integration', () => {
-  test('StyleApplyOptions mapping consistency', () => {});
-  test('Unit conversions match Microsoft specs', () => {});
-  test('Memory management with batch operations', () => {});
-  test('Error recovery maintains document integrity', () => {});
+describe("DocXMLater-Template_UI Integration", () => {
+  test("StyleApplyOptions mapping consistency", () => {});
+  test("Unit conversions match Microsoft specs", () => {});
+  test("Memory management with batch operations", () => {});
+  test("Error recovery maintains document integrity", () => {});
 });
 ```
 

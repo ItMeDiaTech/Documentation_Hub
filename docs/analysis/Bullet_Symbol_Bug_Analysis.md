@@ -75,9 +75,9 @@ Use ONLY the framework's `standardizeBulletSymbols()` but with explicit symbol r
 // Check if framework supports symbol replacement
 const result = doc.standardizeBulletSymbols({
   symbol: bullet, // NEW: explicit symbol replacement
-  font: 'Verdana',
+  font: "Verdana",
   fontSize: 12,
-  color: '000000',
+  color: "000000",
   bold: true,
 });
 ```
@@ -110,7 +110,7 @@ const existingAbstractNums = manager.getAllAbstractNumberings();
 for (const abstractNum of existingAbstractNums) {
   for (let i = 0; i < levels.length; i++) {
     const level = abstractNum.getLevel(i);
-    if (level && level.getFormat() === 'bullet') {
+    if (level && level.getFormat() === "bullet") {
       level.setText(bullets[i]); // Replace symbol
     }
   }

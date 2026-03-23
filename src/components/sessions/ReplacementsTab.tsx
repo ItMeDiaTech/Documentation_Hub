@@ -1,11 +1,11 @@
-import { Button } from '@/components/common/Button';
-import { useSession } from '@/contexts/SessionContext';
-import { ReplacementRule } from '@/types/session';
-import { cn } from '@/utils/cn';
-import { validateUrlScheme } from '@/utils/urlHelpers';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Button } from "@/components/common/Button";
+import { useSession } from "@/contexts/SessionContext";
+import { ReplacementRule } from "@/types/session";
+import { cn } from "@/utils/cn";
+import { validateUrlScheme } from "@/utils/urlHelpers";
+import { AnimatePresence, motion } from "framer-motion";
+import { Check, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface HyperlinkRule {
   id: string;
@@ -45,14 +45,14 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
       const texts: TextRule[] = [];
 
       session.replacements.forEach((rule) => {
-        if (rule.type === 'hyperlink') {
+        if (rule.type === "hyperlink") {
           hyperlinks.push({
             id: rule.id,
             enabled: rule.enabled,
             oldHyperlink: rule.pattern,
             newContentId: rule.replacement,
           });
-        } else if (rule.type === 'text') {
+        } else if (rule.type === "text") {
           texts.push({
             id: rule.id,
             enabled: rule.enabled,
@@ -78,14 +78,14 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
       ...hyperlinks.map((h) => ({
         id: h.id,
         enabled: h.enabled,
-        type: 'hyperlink' as const,
+        type: "hyperlink" as const,
         pattern: h.oldHyperlink,
         replacement: h.newContentId,
       })),
       ...texts.map((t) => ({
         id: t.id,
         enabled: t.enabled,
-        type: 'text' as const,
+        type: "text" as const,
         pattern: t.oldText,
         replacement: t.newText,
       })),
@@ -98,8 +98,8 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
     const newRule: HyperlinkRule = {
       id: `hyperlink-${Date.now()}`,
       enabled: true,
-      oldHyperlink: '',
-      newContentId: '',
+      oldHyperlink: "",
+      newContentId: "",
     };
     const updatedRules = [...hyperlinkRules, newRule];
     setHyperlinkRules(updatedRules);
@@ -115,7 +115,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
         // Store validation error to show to user
         setUrlValidationErrors((prev) => ({
           ...prev,
-          [id]: validation.error || 'Invalid URL',
+          [id]: validation.error || "Invalid URL",
         }));
 
         // Still update the field value (for user to see and correct)
@@ -153,8 +153,8 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
     const newRule: TextRule = {
       id: `text-${Date.now()}`,
       enabled: true,
-      oldText: '',
-      newText: '',
+      oldText: "",
+      newText: "",
     };
     const updatedRules = [...textRules, newRule];
     setTextRules(updatedRules);
@@ -182,14 +182,14 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
             <button
               onClick={() => setReplaceHyperlinksEnabled(!replaceHyperlinksEnabled)}
               className={cn(
-                'relative w-12 h-6 rounded-full transition-colors',
-                replaceHyperlinksEnabled ? 'bg-primary' : 'bg-muted'
+                "relative w-12 h-6 rounded-full transition-colors",
+                replaceHyperlinksEnabled ? "bg-primary" : "bg-muted"
               )}
             >
               <motion.div
                 className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-xs"
                 animate={{ x: replaceHyperlinksEnabled ? 24 : 2 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
               />
             </button>
             <div>
@@ -230,8 +230,8 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -20 }}
                       className={cn(
-                        'border-t border-border',
-                        !replaceHyperlinksEnabled && 'opacity-50'
+                        "border-t border-border",
+                        !replaceHyperlinksEnabled && "opacity-50"
                       )}
                     >
                       <td className="px-4 py-3">
@@ -248,10 +248,10 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                             />
                             <div
                               className={cn(
-                                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                                "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
                                 rule.enabled && replaceHyperlinksEnabled
-                                  ? 'bg-primary border-primary checkbox-checked'
-                                  : 'border-border'
+                                  ? "bg-primary border-primary checkbox-checked"
+                                  : "border-border"
                               )}
                             >
                               {rule.enabled && replaceHyperlinksEnabled && (
@@ -284,10 +284,10 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                             disabled={!replaceHyperlinksEnabled}
                             placeholder="Enter new content ID"
                             className={cn(
-                              'w-full px-3 py-1.5 text-sm border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50',
+                              "w-full px-3 py-1.5 text-sm border rounded-md bg-muted/30 focus:bg-background transition-colors disabled:opacity-50",
                               urlValidationErrors[rule.id]
-                                ? 'border-red-500 focus:border-red-500'
-                                : 'border-border'
+                                ? "border-red-500 focus:border-red-500"
+                                : "border-border"
                             )}
                           />
                           {urlValidationErrors[rule.id] && (
@@ -322,14 +322,14 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
             <button
               onClick={() => setReplaceTextEnabled(!replaceTextEnabled)}
               className={cn(
-                'relative w-12 h-6 rounded-full transition-colors',
-                replaceTextEnabled ? 'bg-primary' : 'bg-muted'
+                "relative w-12 h-6 rounded-full transition-colors",
+                replaceTextEnabled ? "bg-primary" : "bg-muted"
               )}
             >
               <motion.div
                 className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-xs"
                 animate={{ x: replaceTextEnabled ? 24 : 2 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
               />
             </button>
             <div>
@@ -367,7 +367,7 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -20 }}
-                      className={cn('border-t border-border', !replaceTextEnabled && 'opacity-50')}
+                      className={cn("border-t border-border", !replaceTextEnabled && "opacity-50")}
                     >
                       <td className="px-4 py-3">
                         <label className="flex items-center cursor-pointer">
@@ -383,10 +383,10 @@ export function ReplacementsTab({ sessionId }: ReplacementsTabProps) {
                             />
                             <div
                               className={cn(
-                                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                                "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
                                 rule.enabled && replaceTextEnabled
-                                  ? 'bg-primary border-primary checkbox-checked'
-                                  : 'border-border'
+                                  ? "bg-primary border-primary checkbox-checked"
+                                  : "border-border"
                               )}
                             >
                               {rule.enabled && replaceTextEnabled && (

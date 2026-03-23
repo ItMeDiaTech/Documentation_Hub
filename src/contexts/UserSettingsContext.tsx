@@ -1,19 +1,27 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
-import { UserSettings, defaultUserSettings } from '@/types/settings';
-import { logger } from '@/utils/logger';
-import { safeJsonParse, safeJsonStringify } from '@/utils/safeJsonParse';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+  useCallback,
+  useMemo,
+} from "react";
+import { UserSettings, defaultUserSettings } from "@/types/settings";
+import { logger } from "@/utils/logger";
+import { safeJsonParse, safeJsonStringify } from "@/utils/safeJsonParse";
 
 interface UserSettingsContextType {
   settings: UserSettings;
   isLoading: boolean;
   updateSettings: (updates: Partial<UserSettings>) => void;
-  updateProfile: (updates: Partial<UserSettings['profile']>) => void;
-  updateNotifications: (updates: Partial<UserSettings['notifications']>) => void;
-  updateApiConnections: (updates: Partial<UserSettings['apiConnections']>) => void;
-  updateUpdateSettings: (updates: Partial<UserSettings['updateSettings']>) => void;
-  updateLocalDictionary: (updates: Partial<UserSettings['localDictionary']>) => void;
-  updateBackupSettings: (updates: Partial<UserSettings['backupSettings']>) => void;
-  updateDisplaySettings: (updates: Partial<UserSettings['displaySettings']>) => void;
+  updateProfile: (updates: Partial<UserSettings["profile"]>) => void;
+  updateNotifications: (updates: Partial<UserSettings["notifications"]>) => void;
+  updateApiConnections: (updates: Partial<UserSettings["apiConnections"]>) => void;
+  updateUpdateSettings: (updates: Partial<UserSettings["updateSettings"]>) => void;
+  updateLocalDictionary: (updates: Partial<UserSettings["localDictionary"]>) => void;
+  updateBackupSettings: (updates: Partial<UserSettings["backupSettings"]>) => void;
+  updateDisplaySettings: (updates: Partial<UserSettings["displaySettings"]>) => void;
   saveSettings: () => Promise<boolean>;
   loadSettings: () => void;
   resetSettings: () => void;
@@ -21,10 +29,10 @@ interface UserSettingsContextType {
 
 const UserSettingsContext = createContext<UserSettingsContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'userSettings';
+const STORAGE_KEY = "userSettings";
 
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
-  const log = logger.namespace('UserSettings');
+  const log = logger.namespace("UserSettings");
   const [settings, setSettings] = useState<UserSettings>(defaultUserSettings);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -35,7 +43,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       const parsed = safeJsonParse<Partial<UserSettings>>(
         storedSettings,
         {},
-        'UserSettings.loadSettings'
+        "UserSettings.loadSettings"
       );
       setSettings({ ...defaultUserSettings, ...parsed });
     } finally {
@@ -44,13 +52,13 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const saveSettings = useCallback(async (): Promise<boolean> => {
-    const jsonString = safeJsonStringify(settings, undefined, 'UserSettings.saveSettings');
+    const jsonString = safeJsonStringify(settings, undefined, "UserSettings.saveSettings");
     if (jsonString) {
       try {
         localStorage.setItem(STORAGE_KEY, jsonString);
         return true;
       } catch (error) {
-        log.error('Failed to save user settings to localStorage:', error);
+        log.error("Failed to save user settings to localStorage:", error);
         return false;
       }
     }
@@ -61,7 +69,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => {
       const newSettings = { ...prev, ...updates };
       // Auto-save to localStorage
-      const jsonString = safeJsonStringify(newSettings, undefined, 'UserSettings.updateSettings');
+      const jsonString = safeJsonStringify(newSettings, undefined, "UserSettings.updateSettings");
       if (jsonString) {
         try {
           localStorage.setItem(STORAGE_KEY, jsonString);
@@ -73,18 +81,14 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateProfile = useCallback((updates: Partial<UserSettings['profile']>) => {
+  const updateProfile = useCallback((updates: Partial<UserSettings["profile"]>) => {
     setSettings((prev) => {
       const newSettings = {
         ...prev,
         profile: { ...prev.profile, ...updates },
       };
       // Auto-save profile settings to localStorage
-      const jsonString = safeJsonStringify(
-        newSettings,
-        undefined,
-        'UserSettings.updateProfile'
-      );
+      const jsonString = safeJsonStringify(newSettings, undefined, "UserSettings.updateProfile");
       if (jsonString) {
         try {
           localStorage.setItem(STORAGE_KEY, jsonString);
@@ -96,7 +100,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateNotifications = useCallback((updates: Partial<UserSettings['notifications']>) => {
+  const updateNotifications = useCallback((updates: Partial<UserSettings["notifications"]>) => {
     setSettings((prev) => {
       const newSettings = {
         ...prev,
@@ -106,7 +110,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       const jsonString = safeJsonStringify(
         newSettings,
         undefined,
-        'UserSettings.updateNotifications'
+        "UserSettings.updateNotifications"
       );
       if (jsonString) {
         try {
@@ -119,7 +123,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateApiConnections = useCallback((updates: Partial<UserSettings['apiConnections']>) => {
+  const updateApiConnections = useCallback((updates: Partial<UserSettings["apiConnections"]>) => {
     setSettings((prev) => {
       const newSettings = {
         ...prev,
@@ -129,7 +133,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       const jsonString = safeJsonStringify(
         newSettings,
         undefined,
-        'UserSettings.updateApiConnections'
+        "UserSettings.updateApiConnections"
       );
       if (jsonString) {
         try {
@@ -142,7 +146,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateUpdateSettings = useCallback((updates: Partial<UserSettings['updateSettings']>) => {
+  const updateUpdateSettings = useCallback((updates: Partial<UserSettings["updateSettings"]>) => {
     setSettings((prev) => {
       const newSettings = {
         ...prev,
@@ -152,7 +156,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       const jsonString = safeJsonStringify(
         newSettings,
         undefined,
-        'UserSettings.updateUpdateSettings'
+        "UserSettings.updateUpdateSettings"
       );
       if (jsonString) {
         try {
@@ -165,7 +169,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateLocalDictionary = useCallback((updates: Partial<UserSettings['localDictionary']>) => {
+  const updateLocalDictionary = useCallback((updates: Partial<UserSettings["localDictionary"]>) => {
     setSettings((prev) => {
       const newSettings = {
         ...prev,
@@ -175,7 +179,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       const jsonString = safeJsonStringify(
         newSettings,
         undefined,
-        'UserSettings.updateLocalDictionary'
+        "UserSettings.updateLocalDictionary"
       );
       if (jsonString) {
         try {
@@ -188,7 +192,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateBackupSettings = useCallback((updates: Partial<UserSettings['backupSettings']>) => {
+  const updateBackupSettings = useCallback((updates: Partial<UserSettings["backupSettings"]>) => {
     setSettings((prev) => {
       const newSettings = {
         ...prev,
@@ -198,7 +202,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       const jsonString = safeJsonStringify(
         newSettings,
         undefined,
-        'UserSettings.updateBackupSettings'
+        "UserSettings.updateBackupSettings"
       );
       if (jsonString) {
         try {
@@ -211,7 +215,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateDisplaySettings = useCallback((updates: Partial<UserSettings['displaySettings']>) => {
+  const updateDisplaySettings = useCallback((updates: Partial<UserSettings["displaySettings"]>) => {
     setSettings((prev) => {
       const newSettings = {
         ...prev,
@@ -221,7 +225,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       const jsonString = safeJsonStringify(
         newSettings,
         undefined,
-        'UserSettings.updateDisplaySettings'
+        "UserSettings.updateDisplaySettings"
       );
       if (jsonString) {
         try {
@@ -284,7 +288,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
 export function useUserSettings() {
   const context = useContext(UserSettingsContext);
   if (!context) {
-    throw new Error('useUserSettings must be used within a UserSettingsProvider');
+    throw new Error("useUserSettings must be used within a UserSettingsProvider");
   }
   return context;
 }

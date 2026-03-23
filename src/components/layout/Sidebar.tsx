@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Home,
   FolderOpen,
@@ -11,12 +11,12 @@ import {
   Circle,
   Keyboard,
   Mail,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useSession } from '@/contexts/SessionContext';
-import { SimpleTooltip } from '@/components/common/Tooltip';
-import iconPng from '/icon.png';
+} from "lucide-react";
+import { cn } from "@/utils/cn";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useSession } from "@/contexts/SessionContext";
+import { SimpleTooltip } from "@/components/common/Tooltip";
+import iconPng from "/icon.png";
 
 interface NavItem {
   id: string;
@@ -63,13 +63,13 @@ export const Sidebar = memo(function Sidebar() {
   // Ctrl+Q to toggle sidebar
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'q') {
+      if ((e.ctrlKey || e.metaKey) && e.key === "q") {
         e.preventDefault();
         setCollapsed((prev) => !prev);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const handleLogoClick = useCallback(() => {
@@ -96,7 +96,7 @@ export const Sidebar = memo(function Sidebar() {
 
     // Main navigation section
     const mainItems: NavItem[] = [
-      { id: 'home', label: 'Dashboard', icon: Home, path: '/', shortcut: 'Ctrl+1' },
+      { id: "home", label: "Dashboard", icon: Home, path: "/", shortcut: "Ctrl+1" },
     ];
 
     // Add active sessions under Dashboard
@@ -116,12 +116,30 @@ export const Sidebar = memo(function Sidebar() {
 
     // Workspace section
     sections.push({
-      title: 'Workspace',
+      title: "Workspace",
       items: [
-        { id: 'sessions', label: 'Sessions', icon: FolderOpen, path: '/sessions', shortcut: 'Ctrl+2' },
-        { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics', shortcut: 'Ctrl+3' },
-        { id: 'documents', label: 'Documents', icon: FileText, path: '/documents', shortcut: 'Ctrl+4' },
-        { id: 'reporting', label: 'Reporting', icon: Mail, path: '/reporting', shortcut: 'Ctrl+5' },
+        {
+          id: "sessions",
+          label: "Sessions",
+          icon: FolderOpen,
+          path: "/sessions",
+          shortcut: "Ctrl+2",
+        },
+        {
+          id: "analytics",
+          label: "Analytics",
+          icon: BarChart3,
+          path: "/analytics",
+          shortcut: "Ctrl+3",
+        },
+        {
+          id: "documents",
+          label: "Documents",
+          icon: FileText,
+          path: "/documents",
+          shortcut: "Ctrl+4",
+        },
+        { id: "reporting", label: "Reporting", icon: Mail, path: "/reporting", shortcut: "Ctrl+5" },
       ],
     });
 
@@ -130,7 +148,7 @@ export const Sidebar = memo(function Sidebar() {
 
   const bottomItems = useMemo<NavItem[]>(
     () => [
-      { id: 'settings', label: 'Settings', icon: Settings, path: '/settings', shortcut: 'Ctrl+,' },
+      { id: "settings", label: "Settings", icon: Settings, path: "/settings", shortcut: "Ctrl+," },
     ],
     []
   );
@@ -142,20 +160,20 @@ export const Sidebar = memo(function Sidebar() {
     const buttonElement = (
       <div
         className={cn(
-          'relative group',
-          item.indented && !collapsed && 'ml-4',
-          item.indented && collapsed && 'ml-0'
+          "relative group",
+          item.indented && !collapsed && "ml-4",
+          item.indented && collapsed && "ml-0"
         )}
       >
         <button
           type="button"
           onClick={() => handleNavClick(item.path)}
           className={cn(
-            'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200',
-            'hover:bg-accent hover:text-accent-foreground',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-            isActive && 'bg-primary text-primary-foreground hover:bg-primary/90',
-            collapsed && 'justify-center'
+            "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
+            "hover:bg-accent hover:text-accent-foreground",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            isActive && "bg-primary text-primary-foreground hover:bg-primary/90",
+            collapsed && "justify-center"
           )}
         >
           <div className="flex items-center gap-3 flex-1 pointer-events-none">
@@ -165,13 +183,13 @@ export const Sidebar = memo(function Sidebar() {
               </div>
             )}
             {(!item.indented || collapsed) && (
-              <Icon className={cn('w-4 h-4 flex-shrink-0', collapsed && 'w-5 h-5')} />
+              <Icon className={cn("w-4 h-4 flex-shrink-0", collapsed && "w-5 h-5")} />
             )}
             <AnimatePresence mode="wait">
               {!collapsed && (
                 <motion.span
                   initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
+                  animate={{ opacity: 1, width: "auto" }}
                   exit={{ opacity: 0, width: 0 }}
                   transition={{ duration: 0.2 }}
                   className="text-sm font-medium whitespace-nowrap overflow-hidden flex-1 text-left"
@@ -190,7 +208,7 @@ export const Sidebar = memo(function Sidebar() {
                 item.onClose?.();
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
+                if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
                   e.stopPropagation();
                   item.onClose?.();
@@ -229,7 +247,7 @@ export const Sidebar = memo(function Sidebar() {
     <motion.aside
       initial={{ width: 240 }}
       animate={{ width: collapsed ? 64 : 240 }}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
+      transition={{ duration: 0.3, ease: "easeInOut" }}
       className="sidebar-bg h-full bg-background/50 backdrop-blur-xl border-r border-border flex flex-col relative"
     >
       <div className="p-4 flex items-center justify-between">
@@ -276,9 +294,7 @@ export const Sidebar = memo(function Sidebar() {
                   </span>
                 </div>
               )}
-              {section.title && collapsed && (
-                <div className="mx-auto my-2 w-6 h-px bg-border/50" />
-              )}
+              {section.title && collapsed && <div className="mx-auto my-2 w-6 h-px bg-border/50" />}
               <div className="space-y-1">{section.items.map(renderNavItem)}</div>
             </div>
           ))}
@@ -289,18 +305,21 @@ export const Sidebar = memo(function Sidebar() {
         {bottomItems.map(renderNavItem)}
       </div>
 
-      <SimpleTooltip content={collapsed ? 'Expand sidebar (Ctrl+Q)' : 'Collapse sidebar (Ctrl+Q)'} side="right">
+      <SimpleTooltip
+        content={collapsed ? "Expand sidebar (Ctrl+Q)" : "Collapse sidebar (Ctrl+Q)"}
+        side="right"
+      >
         <motion.button
           onClick={() => setCollapsed(!collapsed)}
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           className={cn(
-            'absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full',
-            'bg-background border-2 border-border',
-            'hover:border-primary hover:shadow-lg transition-all',
-            'flex items-center justify-center',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            'group'
+            "absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full",
+            "bg-background border-2 border-border",
+            "hover:border-primary hover:shadow-lg transition-all",
+            "flex items-center justify-center",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "group"
           )}
         >
           <motion.div animate={{ rotate: collapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>

@@ -91,8 +91,8 @@ export interface ListAnalysis {
  */
 export interface IndentationLevel {
   level: number;
-  textIndent: number;      // in inches
-  symbolIndent: number;    // in inches
+  textIndent: number; // in inches
+  symbolIndent: number; // in inches
   bulletChar?: string;
   numberedFormat?: NumberFormat | string;
 }

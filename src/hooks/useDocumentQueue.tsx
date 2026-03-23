@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSession } from '@/contexts/SessionContext';
-import type { QueueItem } from '@/types/session';
-import { processingTimeEstimator, ProcessingTimeEstimator } from '@/utils/processingTimeEstimator';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSession } from "@/contexts/SessionContext";
+import type { QueueItem } from "@/types/session";
+import { processingTimeEstimator, ProcessingTimeEstimator } from "@/utils/processingTimeEstimator";
 
 export interface UseDocumentQueueOptions {
   onDocumentComplete?: (documentId: string, success: boolean) => void;
@@ -28,9 +28,7 @@ export interface UseDocumentQueueReturn {
   isInQueue: (documentId: string) => boolean;
 }
 
-export function useDocumentQueue(
-  options: UseDocumentQueueOptions = {}
-): UseDocumentQueueReturn {
+export function useDocumentQueue(options: UseDocumentQueueOptions = {}): UseDocumentQueueReturn {
   const { processDocument } = useSession();
   const { onDocumentComplete, onQueueComplete, onError } = options;
 
@@ -64,14 +62,14 @@ export function useDocumentQueue(
     }
 
     // Get next item that is still queued
-    const nextItem = queueRef.current.find(item => item.status === 'queued');
+    const nextItem = queueRef.current.find((item) => item.status === "queued");
     if (!nextItem) {
       return;
     }
 
     // Mark as processing
     isProcessingRef.current = true;
-    nextItem.status = 'processing';
+    nextItem.status = "processing";
     setCurrentDocumentId(nextItem.documentId);
     syncState();
 
@@ -83,12 +81,12 @@ export function useDocumentQueue(
       await processDocument(nextItem.sessionId, nextItem.documentId);
 
       // Mark as completed
-      nextItem.status = 'completed';
+      nextItem.status = "completed";
       onDocumentComplete?.(nextItem.documentId, true);
     } catch (error) {
       // Mark as error
-      nextItem.status = 'error';
-      const errorMessage = error instanceof Error ? error.message : 'Processing failed';
+      nextItem.status = "error";
+      const errorMessage = error instanceof Error ? error.message : "Processing failed";
       onError?.(nextItem.documentId, errorMessage);
       onDocumentComplete?.(nextItem.documentId, false);
     }
@@ -97,7 +95,7 @@ export function useDocumentQueue(
     processingTimeEstimator.endDocument();
 
     // Remove from queue
-    queueRef.current = queueRef.current.filter(item => item.documentId !== nextItem.documentId);
+    queueRef.current = queueRef.current.filter((item) => item.documentId !== nextItem.documentId);
     isProcessingRef.current = false;
     setCurrentDocumentId(null);
     syncState();
@@ -112,49 +110,58 @@ export function useDocumentQueue(
   }, [processDocument, syncState, onDocumentComplete, onQueueComplete, onError]);
 
   // Add single document to queue
-  const addToQueue = useCallback((sessionId: string, documentId: string) => {
-    // Check if already in queue
-    if (queueRef.current.some(item => item.documentId === documentId)) {
-      return;
-    }
+  const addToQueue = useCallback(
+    (sessionId: string, documentId: string) => {
+      // Check if already in queue
+      if (queueRef.current.some((item) => item.documentId === documentId)) {
+        return;
+      }
 
-    const newItem: QueueItem = {
-      documentId,
-      sessionId,
-      addedAt: new Date(),
-      status: 'queued',
-    };
-
-    queueRef.current = [...queueRef.current, newItem];
-    syncState();
-
-    // Start processing if not already
-    processNext();
-  }, [syncState, processNext]);
-
-  // Add multiple documents to queue
-  const addManyToQueue = useCallback((sessionId: string, documentIds: string[]) => {
-    const newItems: QueueItem[] = documentIds
-      .filter(id => !queueRef.current.some(item => item.documentId === id))
-      .map(documentId => ({
+      const newItem: QueueItem = {
         documentId,
         sessionId,
         addedAt: new Date(),
-        status: 'queued' as const,
-      }));
+        status: "queued",
+      };
 
-    if (newItems.length > 0) {
-      queueRef.current = [...queueRef.current, ...newItems];
+      queueRef.current = [...queueRef.current, newItem];
       syncState();
+
+      // Start processing if not already
       processNext();
-    }
-  }, [syncState, processNext]);
+    },
+    [syncState, processNext]
+  );
+
+  // Add multiple documents to queue
+  const addManyToQueue = useCallback(
+    (sessionId: string, documentIds: string[]) => {
+      const newItems: QueueItem[] = documentIds
+        .filter((id) => !queueRef.current.some((item) => item.documentId === id))
+        .map((documentId) => ({
+          documentId,
+          sessionId,
+          addedAt: new Date(),
+          status: "queued" as const,
+        }));
+
+      if (newItems.length > 0) {
+        queueRef.current = [...queueRef.current, ...newItems];
+        syncState();
+        processNext();
+      }
+    },
+    [syncState, processNext]
+  );
 
   // Remove document from queue
-  const removeFromQueue = useCallback((documentId: string) => {
-    queueRef.current = queueRef.current.filter(item => item.documentId !== documentId);
-    syncState();
-  }, [syncState]);
+  const removeFromQueue = useCallback(
+    (documentId: string) => {
+      queueRef.current = queueRef.current.filter((item) => item.documentId !== documentId);
+      syncState();
+    },
+    [syncState]
+  );
 
   // Clear entire queue
   const clearQueue = useCallback(() => {
@@ -164,12 +171,12 @@ export function useDocumentQueue(
 
   // Get queue position for a document
   const getQueuePosition = useCallback((documentId: string): number => {
-    return queueRef.current.findIndex(item => item.documentId === documentId);
+    return queueRef.current.findIndex((item) => item.documentId === documentId);
   }, []);
 
   // Check if document is in queue
   const isInQueue = useCallback((documentId: string): boolean => {
-    return queueRef.current.some(item => item.documentId === documentId);
+    return queueRef.current.some((item) => item.documentId === documentId);
   }, []);
 
   // Update estimated time remaining periodically while processing

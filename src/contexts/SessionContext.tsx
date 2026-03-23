@@ -1,4 +1,4 @@
-import type { HyperlinkProcessingOptions } from '@/types/hyperlink';
+import type { HyperlinkProcessingOptions } from "@/types/hyperlink";
 import {
   CustomSessionDefaults,
   Document,
@@ -12,9 +12,9 @@ import {
   TableOfContentsSettings,
   TableShadingSettings,
   TableUniformitySettings,
-} from '@/types/session';
-import { DocumentSnapshotService } from '@/services/document/DocumentSnapshotService';
-import { requireElectronAPI } from '@/utils/electronGuard';
+} from "@/types/session";
+import { DocumentSnapshotService } from "@/services/document/DocumentSnapshotService";
+import { requireElectronAPI } from "@/utils/electronGuard";
 import {
   deleteSession as deleteSessionFromDB,
   ensureDBSizeLimit,
@@ -23,10 +23,10 @@ import {
   migrateFromLocalStorage,
   saveSession as saveSessionToDB,
   truncateSessionChanges,
-} from '@/utils/indexedDB';
-import { logger, debugModes, isDebugEnabled, createDebugLogger } from '@/utils/logger';
-import { isPathSafe } from '@/utils/pathSecurity';
-import { safeJsonParse, safeJsonStringify } from '@/utils/safeJsonParse';
+} from "@/utils/indexedDB";
+import { logger, debugModes, isDebugEnabled, createDebugLogger } from "@/utils/logger";
+import { isPathSafe } from "@/utils/pathSecurity";
+import { safeJsonParse, safeJsonStringify } from "@/utils/safeJsonParse";
 import {
   createContext,
   ReactNode,
@@ -35,8 +35,8 @@ import {
   useEffect,
   useRef,
   useState,
-} from 'react';
-import { useGlobalStats } from './GlobalStatsContext';
+} from "react";
+import { useGlobalStats } from "./GlobalStatsContext";
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
@@ -55,15 +55,15 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number, operation: string): Pr
   ]);
 
 // Constants for IPC operations
-const IPC_TIMEOUT_MS = 300000; // 5 minutes for document processing (large docs can take time)
+const IPC_TIMEOUT_MS = 12540000; // 209 minutes for document processing (large docs can take time)
 const TIME_SAVED_SECONDS_PER_HYPERLINK = 101;
 const SECONDS_PER_MINUTE = 60;
 
-type SerializedDocument = Omit<Document, 'processedAt'> & {
+type SerializedDocument = Omit<Document, "processedAt"> & {
   processedAt?: string;
 };
 
-type SerializedSession = Omit<Session, 'createdAt' | 'lastModified' | 'closedAt' | 'documents'> & {
+type SerializedSession = Omit<Session, "createdAt" | "lastModified" | "closedAt" | "documents"> & {
   createdAt: string;
   lastModified: string;
   closedAt?: string;
@@ -81,11 +81,11 @@ type SerializedSession = Omit<Session, 'createdAt' | 'lastModified' | 'closedAt'
 const createDefaultListBulletSettings = (): ListBulletSettings => ({
   enabled: true,
   indentationLevels: [
-    { level: 0, symbolIndent: 0.25, textIndent: 0.50, bulletChar: '•', numberedFormat: '1.' },
-    { level: 1, symbolIndent: 0.75, textIndent: 1.00, bulletChar: '○', numberedFormat: 'a.' },
-    { level: 2, symbolIndent: 1.25, textIndent: 1.50, bulletChar: '•', numberedFormat: 'i.' },
-    { level: 3, symbolIndent: 1.75, textIndent: 2.00, bulletChar: '○', numberedFormat: 'A.' },
-    { level: 4, symbolIndent: 2.25, textIndent: 2.50, bulletChar: '•', numberedFormat: 'I.' },
+    { level: 0, symbolIndent: 0.25, textIndent: 0.5, bulletChar: "•", numberedFormat: "1." },
+    { level: 1, symbolIndent: 0.75, textIndent: 1.0, bulletChar: "○", numberedFormat: "a." },
+    { level: 2, symbolIndent: 1.25, textIndent: 1.5, bulletChar: "•", numberedFormat: "i." },
+    { level: 3, symbolIndent: 1.75, textIndent: 2.0, bulletChar: "○", numberedFormat: "A." },
+    { level: 4, symbolIndent: 2.25, textIndent: 2.5, bulletChar: "•", numberedFormat: "I." },
   ],
 });
 
@@ -95,52 +95,52 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
  */
 const DEFAULT_SESSION_STYLES: SessionStyle[] = [
   {
-    id: 'header1',
-    name: 'Heading 1',
+    id: "header1",
+    name: "Heading 1",
     fontSize: 18,
-    fontFamily: 'Verdana',
+    fontFamily: "Verdana",
     bold: true,
     italic: false,
     underline: false,
-    alignment: 'left',
+    alignment: "left",
     spaceBefore: 0,
     spaceAfter: 12,
     lineSpacing: 1.0,
-    color: '#000000',
+    color: "#000000",
   },
   {
-    id: 'header2',
-    name: 'Heading 2',
+    id: "header2",
+    name: "Heading 2",
     fontSize: 14,
-    fontFamily: 'Verdana',
+    fontFamily: "Verdana",
     bold: true,
     italic: false,
     underline: false,
-    alignment: 'left',
+    alignment: "left",
     spaceBefore: 6,
     spaceAfter: 6,
     lineSpacing: 1.0,
-    color: '#000000',
+    color: "#000000",
   },
   {
-    id: 'header3',
-    name: 'Heading 3',
+    id: "header3",
+    name: "Heading 3",
     fontSize: 12,
-    fontFamily: 'Verdana',
+    fontFamily: "Verdana",
     bold: true,
     italic: false,
     underline: false,
-    alignment: 'left',
+    alignment: "left",
     spaceBefore: 3,
     spaceAfter: 3,
     lineSpacing: 1.0,
-    color: '#000000',
+    color: "#000000",
   },
   {
-    id: 'normal',
-    name: 'Normal',
+    id: "normal",
+    name: "Normal",
     fontSize: 12,
-    fontFamily: 'Verdana',
+    fontFamily: "Verdana",
     bold: false,
     italic: false,
     underline: false,
@@ -148,29 +148,29 @@ const DEFAULT_SESSION_STYLES: SessionStyle[] = [
     preserveItalic: false,
     preserveUnderline: false,
     preserveCenterAlignment: true,
-    alignment: 'left',
+    alignment: "left",
     spaceBefore: 3,
     spaceAfter: 3,
     lineSpacing: 1.0,
-    color: '#000000',
+    color: "#000000",
     noSpaceBetweenSame: false,
   },
   {
-    id: 'listParagraph',
-    name: 'List Paragraph',
+    id: "listParagraph",
+    name: "List Paragraph",
     fontSize: 12,
-    fontFamily: 'Verdana',
+    fontFamily: "Verdana",
     bold: false,
     italic: false,
     underline: false,
     preserveBold: true,
     preserveItalic: false,
     preserveUnderline: false,
-    alignment: 'left',
+    alignment: "left",
     spaceBefore: 0,
     spaceAfter: 6,
     lineSpacing: 1.0,
-    color: '#000000',
+    color: "#000000",
     noSpaceBetweenSame: true,
     // Indentation removed: numbering level definitions (symbolIndent/textIndent sliders)
     // control list indentation via numbering.xml. Adding style-level indentation here
@@ -188,29 +188,29 @@ const DEFAULT_PROCESSING_OPTIONS = {
   processExternalLinks: true,
   autoAcceptRevisions: false,
   enabledOperations: [
-    'remove-italics',
-    'remove-em-en-variants',
-    'replace-outdated-titles',
-    'validate-document-styles',
-    'update-top-hyperlinks',
-    'update-toc-hyperlinks',
-    'force-remove-heading1-toc',
-    'fix-internal-hyperlinks',
-    'fix-content-ids',
-    'center-border-images',
-    'remove-whitespace',
-    'remove-paragraph-lines',
-    'remove-headers-footers',
-    'add-document-warning',
-    'validate-header2-tables',
-    'set-landscape-margins',
-    'list-indentation',
-    'bullet-uniformity',
-    'normalize-table-lists',
-    'smart-tables',
-    'adjust-table-padding',
-    'standardize-table-borders',
-    'correct-misapplied-styles',
+    "remove-italics",
+    "remove-em-en-variants",
+    "replace-outdated-titles",
+    "validate-document-styles",
+    "update-top-hyperlinks",
+    "update-toc-hyperlinks",
+    "force-remove-heading1-toc",
+    "fix-internal-hyperlinks",
+    "fix-content-ids",
+    "center-border-images",
+    "remove-whitespace",
+    "remove-paragraph-lines",
+    "remove-headers-footers",
+    "add-document-warning",
+    "validate-header2-tables",
+    "set-landscape-margins",
+    "list-indentation",
+    "bullet-uniformity",
+    "normalize-table-lists",
+    "smart-tables",
+    "adjust-table-padding",
+    "standardize-table-borders",
+    "correct-misapplied-styles",
   ],
 };
 
@@ -218,8 +218,8 @@ const DEFAULT_PROCESSING_OPTIONS = {
  * Default table shading settings
  */
 const DEFAULT_TABLE_SHADING_SETTINGS: TableShadingSettings = {
-  header2Shading: '#BFBFBF',
-  otherShading: '#DFDFDF',
+  header2Shading: "#BFBFBF",
+  otherShading: "#DFDFDF",
   imageBorderWidth: 1.0,
   // 1x1 Tables padding (in inches)
   padding1x1Top: 0,
@@ -239,7 +239,7 @@ const DEFAULT_TABLE_SHADING_SETTINGS: TableShadingSettings = {
  * localStorage key for custom session defaults
  * Stores user's preferred defaults set via "Save as Default" button
  */
-const CUSTOM_DEFAULTS_KEY = 'dochub_custom_defaults';
+const CUSTOM_DEFAULTS_KEY = "dochub_custom_defaults";
 
 /**
  * Load custom defaults from localStorage if available
@@ -251,17 +251,22 @@ const loadCustomDefaults = (): CustomSessionDefaults | null => {
     if (!stored) {
       return null;
     }
-    const parsed = safeJsonParse<CustomSessionDefaults | null>(stored, null, 'loadCustomDefaults');
+    const parsed = safeJsonParse<CustomSessionDefaults | null>(stored, null, "loadCustomDefaults");
     if (!parsed) {
       return null;
     }
     // Validate that we have at least some valid data
-    if (!parsed.styles && !parsed.listBulletSettings && !parsed.processingOptions && !parsed.tableShadingSettings) {
+    if (
+      !parsed.styles &&
+      !parsed.listBulletSettings &&
+      !parsed.processingOptions &&
+      !parsed.tableShadingSettings
+    ) {
       return null;
     }
     return parsed;
   } catch (error) {
-    logger.warn('[SessionContext] Failed to load custom defaults:', error);
+    logger.warn("[SessionContext] Failed to load custom defaults:", error);
     return null;
   }
 };
@@ -297,9 +302,7 @@ const ensureListBulletSettings = (session: Session): Session => {
  */
 const ensureSessionStyles = (session: Session): Session => {
   const needsBackfill =
-    !session.styles ||
-    !Array.isArray(session.styles) ||
-    session.styles.length === 0;
+    !session.styles || !Array.isArray(session.styles) || session.styles.length === 0;
 
   if (needsBackfill) {
     return {
@@ -322,35 +325,35 @@ const ensureProcessingOptions = (session: Session): Session => {
   // IMPORTANT: These IDs must exactly match the option IDs in ProcessingOptions.tsx
   // This list is used to backfill existing sessions with newly added default-enabled options
   const defaultEnabledOptionIds = [
-    'remove-italics',
-    'remove-em-en-variants',
-    'validate-document-styles',
-    'replace-outdated-titles',
-    'update-top-hyperlinks',
-    'update-toc-hyperlinks',
-    'force-remove-heading1-toc',
-    'fix-internal-hyperlinks',
-    'fix-content-ids',
-    'center-border-images',
-    'remove-whitespace',
-    'remove-paragraph-lines',
-    'remove-headers-footers',
-    'add-document-warning',
-    'validate-header2-tables',
-    'set-landscape-margins',
-    'list-indentation',
-    'bullet-uniformity',
-    'normalize-table-lists',
-    'smart-tables',
-    'adjust-table-padding',
-    'standardize-table-borders',
-    'correct-misapplied-styles',
+    "remove-italics",
+    "remove-em-en-variants",
+    "validate-document-styles",
+    "replace-outdated-titles",
+    "update-top-hyperlinks",
+    "update-toc-hyperlinks",
+    "force-remove-heading1-toc",
+    "fix-internal-hyperlinks",
+    "fix-content-ids",
+    "center-border-images",
+    "remove-whitespace",
+    "remove-paragraph-lines",
+    "remove-headers-footers",
+    "add-document-warning",
+    "validate-header2-tables",
+    "set-landscape-margins",
+    "list-indentation",
+    "bullet-uniformity",
+    "normalize-table-lists",
+    "smart-tables",
+    "adjust-table-padding",
+    "standardize-table-borders",
+    "correct-misapplied-styles",
   ];
 
   const currentEnabled = session.processingOptions?.enabledOperations || [];
 
   // Add any missing default-enabled options
-  const missingOptions = defaultEnabledOptionIds.filter(id => !currentEnabled.includes(id));
+  const missingOptions = defaultEnabledOptionIds.filter((id) => !currentEnabled.includes(id));
 
   if (missingOptions.length === 0) {
     return session;
@@ -370,9 +373,9 @@ const ensureProcessingOptions = (session: Session): Session => {
 };
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const log = logger.namespace('SessionContext');
+  const log = logger.namespace("SessionContext");
   // Conditional verbose logger - only logs when SESSION_STATE debug mode is enabled
-  const debugLog = createDebugLogger(debugModes.SESSION_STATE, 'SessionState');
+  const debugLog = createDebugLogger(debugModes.SESSION_STATE, "SessionState");
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
@@ -392,7 +395,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // RACE CONDITION FIX: Prevent double-loading if already loaded
     if (hasLoadedRef.current) {
       log.warn(
-        '[Session] loadSessionsFromStorage called but already loaded - skipping to prevent race condition'
+        "[Session] loadSessionsFromStorage called but already loaded - skipping to prevent race condition"
       );
       return;
     }
@@ -402,16 +405,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       // CRITICAL RECOVERY: Check for emergency backup from beforeunload
       // This recovers data that may not have been saved to IndexedDB before app close
-      const emergencyBackup = localStorage.getItem('sessions_emergency_backup');
+      const emergencyBackup = localStorage.getItem("sessions_emergency_backup");
       if (emergencyBackup) {
-        log.warn('[Session] Found emergency backup - attempting recovery...');
+        log.warn("[Session] Found emergency backup - attempting recovery...");
         try {
           const backup = safeJsonParse<{
             sessions: SerializedSession[];
             activeSessions: SerializedSession[];
             timestamp: number;
             reason: string;
-          } | null>(emergencyBackup, null, 'SessionContext.emergencyRecover');
+          } | null>(emergencyBackup, null, "SessionContext.emergencyRecover");
 
           if (backup && backup.sessions && backup.timestamp) {
             const backupAge = Date.now() - backup.timestamp;
@@ -434,34 +437,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 );
               }
 
-              log.info('[Session] Emergency backup successfully restored to IndexedDB');
+              log.info("[Session] Emergency backup successfully restored to IndexedDB");
             } else {
-              log.info('[Session] Emergency backup too old - using IndexedDB instead');
+              log.info("[Session] Emergency backup too old - using IndexedDB instead");
             }
           }
 
           // Clear emergency backup after processing (successful or not)
-          localStorage.removeItem('sessions_emergency_backup');
+          localStorage.removeItem("sessions_emergency_backup");
         } catch (err) {
-          log.error('[Session] Failed to restore emergency backup:', err);
+          log.error("[Session] Failed to restore emergency backup:", err);
           // Clear corrupted backup
-          localStorage.removeItem('sessions_emergency_backup');
+          localStorage.removeItem("sessions_emergency_backup");
         }
       }
 
       // Check if localStorage has sessions that need migration
-      const hasLocalStorageSessions = localStorage.getItem('sessions');
+      const hasLocalStorageSessions = localStorage.getItem("sessions");
       if (hasLocalStorageSessions) {
-        log.info('[Session] Found sessions in localStorage, migrating to IndexedDB...');
+        log.info("[Session] Found sessions in localStorage, migrating to IndexedDB...");
         await migrateFromLocalStorage();
         // Clear localStorage after migration
-        localStorage.removeItem('sessions');
-        localStorage.removeItem('activeSessions');
+        localStorage.removeItem("sessions");
+        localStorage.removeItem("activeSessions");
       }
 
       // Load sessions from IndexedDB
       const storedSessions = await loadSessions();
-      const storedActiveSessions = localStorage.getItem('activeSessions');
+      const storedActiveSessions = localStorage.getItem("activeSessions");
 
       if (storedSessions && storedSessions.length > 0) {
         const parsed: SerializedSession[] = storedSessions;
@@ -482,10 +485,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
         const cleanedSessions = restored.filter((s) => {
           // Keep all active sessions
-          if (s.status === 'active') return true;
+          if (s.status === "active") return true;
 
           // For closed sessions, check if they're older than 30 days
-          if (s.status === 'closed' && s.closedAt) {
+          if (s.status === "closed" && s.closedAt) {
             const shouldKeep = s.closedAt > thirtyDaysAgo;
             if (!shouldKeep) {
               // Remove from IndexedDB as well
@@ -529,9 +532,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           (s, idx) => s.styles !== listBackfilledSessions[idx].styles
         ).length;
         if (stylesBackfillCount > 0) {
-          log.info(
-            `[Session] Backfilled ${stylesBackfillCount} session(s) with default styles`
-          );
+          log.info(`[Session] Backfilled ${stylesBackfillCount} session(s) with default styles`);
         }
 
         // BACKFILL FIX: Ensure all loaded sessions have new default-enabled processing options
@@ -540,7 +541,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
         // Log how many sessions were backfilled for processing options
         const optionsBackfillCount = backfilledSessions.filter(
-          (s, idx) => s.processingOptions?.enabledOperations?.length !== stylesBackfilledSessions[idx].processingOptions?.enabledOperations?.length
+          (s, idx) =>
+            s.processingOptions?.enabledOperations?.length !==
+            stylesBackfilledSessions[idx].processingOptions?.enabledOperations?.length
         ).length;
         if (optionsBackfillCount > 0) {
           log.info(
@@ -553,7 +556,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const activeIds = safeJsonParse<string[]>(
             storedActiveSessions,
             [],
-            'SessionContext.activeSessions'
+            "SessionContext.activeSessions"
           );
           const active = backfilledSessions.filter((s) => activeIds.includes(s.id));
           setActiveSessions(active);
@@ -563,7 +566,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (err) {
-      log.error('Failed to load sessions from storage', err);
+      log.error("Failed to load sessions from storage", err);
     }
   }, [log]); // Memoize with log dependency
 
@@ -620,20 +623,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const activeSessionIds = safeJsonStringify(
         currentActiveSessions.map((s) => s.id),
         undefined,
-        'SessionContext.saveActiveSessions'
+        "SessionContext.saveActiveSessions"
       );
       if (activeSessionIds) {
-        localStorage.setItem('activeSessions', activeSessionIds);
+        localStorage.setItem("activeSessions", activeSessionIds);
       }
     } catch (err) {
-      if (err instanceof Error && err.message.includes('DATABASE_QUOTA_EXCEEDED')) {
+      if (err instanceof Error && err.message.includes("DATABASE_QUOTA_EXCEEDED")) {
         // User should be notified about quota issues - this should trigger a UI notification
         log.error(
-          'Database quota exceeded - archive old sessions or export data to free up space',
+          "Database quota exceeded - archive old sessions or export data to free up space",
           err
         );
       } else {
-        log.error('Failed to persist sessions:', err);
+        log.error("Failed to persist sessions:", err);
       }
     }
   }, [log]); // No dependencies - uses refs instead
@@ -679,16 +682,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const currentActiveSessions = activeSessionsRef.current;
 
       if (currentSessions.length > 0) {
-        log.info('[beforeunload] Flushing pending session saves...');
+        log.info("[beforeunload] Flushing pending session saves...");
 
         // Save active session IDs to localStorage (synchronous)
         const activeSessionIds = safeJsonStringify(
           currentActiveSessions.map((s) => s.id),
           undefined,
-          'SessionContext.beforeunload'
+          "SessionContext.beforeunload"
         );
         if (activeSessionIds) {
-          localStorage.setItem('activeSessions', activeSessionIds);
+          localStorage.setItem("activeSessions", activeSessionIds);
         }
 
         // CRITICAL DATA LOSS FIX: Add emergency backup to localStorage
@@ -712,32 +715,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               sessions: currentSessions.map(serializeSession),
               activeSessions: currentActiveSessions.map(serializeSession),
               timestamp: Date.now(),
-              reason: 'beforeunload_emergency_backup',
+              reason: "beforeunload_emergency_backup",
             },
             undefined,
-            'SessionContext.emergencyBackup'
+            "SessionContext.emergencyBackup"
           );
 
           if (emergencyBackup) {
-            localStorage.setItem('sessions_emergency_backup', emergencyBackup);
-            log.info('[beforeunload] Emergency backup saved to localStorage');
+            localStorage.setItem("sessions_emergency_backup", emergencyBackup);
+            log.info("[beforeunload] Emergency backup saved to localStorage");
           }
         } catch (error) {
           // Silent fail - localStorage might be full or disabled
-          log.error('[beforeunload] Failed to create emergency backup:', error);
+          log.error("[beforeunload] Failed to create emergency backup:", error);
         }
 
         // Trigger the async save (may not complete, but we try)
         debouncedPersistSessions().catch((error) => {
-          log.error('[beforeunload] Failed to flush sessions:', error);
+          log.error("[beforeunload] Failed to flush sessions:", error);
         });
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [debouncedPersistSessions, log]);
 
@@ -747,7 +750,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const hasCustomDefaults = customDefaults !== null;
 
     if (hasCustomDefaults) {
-      log.info('[createSession] Using custom defaults for new session');
+      log.info("[createSession] Using custom defaults for new session");
     }
 
     const newSession: Session = {
@@ -762,13 +765,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         feedbackImported: 0,
         timeSaved: 0,
       },
-      status: 'active',
+      status: "active",
       // Use custom defaults if available, otherwise fall back to factory defaults
-      styles: customDefaults?.styles
-        ? [...customDefaults.styles]
-        : [...DEFAULT_SESSION_STYLES],
+      styles: customDefaults?.styles ? [...customDefaults.styles] : [...DEFAULT_SESSION_STYLES],
       listBulletSettings: customDefaults?.listBulletSettings
-        ? { ...customDefaults.listBulletSettings, indentationLevels: [...customDefaults.listBulletSettings.indentationLevels] }
+        ? {
+            ...customDefaults.listBulletSettings,
+            indentationLevels: [...customDefaults.listBulletSettings.indentationLevels],
+          }
         : createDefaultListBulletSettings(),
       tableShadingSettings: customDefaults?.tableShadingSettings
         ? { ...customDefaults.tableShadingSettings }
@@ -785,7 +789,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
 
     // DEBUG: Log state transition
-    debugLog.debug('Creating session - state before update', {
+    debugLog.debug("Creating session - state before update", {
       sessionCount: sessions.length,
       activeCount: activeSessions.length,
       currentSessionId: currentSession?.id,
@@ -796,7 +800,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setCurrentSession(newSession);
 
     // DEBUG: Log new state
-    debugLog.debug('Session created - state after update', {
+    debugLog.debug("Session created - state after update", {
       newSessionId: newSession.id,
       sessionCount: sessions.length + 1,
       activeCount: activeSessions.length + 1,
@@ -829,7 +833,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (activeSessions.find((s) => s.id === id)) {
         // Session is already active, just switch to it
         setCurrentSession(session);
-      } else if (session.status === 'closed') {
+      } else if (session.status === "closed") {
         // CRITICAL FIX: Don't auto-reopen closed sessions
         // User must explicitly reopen via reopenSession() or the Sessions page
         log.warn(
@@ -846,9 +850,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const reopenSession = (id: string) => {
     const session = sessions.find((s) => s.id === id);
-    if (session && session.status === 'closed') {
+    if (session && session.status === "closed") {
       // Explicitly reopen a closed session
-      const updatedSession = { ...session, status: 'active' as const, lastModified: new Date() };
+      const updatedSession = { ...session, status: "active" as const, lastModified: new Date() };
       setSessions((prev) => prev.map((s) => (s.id === id ? updatedSession : s)));
       setActiveSessions((prev) => [...prev, updatedSession]);
       setCurrentSession(updatedSession);
@@ -863,7 +867,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const closedAt = new Date();
 
     // DEBUG: Log state before close
-    debugLog.debug('Closing session - state before', {
+    debugLog.debug("Closing session - state before", {
       closingSessionId: id,
       closingSessionName: session?.name,
       activeCount: activeSessions.length,
@@ -882,13 +886,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Update session status to 'closed' but keep in sessions list for history
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === id ? { ...s, status: 'closed' as const, lastModified: new Date(), closedAt } : s
+        s.id === id ? { ...s, status: "closed" as const, lastModified: new Date(), closedAt } : s
       )
     );
 
     // Log session closure
     if (session) {
-      log.info('[Session] Closed:', {
+      log.info("[Session] Closed:", {
         id: session.id,
         name: session.name,
         closedAt: closedAt.toISOString(),
@@ -913,7 +917,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     // Log session deletion
     if (session) {
-      log.info('[Session] Deleted:', {
+      log.info("[Session] Deleted:", {
         id: session.id,
         name: session.name,
         status: session.status,
@@ -944,14 +948,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         path: fileWithPath.path,
         size: file.size,
         type: file.type,
-        hasPathProperty: 'path' in file,
+        hasPathProperty: "path" in file,
         pathValue: fileWithPath.path,
       });
 
       // STRICT VALIDATION: Only accept files with valid filesystem paths
       // This is critical for Electron processing which requires absolute paths
-      if (!fileWithPath.path || fileWithPath.path.trim() === '') {
-        const reason = 'No file path provided';
+      if (!fileWithPath.path || fileWithPath.path.trim() === "") {
+        const reason = "No file path provided";
         log.error(`[addDocuments] File "${file.name}" rejected: ${reason}`);
         invalidFiles.push({ name: file.name, reason });
         continue;
@@ -959,7 +963,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       // Enhanced security validation with path traversal protection
       // Check for .docx/.doc extensions and security threats
-      if (!isPathSafe(fileWithPath.path, ['.docx', '.doc'])) {
+      if (!isPathSafe(fileWithPath.path, [".docx", ".doc"])) {
         const reason = `Failed security validation for path: "${fileWithPath.path}"`;
         log.error(`[addDocuments] File "${file.name}" rejected: ${reason}`);
         invalidFiles.push({ name: file.name, reason });
@@ -973,7 +977,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         path: fileWithPath.path,
         size: file.size || 0,
         type: file.type,
-        status: 'pending' as const,
+        status: "pending" as const,
         // No fileData - will be read by backend using the path
       });
     }
@@ -994,7 +998,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     // Only update state if we have valid documents
     if (newDocuments.length === 0) {
-      log.error('[addDocuments] ❌ No valid documents to add - all files were rejected');
+      log.error("[addDocuments] ❌ No valid documents to add - all files were rejected");
       return;
     }
 
@@ -1049,25 +1053,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // =========================================================================
       // COMPREHENSIVE LOGGING - DOCUMENT PROCESSING START
       // =========================================================================
-      log.info('═══════════════════════════════════════════════════════════════════════');
-      log.info('[SessionContext] DOCUMENT PROCESSING STARTED');
-      log.info('═══════════════════════════════════════════════════════════════════════');
+      log.info("═══════════════════════════════════════════════════════════════════════");
+      log.info("[SessionContext] DOCUMENT PROCESSING STARTED");
+      log.info("═══════════════════════════════════════════════════════════════════════");
       log.info(`[SessionContext] Timestamp: ${new Date().toISOString()}`);
       log.info(`[SessionContext] Session ID: ${sessionId}`);
       log.info(`[SessionContext] Document ID: ${documentId}`);
-      log.info(`[SessionContext] Document Name: ${document?.name || 'Unknown'}`);
-      log.info(`[SessionContext] Document Path: ${document?.path || 'No path'}`);
+      log.info(`[SessionContext] Document Name: ${document?.name || "Unknown"}`);
+      log.info(`[SessionContext] Document Path: ${document?.path || "No path"}`);
 
       // DEBUG: Log document processing start
-      debugLog.debug('Processing document - starting', {
+      debugLog.debug("Processing document - starting", {
         sessionId,
         documentId,
         documentName: document?.name,
-        documentPath: document?.path ? '[path exists]' : '[no path]',
+        documentPath: document?.path ? "[path exists]" : "[no path]",
       });
 
       if (!session || !document || !document.path) {
-        log.error('[SessionContext] ERROR: Session, document, or document path not found');
+        log.error("[SessionContext] ERROR: Session, document, or document path not found");
         log.error(`[SessionContext] Session exists: ${!!session}`);
         log.error(`[SessionContext] Document exists: ${!!document}`);
         log.error(`[SessionContext] Document path exists: ${!!document?.path}`);
@@ -1079,11 +1083,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // even if the session was created before these features were added
       const ensuredSession = ensureSessionStyles(ensureListBulletSettings(session));
       if (ensuredSession !== session) {
-        log.info('[Session] Backfilled session with missing styles or list settings during processing');
-        // Update the session in state with the backfilled data
-        setSessions((prev) =>
-          prev.map((s) => (s.id === sessionId ? ensuredSession : s))
+        log.info(
+          "[Session] Backfilled session with missing styles or list settings during processing"
         );
+        // Update the session in state with the backfilled data
+        setSessions((prev) => prev.map((s) => (s.id === sessionId ? ensuredSession : s)));
       }
 
       // Use the ensured session for processing
@@ -1096,7 +1100,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             ? {
                 ...s,
                 documents: s.documents.map((d) =>
-                  d.id === documentId ? { ...d, status: 'processing' as const, errors: undefined, errorType: undefined } : d
+                  d.id === documentId
+                    ? {
+                        ...d,
+                        status: "processing" as const,
+                        errors: undefined,
+                        errorType: undefined,
+                      }
+                    : d
                 ),
                 lastModified: new Date(),
               }
@@ -1106,33 +1117,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       try {
         // Get user settings from localStorage
-        const userSettings = localStorage.getItem('userSettings');
+        const userSettings = localStorage.getItem("userSettings");
         const settings = safeJsonParse<any>(
           userSettings,
-          { apiConnections: { powerAutomateUrl: '' }, profile: {} },
-          'SessionContext.processDocument.userSettings'
+          { apiConnections: { powerAutomateUrl: "" }, profile: {} },
+          "SessionContext.processDocument.userSettings"
         );
 
         log.debug(
-          'Processing document with PowerAutomate URL:',
+          "Processing document with PowerAutomate URL:",
           settings.apiConnections.powerAutomateUrl
         );
 
         // Extract profile data from settings for API request
         const userProfile = settings.profile
           ? {
-              firstName: settings.profile.firstName || '',
-              lastName: settings.profile.lastName || '',
-              email: settings.profile.email || '',
+              firstName: settings.profile.firstName || "",
+              lastName: settings.profile.lastName || "",
+              email: settings.profile.email || "",
             }
           : undefined;
 
-        log.debug('Processing document with user profile:', userProfile);
+        log.debug("Processing document with user profile:", userProfile);
 
         // Convert session processing options to hyperlink processing options
         // Extract style spacing from session styles
-        log.debug('\n=== SESSION CONTEXT: Extracting Style Spacing ===');
-        log.debug('sessionToProcess.styles:', sessionToProcess.styles);
+        log.debug("\n=== SESSION CONTEXT: Extracting Style Spacing ===");
+        log.debug("sessionToProcess.styles:", sessionToProcess.styles);
 
         // Default style spacing (applied when sessionToProcess.styles is undefined/empty)
         const defaultStyleSpacing = {
@@ -1157,19 +1168,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const hasSessionStyles = sessionToProcess.styles && sessionToProcess.styles.length > 0;
 
         if (!hasSessionStyles) {
-          log.debug('   No styles configured in session - using default spacing values');
-          log.debug('   Default Header 1: 0pt before, 12pt after, 1.0 line spacing');
-          log.debug('   Default Header 2: 6pt before, 6pt after, 1.0 line spacing');
-          log.debug('   Default Normal: 3pt before, 3pt after, 1.0 line spacing');
+          log.debug("   No styles configured in session - using default spacing values");
+          log.debug("   Default Header 1: 0pt before, 12pt after, 1.0 line spacing");
+          log.debug("   Default Header 2: 6pt before, 6pt after, 1.0 line spacing");
+          log.debug("   Default Normal: 3pt before, 3pt after, 1.0 line spacing");
         }
 
-        const header1Style = sessionToProcess.styles?.find((s: SessionStyle) => s.id === 'header1');
-        const header2Style = sessionToProcess.styles?.find((s: SessionStyle) => s.id === 'header2');
-        const normalStyle = sessionToProcess.styles?.find((s: SessionStyle) => s.id === 'normal');
+        const header1Style = sessionToProcess.styles?.find((s: SessionStyle) => s.id === "header1");
+        const header2Style = sessionToProcess.styles?.find((s: SessionStyle) => s.id === "header2");
+        const normalStyle = sessionToProcess.styles?.find((s: SessionStyle) => s.id === "normal");
 
-        log.debug('Found header1Style:', header1Style);
-        log.debug('Found header2Style:', header2Style);
-        log.debug('Found normalStyle:', normalStyle);
+        log.debug("Found header1Style:", header1Style);
+        log.debug("Found header2Style:", header2Style);
+        log.debug("Found normalStyle:", normalStyle);
 
         // Define custom style spacing with proper type structure
         interface CustomStyleSpacing {
@@ -1196,10 +1207,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             spaceAfter: header1Style.spaceAfter ?? 0,
             lineSpacing: header1Style.lineSpacing ?? 1.0,
           };
-          log.debug('✓ Added header1 spacing from session:', customStyleSpacing.header1);
+          log.debug("✓ Added header1 spacing from session:", customStyleSpacing.header1);
         } else if (!hasSessionStyles) {
           customStyleSpacing.header1 = defaultStyleSpacing.header1;
-          log.debug('✓ Added header1 spacing from defaults:', customStyleSpacing.header1);
+          log.debug("✓ Added header1 spacing from defaults:", customStyleSpacing.header1);
         }
 
         // Header 2 spacing (use session style or default)
@@ -1214,10 +1225,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             spaceAfter: header2Style.spaceAfter ?? 0,
             lineSpacing: header2Style.lineSpacing ?? 1.0,
           };
-          log.debug('✓ Added header2 spacing from session:', customStyleSpacing.header2);
+          log.debug("✓ Added header2 spacing from session:", customStyleSpacing.header2);
         } else if (!hasSessionStyles) {
           customStyleSpacing.header2 = defaultStyleSpacing.header2;
-          log.debug('✓ Added header2 spacing from defaults:', customStyleSpacing.header2);
+          log.debug("✓ Added header2 spacing from defaults:", customStyleSpacing.header2);
         }
 
         // Normal spacing (use session style or default)
@@ -1232,21 +1243,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             spaceAfter: normalStyle.spaceAfter ?? 0,
             lineSpacing: normalStyle.lineSpacing ?? 1.0,
           };
-          log.debug('✓ Added normal spacing from session:', customStyleSpacing.normal);
+          log.debug("✓ Added normal spacing from session:", customStyleSpacing.normal);
         } else if (!hasSessionStyles) {
           customStyleSpacing.normal = defaultStyleSpacing.normal;
-          log.debug('✓ Added normal spacing from defaults:', customStyleSpacing.normal);
+          log.debug("✓ Added normal spacing from defaults:", customStyleSpacing.normal);
         }
 
-        log.debug('Final customStyleSpacing object:', customStyleSpacing);
+        log.debug("Final customStyleSpacing object:", customStyleSpacing);
         log.debug(
-          'Will pass to processor:',
+          "Will pass to processor:",
           Object.keys(customStyleSpacing).length > 0 ? customStyleSpacing : undefined
         );
 
         // DEBUG: Log enabled operations before processing
-        log.info('\n=== PROCESSING DOCUMENT - OPTIONS DEBUG ===');
-        log.info('Session enabled operations:', sessionToProcess.processingOptions?.enabledOperations || []);
+        log.info("\n=== PROCESSING DOCUMENT - OPTIONS DEBUG ===");
+        log.info(
+          "Session enabled operations:",
+          sessionToProcess.processingOptions?.enabledOperations || []
+        );
 
         const processingOptions: HyperlinkProcessingOptions & {
           // User Profile for API
@@ -1314,36 +1328,55 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             totalEntries: number;
           };
         } = {
-          apiEndpoint: settings.apiConnections.powerAutomateUrl || '',
+          apiEndpoint: settings.apiConnections.powerAutomateUrl || "",
           userProfile, // Pass profile data to backend for API request
 
           // Hyperlink Operations (operations object)
           operations: {
             fixContentIds:
-              sessionToProcess.processingOptions?.enabledOperations?.includes('fix-content-ids'),
+              sessionToProcess.processingOptions?.enabledOperations?.includes("fix-content-ids"),
             updateTitles:
-              sessionToProcess.processingOptions?.enabledOperations?.includes('replace-outdated-titles'),
+              sessionToProcess.processingOptions?.enabledOperations?.includes(
+                "replace-outdated-titles"
+              ),
             replaceOutdatedTitles:
-              sessionToProcess.processingOptions?.enabledOperations?.includes('replace-outdated-titles'), // Same flag, standalone fallback
+              sessionToProcess.processingOptions?.enabledOperations?.includes(
+                "replace-outdated-titles"
+              ), // Same flag, standalone fallback
             fixInternalHyperlinks:
-              sessionToProcess.processingOptions?.enabledOperations?.includes('fix-internal-hyperlinks'),
+              sessionToProcess.processingOptions?.enabledOperations?.includes(
+                "fix-internal-hyperlinks"
+              ),
             updateTopHyperlinks:
-              sessionToProcess.processingOptions?.enabledOperations?.includes('update-top-hyperlinks'),
+              sessionToProcess.processingOptions?.enabledOperations?.includes(
+                "update-top-hyperlinks"
+              ),
             updateTocHyperlinks: true, // Always enabled - no UI control
             standardizeHyperlinkColor: true, // Always enabled - removed from UI
             validateHeader2Tables:
-              sessionToProcess.processingOptions?.enabledOperations?.includes('validate-header2-tables'),
+              sessionToProcess.processingOptions?.enabledOperations?.includes(
+                "validate-header2-tables"
+              ),
             validateDocumentStyles: sessionToProcess.processingOptions?.enabledOperations?.includes(
-              'validate-document-styles'
+              "validate-document-styles"
             ),
           },
 
           // Text replacements and styles
-          textReplacements: sessionToProcess.replacements?.filter((r) => r.enabled) || [],
+          customReplacements: (
+            sessionToProcess.replacements?.filter((r) => r.enabled && r.pattern) || []
+          ).map((r) => ({
+            find: r.pattern,
+            replace: r.replacement,
+            matchType: "contains" as const,
+            applyTo: r.type === "hyperlink" ? ("url" as const) : ("text" as const),
+          })),
           // Transform session styles array to include all formatting properties
           // This matches the format expected by WordDocumentProcessor for custom style application
           styles:
-            sessionToProcess.styles && Array.isArray(sessionToProcess.styles) && sessionToProcess.styles.length > 0
+            sessionToProcess.styles &&
+            Array.isArray(sessionToProcess.styles) &&
+            sessionToProcess.styles.length > 0
               ? sessionToProcess.styles.map((style: any) => {
                   // DUAL TOGGLE FORMATTING SYSTEM
                   // For formatting properties (bold, italic, underline):
@@ -1385,12 +1418,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
           // Text Formatting Options (mapped from ProcessingOptions UI)
           removeWhitespace:
-            sessionToProcess.processingOptions?.enabledOperations?.includes('remove-whitespace'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes("remove-whitespace"),
           removeParagraphLines:
-            sessionToProcess.processingOptions?.enabledOperations?.includes('remove-paragraph-lines'),
-          removeItalics: sessionToProcess.processingOptions?.enabledOperations?.includes('remove-italics'),
-          preserveRedFont: sessionToProcess.processingOptions?.enabledOperations?.includes('preserve-red-font'),
-          removeEmEnVariants: sessionToProcess.processingOptions?.enabledOperations?.includes('remove-em-en-variants'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes(
+              "remove-paragraph-lines"
+            ),
+          removeItalics:
+            sessionToProcess.processingOptions?.enabledOperations?.includes("remove-italics"),
+          preserveRedFont:
+            sessionToProcess.processingOptions?.enabledOperations?.includes("preserve-red-font"),
+          removeEmEnVariants:
+            sessionToProcess.processingOptions?.enabledOperations?.includes(
+              "remove-em-en-variants"
+            ),
 
           // ALWAYS ENABLED: Standardize hyperlink formatting (remove bold/italic from all hyperlinks)
           // This is intentional and required for the work environment to maintain professional document standards.
@@ -1402,8 +1442,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           standardizeListPrefixFormatting: true,
 
           // Correct misapplied TOC/Hyperlink paragraph styles (user-togglable)
-          correctMisappliedStyles:
-            sessionToProcess.processingOptions?.enabledOperations?.includes('correct-misapplied-styles'),
+          correctMisappliedStyles: sessionToProcess.processingOptions?.enabledOperations?.includes(
+            "correct-misapplied-styles"
+          ),
 
           // Content Structure Options (ALWAYS ENABLED - automatic processing)
           // These operations are now always applied when processing documents
@@ -1411,15 +1452,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           assignStyles: true, // Always apply custom styles from Styles tab
           centerAndBorderImages: true, // Always center and border large images (>1" either dimension)
           removeHeadersFooters:
-            sessionToProcess.processingOptions?.enabledOperations?.includes('remove-headers-footers'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes(
+              "remove-headers-footers"
+            ),
           addDocumentWarning:
-            sessionToProcess.processingOptions?.enabledOperations?.includes('add-document-warning'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes("add-document-warning"),
 
           // Lists & Tables Options (mapped from ProcessingOptions UI)
           // Map list-indentation checkbox to listBulletSettings.enabled
           // This controls Phase 3 (indentation), while bullet-uniformity controls Phases 1+2 (symbols)
           listBulletSettings: sessionToProcess.processingOptions?.enabledOperations?.includes(
-            'list-indentation'
+            "list-indentation"
           )
             ? {
                 enabled: true,
@@ -1427,19 +1470,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               }
             : undefined,
           bulletUniformity:
-            sessionToProcess.processingOptions?.enabledOperations?.includes('bullet-uniformity'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes("bullet-uniformity"),
           normalizeTableLists:
-            sessionToProcess.processingOptions?.enabledOperations?.includes('normalize-table-lists'),
-          tableUniformity: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
-          smartTables: sessionToProcess.processingOptions?.enabledOperations?.includes('smart-tables'),
-          standardizeTableBorders: sessionToProcess.processingOptions?.enabledOperations?.includes('standardize-table-borders'),
-          setLandscapeMargins: sessionToProcess.processingOptions?.enabledOperations?.includes('set-landscape-margins'),
+            sessionToProcess.processingOptions?.enabledOperations?.includes(
+              "normalize-table-lists"
+            ),
+          tableUniformity:
+            sessionToProcess.processingOptions?.enabledOperations?.includes("smart-tables"),
+          smartTables:
+            sessionToProcess.processingOptions?.enabledOperations?.includes("smart-tables"),
+          standardizeTableBorders: sessionToProcess.processingOptions?.enabledOperations?.includes(
+            "standardize-table-borders"
+          ),
+          setLandscapeMargins:
+            sessionToProcess.processingOptions?.enabledOperations?.includes(
+              "set-landscape-margins"
+            ),
           // Table shading settings with values derived from paragraph styles
           // This ensures table cell formatting inherits from the existing UI controls
           tableShadingSettings: (() => {
             // Find relevant paragraph styles to derive table-specific settings
-            const normalStyle = sessionToProcess.styles?.find((s: any) => s.id === 'normal');
-            const heading2Style = sessionToProcess.styles?.find((s: any) => s.id === 'header2');
+            const normalStyle = sessionToProcess.styles?.find((s: any) => s.id === "normal");
+            const heading2Style = sessionToProcess.styles?.find((s: any) => s.id === "header2");
 
             return sessionToProcess.tableShadingSettings
               ? {
@@ -1455,15 +1507,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   paddingOtherTop: sessionToProcess.tableShadingSettings.paddingOtherTop ?? 0,
                   paddingOtherBottom: sessionToProcess.tableShadingSettings.paddingOtherBottom ?? 0,
                   paddingOtherLeft: sessionToProcess.tableShadingSettings.paddingOtherLeft ?? 0.08,
-                  paddingOtherRight: sessionToProcess.tableShadingSettings.paddingOtherRight ?? 0.08,
+                  paddingOtherRight:
+                    sessionToProcess.tableShadingSettings.paddingOtherRight ?? 0.08,
                   // Cell border thickness setting
-                  cellBorderThickness: sessionToProcess.tableShadingSettings.cellBorderThickness ?? 0.5,
+                  cellBorderThickness:
+                    sessionToProcess.tableShadingSettings.cellBorderThickness ?? 0.5,
                   // Derived from Heading 2 paragraph style
-                  heading2FontFamily: heading2Style?.fontFamily || 'Verdana',
+                  heading2FontFamily: heading2Style?.fontFamily || "Verdana",
                   heading2FontSize: heading2Style?.fontSize || 14,
                   // Derived from Normal paragraph style
-                  normalAlignment: normalStyle?.alignment || 'left',
-                  normalFontFamily: normalStyle?.fontFamily || 'Verdana',
+                  normalAlignment: normalStyle?.alignment || "left",
+                  normalFontFamily: normalStyle?.fontFamily || "Verdana",
                   normalFontSize: normalStyle?.fontSize || 12,
                   normalSpaceBefore: normalStyle?.spaceBefore ?? 3,
                   normalSpaceAfter: normalStyle?.spaceAfter ?? 3,
@@ -1481,7 +1535,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           tableOfContentsSettings: sessionToProcess.tableOfContentsSettings,
 
           // Word Tracked Changes Handling
-          revisionHandlingMode: sessionToProcess.processingOptions?.revisionHandlingMode || 'accept_all',
+          revisionHandlingMode:
+            sessionToProcess.processingOptions?.revisionHandlingMode || "accept_all",
           revisionAuthor: sessionToProcess.processingOptions?.revisionAuthor,
           autoAcceptRevisions: sessionToProcess.processingOptions?.autoAcceptRevisions ?? false, // Default: false
 
@@ -1501,28 +1556,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
 
         // DEBUG: Log final operations object being passed to processor
-        log.info('Operations object being passed to WordDocumentProcessor:');
-        log.info('  - updateTocHyperlinks:', processingOptions.operations?.updateTocHyperlinks);
+        log.info("Operations object being passed to WordDocumentProcessor:");
+        log.info("  - updateTocHyperlinks:", processingOptions.operations?.updateTocHyperlinks);
         log.info(
-          '  - validateDocumentStyles:',
+          "  - validateDocumentStyles:",
           processingOptions.operations?.validateDocumentStyles
         );
-        log.info('  - validateHeader2Tables:', processingOptions.operations?.validateHeader2Tables);
-        log.info('  - styles length:', processingOptions.styles?.length || 0);
+        log.info("  - validateHeader2Tables:", processingOptions.operations?.validateHeader2Tables);
+        log.info("  - styles length:", processingOptions.styles?.length || 0);
         if (processingOptions.styles && processingOptions.styles.length > 0) {
           log.info(
-            '  - Available style IDs:',
-            processingOptions.styles.map((s: any) => s.id).join(', ')
+            "  - Available style IDs:",
+            processingOptions.styles.map((s: any) => s.id).join(", ")
           );
         }
         log.info(
-          '  - tableOfContentsSettings.enabled:',
+          "  - tableOfContentsSettings.enabled:",
           processingOptions.tableOfContentsSettings?.enabled ?? false
         );
         // CRITICAL DEBUG: Log listBulletSettings details
-        log.info('  - listBulletSettings enabled:', processingOptions.listBulletSettings?.enabled);
+        log.info("  - listBulletSettings enabled:", processingOptions.listBulletSettings?.enabled);
         log.info(
-          '  - listBulletSettings indentationLevels length:',
+          "  - listBulletSettings indentationLevels length:",
           processingOptions.listBulletSettings?.indentationLevels?.length || 0
         );
         if (processingOptions.listBulletSettings?.indentationLevels) {
@@ -1535,11 +1590,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           );
         }
         // Also log session state right before IPC call
-        log.info('Session state right before IPC:');
-        log.info('  - Session has listBulletSettings?', !!sessionToProcess.listBulletSettings);
-        log.info('  - Session listBulletSettings enabled?', sessionToProcess.listBulletSettings?.enabled);
+        log.info("Session state right before IPC:");
+        log.info("  - Session has listBulletSettings?", !!sessionToProcess.listBulletSettings);
         log.info(
-          '  - Session indentationLevels length:',
+          "  - Session listBulletSettings enabled?",
+          sessionToProcess.listBulletSettings?.enabled
+        );
+        log.info(
+          "  - Session indentationLevels length:",
           sessionToProcess.listBulletSettings?.indentationLevels?.length || 0
         );
         if (sessionToProcess.listBulletSettings?.indentationLevels) {
@@ -1550,14 +1608,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           });
         }
         // Check enabled operations
-        log.info('  - Enabled operations:', sessionToProcess.processingOptions?.enabledOperations || []);
+        log.info(
+          "  - Enabled operations:",
+          sessionToProcess.processingOptions?.enabledOperations || []
+        );
         // DEBUG: Show formatting preservation for Normal/ListParagraph styles
-        const normalStyleInOptions = processingOptions.styles?.find((s: any) => s.id === 'normal');
+        const normalStyleInOptions = processingOptions.styles?.find((s: any) => s.id === "normal");
         const listParaStyleInOptions = processingOptions.styles?.find(
-          (s: any) => s.id === 'listParagraph'
+          (s: any) => s.id === "listParagraph"
         );
         if (normalStyleInOptions || listParaStyleInOptions) {
-          log.info('  - Formatting Preservation (bold & alignment only):');
+          log.info("  - Formatting Preservation (bold & alignment only):");
           if (normalStyleInOptions) {
             log.info(
               `    - Normal: bold=${normalStyleInOptions.bold}, alignment=${normalStyleInOptions.alignment} (undefined = preserve), italic=${normalStyleInOptions.italic}, underline=${normalStyleInOptions.underline}`
@@ -1576,14 +1637,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           log.info(`[SessionContext] Capturing pre-processing snapshot for ${document.name}`);
 
           // Ensure Electron API is available for file operations
-          const electronAPI = requireElectronAPI('snapshot capture');
+          const electronAPI = requireElectronAPI("snapshot capture");
 
           // Read original file into buffer
           const fileBuffer = await electronAPI.readFileAsBuffer(document.path);
 
           // Extract original text content before processing
           const textResult = await electronAPI.extractDocumentText(document.path);
-          const originalText = textResult.success && textResult.textContent ? textResult.textContent : [];
+          const originalText =
+            textResult.success && textResult.textContent ? textResult.textContent : [];
 
           // Store snapshot in IndexedDB (renderer process)
           await DocumentSnapshotService.captureSnapshot(
@@ -1593,45 +1655,54 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             originalText,
             [] // hyperlinks optional
           );
-          log.info(`[SessionContext] Snapshot captured: ${originalText.length} paragraphs, ${(fileBuffer.byteLength / 1024).toFixed(1)}KB`);
+          log.info(
+            `[SessionContext] Snapshot captured: ${originalText.length} paragraphs, ${(fileBuffer.byteLength / 1024).toFixed(1)}KB`
+          );
         } catch (snapshotError) {
-          log.warn('[SessionContext] Failed to capture snapshot (comparison will be unavailable):', snapshotError);
+          log.warn(
+            "[SessionContext] Failed to capture snapshot (comparison will be unavailable):",
+            snapshotError
+          );
           // Continue with processing even if snapshot fails
         }
 
         // =========================================================================
         // LOGGING - IPC CALL TO MAIN PROCESS
         // =========================================================================
-        log.info('───────────────────────────────────────────────────────────────────────');
-        log.info('[SessionContext] Sending document to main process for processing');
-        log.info(`[SessionContext] API Endpoint: ${processingOptions.apiEndpoint ? 'Configured' : 'NOT CONFIGURED'}`);
-        log.info(`[SessionContext] Operations enabled: ${sessionToProcess.processingOptions?.enabledOperations?.join(', ') || 'None'}`);
+        log.info("───────────────────────────────────────────────────────────────────────");
+        log.info("[SessionContext] Sending document to main process for processing");
+        log.info(
+          `[SessionContext] API Endpoint: ${processingOptions.apiEndpoint ? "Configured" : "NOT CONFIGURED"}`
+        );
+        log.info(
+          `[SessionContext] Operations enabled: ${sessionToProcess.processingOptions?.enabledOperations?.join(", ") || "None"}`
+        );
         log.info(`[SessionContext] IPC Timeout: ${IPC_TIMEOUT_MS}ms`);
-        log.info('───────────────────────────────────────────────────────────────────────');
+        log.info("───────────────────────────────────────────────────────────────────────");
 
         // Process the document using Electron IPC with timeout protection
-        const processingAPI = requireElectronAPI('document processing');
+        const processingAPI = requireElectronAPI("document processing");
         const rawResult = await withTimeout(
           processingAPI.processHyperlinkDocument(document.path, processingOptions),
           IPC_TIMEOUT_MS,
-          'Document processing'
+          "Document processing"
         );
 
         // Validate the response structure before using it
-        if (!rawResult || typeof rawResult !== 'object') {
-          throw new Error('Invalid response from document processor: expected an object');
+        if (!rawResult || typeof rawResult !== "object") {
+          throw new Error("Invalid response from document processor: expected an object");
         }
 
         // Type guard to ensure required fields exist
         const hasRequiredFields =
-          'success' in rawResult &&
-          'totalHyperlinks' in rawResult &&
-          typeof rawResult.success === 'boolean' &&
-          typeof rawResult.totalHyperlinks === 'number';
+          "success" in rawResult &&
+          "totalHyperlinks" in rawResult &&
+          typeof rawResult.success === "boolean" &&
+          typeof rawResult.totalHyperlinks === "number";
 
         if (!hasRequiredFields) {
           throw new Error(
-            'Invalid response from document processor: missing required fields (success, totalHyperlinks)'
+            "Invalid response from document processor: missing required fields (success, totalHyperlinks)"
           );
         }
 
@@ -1644,9 +1715,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           backupPath?: string;
           duration: number;
           errorMessages?: string[];
-          changes?: import('@/types/session').DocumentChange[];
-          previousRevisions?: import('@/types/session').PreviousRevisionState;
-          wordRevisions?: import('@/types/session').WordRevisionState;
+          changes?: import("@/types/session").DocumentChange[];
+          previousRevisions?: import("@/types/session").PreviousRevisionState;
+          wordRevisions?: import("@/types/session").WordRevisionState;
         };
 
         // PERFORMANCE: Update document status AND stats in single setState (batched)
@@ -1660,19 +1731,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     d.id === documentId
                       ? {
                           ...d,
-                          status: result.success ? ('completed' as const) : ('error' as const),
+                          status: result.success ? ("completed" as const) : ("error" as const),
                           processedAt: new Date(),
                           errors: result.errorMessages,
                           errorType: !result.success
-                            ? (result.errorMessages?.some((msg) => msg.toLowerCase().includes('close the file'))
-                                ? 'file_locked'
-                                : result.errorMessages?.some((msg) => msg.toLowerCase().includes('timeout'))
-                                  ? 'api_timeout'
-                                  : result.errorMessages?.some((msg) =>
-                                      msg.toLowerCase().includes('compatibility_mode') ||
-                                      msg.toLowerCase().includes('outdated functions'))
-                                    ? 'word_compatibility'
-                                    : 'general')
+                            ? result.errorMessages?.some((msg) =>
+                                msg.toLowerCase().includes("close the file")
+                              )
+                              ? "file_locked"
+                              : result.errorMessages?.some((msg) =>
+                                    msg.toLowerCase().includes("timeout")
+                                  )
+                                ? "api_timeout"
+                                : result.errorMessages?.some(
+                                      (msg) =>
+                                        msg.toLowerCase().includes("compatibility_mode") ||
+                                        msg.toLowerCase().includes("outdated functions")
+                                    )
+                                  ? "word_compatibility"
+                                  : "general"
                             : undefined,
                           // Store pre-existing revisions (from before DocHub processing)
                           previousRevisions: result.previousRevisions,
@@ -1722,9 +1799,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const totalDuration = Date.now() - processingStartTime;
 
           // Enhanced success logging for user visibility
-          log.info('═══════════════════════════════════════════════════════════════════════');
-          log.info('[SessionContext] DOCUMENT PROCESSING COMPLETE - SUCCESS');
-          log.info('═══════════════════════════════════════════════════════════════════════');
+          log.info("═══════════════════════════════════════════════════════════════════════");
+          log.info("[SessionContext] DOCUMENT PROCESSING COMPLETE - SUCCESS");
+          log.info("═══════════════════════════════════════════════════════════════════════");
           log.info(`[SessionContext] Document: ${document.name}`);
           log.info(`[SessionContext] Location: ${document.path}`);
           log.info(`[SessionContext] Hyperlinks Processed: ${result.totalHyperlinks}`);
@@ -1735,33 +1812,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           log.info(
             `[SessionContext] Time Saved: ${Math.round((result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) / SECONDS_PER_MINUTE)} seconds`
           );
-          log.info('═══════════════════════════════════════════════════════════════════════');
+          log.info("═══════════════════════════════════════════════════════════════════════");
         } else {
           const totalDuration = Date.now() - processingStartTime;
-          log.error('═══════════════════════════════════════════════════════════════════════');
-          log.error('[SessionContext] DOCUMENT PROCESSING COMPLETE - FAILED');
-          log.error('═══════════════════════════════════════════════════════════════════════');
+          log.error("═══════════════════════════════════════════════════════════════════════");
+          log.error("[SessionContext] DOCUMENT PROCESSING COMPLETE - FAILED");
+          log.error("═══════════════════════════════════════════════════════════════════════");
           log.error(`[SessionContext] Document: ${document.name}`);
-          log.error(`[SessionContext] Errors: ${result.errorMessages?.join(', ') || 'Unknown error'}`);
+          log.error(
+            `[SessionContext] Errors: ${result.errorMessages?.join(", ") || "Unknown error"}`
+          );
           log.error(`[SessionContext] Duration: ${totalDuration}ms`);
-          log.error('═══════════════════════════════════════════════════════════════════════');
+          log.error("═══════════════════════════════════════════════════════════════════════");
         }
       } catch (error) {
         const totalDuration = Date.now() - processingStartTime;
-        log.error('═══════════════════════════════════════════════════════════════════════');
-        log.error('[SessionContext] DOCUMENT PROCESSING EXCEPTION');
-        log.error('═══════════════════════════════════════════════════════════════════════');
+        log.error("═══════════════════════════════════════════════════════════════════════");
+        log.error("[SessionContext] DOCUMENT PROCESSING EXCEPTION");
+        log.error("═══════════════════════════════════════════════════════════════════════");
         log.error(`[SessionContext] Document: ${document.name}`);
-        log.error(`[SessionContext] Error: ${error instanceof Error ? error.message : String(error)}`);
+        log.error(
+          `[SessionContext] Error: ${error instanceof Error ? error.message : String(error)}`
+        );
         if (error instanceof Error && error.stack) {
           log.error(`[SessionContext] Stack Trace:`);
-          error.stack.split('\n').forEach(line => {
+          error.stack.split("\n").forEach((line) => {
             log.error(`[SessionContext]   ${line}`);
           });
         }
         log.error(`[SessionContext] Duration: ${totalDuration}ms`);
-        log.error('═══════════════════════════════════════════════════════════════════════');
-        log.error('Error processing document:', error);
+        log.error("═══════════════════════════════════════════════════════════════════════");
+        log.error("Error processing document:", error);
 
         // Update document status to error
         setSessions((prev) =>
@@ -1773,17 +1854,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     d.id === documentId
                       ? {
                           ...d,
-                          status: 'error' as const,
-                          errors: [error instanceof Error ? error.message : 'Processing failed'],
-                          errorType: (error instanceof Error && error.message.toLowerCase().includes('close the file'))
-                            ? 'file_locked'
-                            : (error instanceof Error && error.message.toLowerCase().includes('timeout'))
-                              ? 'api_timeout'
-                              : (error instanceof Error && (
-                                  error.message.toLowerCase().includes('compatibility_mode') ||
-                                  error.message.toLowerCase().includes('outdated functions')))
-                                ? 'word_compatibility'
-                                : 'general',
+                          status: "error" as const,
+                          errors: [error instanceof Error ? error.message : "Processing failed"],
+                          errorType:
+                            error instanceof Error &&
+                            error.message.toLowerCase().includes("close the file")
+                              ? "file_locked"
+                              : error instanceof Error &&
+                                  error.message.toLowerCase().includes("timeout")
+                                ? "api_timeout"
+                                : error instanceof Error &&
+                                    (error.message.toLowerCase().includes("compatibility_mode") ||
+                                      error.message.toLowerCase().includes("outdated functions"))
+                                  ? "word_compatibility"
+                                  : "general",
                         }
                       : d
                   ),
@@ -1806,7 +1890,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const document = session?.documents.find((d) => d.id === documentId);
 
     if (!session || !document) {
-      log.error('Session or document not found');
+      log.error("Session or document not found");
       return;
     }
 
@@ -1841,19 +1925,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const document = session?.documents.find((d) => d.id === documentId);
 
     if (!session || !document || !document.path) {
-      log.error('Session, document, or document path not found');
+      log.error("Session, document, or document path not found");
       return;
     }
 
     const backupPath = document.processingResult?.backupPath;
     if (!backupPath) {
-      log.error('No backup path found for document');
-      throw new Error('No backup available for this document');
+      log.error("No backup path found for document");
+      throw new Error("No backup available for this document");
     }
 
     try {
       // Call Electron IPC to restore from backup
-      const restoreAPI = requireElectronAPI('backup restore');
+      const restoreAPI = requireElectronAPI("backup restore");
       await restoreAPI.restoreFromBackup(backupPath, document.path);
 
       // Clear all tracked changes and reset processing status
@@ -1866,7 +1950,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   d.id === documentId
                     ? {
                         ...d,
-                        status: 'pending' as const,
+                        status: "pending" as const,
                         processedAt: undefined,
                         errors: undefined,
                         processingResult: undefined,
@@ -1883,7 +1967,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         `[Session] Reverted all changes for document ${documentId} from backup ${backupPath}`
       );
     } catch (error) {
-      log.error('Error reverting all changes:', error);
+      log.error("Error reverting all changes:", error);
       throw error;
     }
   };
@@ -1926,11 +2010,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const updateSessionOptions = useCallback(
-    (sessionId: string, processingOptions: Session['processingOptions']) => {
+    (sessionId: string, processingOptions: Session["processingOptions"]) => {
       // DEBUG: Log session options update
-      log.info('[SessionContext] Updating session options for session:', sessionId);
-      log.info('  - Enabled operations:', processingOptions?.enabledOperations || []);
-      log.info('  - Options object:', processingOptions);
+      log.info("[SessionContext] Updating session options for session:", sessionId);
+      log.info("  - Enabled operations:", processingOptions?.enabledOperations || []);
+      log.info("  - Options object:", processingOptions);
 
       updateSessionById(sessionId, (session) => ({
         ...session,
@@ -1998,7 +2082,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const updateSessionTableOfContentsSettings = useCallback(
     (sessionId: string, tableOfContentsSettings: TableOfContentsSettings) => {
-      log.info('[SessionContext] Updating Table of Contents settings for session:', sessionId);
+      log.info("[SessionContext] Updating Table of Contents settings for session:", sessionId);
 
       updateSessionById(sessionId, (session) => ({
         ...session,
@@ -2010,7 +2094,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const saveSession = (session: Session) => {
-    const jsonString = safeJsonStringify(session, undefined, 'SessionContext.saveSession');
+    const jsonString = safeJsonStringify(session, undefined, "SessionContext.saveSession");
     if (jsonString) {
       localStorage.setItem(`session_${session.id}`, jsonString);
     }
@@ -2019,7 +2103,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const loadSessionFromStorage = (id: string): Session | null => {
     const stored = localStorage.getItem(`session_${id}`);
     if (stored) {
-      const parsed = safeJsonParse<any>(stored, null, 'SessionContext.loadSessionFromStorage');
+      const parsed = safeJsonParse<any>(stored, null, "SessionContext.loadSessionFromStorage");
       if (parsed) {
         return {
           ...parsed,
@@ -2033,7 +2117,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   // Reset session to factory defaults
   const resetSessionToDefaults = (sessionId: string) => {
-    log.info('[SessionContext] Resetting session to defaults:', sessionId);
+    log.info("[SessionContext] Resetting session to defaults:", sessionId);
 
     updateSessionById(sessionId, (session) => ({
       ...session,
@@ -2047,18 +2131,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       lastModified: new Date(),
     }));
 
-    log.info('[SessionContext] Session reset to defaults');
+    log.info("[SessionContext] Session reset to defaults");
   };
 
   // Save current session settings as custom defaults for new sessions
   const saveAsCustomDefaults = (sessionId: string) => {
     const session = sessions.find((s) => s.id === sessionId);
     if (!session) {
-      log.error('[SessionContext] Session not found for saving defaults:', sessionId);
+      log.error("[SessionContext] Session not found for saving defaults:", sessionId);
       return;
     }
 
-    log.info('[SessionContext] Saving session settings as custom defaults:', sessionId);
+    log.info("[SessionContext] Saving session settings as custom defaults:", sessionId);
 
     const customDefaults = {
       styles: session.styles,
@@ -2070,11 +2154,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const jsonString = safeJsonStringify(
       customDefaults,
       undefined,
-      'SessionContext.saveAsCustomDefaults'
+      "SessionContext.saveAsCustomDefaults"
     );
     if (jsonString) {
       localStorage.setItem(CUSTOM_DEFAULTS_KEY, jsonString);
-      log.info('[SessionContext] Custom defaults saved successfully');
+      log.info("[SessionContext] Custom defaults saved successfully");
     }
   };
 
@@ -2123,7 +2207,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 export function useSession() {
   const context = useContext(SessionContext);
   if (context === undefined) {
-    throw new Error('useSession must be used within a SessionProvider');
+    throw new Error("useSession must be used within a SessionProvider");
   }
   return context;
 }

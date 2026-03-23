@@ -61,32 +61,41 @@ docs/
 ## Document Categories
 
 ### Analysis Documents
+
 Bug analyses, technical investigations, implementation accuracy reports, and processing issue documentation.
 
 ### API Documentation
+
 Complete API reference, type definitions, and usage guides for developers.
 
 ### Architecture Documents
+
 High-level system design, architecture decisions, technical specifications, and integration guides.
 
 ### Bug Fixes
+
 Detailed documentation of bug fixes, including corruption fixes, protection fixes, and spacing corrections.
 
 ### GitHub Issues
+
 Issue templates, tracking documents, and issue-specific research for GitHub issue management.
 
 ### Implementation Guides
+
 Step-by-step implementation plans, feature specifications, refactoring guides, and migration summaries.
 
 ### Research Notes
+
 Analysis documents, proof-of-concepts, technical investigations, and third-party library research.
 
 ### Version History
+
 Changelog and version-specific documentation.
 
 ## Personal vs Public Documentation
 
 **Public Documentation** (tracked in git):
+
 - Architecture diagrams and specifications
 - Implementation guides
 - API documentation
@@ -94,6 +103,7 @@ Changelog and version-specific documentation.
 - Contributing guidelines
 
 **Personal Documentation** (gitignored):
+
 - TODO.md, NOTES.md, SCRATCH.md
 - Personal status tracking
 - Developer-specific workspace files
@@ -103,6 +113,7 @@ See `.gitignore` for complete list of excluded personal files.
 ## Documentation Standards
 
 When adding new documentation:
+
 1. Place in appropriate subdirectory based on content type
 2. Use descriptive filenames with context (e.g., `FEATURE_NAME_implementation.md`)
 3. Include dates for time-sensitive documents (e.g., `analysis-2025-10-19.md`)

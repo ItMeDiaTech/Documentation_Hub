@@ -13,9 +13,9 @@
  * ```
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { logger } from '@/utils/logger';
-import { ErrorFallback } from './ErrorFallback';
+import React, { Component, ErrorInfo, ReactNode } from "react";
+import { logger } from "@/utils/logger";
+import { ErrorFallback } from "./ErrorFallback";
 
 interface Props {
   children: ReactNode;
@@ -49,7 +49,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     // Log error to console and any error reporting service
-    logger.error('React Error Boundary caught an error:', {
+    logger.error("React Error Boundary caught an error:", {
       error: error.toString(),
       componentStack: errorInfo.componentStack,
       errorInfo,

@@ -16,15 +16,15 @@ This document tracks the status of all predictive analysis issues submitted to G
 
 ## Issue Summary
 
-| #                                                                | Title                                             | Priority | Status | Effort | Labels           |
-| ---------------------------------------------------------------- | ------------------------------------------------- | -------- | ------ | ------ | ---------------- |
-| [#1](https://github.com/ItMeDiaTech/Documentation_Hub/issues/1)  | Race Condition: Multiple app.whenReady() handlers | Critical | Open   | 2h     | bug              |
-| [#2](https://github.com/ItMeDiaTech/Documentation_Hub/issues/2)  | Performance: Context Provider cascade blocking    | Critical | Open   | 4h     | bug, enhancement |
-| [#3](https://github.com/ItMeDiaTech/Documentation_Hub/issues/3)  | Memory Leak: GlobalStatsProvider connection pool  | Critical | Open   | 3h     | bug              |
-| [#4](https://github.com/ItMeDiaTech/Documentation_Hub/issues/4)  | Performance: O(n²) session persistence            | High     | Open   | 6h     | bug, enhancement |
-| [#5](https://github.com/ItMeDiaTech/Documentation_Hub/issues/5)  | Bug: Theme Context infinite loop                  | High     | Open   | 2h     | bug              |
-| [#6](https://github.com/ItMeDiaTech/Documentation_Hub/issues/6)  | UX: Main window black screen on startup           | Medium   | Open   | 30m    | enhancement      |
-| [#7](https://github.com/ItMeDiaTech/Documentation_Hub/issues/7)  | Bug: Certificate check timing delays auto-update  | Medium   | Open   | 1h     | bug              |
+| #                                                                 | Title                                             | Priority | Status | Effort | Labels           |
+| ----------------------------------------------------------------- | ------------------------------------------------- | -------- | ------ | ------ | ---------------- |
+| [#1](https://github.com/ItMeDiaTech/Documentation_Hub/issues/1)   | Race Condition: Multiple app.whenReady() handlers | Critical | Open   | 2h     | bug              |
+| [#2](https://github.com/ItMeDiaTech/Documentation_Hub/issues/2)   | Performance: Context Provider cascade blocking    | Critical | Open   | 4h     | bug, enhancement |
+| [#3](https://github.com/ItMeDiaTech/Documentation_Hub/issues/3)   | Memory Leak: GlobalStatsProvider connection pool  | Critical | Open   | 3h     | bug              |
+| [#4](https://github.com/ItMeDiaTech/Documentation_Hub/issues/4)   | Performance: O(n²) session persistence            | High     | Open   | 6h     | bug, enhancement |
+| [#5](https://github.com/ItMeDiaTech/Documentation_Hub/issues/5)   | Bug: Theme Context infinite loop                  | High     | Open   | 2h     | bug              |
+| [#6](https://github.com/ItMeDiaTech/Documentation_Hub/issues/6)   | UX: Main window black screen on startup           | Medium   | Open   | 30m    | enhancement      |
+| [#7](https://github.com/ItMeDiaTech/Documentation_Hub/issues/7)   | Bug: Certificate check timing delays auto-update  | Medium   | Open   | 1h     | bug              |
 | [#10](https://github.com/ItMeDiaTech/Documentation_Hub/issues/10) | Session Creation/Loading Workflow Broken          | Critical | Open   | 8h     | bug              |
 
 **Total Estimated Effort:** 26.5 hours

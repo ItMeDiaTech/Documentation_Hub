@@ -7,13 +7,7 @@
  * document processing. This function removes them while preserving content.
  */
 
-import {
-  Document,
-  Paragraph,
-  Table,
-  TableCell,
-  StructuredDocumentTag,
-} from "docxmlater";
+import { Document, Paragraph, Table, TableCell, StructuredDocumentTag } from "docxmlater";
 
 // Use any[] for unwrapped body since getBodyElements() may return
 // types beyond Paragraph | Table | StructuredDocumentTag (e.g., TableOfContentsElement)
@@ -83,10 +77,7 @@ function sanitizeTableRowExceptions(table: Table): void {
  *
  * Ported from Document.ts unwrapNestedStructuredDocumentTags() (lines 15188-15202)
  */
-function unwrapNestedSDTs(
-  sdt: StructuredDocumentTag,
-  targetArray: BodyElement[]
-): void {
+function unwrapNestedSDTs(sdt: StructuredDocumentTag, targetArray: BodyElement[]): void {
   const content = sdt.getContent();
 
   for (const item of content) {

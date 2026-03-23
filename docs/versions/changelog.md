@@ -376,6 +376,7 @@ See git history for changes prior to v3.0.0.
 Documentation Hub uses the [docxmlater](https://www.npmjs.com/package/docxmlater) framework for Word document processing.
 
 The framework provides:
+
 - Document loading and saving
 - Paragraph and run manipulation
 - Hyperlink processing

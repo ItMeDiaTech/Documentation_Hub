@@ -43,7 +43,7 @@ Three separate `app.whenReady()` handlers run in parallel with no guaranteed exe
 
 ```typescript
 app.whenReady().then(async () => {
-  log.info('Configuring session-level proxy and network monitoring...');
+  log.info("Configuring session-level proxy and network monitoring...");
   await proxyConfig.configureSessionProxy();
   // ... proxy and network setup
 });
@@ -106,28 +106,28 @@ Consolidate into single, sequential initialization flow:
 
 ```typescript
 app.whenReady().then(async () => {
-  log.info('========================================');
-  log.info('Starting DocumentHub initialization...');
-  log.info('========================================');
+  log.info("========================================");
+  log.info("Starting DocumentHub initialization...");
+  log.info("========================================");
 
   try {
     // STEP 1: Configure network infrastructure (BLOCKING)
-    log.info('[1/4] Configuring proxy and network...');
+    log.info("[1/4] Configuring proxy and network...");
     await proxyConfig.configureSessionProxy();
 
     // STEP 2: Validate certificates (BLOCKING if critical)
-    log.info('[2/4] Validating certificates...');
+    log.info("[2/4] Validating certificates...");
     await performPreflightCertificateCheck();
 
     // STEP 3: Create main window (BLOCKING)
-    log.info('[3/4] Creating main window...');
+    log.info("[3/4] Creating main window...");
     await createWindow();
 
     // STEP 4: Initialize background services (NON-BLOCKING)
-    log.info('[4/4] Starting background services...');
+    log.info("[4/4] Starting background services...");
     setImmediate(() => {
       if (!mainWindow) {
-        log.error('Main window is null during updater initialization!');
+        log.error("Main window is null during updater initialization!");
         return;
       }
 
@@ -136,10 +136,10 @@ app.whenReady().then(async () => {
         updaterHandler.checkOnStartup();
       }
 
-      log.info('✅ DocumentHub initialization complete');
+      log.info("✅ DocumentHub initialization complete");
     });
   } catch (error) {
-    log.error('Failed to initialize DocumentHub:', error);
+    log.error("Failed to initialize DocumentHub:", error);
     app.quit();
   }
 });
@@ -201,13 +201,13 @@ Four nested context providers execute synchronous initialization in the render p
 
 ```typescript
 const [theme, setTheme] = useState<Theme>(() => {
-  const stored = localStorage.getItem('theme') as Theme; // Read #1
-  return stored || 'system';
+  const stored = localStorage.getItem("theme") as Theme; // Read #1
+  return stored || "system";
 });
 
 const [accentColor, setAccentColor] = useState<AccentColor>(() => {
-  const stored = localStorage.getItem('accentColor') as AccentColor; // Read #2
-  return stored || 'blue';
+  const stored = localStorage.getItem("accentColor") as AccentColor; // Read #2
+  return stored || "blue";
 });
 
 // ... 15 more localStorage.getItem() calls for:
@@ -233,7 +233,7 @@ const loadSettings = () => {
   const parsed = safeJsonParse<Partial<UserSettings>>(
     storedSettings,
     {},
-    'UserSettings.loadSettings'
+    "UserSettings.loadSettings"
   );
   setSettings({ ...defaultUserSettings, ...parsed });
 };
@@ -282,13 +282,13 @@ useEffect(() => {
 ```typescript
 const loadSessionsFromStorage = useCallback(async () => {
   // Check localStorage for old sessions
-  const hasLocalStorageSessions = localStorage.getItem('sessions');
+  const hasLocalStorageSessions = localStorage.getItem("sessions");
 
   if (hasLocalStorageSessions) {
-    log.info('Found sessions in localStorage, migrating to IndexedDB...');
+    log.info("Found sessions in localStorage, migrating to IndexedDB...");
     await migrateFromLocalStorage(); // MIGRATION = VERY SLOW!
-    localStorage.removeItem('sessions');
-    localStorage.removeItem('activeSessions');
+    localStorage.removeItem("sessions");
+    localStorage.removeItem("activeSessions");
   }
 
   // Load all sessions from IndexedDB
@@ -311,7 +311,7 @@ const loadSessionsFromStorage = useCallback(async () => {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const cleanedSessions = restored.filter((s) => {
-      if (s.status === 'closed' && s.closedAt) {
+      if (s.status === "closed" && s.closedAt) {
         const shouldKeep = s.closedAt > thirtyDaysAgo;
         if (!shouldKeep) {
           deleteSessionFromDB(s.id); // Delete old sessions!
@@ -537,7 +537,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
         // ... update logic
 
         db.put(STATS_STORE, updatedStats, STATS_KEY).catch((error: Error) =>
-          log.error('Failed to save stats:', error)
+          log.error("Failed to save stats:", error)
         );
 
         return updatedStats;
@@ -634,8 +634,8 @@ Refactor GlobalStatsProvider to use the existing connection pool:
 
 ```typescript
 // NEW: Use shared connection pool infrastructure
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { getConnectionPool } from '@/utils/indexedDB'; // ✅ Import pool
+import { openDB, DBSchema, IDBPDatabase } from "idb";
+import { getConnectionPool } from "@/utils/indexedDB"; // ✅ Import pool
 
 interface GlobalStatsDB extends DBSchema {
   stats: {
@@ -644,10 +644,10 @@ interface GlobalStatsDB extends DBSchema {
   };
 }
 
-const DB_NAME = 'DocHub_GlobalStats';
+const DB_NAME = "DocHub_GlobalStats";
 const DB_VERSION = 1;
-const STATS_STORE = 'stats';
-const STATS_KEY = 'global';
+const STATS_STORE = "stats";
+const STATS_KEY = "global";
 
 // ✅ Create connection pool for GlobalStats
 class GlobalStatsConnectionPool {
@@ -689,7 +689,7 @@ const statsPool = GlobalStatsConnectionPool.getInstance();
 
 // ✅ REFACTORED Provider
 export function GlobalStatsProvider({ children }: { children: ReactNode }) {
-  const log = logger.namespace('GlobalStats');
+  const log = logger.namespace("GlobalStats");
   const [stats, setStats] = useState<GlobalStats>(createDefaultGlobalStats());
   const [isLoading, setIsLoading] = useState(true);
 
@@ -721,7 +721,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         if (isMounted) {
-          log.error('Failed to initialize GlobalStats:', error);
+          log.error("Failed to initialize GlobalStats:", error);
         }
       } finally {
         if (isMounted) {
@@ -749,13 +749,13 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
 
           // Persist asynchronously (don't block state update)
           db.put(STATS_STORE, updatedStats, STATS_KEY).catch((error: Error) =>
-            log.error('Failed to save stats:', error)
+            log.error("Failed to save stats:", error)
           );
 
           return updatedStats;
         });
       } catch (error) {
-        log.error('Failed to update stats:', error);
+        log.error("Failed to update stats:", error);
       }
     },
     [] // ✅ No dependencies - uses pool directly
@@ -765,8 +765,8 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
 }
 
 // ✅ Cleanup on app shutdown
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
     statsPool.close();
   });
 }
@@ -846,7 +846,7 @@ const debouncedPersistSessions = useCallback(async () => {
 
     // ... save active session IDs to localStorage
   } catch (err) {
-    log.error('Failed to persist sessions:', err);
+    log.error("Failed to persist sessions:", err);
   }
 }, []);
 
@@ -919,7 +919,7 @@ const oldestSessions = await getOldestClosedSessions(20);
 ```typescript
 const sessions = await store.getAll(); // ❌ Reads ALL sessions AGAIN!
 const closedSessions = sessions
-  .filter((s) => s.status === 'closed' && s.closedAt)
+  .filter((s) => s.status === "closed" && s.closedAt)
   .sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
 ```
 
@@ -1043,16 +1043,16 @@ const debouncedPersistSessions = useCallback(async () => {
     dirtySessionsRef.current.clear();
 
     // ✅ Check size only once per 10 minutes (not every persist!)
-    const lastSizeCheck = localStorage.getItem('lastDBSizeCheck');
+    const lastSizeCheck = localStorage.getItem("lastDBSizeCheck");
     const now = Date.now();
 
     if (!lastSizeCheck || now - parseInt(lastSizeCheck) > 10 * 60 * 1000) {
-      log.debug('[Persist] Running periodic size check...');
+      log.debug("[Persist] Running periodic size check...");
       await ensureDBSizeLimit(200);
-      localStorage.setItem('lastDBSizeCheck', now.toString());
+      localStorage.setItem("lastDBSizeCheck", now.toString());
     }
   } catch (err) {
-    log.error('Failed to persist sessions:', err);
+    log.error("Failed to persist sessions:", err);
   }
 }, []);
 
@@ -1089,7 +1089,7 @@ useEffect(() => {
 
 ```typescript
 // Use IndexedDB transaction for atomic batch write
-const transaction = db.transaction([SESSIONS_STORE], 'readwrite');
+const transaction = db.transaction([SESSIONS_STORE], "readwrite");
 const store = transaction.objectStore(SESSIONS_STORE);
 
 for (const session of dirtySessions) {
@@ -1176,9 +1176,9 @@ useEffect(() => {
 
   if (useCustomColors) {
     try {
-      root.setAttribute('data-custom-colors', 'true');
+      root.setAttribute("data-custom-colors", "true");
 
-      log.debug('[ThemeContext] Applying custom colors...');
+      log.debug("[ThemeContext] Applying custom colors...");
 
       // Calculate optimal text colors based on background colors
       const foregroundColor = getContrastTextColor(customBackgroundColor);
@@ -1186,14 +1186,14 @@ useEffect(() => {
       // ... more color calculations
 
       // Convert and apply all custom colors
-      root.style.setProperty('--custom-primary', hexToHSL(customPrimaryColor));
-      root.style.setProperty('--custom-primary-text', hexToHSL(primaryTextColor));
+      root.style.setProperty("--custom-primary", hexToHSL(customPrimaryColor));
+      root.style.setProperty("--custom-primary-text", hexToHSL(primaryTextColor));
       // ... more setProperty calls
 
-      log.debug('[ThemeContext] Custom colors applied successfully');
+      log.debug("[ThemeContext] Custom colors applied successfully");
     } catch (error) {
-      log.error('[ThemeContext] Error applying custom colors:', error);
-      log.error('[ThemeContext] Color values:', {
+      log.error("[ThemeContext] Error applying custom colors:", error);
+      log.error("[ThemeContext] Color values:", {
         customPrimaryColor,
         customBackgroundColor,
         customHeaderColor,
@@ -1203,16 +1203,16 @@ useEffect(() => {
 
       // ❌ INFINITE LOOP TRAP!
       setUseCustomColors(false); // Triggers useEffect again!
-      root.removeAttribute('data-custom-colors');
+      root.removeAttribute("data-custom-colors");
     }
   } else {
-    root.removeAttribute('data-custom-colors');
+    root.removeAttribute("data-custom-colors");
     // ... removeProperty calls
   }
 
-  localStorage.setItem('useCustomColors', String(useCustomColors));
+  localStorage.setItem("useCustomColors", String(useCustomColors));
   if (useCustomColors) {
-    localStorage.setItem('customPrimaryColor', customPrimaryColor);
+    localStorage.setItem("customPrimaryColor", customPrimaryColor);
     // ... more localStorage sets
   }
 }, [useCustomColors, customPrimaryColor, customBackgroundColor /* 3 more deps */]);
@@ -1230,7 +1230,7 @@ User inputs "#GGGGGG" as custom primary color
 
 ```typescript
 try {
-  root.style.setProperty('--custom-primary', hexToHSL('#GGGGGG'));
+  root.style.setProperty("--custom-primary", hexToHSL("#GGGGGG"));
   // hexToHSL() throws error: "Invalid hex color"
 } catch (error) {
   setUseCustomColors(false); // ❌ State change!
@@ -1283,7 +1283,7 @@ If any of these effects run simultaneously (likely during initial mount), they c
 Colors are applied directly without validation:
 
 ```typescript
-root.style.setProperty('--custom-primary', hexToHSL(customPrimaryColor));
+root.style.setProperty("--custom-primary", hexToHSL(customPrimaryColor));
 ```
 
 If `hexToHSL()` throws, the entire effect fails and triggers recovery (setState).
@@ -1344,8 +1344,8 @@ function isValidHexColor(color: string): boolean {
 // REFACTORED: Validate in state setter, not in effect
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [customPrimaryColor, setCustomPrimaryColor] = useState<string>(() => {
-    const stored = localStorage.getItem('customPrimaryColor') || '#3b82f6';
-    return isValidHexColor(stored) ? stored : '#3b82f6'; // ✅ Validate on load
+    const stored = localStorage.getItem("customPrimaryColor") || "#3b82f6";
+    return isValidHexColor(stored) ? stored : "#3b82f6"; // ✅ Validate on load
   });
   // ✅ Validate in setter
   const updateCustomPrimaryColor = (color: string) => {
@@ -1353,7 +1353,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setCustomPrimaryColor(color);
     } else {
       log.warn(`[ThemeContext] Invalid hex color: ${color}, using default`);
-      setCustomPrimaryColor('#3b82f6');
+      setCustomPrimaryColor("#3b82f6");
     }
   };
 
@@ -1362,16 +1362,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = window.document.documentElement;
 
     if (useCustomColors) {
-      root.setAttribute('data-custom-colors', 'true');
+      root.setAttribute("data-custom-colors", "true");
 
       // Safe to apply - already validated
       const foregroundColor = getContrastTextColor(customBackgroundColor);
-      root.style.setProperty('--custom-primary', hexToHSL(customPrimaryColor));
+      root.style.setProperty("--custom-primary", hexToHSL(customPrimaryColor));
       // ... rest of color application
 
-      localStorage.setItem('customPrimaryColor', customPrimaryColor);
+      localStorage.setItem("customPrimaryColor", customPrimaryColor);
     } else {
-      root.removeAttribute('data-custom-colors');
+      root.removeAttribute("data-custom-colors");
       // ... cleanup
     }
   }, [useCustomColors, customPrimaryColor, customBackgroundColor /* deps */]);
@@ -1406,7 +1406,7 @@ useEffect(() => {
     applyBlur(root, blur);
     applyTypography(root, { fontSize, fontFamily /* ... */ });
   } catch (error) {
-    log.error('[ThemeContext] Failed to apply theme:', error);
+    log.error("[ThemeContext] Failed to apply theme:", error);
     // DON'T call setState here - just log and use defaults
   }
 }, [theme, accentColor /* all deps */]);
@@ -1475,8 +1475,8 @@ async function createWindow() {
     minWidth: 800,
     minHeight: 600,
     frame: false,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0a0a0a', // Dark gray
+    titleBarStyle: "hiddenInset",
+    backgroundColor: "#0a0a0a", // Dark gray
     webPreferences: REQUIRED_SECURITY_SETTINGS,
     // ❌ NO show: false option!
   });
@@ -1484,10 +1484,10 @@ async function createWindow() {
   Menu.setApplicationMenu(null);
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173'); // Shows immediately!
+    mainWindow.loadURL("http://localhost:5173"); // Shows immediately!
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(join(__dirname, '../index.html'));
+    mainWindow.loadFile(join(__dirname, "../index.html"));
   }
 
   // ❌ NO ready-to-show event handler!
@@ -1506,13 +1506,13 @@ const comparisonWindow = new BrowserWindow({
   height: 800,
   // ...
   show: false, // ✅ Hidden initially!
-  backgroundColor: '#ffffff',
+  backgroundColor: "#ffffff",
 });
 
 comparisonWindow.loadURL(`data:text/html;...`);
 
 // ✅ Show only when ready!
-comparisonWindow.once('ready-to-show', () => {
+comparisonWindow.once("ready-to-show", () => {
   comparisonWindow.show();
 });
 ```
@@ -1579,8 +1579,8 @@ async function createWindow() {
     minWidth: 800,
     minHeight: 600,
     frame: false,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0a0a0a',
+    titleBarStyle: "hiddenInset",
+    backgroundColor: "#0a0a0a",
     show: false, // ✅ Hide initially
     webPreferences: REQUIRED_SECURITY_SETTINGS,
   });
@@ -1588,14 +1588,14 @@ async function createWindow() {
   Menu.setApplicationMenu(null);
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(join(__dirname, '../index.html'));
+    mainWindow.loadFile(join(__dirname, "../index.html"));
   }
 
   // ✅ Show when content is ready
-  mainWindow.once('ready-to-show', () => {
+  mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
 
     // Optional: Fade in effect
@@ -1631,7 +1631,7 @@ async function createSplashScreen() {
     alwaysOnTop: true,
   });
 
-  splashWindow.loadFile('splash.html'); // Custom branded splash
+  splashWindow.loadFile("splash.html"); // Custom branded splash
 }
 
 async function createWindow() {
@@ -1640,9 +1640,9 @@ async function createWindow() {
     show: false,
   });
 
-  mainWindow.loadFile(join(__dirname, '../index.html'));
+  mainWindow.loadFile(join(__dirname, "../index.html"));
 
-  mainWindow.once('ready-to-show', () => {
+  mainWindow.once("ready-to-show", () => {
     // Close splash, show main window
     if (splashWindow) {
       splashWindow.close();
@@ -1729,24 +1729,24 @@ app.whenReady().then(async () => {
 
   // Perform pre-flight certificate check in background (non-blocking)
   setImmediate(async () => {
-    log.info('Starting background certificate check...');
+    log.info("Starting background certificate check...");
 
     // Small delay to ensure window is fully rendered
     await new Promise((resolve) => setTimeout(resolve, 500)); // ❌ Arbitrary delay
 
     performPreflightCertificateCheck()
       .then(() => {
-        log.info('Background certificate check completed');
+        log.info("Background certificate check completed");
 
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('certificate-check-complete', {
+          mainWindow.webContents.send("certificate-check-complete", {
             success: true,
             timestamp: new Date().toISOString(),
           });
         }
       })
       .catch((error) => {
-        log.error('Background certificate check failed:', error);
+        log.error("Background certificate check failed:", error);
         // ... error handling
       });
   });
@@ -1859,23 +1859,23 @@ app.whenReady().then(async () => {
   setImmediate(async () => {
     try {
       // STEP 2A: Validate certificates (BLOCKING for updater)
-      log.info('[Init] Validating certificates...');
+      log.info("[Init] Validating certificates...");
       await performPreflightCertificateCheck();
-      log.info('[Init] ✅ Certificates validated');
+      log.info("[Init] ✅ Certificates validated");
 
       // Notify renderer
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('certificate-check-complete', {
+        mainWindow.webContents.send("certificate-check-complete", {
           success: true,
           timestamp: new Date().toISOString(),
         });
       }
     } catch (error) {
-      log.error('[Init] ⚠️ Certificate validation failed:', error);
+      log.error("[Init] ⚠️ Certificate validation failed:", error);
 
       // Notify renderer of failure
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('certificate-check-complete', {
+        mainWindow.webContents.send("certificate-check-complete", {
           success: false,
           error: error.message,
           timestamp: new Date().toISOString(),
@@ -1885,18 +1885,18 @@ app.whenReady().then(async () => {
 
     // STEP 2B: Initialize updater (AFTER certificates validated)
     // This ensures updater only runs when network is ready
-    log.info('[Init] Initializing auto-updater...');
+    log.info("[Init] Initializing auto-updater...");
     updaterHandler = new AutoUpdaterHandler(mainWindow);
 
     if (!isDev) {
       // Delay update check slightly to avoid impacting startup performance
       setTimeout(() => {
-        log.info('[Init] Checking for updates...');
+        log.info("[Init] Checking for updates...");
         updaterHandler.checkOnStartup();
       }, 2000); // 2 second delay AFTER certs validated
     }
 
-    log.info('[Init] ✅ Background initialization complete');
+    log.info("[Init] ✅ Background initialization complete");
   });
 });
 ```
@@ -1925,8 +1925,8 @@ class AutoUpdaterHandler {
   }
 
   private isCertificateError(error: any): boolean {
-    const message = error?.message?.toLowerCase() || '';
-    return message.includes('certificate') || message.includes('tls') || message.includes('ssl');
+    const message = error?.message?.toLowerCase() || "";
+    return message.includes("certificate") || message.includes("tls") || message.includes("ssl");
   }
 }
 ```

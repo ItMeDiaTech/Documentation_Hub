@@ -1,7 +1,7 @@
-import '@testing-library/jest-dom';
+import "@testing-library/jest-dom";
 
 // Mock electron modules for testing
-jest.mock('electron', () => ({
+jest.mock("electron", () => ({
   ipcRenderer: {
     invoke: jest.fn(),
     on: jest.fn(),
@@ -15,9 +15,9 @@ jest.mock('electron', () => ({
 
 // Mock window.electron for IPC (only in renderer/browser environment)
 // Skip this for electron main process tests
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   global.window = Object.create(window);
-  Object.defineProperty(window, 'electron', {
+  Object.defineProperty(window, "electron", {
     value: {
       ipcRenderer: {
         invoke: jest.fn(),

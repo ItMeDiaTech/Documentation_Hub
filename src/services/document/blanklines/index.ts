@@ -49,10 +49,7 @@ export {
   getImageRunFromParagraph,
 } from "./helpers/imageChecks";
 
-export {
-  isWithinListContext,
-  isWithinListContextInCell,
-} from "./helpers/contextChecks";
+export { isWithinListContext, isWithinListContextInCell } from "./helpers/contextChecks";
 
 export {
   createBlankParagraph,

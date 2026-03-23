@@ -1,9 +1,9 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron';
+import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from "electron";
 import type {
   HyperlinkProcessingOptions,
   BatchProcessingOptions,
   BatchProgress,
-} from '../src/types/hyperlink';
+} from "../src/types/hyperlink";
 import type {
   BackupCreateResponse,
   BackupRestoreResponse,
@@ -14,7 +14,7 @@ import type {
   BackupStorageInfoResponse,
   BackupSetConfigResponse,
   BackupConfig,
-} from '../src/types/backup';
+} from "../src/types/backup";
 import type {
   SharePointConfig,
   DictionarySyncStatus,
@@ -22,75 +22,75 @@ import type {
   DictionaryInitResponse,
   DictionaryCredentialsResponse,
   SyncProgressUpdate,
-} from '../src/types/dictionary';
-import type { HyperlinkLookupResult } from './services/LocalDictionaryLookupService';
+} from "../src/types/dictionary";
+import type { HyperlinkLookupResult } from "./services/LocalDictionaryLookupService";
 
 const electronAPI = {
-  minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
-  maximizeWindow: () => ipcRenderer.invoke('window-maximize'),
-  closeWindow: () => ipcRenderer.invoke('window-close'),
-  isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
-  isFullscreen: () => ipcRenderer.invoke('window-is-fullscreen'),
-  getAppVersion: () => ipcRenderer.invoke('app-version'),
-  getPlatform: () => ipcRenderer.invoke('platform'),
-  openDevTools: () => ipcRenderer.invoke('open-dev-tools'),
+  minimizeWindow: () => ipcRenderer.invoke("window-minimize"),
+  maximizeWindow: () => ipcRenderer.invoke("window-maximize"),
+  closeWindow: () => ipcRenderer.invoke("window-close"),
+  isMaximized: () => ipcRenderer.invoke("window-is-maximized"),
+  isFullscreen: () => ipcRenderer.invoke("window-is-fullscreen"),
+  getAppVersion: () => ipcRenderer.invoke("app-version"),
+  getPlatform: () => ipcRenderer.invoke("platform"),
+  openDevTools: () => ipcRenderer.invoke("open-dev-tools"),
 
   // Always on top (pin window)
-  setAlwaysOnTop: (flag: boolean) => ipcRenderer.invoke('window-set-always-on-top', flag),
-  isAlwaysOnTop: () => ipcRenderer.invoke('window-is-always-on-top'),
+  setAlwaysOnTop: (flag: boolean) => ipcRenderer.invoke("window-set-always-on-top", flag),
+  isAlwaysOnTop: () => ipcRenderer.invoke("window-is-always-on-top"),
   onAlwaysOnTopChanged: (callback: (isOnTop: boolean) => void) => {
     const subscription = (_event: IpcRendererEvent, isOnTop: boolean) => callback(isOnTop);
-    ipcRenderer.on('window-always-on-top-changed', subscription);
-    return () => ipcRenderer.removeListener('window-always-on-top-changed', subscription);
+    ipcRenderer.on("window-always-on-top-changed", subscription);
+    return () => ipcRenderer.removeListener("window-always-on-top-changed", subscription);
   },
 
   // File handling
-  selectDocuments: () => ipcRenderer.invoke('select-documents'),
-  processDocument: (path: string) => ipcRenderer.invoke('process-document', path),
-  showInFolder: (path: string) => ipcRenderer.invoke('show-in-folder', path),
-  openDocument: (path: string) => ipcRenderer.invoke('open-document', path),
-  getFileStats: (filePath: string) => ipcRenderer.invoke('get-file-stats', filePath),
+  selectDocuments: () => ipcRenderer.invoke("select-documents"),
+  processDocument: (path: string) => ipcRenderer.invoke("process-document", path),
+  showInFolder: (path: string) => ipcRenderer.invoke("show-in-folder", path),
+  openDocument: (path: string) => ipcRenderer.invoke("open-document", path),
+  getFileStats: (filePath: string) => ipcRenderer.invoke("get-file-stats", filePath),
   restoreFromBackup: (backupPath: string, targetPath: string) =>
-    ipcRenderer.invoke('restore-from-backup', { backupPath, targetPath }),
+    ipcRenderer.invoke("restore-from-backup", { backupPath, targetPath }),
 
   getPathsForFiles: (files: File[]) => {
     return files.map((file) => webUtils.getPathForFile(file));
   },
 
   // Export and Reporting
-  selectFolder: () => ipcRenderer.invoke('select-folder') as Promise<string | null>,
+  selectFolder: () => ipcRenderer.invoke("select-folder") as Promise<string | null>,
   copyFilesToFolder: (filePaths: string[], destinationFolder: string) =>
-    ipcRenderer.invoke('copy-files-to-folder', { filePaths, destinationFolder }) as Promise<{
+    ipcRenderer.invoke("copy-files-to-folder", { filePaths, destinationFolder }) as Promise<{
       copied: number;
       skipped: number;
     }>,
-  getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path') as Promise<string>,
-  createFolder: (folderPath: string) => ipcRenderer.invoke('create-folder', folderPath) as Promise<boolean>,
+  getDownloadsPath: () => ipcRenderer.invoke("get-downloads-path") as Promise<string>,
+  createFolder: (folderPath: string) =>
+    ipcRenderer.invoke("create-folder", folderPath) as Promise<boolean>,
   copyFileToFolder: (sourcePath: string, destFolder: string) =>
-    ipcRenderer.invoke('copy-file-to-folder', { sourcePath, destFolder }) as Promise<boolean>,
+    ipcRenderer.invoke("copy-file-to-folder", { sourcePath, destFolder }) as Promise<boolean>,
   createReportZip: (folderPath: string, zipName: string) =>
-    ipcRenderer.invoke('create-report-zip', { folderPath, zipName }) as Promise<string>,
+    ipcRenderer.invoke("create-report-zip", { folderPath, zipName }) as Promise<string>,
   openOutlookEmail: (subject: string, attachmentPath: string) =>
-    ipcRenderer.invoke('open-outlook-email', { subject, attachmentPath }) as Promise<{
+    ipcRenderer.invoke("open-outlook-email", { subject, attachmentPath }) as Promise<{
       success: boolean;
-      method: 'outlook' | 'mailto';
+      method: "outlook" | "mailto";
     }>,
 
   // Document text extraction (for comparison views)
-  extractDocumentText: (filePath: string) =>
-    ipcRenderer.invoke('document:extract-text', filePath),
+  extractDocumentText: (filePath: string) => ipcRenderer.invoke("document:extract-text", filePath),
 
   // Read file as buffer (for snapshot capture)
   readFileAsBuffer: (filePath: string): Promise<ArrayBuffer> =>
-    ipcRenderer.invoke('file:read-buffer', filePath),
+    ipcRenderer.invoke("file:read-buffer", filePath),
 
   // Hyperlink processing
-  selectFiles: () => ipcRenderer.invoke('hyperlink:select-files'),
+  selectFiles: () => ipcRenderer.invoke("hyperlink:select-files"),
   processHyperlinkDocument: (filePath: string, options: HyperlinkProcessingOptions) =>
-    ipcRenderer.invoke('hyperlink:process-document', { filePath, options }),
+    ipcRenderer.invoke("hyperlink:process-document", { filePath, options }),
   batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) =>
-    ipcRenderer.invoke('hyperlink:batch-process', { filePaths, options }),
-  validateApi: (apiUrl: string) => ipcRenderer.invoke('hyperlink:validate-api', { apiUrl }),
+    ipcRenderer.invoke("hyperlink:batch-process", { filePaths, options }),
+  validateApi: (apiUrl: string) => ipcRenderer.invoke("hyperlink:validate-api", { apiUrl }),
   callPowerAutomateApi: (
     apiUrl: string,
     payload: {
@@ -102,150 +102,160 @@ const electronAPI = {
       Email: string;
     },
     timeout?: number
-  ) => ipcRenderer.invoke('hyperlink:call-api', { apiUrl, payload, timeout }),
+  ) => ipcRenderer.invoke("hyperlink:call-api", { apiUrl, payload, timeout }),
   cancelOperation: (operationId: string) =>
-    ipcRenderer.invoke('hyperlink:cancel-operation', { operationId }),
+    ipcRenderer.invoke("hyperlink:cancel-operation", { operationId }),
   onBatchProgress: (callback: (progress: BatchProgress) => void) => {
     const subscription = (_event: IpcRendererEvent, progress: BatchProgress) => callback(progress);
-    ipcRenderer.on('hyperlink:batch-progress', subscription);
-    return () => ipcRenderer.removeListener('hyperlink:batch-progress', subscription);
+    ipcRenderer.on("hyperlink:batch-progress", subscription);
+    return () => ipcRenderer.removeListener("hyperlink:batch-progress", subscription);
   },
 
   onWindowMaximized: (callback: () => void) => {
     const subscription = (_event: IpcRendererEvent) => callback();
-    ipcRenderer.on('window-maximized', subscription);
-    return () => ipcRenderer.removeListener('window-maximized', subscription);
+    ipcRenderer.on("window-maximized", subscription);
+    return () => ipcRenderer.removeListener("window-maximized", subscription);
   },
 
   onWindowUnmaximized: (callback: () => void) => {
     const subscription = (_event: IpcRendererEvent) => callback();
-    ipcRenderer.on('window-unmaximized', subscription);
-    return () => ipcRenderer.removeListener('window-unmaximized', subscription);
+    ipcRenderer.on("window-unmaximized", subscription);
+    return () => ipcRenderer.removeListener("window-unmaximized", subscription);
   },
 
   onWindowFullscreen: (callback: () => void) => {
     const subscription = (_event: IpcRendererEvent) => callback();
-    ipcRenderer.on('window-fullscreen', subscription);
-    return () => ipcRenderer.removeListener('window-fullscreen', subscription);
+    ipcRenderer.on("window-fullscreen", subscription);
+    return () => ipcRenderer.removeListener("window-fullscreen", subscription);
   },
 
   onWindowUnfullscreen: (callback: () => void) => {
     const subscription = (_event: IpcRendererEvent) => callback();
-    ipcRenderer.on('window-unfullscreen', subscription);
-    return () => ipcRenderer.removeListener('window-unfullscreen', subscription);
+    ipcRenderer.on("window-unfullscreen", subscription);
+    return () => ipcRenderer.removeListener("window-unfullscreen", subscription);
   },
 
   // Export/Import
-  exportSettings: () => ipcRenderer.invoke('export-settings'),
-  importSettings: () => ipcRenderer.invoke('import-settings'),
+  exportSettings: () => ipcRenderer.invoke("export-settings"),
+  importSettings: () => ipcRenderer.invoke("import-settings"),
   saveExportData: (filePath: string, data: any) =>
-    ipcRenderer.invoke('save-export-data', { filePath, data }),
+    ipcRenderer.invoke("save-export-data", { filePath, data }),
 
   // Backup operations
   backup: {
     create: (documentPath: string): Promise<BackupCreateResponse> =>
-      ipcRenderer.invoke('backup:create', documentPath),
+      ipcRenderer.invoke("backup:create", documentPath),
     restore: (backupPath: string, targetPath: string): Promise<BackupRestoreResponse> =>
-      ipcRenderer.invoke('backup:restore', { backupPath, targetPath }),
+      ipcRenderer.invoke("backup:restore", { backupPath, targetPath }),
     list: (documentPath: string): Promise<BackupListResponse> =>
-      ipcRenderer.invoke('backup:list', documentPath),
+      ipcRenderer.invoke("backup:list", documentPath),
     delete: (backupPath: string): Promise<BackupDeleteResponse> =>
-      ipcRenderer.invoke('backup:delete', backupPath),
+      ipcRenderer.invoke("backup:delete", backupPath),
     cleanup: (documentPath: string): Promise<BackupCleanupResponse> =>
-      ipcRenderer.invoke('backup:cleanup', documentPath),
-    cleanupAll: (): Promise<BackupCleanupResponse> =>
-      ipcRenderer.invoke('backup:cleanup-all'),
+      ipcRenderer.invoke("backup:cleanup", documentPath),
+    cleanupAll: (): Promise<BackupCleanupResponse> => ipcRenderer.invoke("backup:cleanup-all"),
     verify: (backupPath: string): Promise<BackupVerifyResponse> =>
-      ipcRenderer.invoke('backup:verify', backupPath),
+      ipcRenderer.invoke("backup:verify", backupPath),
     getStorageInfo: (): Promise<BackupStorageInfoResponse> =>
-      ipcRenderer.invoke('backup:storage-info'),
+      ipcRenderer.invoke("backup:storage-info"),
     setConfig: (config: Partial<BackupConfig>): Promise<BackupSetConfigResponse> =>
-      ipcRenderer.invoke('backup:set-config', config),
+      ipcRenderer.invoke("backup:set-config", config),
   },
 
   // Dictionary operations (Local SharePoint Dictionary)
   dictionary: {
-    initialize: (): Promise<DictionaryInitResponse> =>
-      ipcRenderer.invoke('dictionary:initialize'),
+    initialize: (): Promise<DictionaryInitResponse> => ipcRenderer.invoke("dictionary:initialize"),
     configureSync: (config: SharePointConfig): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke('dictionary:configure-sync', config),
+      ipcRenderer.invoke("dictionary:configure-sync", config),
     setCredentials: (clientSecret: string): Promise<DictionaryCredentialsResponse> =>
-      ipcRenderer.invoke('dictionary:set-credentials', clientSecret),
-    sync: (): Promise<DictionarySyncResponse> =>
-      ipcRenderer.invoke('dictionary:sync'),
+      ipcRenderer.invoke("dictionary:set-credentials", clientSecret),
+    sync: (): Promise<DictionarySyncResponse> => ipcRenderer.invoke("dictionary:sync"),
     startScheduler: (intervalHours: number): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke('dictionary:start-scheduler', intervalHours),
+      ipcRenderer.invoke("dictionary:start-scheduler", intervalHours),
     stopScheduler: (): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke('dictionary:stop-scheduler'),
-    lookup: (lookupId: string): Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }> =>
-      ipcRenderer.invoke('dictionary:lookup', lookupId),
-    batchLookup: (lookupIds: string[]): Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }> =>
-      ipcRenderer.invoke('dictionary:batch-lookup', lookupIds),
+      ipcRenderer.invoke("dictionary:stop-scheduler"),
+    lookup: (
+      lookupId: string
+    ): Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }> =>
+      ipcRenderer.invoke("dictionary:lookup", lookupId),
+    batchLookup: (
+      lookupIds: string[]
+    ): Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }> =>
+      ipcRenderer.invoke("dictionary:batch-lookup", lookupIds),
     getStatus: (): Promise<{ success: boolean; status?: DictionarySyncStatus; error?: string }> =>
-      ipcRenderer.invoke('dictionary:get-status'),
+      ipcRenderer.invoke("dictionary:get-status"),
     // Interactive SharePoint retrieval (using browser login)
-    retrieveFromSharePoint: (fileUrl: string): Promise<{ success: boolean; entriesImported?: number; error?: string }> =>
-      ipcRenderer.invoke('dictionary:retrieve-from-sharepoint', { fileUrl }),
+    retrieveFromSharePoint: (
+      fileUrl: string
+    ): Promise<{ success: boolean; entriesImported?: number; error?: string }> =>
+      ipcRenderer.invoke("dictionary:retrieve-from-sharepoint", { fileUrl }),
     sharePointLogin: (): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke('dictionary:sharepoint-login'),
+      ipcRenderer.invoke("dictionary:sharepoint-login"),
     isSharePointAuthenticated: (): Promise<{ authenticated: boolean }> =>
-      ipcRenderer.invoke('dictionary:is-sharepoint-authenticated'),
+      ipcRenderer.invoke("dictionary:is-sharepoint-authenticated"),
     onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => {
-      const subscription = (_event: IpcRendererEvent, progress: SyncProgressUpdate) => callback(progress);
-      ipcRenderer.on('dictionary:sync-progress', subscription);
-      return () => ipcRenderer.removeListener('dictionary:sync-progress', subscription);
+      const subscription = (_event: IpcRendererEvent, progress: SyncProgressUpdate) =>
+        callback(progress);
+      ipcRenderer.on("dictionary:sync-progress", subscription);
+      return () => ipcRenderer.removeListener("dictionary:sync-progress", subscription);
     },
     onSyncComplete: (callback: (result: DictionarySyncResponse) => void) => {
-      const subscription = (_event: IpcRendererEvent, result: DictionarySyncResponse) => callback(result);
-      ipcRenderer.on('dictionary:sync-complete', subscription);
-      return () => ipcRenderer.removeListener('dictionary:sync-complete', subscription);
+      const subscription = (_event: IpcRendererEvent, result: DictionarySyncResponse) =>
+        callback(result);
+      ipcRenderer.on("dictionary:sync-complete", subscription);
+      return () => ipcRenderer.removeListener("dictionary:sync-complete", subscription);
     },
   },
 
   // Display/Monitor operations
   display: {
-    getAllDisplays: () => ipcRenderer.invoke('display:get-all-displays'),
-    identifyMonitors: () => ipcRenderer.invoke('display:identify-monitors'),
-    openComparison: (backupPath: string, processedPath: string, monitorIndex: number) =>
-      ipcRenderer.invoke('display:open-comparison', { backupPath, processedPath, monitorIndex }),
+    getAllDisplays: () => ipcRenderer.invoke("display:get-all-displays"),
+    identifyMonitors: () => ipcRenderer.invoke("display:identify-monitors"),
+    openComparison: (
+      backupPath: string,
+      processedPath: string,
+      workArea: { x: number; y: number; width: number; height: number },
+      scaleFactor: number
+    ) =>
+      ipcRenderer.invoke("display:open-comparison", { backupPath, processedPath, workArea, scaleFactor }),
   },
 
   // Auto-updater
-  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
-  downloadUpdate: () => ipcRenderer.invoke('download-update'),
-  installUpdate: () => ipcRenderer.invoke('install-update'),
-  getCurrentVersion: () => ipcRenderer.invoke('get-app-version'),
+  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  downloadUpdate: () => ipcRenderer.invoke("download-update"),
+  installUpdate: () => ipcRenderer.invoke("install-update"),
+  getCurrentVersion: () => ipcRenderer.invoke("get-app-version"),
 
   // SharePoint update source
-  setUpdateProvider: (config: { type: 'github' | 'sharepoint'; sharePointUrl?: string }) =>
-    ipcRenderer.invoke('update:set-provider', config),
+  setUpdateProvider: (config: { type: "github" | "sharepoint"; sharePointUrl?: string }) =>
+    ipcRenderer.invoke("update:set-provider", config),
   testSharePointConnection: (url: string) =>
-    ipcRenderer.invoke('update:test-sharepoint-connection', url),
-  sharePointLogin: () => ipcRenderer.invoke('update:sharepoint-login'),
-  sharePointLogout: () => ipcRenderer.invoke('update:sharepoint-logout'),
+    ipcRenderer.invoke("update:test-sharepoint-connection", url),
+  sharePointLogin: () => ipcRenderer.invoke("update:sharepoint-login"),
+  sharePointLogout: () => ipcRenderer.invoke("update:sharepoint-logout"),
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => {
     const subscription = (_event: IpcRendererEvent) => callback();
-    ipcRenderer.on('update-checking', subscription);
-    return () => ipcRenderer.removeListener('update-checking', subscription);
+    ipcRenderer.on("update-checking", subscription);
+    return () => ipcRenderer.removeListener("update-checking", subscription);
   },
   onUpdateAvailable: (
     callback: (info: { version: string; releaseDate: string; releaseNotes: string }) => void
   ) => {
     const subscription = (_event: IpcRendererEvent, info: any) => callback(info);
-    ipcRenderer.on('update-available', subscription);
-    return () => ipcRenderer.removeListener('update-available', subscription);
+    ipcRenderer.on("update-available", subscription);
+    return () => ipcRenderer.removeListener("update-available", subscription);
   },
   onUpdateNotAvailable: (callback: (info: { version: string }) => void) => {
     const subscription = (_event: IpcRendererEvent, info: any) => callback(info);
-    ipcRenderer.on('update-not-available', subscription);
-    return () => ipcRenderer.removeListener('update-not-available', subscription);
+    ipcRenderer.on("update-not-available", subscription);
+    return () => ipcRenderer.removeListener("update-not-available", subscription);
   },
   onUpdateError: (callback: (error: { message: string }) => void) => {
     const subscription = (_event: IpcRendererEvent, error: any) => callback(error);
-    ipcRenderer.on('update-error', subscription);
-    return () => ipcRenderer.removeListener('update-error', subscription);
+    ipcRenderer.on("update-error", subscription);
+    return () => ipcRenderer.removeListener("update-error", subscription);
   },
   onUpdateDownloadProgress: (
     callback: (progress: {
@@ -256,60 +266,72 @@ const electronAPI = {
     }) => void
   ) => {
     const subscription = (_event: IpcRendererEvent, progress: any) => callback(progress);
-    ipcRenderer.on('update-download-progress', subscription);
-    return () => ipcRenderer.removeListener('update-download-progress', subscription);
+    ipcRenderer.on("update-download-progress", subscription);
+    return () => ipcRenderer.removeListener("update-download-progress", subscription);
   },
   onUpdateDownloaded: (
     callback: (info: { version: string; releaseNotes: string; fallbackUsed?: boolean }) => void
   ) => {
     const subscription = (_event: IpcRendererEvent, info: any) => callback(info);
-    ipcRenderer.on('update-downloaded', subscription);
-    return () => ipcRenderer.removeListener('update-downloaded', subscription);
+    ipcRenderer.on("update-downloaded", subscription);
+    return () => ipcRenderer.removeListener("update-downloaded", subscription);
   },
   onUpdateFallbackMode: (callback: (data: { message: string }) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('update-fallback-mode', subscription);
-    return () => ipcRenderer.removeListener('update-fallback-mode', subscription);
+    ipcRenderer.on("update-fallback-mode", subscription);
+    return () => ipcRenderer.removeListener("update-fallback-mode", subscription);
   },
   onUpdateExtracting: (callback: (data: { message: string }) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('update-extracting', subscription);
-    return () => ipcRenderer.removeListener('update-extracting', subscription);
+    ipcRenderer.on("update-extracting", subscription);
+    return () => ipcRenderer.removeListener("update-extracting", subscription);
   },
   onUpdateStatus: (callback: (data: { message: string }) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('update-status', subscription);
-    return () => ipcRenderer.removeListener('update-status', subscription);
+    ipcRenderer.on("update-status", subscription);
+    return () => ipcRenderer.removeListener("update-status", subscription);
   },
 
   // Manual download
-  openUpdateInBrowser: () => ipcRenderer.invoke('open-update-in-browser'),
+  openUpdateInBrowser: () => ipcRenderer.invoke("open-update-in-browser"),
 
   // Certificate Management
-  checkZscalerStatus: () => ipcRenderer.invoke('check-zscaler-status'),
-  getCertificatePath: () => ipcRenderer.invoke('get-certificate-path'),
-  getInstalledCertificates: () => ipcRenderer.invoke('get-installed-certificates'),
-  importCertificate: () => ipcRenderer.invoke('import-certificate'),
-  autoDetectCertificates: () => ipcRenderer.invoke('auto-detect-certificates'),
-  removeCertificate: (certPath: string) => ipcRenderer.invoke('remove-certificate', certPath),
-  testGitHubConnection: () => ipcRenderer.invoke('test-github-connection'),
-  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  checkZscalerStatus: () => ipcRenderer.invoke("check-zscaler-status"),
+  getCertificatePath: () => ipcRenderer.invoke("get-certificate-path"),
+  getInstalledCertificates: () => ipcRenderer.invoke("get-installed-certificates"),
+  importCertificate: () => ipcRenderer.invoke("import-certificate"),
+  autoDetectCertificates: () => ipcRenderer.invoke("auto-detect-certificates"),
+  removeCertificate: (certPath: string) => ipcRenderer.invoke("remove-certificate", certPath),
+  testGitHubConnection: () => ipcRenderer.invoke("test-github-connection"),
+  openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
 
   // Event system helpers (SECURITY: restricted to allowed channels only)
   on: (channel: string, callback: (...args: any[]) => void) => {
     const allowedChannels = [
-      'window-maximized', 'window-unmaximized',
-      'window-fullscreen', 'window-unfullscreen',
-      'window-always-on-top-changed',
-      'hyperlink:batch-progress',
-      'dictionary:sync-progress', 'dictionary:sync-complete',
-      'update-checking', 'update-available', 'update-not-available',
-      'update-error', 'update-download-progress', 'update-downloaded',
-      'update-fallback-mode', 'update-extracting', 'update-status',
-      'update-manual-download',
-      'debug-network-request', 'debug-cert-error',
-      'debug-network-error', 'debug-tls-error',
-      'certificate-check-complete', 'certificate-configured',
+      "window-maximized",
+      "window-unmaximized",
+      "window-fullscreen",
+      "window-unfullscreen",
+      "window-always-on-top-changed",
+      "hyperlink:batch-progress",
+      "dictionary:sync-progress",
+      "dictionary:sync-complete",
+      "update-checking",
+      "update-available",
+      "update-not-available",
+      "update-error",
+      "update-download-progress",
+      "update-downloaded",
+      "update-fallback-mode",
+      "update-extracting",
+      "update-status",
+      "update-manual-download",
+      "debug-network-request",
+      "debug-cert-error",
+      "debug-network-error",
+      "debug-tls-error",
+      "certificate-check-complete",
+      "certificate-configured",
     ];
     if (!allowedChannels.includes(channel)) {
       console.error(`[Preload] Blocked IPC listener on disallowed channel: ${channel}`);
@@ -325,18 +347,30 @@ const electronAPI = {
   ) => {
     // Same allowlist as on() — only permitted channels can be unsubscribed
     const allowedChannels = [
-      'window-maximized', 'window-unmaximized',
-      'window-fullscreen', 'window-unfullscreen',
-      'window-always-on-top-changed',
-      'hyperlink:batch-progress',
-      'dictionary:sync-progress', 'dictionary:sync-complete',
-      'update-checking', 'update-available', 'update-not-available',
-      'update-error', 'update-download-progress', 'update-downloaded',
-      'update-fallback-mode', 'update-extracting', 'update-status',
-      'update-manual-download',
-      'debug-network-request', 'debug-cert-error',
-      'debug-network-error', 'debug-tls-error',
-      'certificate-check-complete', 'certificate-configured',
+      "window-maximized",
+      "window-unmaximized",
+      "window-fullscreen",
+      "window-unfullscreen",
+      "window-always-on-top-changed",
+      "hyperlink:batch-progress",
+      "dictionary:sync-progress",
+      "dictionary:sync-complete",
+      "update-checking",
+      "update-available",
+      "update-not-available",
+      "update-error",
+      "update-download-progress",
+      "update-downloaded",
+      "update-fallback-mode",
+      "update-extracting",
+      "update-status",
+      "update-manual-download",
+      "debug-network-request",
+      "debug-cert-error",
+      "debug-network-error",
+      "debug-tls-error",
+      "certificate-check-complete",
+      "certificate-configured",
     ];
     if (!allowedChannels.includes(channel)) return;
     ipcRenderer.removeListener(channel, callback);
@@ -345,50 +379,51 @@ const electronAPI = {
   // Debug events
   onDebugNetworkRequest: (callback: (data: any) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('debug-network-request', subscription);
-    return () => ipcRenderer.removeListener('debug-network-request', subscription);
+    ipcRenderer.on("debug-network-request", subscription);
+    return () => ipcRenderer.removeListener("debug-network-request", subscription);
   },
   onDebugCertError: (callback: (data: any) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('debug-cert-error', subscription);
-    return () => ipcRenderer.removeListener('debug-cert-error', subscription);
+    ipcRenderer.on("debug-cert-error", subscription);
+    return () => ipcRenderer.removeListener("debug-cert-error", subscription);
   },
   onDebugNetworkError: (callback: (data: any) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('debug-network-error', subscription);
-    return () => ipcRenderer.removeListener('debug-network-error', subscription);
+    ipcRenderer.on("debug-network-error", subscription);
+    return () => ipcRenderer.removeListener("debug-network-error", subscription);
   },
   onDebugTLSError: (callback: (data: any) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('debug-tls-error', subscription);
-    return () => ipcRenderer.removeListener('debug-tls-error', subscription);
+    ipcRenderer.on("debug-tls-error", subscription);
+    return () => ipcRenderer.removeListener("debug-tls-error", subscription);
   },
   onUpdateManualDownload: (callback: (data: { message: string; downloadUrl: string }) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('update-manual-download', subscription);
-    return () => ipcRenderer.removeListener('update-manual-download', subscription);
+    ipcRenderer.on("update-manual-download", subscription);
+    return () => ipcRenderer.removeListener("update-manual-download", subscription);
   },
 
   // Certificate check events (background)
-  onCertificateCheckComplete: (callback: (data: { success: boolean; error?: string; timestamp: string }) => void) => {
+  onCertificateCheckComplete: (
+    callback: (data: { success: boolean; error?: string; timestamp: string }) => void
+  ) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('certificate-check-complete', subscription);
-    return () => ipcRenderer.removeListener('certificate-check-complete', subscription);
+    ipcRenderer.on("certificate-check-complete", subscription);
+    return () => ipcRenderer.removeListener("certificate-check-complete", subscription);
   },
 
   onCertificateConfigured: (callback: (data: { message: string; certPath?: string }) => void) => {
     const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('certificate-configured', subscription);
-    return () => ipcRenderer.removeListener('certificate-configured', subscription);
+    ipcRenderer.on("certificate-configured", subscription);
+    return () => ipcRenderer.removeListener("certificate-configured", subscription);
   },
 };
 
 // Expose to window using contextBridge (required for contextIsolation: true)
 // This is the correct, secure way to expose APIs to the renderer process
-contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+contextBridge.exposeInMainWorld("electronAPI", electronAPI);
 
 // TYPE EXPORT: The ElectronAPI type is now defined in src/types/electron.ts
 // This provides a single source of truth for the API interface, shared between
 // the preload script and the renderer process.
 // Import from '@/types/electron' in renderer code for full type safety.
-

@@ -60,14 +60,14 @@ Based on `OOXML_HYPERLINK_ARCHITECTURE.md` (reference document):
 
 ```javascript
 // ✅ CORRECT - Attribute access
-const relationshipId = hyperlink['@_r:id'];
-const type = relationship['@_Type'];
-const target = relationship['@_Target'];
+const relationshipId = hyperlink["@_r:id"];
+const type = relationship["@_Type"];
+const target = relationship["@_Target"];
 
 // ✅ CORRECT - Text node access
-if (textNode['#text']) {
-  const text = textNode['#text'];
-  textNode['#text'] = newText;
+if (textNode["#text"]) {
+  const text = textNode["#text"];
+  textNode["#text"] = newText;
 }
 ```
 
@@ -75,8 +75,8 @@ if (textNode['#text']) {
 
 ```javascript
 // ❌ WRONG - Using $ accessor
-if (h.$ && h.$['r:id']) {
-  const relationshipId = h.$['r:id'];
+if (h.$ && h.$["r:id"]) {
+  const relationshipId = h.$["r:id"];
 }
 
 // ❌ WRONG - Using ._ accessor
@@ -192,8 +192,8 @@ function setAttr(element: any, attrName: string, value: string): void {
  * @returns Text content or empty string
  */
 function getText(textNode: any): string {
-  if (typeof textNode === 'string') return textNode;
-  return textNode?.['#text'] || '';
+  if (typeof textNode === "string") return textNode;
+  return textNode?.["#text"] || "";
 }
 
 /**
@@ -204,13 +204,13 @@ function getText(textNode: any): string {
 function setText(textNode: any, newText: string): void {
   if (!textNode) return;
 
-  if (typeof textNode === 'string') {
+  if (typeof textNode === "string") {
     // Can't modify string directly - caller must replace the whole node
-    throw new Error('Cannot modify string text node - use object with #text property');
+    throw new Error("Cannot modify string text node - use object with #text property");
   }
 
   // Update text content, preserve attributes like '@_xml:space'
-  textNode['#text'] = newText;
+  textNode["#text"] = newText;
 }
 ```
 

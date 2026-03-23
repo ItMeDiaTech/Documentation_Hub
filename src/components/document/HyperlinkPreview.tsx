@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
   CheckCircle,
@@ -11,19 +11,19 @@ import {
   Search,
   ExternalLink,
   Hash,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
-import { sanitizeUrl } from '@/utils/urlSanitizer';
-import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
+} from "lucide-react";
+import { cn } from "@/utils/cn";
+import { sanitizeUrl } from "@/utils/urlSanitizer";
+import { Input } from "@/components/common/Input";
+import { Button } from "@/components/common/Button";
 
 interface HyperlinkChange {
   id: string;
   displayText: string;
   originalUrl: string;
   newUrl?: string;
-  type: 'append' | 'update' | 'remove' | 'validate';
-  status: 'pending' | 'approved' | 'rejected' | 'applied';
+  type: "append" | "update" | "remove" | "validate";
+  status: "pending" | "approved" | "rejected" | "applied";
   location: string; // e.g., "Main Document", "Header", "Footer"
   context?: string; // Surrounding text
   willAppendContentId?: boolean;
@@ -51,16 +51,16 @@ export function HyperlinkPreview({
   isReadOnly = false,
   className,
 }: HyperlinkPreviewProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'append' | 'update' | 'remove'>('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "append" | "update" | "remove">("all");
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // Memoize filtered changes to prevent recalculation on every render
   const filteredChanges = useMemo(() => {
     return changes.filter((change) => {
-      if (filterType !== 'all' && change.type !== filterType) return false;
-      if (showOnlyPending && change.status !== 'pending') return false;
+      if (filterType !== "all" && change.type !== filterType) return false;
+      if (showOnlyPending && change.status !== "pending") return false;
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
         return (
@@ -76,9 +76,9 @@ export function HyperlinkPreview({
   // Memoize status counts to prevent recalculation
   const { pendingCount, approvedCount, rejectedCount } = useMemo(
     () => ({
-      pendingCount: changes.filter((c) => c.status === 'pending').length,
-      approvedCount: changes.filter((c) => c.status === 'approved').length,
-      rejectedCount: changes.filter((c) => c.status === 'rejected').length,
+      pendingCount: changes.filter((c) => c.status === "pending").length,
+      approvedCount: changes.filter((c) => c.status === "approved").length,
+      rejectedCount: changes.filter((c) => c.status === "rejected").length,
     }),
     [changes]
   );
@@ -96,30 +96,30 @@ export function HyperlinkPreview({
   }, []);
 
   // Returns icon with accessible text label for change type
-  const getChangeIcon = (type: HyperlinkChange['type']) => {
+  const getChangeIcon = (type: HyperlinkChange["type"]) => {
     switch (type) {
-      case 'append':
+      case "append":
         return (
           <span className="inline-flex items-center gap-1" title="Append Content ID">
             <Hash className="w-4 h-4 text-blue-500" aria-hidden="true" />
             <span className="sr-only">Append</span>
           </span>
         );
-      case 'update':
+      case "update":
         return (
           <span className="inline-flex items-center gap-1" title="Update URL">
             <ArrowRight className="w-4 h-4 text-yellow-500" aria-hidden="true" />
             <span className="sr-only">Update</span>
           </span>
         );
-      case 'remove':
+      case "remove":
         return (
           <span className="inline-flex items-center gap-1" title="Remove Hyperlink">
             <XCircle className="w-4 h-4 text-red-500" aria-hidden="true" />
             <span className="sr-only">Remove</span>
           </span>
         );
-      case 'validate':
+      case "validate":
         return (
           <span className="inline-flex items-center gap-1" title="Validate URL">
             <CheckCircle className="w-4 h-4 text-green-500" aria-hidden="true" />
@@ -129,27 +129,27 @@ export function HyperlinkPreview({
     }
   };
 
-  const getStatusBadge = (status: HyperlinkChange['status']) => {
+  const getStatusBadge = (status: HyperlinkChange["status"]) => {
     switch (status) {
-      case 'pending':
+      case "pending":
         return (
           <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-700 rounded-full">
             Pending
           </span>
         );
-      case 'approved':
+      case "approved":
         return (
           <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full">
             Approved
           </span>
         );
-      case 'rejected':
+      case "rejected":
         return (
           <span className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded-full">
             Rejected
           </span>
         );
-      case 'applied':
+      case "applied":
         return (
           <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
             Applied
@@ -160,11 +160,11 @@ export function HyperlinkPreview({
 
   const truncateUrl = (url: string, maxLength: number = 50): string => {
     if (url.length <= maxLength) return url;
-    return url.substring(0, maxLength - 3) + '...';
+    return url.substring(0, maxLength - 3) + "...";
   };
 
   return (
-    <div className={cn('space-y-4', className)}>
+    <div className={cn("space-y-4", className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -213,39 +213,39 @@ export function HyperlinkPreview({
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search hyperlinks..."
             leftIcon={<Search className="w-4 h-4" />}
-            onClear={() => setSearchTerm('')}
+            onClear={() => setSearchTerm("")}
           />
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setFilterType('all')}
+            onClick={() => setFilterType("all")}
             className={cn(
-              'px-3 py-1.5 text-sm rounded-lg transition-colors',
-              filterType === 'all'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/70'
+              "px-3 py-1.5 text-sm rounded-lg transition-colors",
+              filterType === "all"
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted hover:bg-muted/70"
             )}
           >
             All
           </button>
           <button
-            onClick={() => setFilterType('append')}
+            onClick={() => setFilterType("append")}
             className={cn(
-              'px-3 py-1.5 text-sm rounded-lg transition-colors',
-              filterType === 'append'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/70'
+              "px-3 py-1.5 text-sm rounded-lg transition-colors",
+              filterType === "append"
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted hover:bg-muted/70"
             )}
           >
             Append
           </button>
           <button
-            onClick={() => setFilterType('update')}
+            onClick={() => setFilterType("update")}
             className={cn(
-              'px-3 py-1.5 text-sm rounded-lg transition-colors',
-              filterType === 'update'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/70'
+              "px-3 py-1.5 text-sm rounded-lg transition-colors",
+              filterType === "update"
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted hover:bg-muted/70"
             )}
           >
             Update
@@ -253,8 +253,8 @@ export function HyperlinkPreview({
           <button
             onClick={() => setShowOnlyPending(!showOnlyPending)}
             className={cn(
-              'p-1.5 rounded-lg transition-colors',
-              showOnlyPending ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/70'
+              "p-1.5 rounded-lg transition-colors",
+              showOnlyPending ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/70"
             )}
           >
             <Filter className="w-4 h-4" />
@@ -276,10 +276,10 @@ export function HyperlinkPreview({
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ delay: index * 0.02 }}
                 className={cn(
-                  'border rounded-lg transition-all',
-                  change.status === 'approved' && 'bg-green-500/5 border-green-500/20',
-                  change.status === 'rejected' && 'bg-red-500/5 border-red-500/20',
-                  change.status === 'pending' && 'hover:bg-muted/50'
+                  "border rounded-lg transition-all",
+                  change.status === "approved" && "bg-green-500/5 border-green-500/20",
+                  change.status === "rejected" && "bg-red-500/5 border-red-500/20",
+                  change.status === "pending" && "hover:bg-muted/50"
                 )}
               >
                 <div className="p-3">
@@ -327,7 +327,7 @@ export function HyperlinkPreview({
                         {isExpanded && change.context && (
                           <motion.div
                             initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
+                            animate={{ height: "auto", opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
                             transition={{ duration: 0.2 }}
                             className="mt-2 pt-2 border-t"
@@ -369,11 +369,15 @@ export function HyperlinkPreview({
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-1" role="group" aria-label="Change actions">
+                    <div
+                      className="flex items-center gap-1"
+                      role="group"
+                      aria-label="Change actions"
+                    >
                       <button
                         onClick={() => toggleExpanded(change.id)}
                         className="p-1 hover:bg-muted rounded-md transition-colors"
-                        aria-label={isExpanded ? 'Hide details' : 'Show details'}
+                        aria-label={isExpanded ? "Hide details" : "Show details"}
                         aria-expanded={isExpanded}
                       >
                         {isExpanded ? (
@@ -383,7 +387,7 @@ export function HyperlinkPreview({
                         )}
                       </button>
 
-                      {!isReadOnly && change.status === 'pending' && (
+                      {!isReadOnly && change.status === "pending" && (
                         <>
                           <button
                             onClick={() => onApprove?.(change.id)}
@@ -421,7 +425,7 @@ export function HyperlinkPreview({
       {!isReadOnly && approvedCount > 0 && (
         <div className="flex justify-end">
           <Button onClick={onApply} className="min-w-[120px]">
-            Apply {approvedCount} Change{approvedCount !== 1 ? 's' : ''}
+            Apply {approvedCount} Change{approvedCount !== 1 ? "s" : ""}
           </Button>
         </div>
       )}

@@ -1,5 +1,5 @@
-import { useState, useMemo, memo } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useMemo, memo } from "react";
+import { motion } from "framer-motion";
 import {
   Mail,
   Send,
@@ -10,15 +10,22 @@ import {
   FileText,
   Bug,
   ThumbsUp,
-} from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/common/Card';
-import { Button } from '@/components/common/Button';
-import { useSession } from '@/contexts/SessionContext';
-import { useToast } from '@/hooks/useToast';
-import { Toaster } from '@/components/common/Toast';
-import { cn } from '@/utils/cn';
-import logger from '@/utils/logger';
-import type { Document } from '@/types/session';
+} from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/common/Card";
+import { Button } from "@/components/common/Button";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { useSession } from "@/contexts/SessionContext";
+import { useToast } from "@/hooks/useToast";
+import { Toaster } from "@/components/common/Toast";
+import { cn } from "@/utils/cn";
+import logger from "@/utils/logger";
+import type { Document } from "@/types/session";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -51,17 +58,18 @@ export const Reporting = memo(function Reporting() {
   const { sessions } = useSession();
   const { toasts, toast, dismiss } = useToast();
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
-  const [reportType, setReportType] = useState<'bug' | 'kudos'>('bug');
+  const [reportType, setReportType] = useState<"bug" | "kudos">("bug");
   const [noDocument, setNoDocument] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [zipDialogPath, setZipDialogPath] = useState("");
 
   // Get last 10 processed docs (completed or error) sorted by processedAt
   const recentDocs = useMemo(() => {
     const docs: DocumentWithSession[] = [];
     sessions.forEach((session) => {
       session.documents.forEach((doc) => {
-        if (doc.status === 'completed' || doc.status === 'error') {
+        if (doc.status === "completed" || doc.status === "error") {
           docs.push({
             ...doc,
             sessionName: session.name,
@@ -114,7 +122,7 @@ export const Reporting = memo(function Reporting() {
       await window.electronAPI.createFolder(folderPath);
       setProgress(10);
 
-      let zipPath = '';
+      let zipPath = "";
 
       if (!noDocument && selectedDocs.size > 0) {
         // Copy files
@@ -142,24 +150,19 @@ export const Reporting = memo(function Reporting() {
 
       // Open Outlook
       const subject =
-        reportType === 'bug' ? 'Bug Report: Documentation Hub' : 'Kudos: Documentation Hub';
+        reportType === "bug" ? "Bug Report: Documentation Hub" : "Kudos: Documentation Hub";
 
       const result = await window.electronAPI.openOutlookEmail(subject, zipPath);
       setProgress(100);
 
-      if (result.method === 'mailto' && zipPath) {
-        toast({
-          title: 'Email draft opened',
-          description: 'Please attach the ZIP file from the opened folder.',
-          variant: 'success',
-          duration: 6000,
-        });
+      if (result.method === "mailto" && zipPath) {
+        setZipDialogPath(zipPath);
       } else {
-        toast({ title: 'Email draft opened', variant: 'success' });
+        toast({ title: "Email draft opened", variant: "success" });
       }
     } catch (error) {
-      logger.error('Failed to generate email:', error);
-      toast({ title: 'Failed to generate email', variant: 'destructive' });
+      logger.error("Failed to generate email:", error);
+      toast({ title: "Failed to generate email", variant: "destructive" });
     } finally {
       setIsGenerating(false);
       // Clear selections after completion
@@ -188,7 +191,7 @@ export const Reporting = memo(function Reporting() {
           <Button
             onClick={handleGenerateEmail}
             disabled={!canGenerate || isGenerating}
-            className={cn('gap-2', canGenerate && 'bg-primary hover:bg-primary/90')}
+            className={cn("gap-2", canGenerate && "bg-primary hover:bg-primary/90")}
           >
             {isGenerating ? (
               <>
@@ -228,57 +231,77 @@ export const Reporting = memo(function Reporting() {
           <CardContent className="flex gap-4">
             <label
               className={cn(
-                'flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors flex-1',
-                reportType === 'bug'
-                  ? 'bg-primary/10 border-2 border-primary'
-                  : 'bg-muted/30 border-2 border-transparent hover:bg-muted/50'
+                "flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors flex-1",
+                reportType === "bug"
+                  ? "bg-primary/10 border-2 border-primary"
+                  : "bg-muted/30 border-2 border-transparent hover:bg-muted/50"
               )}
             >
               <input
                 type="radio"
                 name="reportType"
-                checked={reportType === 'bug'}
-                onChange={() => setReportType('bug')}
+                checked={reportType === "bug"}
+                onChange={() => setReportType("bug")}
                 className="sr-only"
               />
               <div
                 className={cn(
-                  'w-5 h-5 rounded-full border-2 flex items-center justify-center',
-                  reportType === 'bug' ? 'border-primary' : 'border-muted-foreground'
+                  "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                  reportType === "bug" ? "border-primary" : "border-muted-foreground"
                 )}
               >
-                {reportType === 'bug' && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
+                {reportType === "bug" && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
               </div>
-              <Bug className={cn('w-5 h-5', reportType === 'bug' ? 'text-primary' : 'text-muted-foreground')} />
-              <span className={cn('font-medium', reportType === 'bug' ? 'text-foreground' : 'text-muted-foreground')}>
+              <Bug
+                className={cn(
+                  "w-5 h-5",
+                  reportType === "bug" ? "text-primary" : "text-muted-foreground"
+                )}
+              />
+              <span
+                className={cn(
+                  "font-medium",
+                  reportType === "bug" ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
                 Bug Report
               </span>
             </label>
             <label
               className={cn(
-                'flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors flex-1',
-                reportType === 'kudos'
-                  ? 'bg-primary/10 border-2 border-primary'
-                  : 'bg-muted/30 border-2 border-transparent hover:bg-muted/50'
+                "flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors flex-1",
+                reportType === "kudos"
+                  ? "bg-primary/10 border-2 border-primary"
+                  : "bg-muted/30 border-2 border-transparent hover:bg-muted/50"
               )}
             >
               <input
                 type="radio"
                 name="reportType"
-                checked={reportType === 'kudos'}
-                onChange={() => setReportType('kudos')}
+                checked={reportType === "kudos"}
+                onChange={() => setReportType("kudos")}
                 className="sr-only"
               />
               <div
                 className={cn(
-                  'w-5 h-5 rounded-full border-2 flex items-center justify-center',
-                  reportType === 'kudos' ? 'border-primary' : 'border-muted-foreground'
+                  "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                  reportType === "kudos" ? "border-primary" : "border-muted-foreground"
                 )}
               >
-                {reportType === 'kudos' && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
+                {reportType === "kudos" && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
               </div>
-              <ThumbsUp className={cn('w-5 h-5', reportType === 'kudos' ? 'text-primary' : 'text-muted-foreground')} />
-              <span className={cn('font-medium', reportType === 'kudos' ? 'text-foreground' : 'text-muted-foreground')}>
+              <ThumbsUp
+                className={cn(
+                  "w-5 h-5",
+                  reportType === "kudos" ? "text-primary" : "text-muted-foreground"
+                )}
+              />
+              <span
+                className={cn(
+                  "font-medium",
+                  reportType === "kudos" ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
                 Kudos
               </span>
             </label>
@@ -289,7 +312,13 @@ export const Reporting = memo(function Reporting() {
       {/* Description */}
       <motion.div variants={itemVariants}>
         <p className="text-muted-foreground text-sm">
-          This section will help you send documents quickly for troubleshooting or reviewing purposes. Select up to three documents in the list below. Only processed or errored documents are shown. Ensure the correct "Report Type" is selected: "Bug Report" or "Kudos". Then click on the "Generate Email" button. This application will make a copy of both the backup file and the processed file, create a new folder within your Downloads folder starting with "DocHub_Report_". It will then zip it up, bring up a blank email, and automatically attach this zip file. Thanks for the report or feedback!
+          This section will help you send documents quickly for troubleshooting or reviewing
+          purposes. Select up to three documents in the list below. Only processed or errored
+          documents are shown. Ensure the correct "Report Type" is selected: "Bug Report" or
+          "Kudos". Then click on the "Generate Email" button. This application will make a copy of
+          both the backup file and the processed file, create a new folder within your Downloads
+          folder starting with "DocHub_Report_". It will then zip it up, bring up a blank email, and
+          automatically attach this zip file. Thanks for the report or feedback!
         </p>
       </motion.div>
 
@@ -316,29 +345,35 @@ export const Reporting = memo(function Reporting() {
                     key={doc.id}
                     onClick={() => toggleDoc(doc.id)}
                     className={cn(
-                      'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
+                      "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors",
                       selectedDocs.has(doc.id)
-                        ? 'bg-primary/10 border border-primary'
-                        : 'bg-muted/30 hover:bg-muted/50 border border-transparent',
-                      noDocument && 'opacity-50 cursor-not-allowed'
+                        ? "bg-primary/10 border border-primary"
+                        : "bg-muted/30 hover:bg-muted/50 border border-transparent",
+                      noDocument && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <div
                       className={cn(
-                        'w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0',
-                        selectedDocs.has(doc.id) ? 'bg-primary border-primary' : 'border-muted-foreground'
+                        "w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0",
+                        selectedDocs.has(doc.id)
+                          ? "bg-primary border-primary"
+                          : "border-muted-foreground"
                       )}
                     >
-                      {selectedDocs.has(doc.id) && <Check className="w-3 h-3 text-primary-foreground" />}
+                      {selectedDocs.has(doc.id) && (
+                        <Check className="w-3 h-3 text-primary-foreground" />
+                      )}
                     </div>
-                    {doc.status === 'completed' ? (
+                    {doc.status === "completed" ? (
                       <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                     ) : (
                       <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
                       <span className="truncate block">{doc.name}</span>
-                      <span className="text-xs text-muted-foreground truncate block">{doc.sessionName}</span>
+                      <span className="text-xs text-muted-foreground truncate block">
+                        {doc.sessionName}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -350,16 +385,16 @@ export const Reporting = memo(function Reporting() {
               <div
                 onClick={handleNoDocumentToggle}
                 className={cn(
-                  'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
+                  "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors",
                   noDocument
-                    ? 'bg-primary/10 border border-primary'
-                    : 'bg-muted/30 hover:bg-muted/50 border border-transparent'
+                    ? "bg-primary/10 border border-primary"
+                    : "bg-muted/30 hover:bg-muted/50 border border-transparent"
                 )}
               >
                 <div
                   className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0',
-                    noDocument ? 'bg-primary border-primary' : 'border-muted-foreground'
+                    "w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0",
+                    noDocument ? "bg-primary border-primary" : "border-muted-foreground"
                   )}
                 >
                   {noDocument && <Check className="w-3 h-3 text-primary-foreground" />}
@@ -378,6 +413,18 @@ export const Reporting = memo(function Reporting() {
         </Card>
       </motion.div>
 
+      {/* ZIP Attachment Dialog (shown when New Outlook falls back to mailto) */}
+      <ConfirmDialog
+        open={!!zipDialogPath}
+        onOpenChange={(open) => {
+          if (!open) setZipDialogPath("");
+        }}
+        title="Attach ZIP File"
+        message={`Your email draft has been opened. Please attach the following ZIP file to complete your report:\n\n${zipDialogPath}`}
+        confirmText="OK"
+        cancelText="Open Folder"
+        onConfirm={() => {}}
+      />
 
       {/* Toast Notifications */}
       <Toaster toasts={toasts} onDismiss={dismiss} />

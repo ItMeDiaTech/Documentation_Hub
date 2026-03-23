@@ -3,24 +3,24 @@
  * Following TypeScript 2025 best practices with strict type safety
  */
 
-import JSZip from 'jszip';
+import JSZip from "jszip";
 
 // Template literal types for document parts
 export type DocumentPart = `word/${
-  | 'document.xml'
-  | 'styles.xml'
-  | 'numbering.xml'
-  | 'settings.xml'
-  | 'fontTable.xml'
-  | 'header1.xml'
-  | 'footer1.xml'}`;
+  | "document.xml"
+  | "styles.xml"
+  | "numbering.xml"
+  | "settings.xml"
+  | "fontTable.xml"
+  | "header1.xml"
+  | "footer1.xml"}`;
 
 // Relationship types in OpenXML
 export type RelationshipType =
-  | 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink'
-  | 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles'
-  | 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/header'
-  | 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer';
+  | "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+  | "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
+  | "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
+  | "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer";
 
 // Document structure with readonly properties for immutability
 export interface DocumentStructure {
@@ -44,7 +44,7 @@ export interface RelationshipInfo {
   readonly id: string;
   readonly type: RelationshipType;
   readonly target: string;
-  readonly targetMode?: 'External' | 'Internal';
+  readonly targetMode?: "External" | "Internal";
 }
 
 // Processing options with granular control
@@ -108,30 +108,30 @@ export type DocumentOperation =
 
 export interface BaseOperation {
   id: string;
-  type: 'hyperlink' | 'style' | 'text' | 'structure';
+  type: "hyperlink" | "style" | "text" | "structure";
   description: string;
   critical?: boolean; // If true, failure stops all processing
   priority?: number; // Higher priority operations execute first
 }
 
 export interface HyperlinkOperation extends BaseOperation {
-  type: 'hyperlink';
-  action: 'update' | 'validate' | 'remove' | 'append';
+  type: "hyperlink";
+  action: "update" | "validate" | "remove" | "append";
   targetPattern?: RegExp;
   replacement?: string;
   contentId?: string;
 }
 
 export interface StyleOperation extends BaseOperation {
-  type: 'style';
-  action: 'apply' | 'remove' | 'modify';
+  type: "style";
+  action: "apply" | "remove" | "modify";
   styleName: string;
   properties?: Record<string, unknown>;
 }
 
 export interface TextOperation extends BaseOperation {
-  type: 'text';
-  action: 'replace' | 'remove' | 'format';
+  type: "text";
+  action: "replace" | "remove" | "format";
   pattern: string | RegExp;
   replacement?: string;
   caseSensitive?: boolean;
@@ -139,9 +139,9 @@ export interface TextOperation extends BaseOperation {
 }
 
 export interface StructureOperation extends BaseOperation {
-  type: 'structure';
-  action: 'reorder' | 'indent' | 'align';
-  target: 'lists' | 'tables' | 'paragraphs' | 'images';
+  type: "structure";
+  action: "reorder" | "indent" | "align";
+  target: "lists" | "tables" | "paragraphs" | "images";
   options?: Record<string, unknown>;
 }
 
@@ -264,7 +264,7 @@ export interface ProcessedChunk {
 export interface DocumentChange {
   id: string;
   timestamp: Date;
-  type: 'addition' | 'deletion' | 'modification' | 'move';
+  type: "addition" | "deletion" | "modification" | "move";
   element: string;
   originalContent?: string;
   newContent?: string;
@@ -311,7 +311,7 @@ export interface ValidationResult {
 }
 
 export interface ValidationIssue {
-  severity: 'error' | 'warning' | 'info';
+  severity: "error" | "warning" | "info";
   code: string;
   message: string;
   location?: string;
@@ -323,7 +323,7 @@ export interface ValidationIssue {
 export interface ValidationSuggestion {
   type: string;
   message: string;
-  impact: 'high' | 'medium' | 'low';
+  impact: "high" | "medium" | "low";
   implementation?: string;
 }
 

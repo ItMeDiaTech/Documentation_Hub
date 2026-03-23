@@ -84,6 +84,9 @@ export function CurrentSession() {
   // Refs for preventing race conditions
   const isSelectingFiles = useRef(false);
   const isMountedRef = useRef(true);
+  const dragCounterRef = useRef(0);
+  const prevDocCountRef = useRef<number | null>(null);
+  const docListEndRef = useRef<HTMLDivElement>(null);
 
   // STALE CLOSURE FIX: Track latest sessions for async operations
   // This ref always holds the current sessions value, even inside async callbacks
@@ -105,6 +108,21 @@ export function CurrentSession() {
   }, [id, currentSession, loadSession]);
 
   const session = sessions.find((s) => s.id === id);
+
+  // Auto-scroll to newly added documents (only when on the Session tab)
+  useEffect(() => {
+    const currentCount = session?.documents.length ?? 0;
+    // Skip initial mount — only scroll when count actively increases
+    if (prevDocCountRef.current !== null && currentCount > prevDocCountRef.current) {
+      // Only scroll if the user is already viewing the document list
+      const timerId = setTimeout(() => {
+        docListEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }, 350);
+      prevDocCountRef.current = currentCount;
+      return () => clearTimeout(timerId);
+    }
+    prevDocCountRef.current = currentCount;
+  }, [session?.documents.length]);
 
   // REFACTORED: Convert session processing options to ProcessingOption[] format
   // Using useMemo to ensure we always have latest session data
@@ -136,25 +154,25 @@ export function CurrentSession() {
       const freshSession = sessionsRef.current.find((s) => s.id === session?.id);
       const processedDoc = freshSession?.documents.find((d) => d.id === docId);
 
-      if (success && processedDoc?.status === 'completed') {
+      if (success && processedDoc?.status === "completed") {
         toast({
-          title: 'Done',
+          title: "Done",
           description: processedDoc.name,
-          variant: 'success',
+          variant: "success",
         });
-      } else if (processedDoc?.status === 'error') {
+      } else if (processedDoc?.status === "error") {
         toast({
-          title: 'Processing failed',
-          description: processedDoc.errors?.[0] || 'Document error',
-          variant: 'destructive',
+          title: "Processing failed",
+          description: processedDoc.errors?.[0] || "Document error",
+          variant: "destructive",
         });
       }
     },
     onQueueComplete: () => {
       if (documentQueue.length > 1) {
         toast({
-          title: 'All documents processed',
-          variant: 'success',
+          title: "All documents processed",
+          variant: "success",
           duration: 5000,
         });
       }
@@ -335,16 +353,26 @@ export function CurrentSession() {
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current++;
     setIsDragging(true);
   };
 
-  const handleDragLeave = () => {
-    setIsDragging(false);
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
   };
 
   // Handle drag-drop files using getPathsForFiles API
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
+    dragCounterRef.current = 0;
     setIsDragging(false);
 
     if (!session || !e.dataTransfer?.files?.length) return;
@@ -406,9 +434,7 @@ export function CurrentSession() {
   };
 
   const handleExportProcessedFiles = async () => {
-    const completedDocs = session.documents.filter(
-      (d) => d.status === "completed" && d.path
-    );
+    const completedDocs = session.documents.filter((d) => d.status === "completed" && d.path);
     if (completedDocs.length === 0) {
       toast({
         title: "No completed files to export",
@@ -573,7 +599,7 @@ export function CurrentSession() {
           Export Processed Files
         </Button>
         <div>
-          {session.status === 'closed' ? (
+          {session.status === "closed" ? (
             <Button
               onClick={() => reopenSession(session.id)}
               variant="default"
@@ -585,11 +611,12 @@ export function CurrentSession() {
           ) : (
             <Button
               onClick={handleSaveAndClose}
-              variant="default"
-              className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
-              icon={<Save className="w-4 h-4" />}
+              variant="destructive"
+              size="sm"
+              className="font-medium"
+              icon={<X className="w-4 h-4" />}
             >
-              Save and Close Session
+              Close Session
             </Button>
           )}
         </div>
@@ -657,19 +684,9 @@ export function CurrentSession() {
         </CardHeader>
         <CardContent>
           {session.documents.length === 0 ? (
-            <div
-              className={cn(
-                "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
-                isDragging ? "border-primary bg-primary/5" : "border-border"
-              )}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
+            <div className="border-2 border-dashed rounded-lg p-8 text-center border-border">
               <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">
-                {isDragging ? "Drop files here" : "Upload Documents"}
-              </h3>
+              <h3 className="text-lg font-medium mb-2">Upload Documents</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 Drag and drop .docx files here, or click to browse
               </p>
@@ -681,16 +698,17 @@ export function CurrentSession() {
             <>
               {/* Queue status banner - shows when documents are queued */}
               {documentQueue.length > 0 && (
-                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-between">
+                <div className="mb-4 p-3 bg-primary/10 rounded-lg flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
                     <span className="text-sm">
-                      Processing document {documentQueue.findIndex(q => q.status === 'processing') + 1} of {documentQueue.length}
+                      Processing document{" "}
+                      {documentQueue.findIndex((q) => q.status === "processing") + 1} of{" "}
+                      {documentQueue.length}
                     </span>
                     {estimatedTimeRemainingFormatted && (
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Timer className="w-3 h-3" />
-                        ~{estimatedTimeRemainingFormatted} remaining
+                        <Timer className="w-3 h-3" />~{estimatedTimeRemainingFormatted} remaining
                       </span>
                     )}
                   </div>
@@ -699,34 +717,6 @@ export function CurrentSession() {
                   </Button>
                 </div>
               )}
-
-              <div className="mb-4 flex justify-between">
-                <Button
-                  onClick={() => {
-                    // Add all pending documents to the queue for sequential processing
-                    const pendingDocs = session.documents
-                      .filter((doc) => doc.status === "pending")
-                      .map((doc) => doc.id);
-                    addManyToQueue(session.id, pendingDocs);
-                  }}
-                  size="sm"
-                  variant="default"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  icon={<Play className="w-4 h-4" />}
-                  disabled={!session.documents.some((doc) => doc.status === "pending") || documentQueue.length > 0}
-                >
-                  Process Documents
-                </Button>
-                <Button
-                  onClick={handleFileSelect}
-                  size="sm"
-                  variant="default"
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                  icon={<Upload className="w-4 h-4" />}
-                >
-                  Add More Files
-                </Button>
-              </div>
 
               <div className="space-y-2">
                 <AnimatePresence>
@@ -800,15 +790,17 @@ export function CurrentSession() {
                               className="text-xs text-red-500 font-medium hover:text-red-600 hover:underline cursor-pointer"
                               title="Click to view error details"
                             >
-                              {doc.errorType === 'file_locked'
+                              {doc.errorType === "file_locked"
                                 ? "Close File Before Processing"
-                                : doc.errorType === 'api_timeout'
+                                : doc.errorType === "api_timeout"
                                   ? "Power Automate Timeout"
-                                  : doc.errorType === 'word_compatibility'
+                                  : doc.errorType === "word_compatibility"
                                     ? "Convert File in Word"
                                     : "Error"}
                             </button>
-                            {(doc.errorType === 'file_locked' || doc.errorType === 'api_timeout' || doc.errorType === 'word_compatibility') && (
+                            {(doc.errorType === "file_locked" ||
+                              doc.errorType === "api_timeout" ||
+                              doc.errorType === "word_compatibility") && (
                               <Button
                                 size="xs"
                                 onClick={() => handleProcessDocument(doc.id)}
@@ -851,7 +843,9 @@ export function CurrentSession() {
                           <button
                             onClick={async () => {
                               try {
-                                await window.electronAPI.openDocument(doc.processingResult!.backupPath!);
+                                await window.electronAPI.openDocument(
+                                  doc.processingResult!.backupPath!
+                                );
                                 toast({
                                   title: "Opening backup in Word",
                                   variant: "default",
@@ -873,57 +867,69 @@ export function CurrentSession() {
                         )}
 
                         {/* Compare button - show backup vs processed side by side */}
-                        {doc.status === "completed" && doc.path && doc.processingResult?.backupPath && (
-                          <button
-                            onClick={async () => {
-                              if (!window.electronAPI?.display?.openComparison || !window.electronAPI?.display?.getAllDisplays) {
-                                toast({
-                                  title: "Compare unavailable",
-                                  description: "Feature not available in this version",
-                                  variant: "destructive",
-                                });
-                                return;
-                              }
-                              try {
-                                // Get available displays to validate monitor index
-                                const displays = await window.electronAPI.display.getAllDisplays();
-                                const savedMonitorIndex = settings.displaySettings?.comparisonMonitorId ?? 0;
-                                // Ensure monitor index is within bounds (fallback to primary if saved monitor no longer exists)
-                                const monitorIndex = Math.min(Math.max(0, savedMonitorIndex), displays.length - 1);
-
-                                const result = await window.electronAPI.display.openComparison(
-                                  doc.processingResult!.backupPath!,
-                                  doc.path!,
-                                  monitorIndex
-                                );
-                                if (result.success) {
+                        {doc.status === "completed" &&
+                          doc.path &&
+                          doc.processingResult?.backupPath && (
+                            <button
+                              onClick={async () => {
+                                if (
+                                  !window.electronAPI?.display?.openComparison ||
+                                  !window.electronAPI?.display?.getAllDisplays
+                                ) {
                                   toast({
-                                    title: "Opening comparison",
-                                    description: "Documents opening in Word side by side",
-                                    variant: "default",
+                                    title: "Compare unavailable",
+                                    description: "Feature not available in this version",
+                                    variant: "destructive",
                                   });
-                                } else {
+                                  return;
+                                }
+                                try {
+                                  // Get available displays to validate monitor index
+                                  const displays =
+                                    await window.electronAPI.display.getAllDisplays();
+                                  const savedMonitorIndex =
+                                    settings.displaySettings?.comparisonMonitorId ?? 0;
+                                  // Ensure monitor index is within bounds (fallback to primary if saved monitor no longer exists)
+                                  const monitorIndex = Math.min(
+                                    Math.max(0, savedMonitorIndex),
+                                    displays.length - 1
+                                  );
+
+                                  const targetDisplay = displays[monitorIndex];
+                                  const result = await window.electronAPI.display.openComparison(
+                                    doc.processingResult!.backupPath!,
+                                    doc.path!,
+                                    targetDisplay.workArea,
+                                    targetDisplay.scaleFactor
+                                  );
+                                  if (result.success) {
+                                    toast({
+                                      title: "Opening comparison",
+                                      description: "Documents opening in Word side by side",
+                                      variant: "default",
+                                    });
+                                  } else {
+                                    toast({
+                                      title: "Compare failed",
+                                      description: result.error,
+                                      variant: "destructive",
+                                    });
+                                  }
+                                } catch (err) {
+                                  logger.error("Failed to open comparison:", err);
                                   toast({
                                     title: "Compare failed",
-                                    description: result.error,
+                                    description: err instanceof Error ? err.message : undefined,
                                     variant: "destructive",
                                   });
                                 }
-                              } catch (err) {
-                                logger.error("Failed to open comparison:", err);
-                                toast({
-                                  title: "Compare failed",
-                                  description: err instanceof Error ? err.message : undefined,
-                                  variant: "destructive",
-                                });
-                              }
-                            }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950"
-                            title="Compare before/after in Word"
-                          >
-                            <GitCompare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                          </button>
-                        )}
+                              }}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-accent"
+                              title="Compare before/after in Word"
+                            >
+                              <GitCompare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            </button>
+                          )}
 
                         {/* Show in Folder button */}
                         {doc.path && (
@@ -952,21 +958,9 @@ export function CurrentSession() {
                     </motion.div>
                   ))}
                 </AnimatePresence>
+                <div ref={docListEndRef} />
               </div>
 
-              <div
-                className={cn(
-                  "mt-4 border-2 border-dashed rounded-lg p-4 text-center transition-colors",
-                  isDragging ? "border-primary bg-primary/5" : "border-border"
-                )}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-              >
-                <p className="text-sm text-muted-foreground">
-                  {isDragging ? "Drop files here to add" : "Drag and drop more files here"}
-                </p>
-              </div>
             </>
           )}
         </CardContent>
@@ -1093,7 +1087,24 @@ export function CurrentSession() {
   ];
 
   return (
-    <div className="h-full flex flex-col">
+    <div
+      className="h-full flex flex-col relative"
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Full-window drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="border-2 border-dashed border-primary rounded-xl p-12 text-center">
+            <Upload className="w-12 h-12 mx-auto text-primary mb-4" />
+            <p className="text-lg font-medium text-primary">Drop files here to add</p>
+            <p className="text-sm text-muted-foreground mt-1">Only .docx files will be added</p>
+          </div>
+        </div>
+      )}
+
       {/* Toast notifications */}
       <Toaster toasts={toasts} onDismiss={dismiss} />
 
@@ -1101,48 +1112,81 @@ export function CurrentSession() {
       <div className="sticky top-0 z-30 bg-background p-6 pb-0 max-w-6xl mx-auto w-full">
         {/* Title Edit */}
         <div className="flex items-center gap-2 mb-6">
-          {isEditingTitle ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={editedTitle}
-                onChange={(e) => setEditedTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveTitle();
-                  if (e.key === "Escape") handleCancelEdit();
+          <div className="flex-1 flex items-center gap-2 min-w-0">
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={editedTitle}
+                  onChange={(e) => setEditedTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveTitle();
+                    if (e.key === "Escape") handleCancelEdit();
+                  }}
+                  className="text-3xl font-bold bg-transparent border-b-2 border-primary outline-none px-1"
+                  autoFocus
+                />
+                <button
+                  onClick={handleSaveTitle}
+                  className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                >
+                  <Check className="w-5 h-5 text-green-500" />
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                >
+                  <X className="w-5 h-5 text-red-500" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold truncate">{session.name}</h1>
+                {session.status === "closed" && (
+                  <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground flex-shrink-0">
+                    Closed
+                  </span>
+                )}
+                <button
+                  onClick={handleEditTitle}
+                  className="p-1.5 rounded-lg hover:bg-muted transition-colors flex-shrink-0"
+                  title="Edit session name"
+                >
+                  <Edit2 className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </>
+            )}
+          </div>
+          {session.status !== "closed" && (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button
+                onClick={() => {
+                  const pendingDocs = session.documents
+                    .filter((doc) => doc.status === "pending")
+                    .map((doc) => doc.id);
+                  addManyToQueue(session.id, pendingDocs);
                 }}
-                className="text-3xl font-bold bg-transparent border-b-2 border-primary outline-none px-1"
-                autoFocus
-              />
-              <button
-                onClick={handleSaveTitle}
-                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                size="sm"
+                variant="default"
+                className="bg-green-600 hover:bg-green-700 text-white"
+                icon={<Play className="w-4 h-4" />}
+                disabled={
+                  !session.documents.some((doc) => doc.status === "pending") ||
+                  documentQueue.length > 0
+                }
               >
-                <Check className="w-5 h-5 text-green-500" />
-              </button>
-              <button
-                onClick={handleCancelEdit}
-                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                Process Documents
+              </Button>
+              <Button
+                onClick={handleFileSelect}
+                size="sm"
+                variant="default"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                icon={<Upload className="w-4 h-4" />}
               >
-                <X className="w-5 h-5 text-red-500" />
-              </button>
+                Add More Files
+              </Button>
             </div>
-          ) : (
-            <>
-              <h1 className="text-3xl font-bold">{session.name}</h1>
-              {session.status === 'closed' && (
-                <span className="text-sm px-2 py-1 rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                  Closed
-                </span>
-              )}
-              <button
-                onClick={handleEditTitle}
-                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-                title="Edit session name"
-              >
-                <Edit2 className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </>
           )}
         </div>
       </div>

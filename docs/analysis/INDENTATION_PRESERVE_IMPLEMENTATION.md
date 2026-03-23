@@ -68,7 +68,7 @@ if (!styleToApply.preserveItalic) {
   run.setItalic(styleToApply.italic);
 }
 if (!styleToApply.preserveUnderline) {
-  run.setUnderline(styleToApply.underline ? 'single' : false);
+  run.setUnderline(styleToApply.underline ? "single" : false);
 }
 ```
 
@@ -98,8 +98,8 @@ if (styleToApply) {
   // because docxmlater paragraph formatting methods (setAlignment, setSpaceBefore, etc.)
   // do not modify indentation properties. The indentation remains unchanged unless
   // explicitly set through paragraph style definitions.
-  if (styleToApply.id === 'normal') {
-    this.log.debug('Normal style: Indentation will be preserved automatically');
+  if (styleToApply.id === "normal") {
+    this.log.debug("Normal style: Indentation will be preserved automatically");
   }
 
   // Apply paragraph formatting (does not affect indentation)

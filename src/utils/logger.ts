@@ -36,17 +36,17 @@
  * ```
  */
 
-import electronLog from 'electron-log';
+import electronLog from "electron-log";
 
 // Detect environment
-const isDevelopment = process.env.NODE_ENV !== 'production';
-const isTest = process.env.NODE_ENV === 'test';
+const isDevelopment = process.env.NODE_ENV !== "production";
+const isTest = process.env.NODE_ENV === "test";
 
 // Detect if we're in renderer process
 // NOTE: With contextIsolation: true, window.process is not available
 // So we check for window and document (browser-like environment)
 // Main process has 'electron' in process.versions, renderer has window/document
-const isRenderer = typeof window !== 'undefined' && typeof document !== 'undefined';
+const isRenderer = typeof window !== "undefined" && typeof document !== "undefined";
 
 // In renderer process, electron-log only has console transport and uses IPC for file logging
 // In main process, it has both file and console transports
@@ -56,38 +56,38 @@ const isMainProcess = !isRenderer;
 // Only configure electron-log if we're in the main process
 if (isMainProcess) {
   // Prevent EPIPE crashes when stdout/stderr pipes are closed (e.g., during shutdown)
-  if (process.stdout && typeof process.stdout.on === 'function') {
-    process.stdout.on('error', (err: any) => {
-      if (err?.code === 'EPIPE') return;
+  if (process.stdout && typeof process.stdout.on === "function") {
+    process.stdout.on("error", (err: any) => {
+      if (err?.code === "EPIPE") return;
     });
   }
-  if (process.stderr && typeof process.stderr.on === 'function') {
-    process.stderr.on('error', (err: any) => {
-      if (err?.code === 'EPIPE') return;
+  if (process.stderr && typeof process.stderr.on === "function") {
+    process.stderr.on("error", (err: any) => {
+      if (err?.code === "EPIPE") return;
     });
   }
 
   if (electronLog.transports?.file) {
-    electronLog.transports.file.level = 'info';
+    electronLog.transports.file.level = "info";
     electronLog.transports.file.maxSize = 5 * 1024 * 1024; // 5MB per file
     electronLog.transports.file.archiveLogFn = (file: any) => {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       return file.toString().replace(/\.log$/, `-${timestamp}.log`);
     };
-    electronLog.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
+    electronLog.transports.file.format = "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}";
   }
 
   if (electronLog.transports?.console) {
-    electronLog.transports.console.level = isDevelopment ? 'debug' : 'warn';
+    electronLog.transports.console.level = isDevelopment ? "debug" : "warn";
 
     // Wrap console transport writeFn to suppress EPIPE errors
     const originalWriteFn = electronLog.transports.console.writeFn;
-    if (typeof originalWriteFn === 'function') {
+    if (typeof originalWriteFn === "function") {
       electronLog.transports.console.writeFn = function (...args: any[]) {
         try {
           return originalWriteFn.apply(this, args as [any]);
         } catch (err: any) {
-          if (err?.code === 'EPIPE') return;
+          if (err?.code === "EPIPE") return;
           throw err;
         }
       };
@@ -95,11 +95,11 @@ if (isMainProcess) {
 
     // Console configuration (development only)
     if (isDevelopment) {
-      electronLog.transports.console.format = '[{h}:{i}:{s}.{ms}] [{level}] {text}';
+      electronLog.transports.console.format = "[{h}:{i}:{s}.{ms}] [{level}] {text}";
       electronLog.transports.console.useStyles = true;
     } else {
       // Production: minimal console output
-      electronLog.transports.console.format = '[{level}] {text}';
+      electronLog.transports.console.format = "[{level}] {text}";
     }
   }
 
@@ -112,8 +112,8 @@ if (isMainProcess) {
   // Renderer process: Use console transport only, electron-log handles IPC automatically
   // This prevents the "logger isn't initialized in main process" error
   if (electronLog.transports?.console) {
-    electronLog.transports.console.level = isDevelopment ? 'debug' : 'warn';
-    electronLog.transports.console.format = '[{h}:{i}:{s}.{ms}] [{level}] {text}';
+    electronLog.transports.console.level = isDevelopment ? "debug" : "warn";
+    electronLog.transports.console.format = "[{h}:{i}:{s}.{ms}] [{level}] {text}";
   }
 
   // Disable file transport attempts in renderer (it uses IPC automatically when available)
@@ -141,24 +141,24 @@ function sanitizeLogData(data: any): any {
   }
 
   // Handle primitive types
-  if (typeof data === 'string') {
+  if (typeof data === "string") {
     let sanitized = data;
 
     // Redact Windows file paths (C:\Users\..., D:\Documents\..., etc.)
-    sanitized = sanitized.replace(/[A-Z]:\\[^\s"'<>|*?]+/gi, '[REDACTED_PATH]');
+    sanitized = sanitized.replace(/[A-Z]:\\[^\s"'<>|*?]+/gi, "[REDACTED_PATH]");
 
     // Redact UNC paths (\\server\share\...)
-    sanitized = sanitized.replace(/\\\\[^\s"'<>|*?]+/g, '[REDACTED_PATH]');
+    sanitized = sanitized.replace(/\\\\[^\s"'<>|*?]+/g, "[REDACTED_PATH]");
 
     // Redact Unix file paths (/home/..., /Users/..., /var/..., etc.)
-    sanitized = sanitized.replace(/\/(home|Users|var|tmp|opt)\/[\w\s\-./]+/gi, '[REDACTED_PATH]');
+    sanitized = sanitized.replace(/\/(home|Users|var|tmp|opt)\/[\w\s\-./]+/gi, "[REDACTED_PATH]");
 
     // Redact full URLs (but keep domain for debugging)
-    sanitized = sanitized.replace(/(https?:\/\/[^/\s]+)(\/[^\s]*)/gi, '$1/[REDACTED_URL]');
+    sanitized = sanitized.replace(/(https?:\/\/[^/\s]+)(\/[^\s]*)/gi, "$1/[REDACTED_URL]");
 
     // Truncate very long strings (likely document content)
     if (sanitized.length > 500) {
-      sanitized = sanitized.substring(0, 500) + '... [TRUNCATED]';
+      sanitized = sanitized.substring(0, 500) + "... [TRUNCATED]";
     }
 
     return sanitized;
@@ -170,38 +170,38 @@ function sanitizeLogData(data: any): any {
   }
 
   // Handle objects
-  if (typeof data === 'object') {
+  if (typeof data === "object") {
     const sanitized: any = {};
     const sensitiveKeys = [
-      'apiEndpoint',
-      'apiUrl',
-      'filePath',
-      'documentPath',
-      'path',
-      'fullPath',
-      'token',
-      'accessToken',
-      'refreshToken',
-      'apiKey',
-      'password',
-      'secret',
-      'clientSecret',
-      'authorization',
-      'bearer',
-      'cookie',
-      'sessionId',
-      'userId',
-      'email',
-      'username',
-      'connectionString',
-      'privateKey',
-      'credential',
+      "apiEndpoint",
+      "apiUrl",
+      "filePath",
+      "documentPath",
+      "path",
+      "fullPath",
+      "token",
+      "accessToken",
+      "refreshToken",
+      "apiKey",
+      "password",
+      "secret",
+      "clientSecret",
+      "authorization",
+      "bearer",
+      "cookie",
+      "sessionId",
+      "userId",
+      "email",
+      "username",
+      "connectionString",
+      "privateKey",
+      "credential",
     ];
 
     for (const [key, value] of Object.entries(data)) {
       // Redact sensitive fields entirely
       if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk.toLowerCase()))) {
-        sanitized[key] = '[REDACTED]';
+        sanitized[key] = "[REDACTED]";
       } else {
         // Recursively sanitize nested objects
         sanitized[key] = sanitizeLogData(value);
@@ -220,10 +220,10 @@ function sanitizeLogData(data: any): any {
  */
 function getTimestamp(): string {
   const now = new Date();
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-  const ms = String(now.getMilliseconds()).padStart(3, '0');
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+  const ms = String(now.getMilliseconds()).padStart(3, "0");
   return `${hours}:${minutes}:${seconds}.${ms}`;
 }
 
@@ -434,7 +434,7 @@ export const logger = {
     if (electronLog.transports?.file) {
       return electronLog.transports.file.getFile().path;
     }
-    return 'Logs not available in renderer';
+    return "Logs not available in renderer";
   },
 
   /**
@@ -442,7 +442,7 @@ export const logger = {
    *
    * @param level - Log level (error, warn, info, debug, verbose, silly, false)
    */
-  setLevel(level: 'error' | 'warn' | 'info' | 'debug' | 'verbose' | 'silly' | false): void {
+  setLevel(level: "error" | "warn" | "info" | "debug" | "verbose" | "silly" | false): void {
     if (electronLog.transports?.file) {
       electronLog.transports.file.level = level;
     }
@@ -456,7 +456,7 @@ export const logger = {
    */
   setFileLogging(enabled: boolean): void {
     if (electronLog.transports?.file) {
-      electronLog.transports.file.level = enabled ? 'info' : false;
+      electronLog.transports.file.level = enabled ? "info" : false;
     }
   },
 
@@ -467,26 +467,26 @@ export const logger = {
   async clearLogs(): Promise<void> {
     try {
       if (!electronLog.transports?.file?.getFile) {
-        throw new Error('File logging not available');
+        throw new Error("File logging not available");
       }
 
       // Dynamic imports to avoid Vite bundling Node.js built-ins
-      const fs = await import('fs/promises');
-      const path = await import('path');
+      const fs = await import("fs/promises");
+      const path = await import("path");
 
       const logPath = electronLog.transports.file.getFile().path;
       const logDir = path.dirname(logPath);
 
       const files = await fs.readdir(logDir);
       for (const file of files) {
-        if (file.endsWith('.log')) {
+        if (file.endsWith(".log")) {
           await fs.unlink(path.join(logDir, file));
         }
       }
 
-      electronLog.info('Log files cleared');
+      electronLog.info("Log files cleared");
     } catch (error) {
-      electronLog.error('Failed to clear logs:', error);
+      electronLog.error("Failed to clear logs:", error);
     }
   },
 };
@@ -502,7 +502,7 @@ export const logger = {
  */
 export function startTimer(operationName: string) {
   const start = performance.now();
-  const log = logger.namespace('Timer');
+  const log = logger.namespace("Timer");
 
   return {
     /**
@@ -556,19 +556,19 @@ export default logger;
  */
 export const debugModes = {
   /** Verbose logging for document processing operations */
-  DOCUMENT_PROCESSING: 'debug:documentProcessing',
+  DOCUMENT_PROCESSING: "debug:documentProcessing",
   /** Verbose logging for session state transitions */
-  SESSION_STATE: 'debug:sessionState',
+  SESSION_STATE: "debug:sessionState",
   /** Verbose logging for IPC calls between main/renderer */
-  IPC_CALLS: 'debug:ipcCalls',
+  IPC_CALLS: "debug:ipcCalls",
   /** Verbose logging for IndexedDB operations */
-  DATABASE: 'debug:database',
+  DATABASE: "debug:database",
   /** Verbose logging for hyperlink operations */
-  HYPERLINKS: 'debug:hyperlinks',
+  HYPERLINKS: "debug:hyperlinks",
   /** Verbose logging for backup operations */
-  BACKUPS: 'debug:backups',
+  BACKUPS: "debug:backups",
   /** Verbose logging for list/bullet processing operations */
-  LIST_PROCESSING: 'debug:listProcessing',
+  LIST_PROCESSING: "debug:listProcessing",
 } as const;
 
 export type DebugMode = (typeof debugModes)[keyof typeof debugModes];
@@ -587,10 +587,10 @@ export type DebugMode = (typeof debugModes)[keyof typeof debugModes];
  * ```
  */
 export function isDebugEnabled(mode: DebugMode): boolean {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+  if (typeof window === "undefined" || typeof localStorage === "undefined") {
     return false;
   }
-  return localStorage.getItem(mode) === 'true';
+  return localStorage.getItem(mode) === "true";
 }
 
 /**
@@ -609,16 +609,16 @@ export function isDebugEnabled(mode: DebugMode): boolean {
  * ```
  */
 export function setDebugMode(mode: DebugMode, enabled: boolean): void {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+  if (typeof window === "undefined" || typeof localStorage === "undefined") {
     return;
   }
   if (enabled) {
-    localStorage.setItem(mode, 'true');
+    localStorage.setItem(mode, "true");
   } else {
     localStorage.removeItem(mode);
   }
-  const log = logger.namespace('Debug');
-  log.info(`Debug mode ${mode} ${enabled ? 'enabled' : 'disabled'}`);
+  const log = logger.namespace("Debug");
+  log.info(`Debug mode ${mode} ${enabled ? "enabled" : "disabled"}`);
 }
 
 /**
@@ -634,11 +634,11 @@ export function setDebugMode(mode: DebugMode, enabled: boolean): void {
  * ```
  */
 export function getEnabledDebugModes(): DebugMode[] {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+  if (typeof window === "undefined" || typeof localStorage === "undefined") {
     return [];
   }
   return Object.values(debugModes).filter(
-    (mode) => localStorage.getItem(mode) === 'true'
+    (mode) => localStorage.getItem(mode) === "true"
   ) as DebugMode[];
 }
 
@@ -647,13 +647,13 @@ export function getEnabledDebugModes(): DebugMode[] {
  * Useful for resetting debug state after troubleshooting.
  */
 export function disableAllDebugModes(): void {
-  const log = logger.namespace('Debug');
+  const log = logger.namespace("Debug");
   Object.values(debugModes).forEach((mode) => {
-    if (typeof localStorage !== 'undefined') {
+    if (typeof localStorage !== "undefined") {
       localStorage.removeItem(mode);
     }
   });
-  log.info('All debug modes disabled');
+  log.info("All debug modes disabled");
 }
 
 /**
@@ -698,20 +698,20 @@ export function createDebugLogger(mode: DebugMode, namespace: string) {
  * Initialize logging on startup (call from main process)
  */
 export function initializeLogging(): void {
-  const log = logger.namespace('Logger');
+  const log = logger.namespace("Logger");
 
-  log.info('═══════════════════════════════════════════════════════════');
-  log.info('  Documentation Hub - Logging Initialized');
-  log.info('═══════════════════════════════════════════════════════════');
-  log.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  log.info(`Process: ${isRenderer ? 'Renderer' : 'Main'}`);
+  log.info("═══════════════════════════════════════════════════════════");
+  log.info("  Documentation Hub - Logging Initialized");
+  log.info("═══════════════════════════════════════════════════════════");
+  log.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+  log.info(`Process: ${isRenderer ? "Renderer" : "Main"}`);
 
   if (electronLog.transports?.file) {
     log.info(`Log file: ${electronLog.transports.file.getFile().path}`);
     log.info(
-      `Log level: File=${electronLog.transports.file.level}, Console=${electronLog.transports.console?.level || 'N/A'}`
+      `Log level: File=${electronLog.transports.file.level}, Console=${electronLog.transports.console?.level || "N/A"}`
     );
   }
 
-  log.info('═══════════════════════════════════════════════════════════');
+  log.info("═══════════════════════════════════════════════════════════");
 }

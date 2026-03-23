@@ -17,20 +17,33 @@ jest.mock("docxmlater", () => {
   class MockRun {
     private text: string;
     private formatting: any;
-    constructor(text: string = "", formatting: any = {}) {
+    private _content: any[];
+    constructor(text: string = "", formatting: any = {}, content?: any[]) {
       this.text = text;
       this.formatting = formatting;
+      this._content = content ?? [];
     }
-    getText() { return this.text; }
-    getFormatting() { return this.formatting; }
+    getText() {
+      return this.text;
+    }
+    getFormatting() {
+      return this.formatting;
+    }
+    getContent() {
+      return this._content;
+    }
   }
 
   class MockHyperlink {
-    getText() { return "link text"; }
+    getText() {
+      return "link text";
+    }
   }
 
   class MockImageRun extends MockRun {
-    getImageElement() { return {}; }
+    getImageElement() {
+      return {};
+    }
   }
 
   class MockShape {}
@@ -44,8 +57,12 @@ jest.mock("docxmlater", () => {
       this.text = text;
       this.content = content;
     }
-    getText() { return this.text; }
-    getContent() { return this.content; }
+    getText() {
+      return this.text;
+    }
+    getContent() {
+      return this.content;
+    }
   }
 
   class MockParagraph {
@@ -55,13 +72,15 @@ jest.mock("docxmlater", () => {
     private bookmarksStart: any[];
     private bookmarksEnd: any[];
 
-    constructor(opts: {
-      content?: any[];
-      style?: string;
-      alignment?: string;
-      bookmarksStart?: any[];
-      bookmarksEnd?: any[];
-    } = {}) {
+    constructor(
+      opts: {
+        content?: any[];
+        style?: string;
+        alignment?: string;
+        bookmarksStart?: any[];
+        bookmarksEnd?: any[];
+      } = {}
+    ) {
       this.content = opts.content ?? [];
       this.style = opts.style ?? "";
       this.alignment = opts.alignment ?? "left";
@@ -69,18 +88,30 @@ jest.mock("docxmlater", () => {
       this.bookmarksEnd = opts.bookmarksEnd ?? [];
     }
 
-    getContent() { return this.content; }
+    getContent() {
+      return this.content;
+    }
     getText() {
       return this.content
         .filter((c: any) => c.getText)
         .map((c: any) => c.getText())
         .join("");
     }
-    getStyle() { return this.style; }
-    getAlignment() { return this.alignment; }
-    getBookmarksStart() { return this.bookmarksStart; }
-    getBookmarksEnd() { return this.bookmarksEnd; }
-    getRuns() { return this.content.filter((c: any) => c instanceof MockRun && !(c instanceof MockImageRun)); }
+    getStyle() {
+      return this.style;
+    }
+    getAlignment() {
+      return this.alignment;
+    }
+    getBookmarksStart() {
+      return this.bookmarksStart;
+    }
+    getBookmarksEnd() {
+      return this.bookmarksEnd;
+    }
+    getRuns() {
+      return this.content.filter((c: any) => c instanceof MockRun && !(c instanceof MockImageRun));
+    }
   }
 
   return {
@@ -96,9 +127,7 @@ jest.mock("docxmlater", () => {
 });
 
 // Import mocked module — jest.mock is hoisted above imports by Jest
-import {
-  Paragraph, Run, Hyperlink, ImageRun, Shape, TextBox, Field, Revision,
-} from "docxmlater";
+import { Paragraph, Run, Hyperlink, ImageRun, Shape, TextBox, Field, Revision } from "docxmlater";
 
 describe("isParagraphBlank", () => {
   it("should return true for empty paragraph", () => {
@@ -167,6 +196,19 @@ describe("isParagraphBlank", () => {
     const para = new Paragraph({ content: [new Revision("  ")] });
     expect(isParagraphBlank(para)).toBe(true);
   });
+
+  it("should return false for paragraph with VML image run", () => {
+    const vmlRun = new Run("", {}, [{ type: "vml", rawXml: "<v:imagedata r:id=\"rId5\"/>" }]);
+    const para = new Paragraph({ content: [vmlRun] });
+    expect(isParagraphBlank(para)).toBe(false);
+  });
+
+  it("should return false for Revision containing VML image run", () => {
+    const vmlRun = new Run("", {}, [{ type: "vml", rawXml: "<v:imagedata r:id=\"rId5\"/>" }]);
+    const rev = new Revision("", [vmlRun]);
+    const para = new Paragraph({ content: [rev] });
+    expect(isParagraphBlank(para)).toBe(false);
+  });
 });
 
 describe("startsWithBoldColon", () => {
@@ -198,20 +240,14 @@ describe("startsWithBoldColon", () => {
 
   it("should skip leading ImageRun and find bold text Run with colon", () => {
     const para = new Paragraph({
-      content: [
-        new ImageRun(),
-        new Run("Exception:", { bold: true }),
-      ],
+      content: [new ImageRun(), new Run("Exception:", { bold: true })],
     });
     expect(startsWithBoldColon(para)).toBe(true);
   });
 
   it("should skip leading ImageRun and return false when text Run is not bold", () => {
     const para = new Paragraph({
-      content: [
-        new ImageRun(),
-        new Run(" For FEP mail tag and credit scenarios"),
-      ],
+      content: [new ImageRun(), new Run(" For FEP mail tag and credit scenarios")],
     });
     expect(startsWithBoldColon(para)).toBe(false);
   });
@@ -295,6 +331,12 @@ describe("isTextOnlyParagraph", () => {
 
   it("should return false for paragraph with shape", () => {
     const para = new Paragraph({ content: [new Shape()] });
+    expect(isTextOnlyParagraph(para)).toBe(false);
+  });
+
+  it("should return false for paragraph with VML image run", () => {
+    const vmlRun = new Run("", {}, [{ type: "vml", rawXml: "<v:imagedata r:id=\"rId5\"/>" }]);
+    const para = new Paragraph({ content: [vmlRun] });
     expect(isTextOnlyParagraph(para)).toBe(false);
   });
 });

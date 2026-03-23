@@ -1,4 +1,3 @@
-
 import { Run, ImageRun, Image } from "docxmlater";
 import { normalizeRunWhitespace } from "../whitespace";
 
@@ -20,7 +19,9 @@ function createTextRun(text: string): jest.Mocked<Run> {
   let currentText = text;
   return {
     getText: jest.fn().mockImplementation(() => currentText),
-    setText: jest.fn().mockImplementation((t: string) => { currentText = t; }),
+    setText: jest.fn().mockImplementation((t: string) => {
+      currentText = t;
+    }),
   } as unknown as jest.Mocked<Run>;
 }
 
@@ -31,9 +32,7 @@ function createImageRun(small: boolean): jest.Mocked<ImageRun> {
   imgRun.setText = jest.fn();
   imgRun.getImageElement = jest.fn().mockReturnValue(mockImage);
 
-  mockIsImageSmall.mockImplementation((img: Image) =>
-    img === mockImage ? small : false
-  );
+  mockIsImageSmall.mockImplementation((img: Image) => (img === mockImage ? small : false));
 
   return imgRun as unknown as jest.Mocked<ImageRun>;
 }
@@ -271,7 +270,10 @@ describe("normalizeRunWhitespace", () => {
 
     it("should detect cross-run double space across null-text runs", () => {
       const run0 = createTextRun("word ");
-      const nullRun = { getText: jest.fn().mockReturnValue(null), setText: jest.fn() } as unknown as jest.Mocked<Run>;
+      const nullRun = {
+        getText: jest.fn().mockReturnValue(null),
+        setText: jest.fn(),
+      } as unknown as jest.Mocked<Run>;
       const run2 = createTextRun(" word");
       const count = normalizeRunWhitespace([run0, nullRun as unknown as Run, run2]);
       expect(count).toBeGreaterThanOrEqual(1);
@@ -289,7 +291,10 @@ describe("normalizeRunWhitespace", () => {
     });
 
     it("should handle null text run", () => {
-      const run = { getText: jest.fn().mockReturnValue(null), setText: jest.fn() } as unknown as jest.Mocked<Run>;
+      const run = {
+        getText: jest.fn().mockReturnValue(null),
+        setText: jest.fn(),
+      } as unknown as jest.Mocked<Run>;
       const count = normalizeRunWhitespace([run]);
       expect(count).toBe(0);
     });

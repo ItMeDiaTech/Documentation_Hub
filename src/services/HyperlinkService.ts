@@ -10,14 +10,14 @@ import {
   HyperlinkType,
   HyperlinkValidationIssue,
   PowerAutomateResponse,
-  URL_PATTERNS
-} from '@/types/hyperlink';
-import { Document } from '@/types/session';
-import { UserSettings } from '@/types/settings';
-import { logger } from '@/utils/logger';
-import { sanitizeUrl, validatePowerAutomateUrl } from '@/utils/urlHelpers';
-import { removeEmEnVariants } from '@/utils/textSanitizer';
-import { extractContentId, extractDocumentId } from '@/utils/urlPatterns';
+  URL_PATTERNS,
+} from "@/types/hyperlink";
+import { Document } from "@/types/session";
+import { UserSettings } from "@/types/settings";
+import { logger } from "@/utils/logger";
+import { sanitizeUrl, validatePowerAutomateUrl } from "@/utils/urlHelpers";
+import { removeEmEnVariants } from "@/utils/textSanitizer";
+import { extractContentId, extractDocumentId } from "@/utils/urlPatterns";
 
 /**
  * Extended API response with results cache for O(1) lookups
@@ -61,7 +61,7 @@ export class HyperlinkService {
   private static instance: HyperlinkService;
   private apiSettings: HyperlinkApiSettings | null = null;
   private userSettings: UserSettings | null = null;
-  private log = logger.namespace('HyperlinkService');
+  private log = logger.namespace("HyperlinkService");
 
   private constructor() {}
 
@@ -113,10 +113,10 @@ export class HyperlinkService {
       // Validate URL format
       const validation = validatePowerAutomateUrl(sanitizedUrl);
       if (!validation.valid) {
-        this.log.error('Invalid PowerAutomate URL configuration:', validation.issues);
+        this.log.error("Invalid PowerAutomate URL configuration:", validation.issues);
         // Still set it but log the errors - let API call handle the failure
       } else if (validation.warnings.length > 0) {
-        this.log.warn('PowerAutomate URL warnings:', validation.warnings);
+        this.log.warn("PowerAutomate URL warnings:", validation.warnings);
       }
 
       this.apiSettings = {
@@ -126,12 +126,12 @@ export class HyperlinkService {
         retryDelay: 1000,
       };
 
-      this.log.debug('Initialized API settings with sanitized URL:', sanitizedUrl);
+      this.log.debug("Initialized API settings with sanitized URL:", sanitizedUrl);
     }
 
     // Log local dictionary status
     if (settings.localDictionary?.enabled) {
-      this.log.info('Local dictionary mode enabled - using SQLite database for lookups');
+      this.log.info("Local dictionary mode enabled - using SQLite database for lookups");
     }
   }
 
@@ -171,7 +171,9 @@ export class HyperlinkService {
       if (lookupIds.length === 0) {
         // No IDs found is not a failure - it just means no hyperlinks need API processing
         // Return success with empty results so other formatting operations can continue
-        this.log.warn('No Content_ID or Document_ID patterns found in hyperlinks - skipping API call');
+        this.log.warn(
+          "No Content_ID or Document_ID patterns found in hyperlinks - skipping API call"
+        );
         return {
           success: true,
           timestamp: new Date(),
@@ -183,11 +185,11 @@ export class HyperlinkService {
       }
 
       // Check if electronAPI is available (handles SSR, tests, and browser contexts)
-      if (typeof window === 'undefined' || !window.electronAPI) {
+      if (typeof window === "undefined" || !window.electronAPI) {
         return {
           success: false,
           timestamp: new Date(),
-          error: 'Electron API not available - local dictionary requires Electron environment',
+          error: "Electron API not available - local dictionary requires Electron environment",
         };
       }
 
@@ -200,7 +202,7 @@ export class HyperlinkService {
         return {
           success: false,
           timestamp: new Date(),
-          error: response.error || 'Local dictionary lookup failed',
+          error: response.error || "Local dictionary lookup failed",
         };
       }
 
@@ -211,20 +213,20 @@ export class HyperlinkService {
 
       const results: HyperlinkApiResult[] = response.results.map((result) => {
         // Map local dictionary result to HyperlinkApiResult format
-        const normalizedStatus: HyperlinkApiResult['status'] =
-          result.Status?.toLowerCase() === 'deprecated'
-            ? 'deprecated'
-            : result.Status?.toLowerCase() === 'expired'
-              ? 'expired'
-              : result.Status?.toLowerCase() === 'not_found'
-                ? 'not_found'
-                : 'active';
+        const normalizedStatus: HyperlinkApiResult["status"] =
+          result.Status?.toLowerCase() === "deprecated"
+            ? "deprecated"
+            : result.Status?.toLowerCase() === "expired"
+              ? "expired"
+              : result.Status?.toLowerCase() === "not_found"
+                ? "not_found"
+                : "active";
 
         const processed: HyperlinkApiResult = {
-          url: '',
-          documentId: result.Document_ID || '',
-          contentId: result.Content_ID || '',
-          title: result.Title || '',
+          url: "",
+          documentId: result.Document_ID || "",
+          contentId: result.Content_ID || "",
+          title: result.Title || "",
           status: normalizedStatus,
           metadata: {},
         };
@@ -253,11 +255,11 @@ export class HyperlinkService {
         processedHyperlinks: hyperlinks,
       };
     } catch (error) {
-      this.log.error('Local dictionary lookup error:', error);
+      this.log.error("Local dictionary lookup error:", error);
       return {
         success: false,
         timestamp: new Date(),
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: error instanceof Error ? error.message : "Unknown error occurred",
       };
     }
   }
@@ -276,28 +278,28 @@ export class HyperlinkService {
     // Simulate finding hyperlinks
     const mockHyperlinks: DetailedHyperlinkInfo[] = [
       {
-        id: 'rId1',
-        relationshipId: 'rId1',
+        id: "rId1",
+        relationshipId: "rId1",
         element: {} as any,
-        containingPart: 'document.xml',
-        url: 'https://thesource.cvshealth.com/docid=TSRC-ABC-123456',
-        displayText: 'Click here',
-        type: 'external' as HyperlinkType,
+        containingPart: "document.xml",
+        url: "https://thesource.cvshealth.com/docid=TSRC-ABC-123456",
+        displayText: "Click here",
+        type: "external" as HyperlinkType,
         isInternal: false,
         isValid: true,
-        context: 'See the document here: Click here for more information.',
+        context: "See the document here: Click here for more information.",
       },
       {
-        id: 'rId2',
-        relationshipId: 'rId2',
+        id: "rId2",
+        relationshipId: "rId2",
         element: {} as any,
-        containingPart: 'document.xml',
-        url: 'https://thesource.cvshealth.com/docid=CMS-XYZ-789012',
-        displayText: 'Reference',
-        type: 'external' as HyperlinkType,
+        containingPart: "document.xml",
+        url: "https://thesource.cvshealth.com/docid=CMS-XYZ-789012",
+        displayText: "Reference",
+        type: "external" as HyperlinkType,
         isInternal: false,
         isValid: true,
-        context: 'For additional details, see the Reference link.',
+        context: "For additional details, see the Reference link.",
       },
     ];
 
@@ -345,7 +347,7 @@ export class HyperlinkService {
     // Check if local dictionary mode is enabled
     // When enabled, use local SQLite database instead of Power Automate API
     if (this.isLocalDictionaryEnabled()) {
-      this.log.info('Using local dictionary for hyperlink processing (API call bypassed)');
+      this.log.info("Using local dictionary for hyperlink processing (API call bypassed)");
       return this.processHyperlinksWithLocalDictionary(hyperlinks);
     }
 
@@ -355,7 +357,7 @@ export class HyperlinkService {
       return {
         success: false,
         timestamp: new Date(),
-        error: 'No API settings configured. Please configure PowerAutomate URL in settings.',
+        error: "No API settings configured. Please configure PowerAutomate URL in settings.",
       };
     }
 
@@ -385,7 +387,9 @@ export class HyperlinkService {
       if (lookupIds.length === 0) {
         // No IDs found is not a failure - it just means no hyperlinks need API processing
         // Return success with empty results so other formatting operations can continue
-        this.log.warn('No Content_ID or Document_ID patterns found in hyperlinks - skipping API call');
+        this.log.warn(
+          "No Content_ID or Document_ID patterns found in hyperlinks - skipping API call"
+        );
         return {
           success: true,
           timestamp: new Date(),
@@ -407,9 +411,9 @@ export class HyperlinkService {
         Lookup_ID: lookupIds,
         Hyperlinks_Checked: hyperlinksChecked,
         Total_Hyperlinks: totalHyperlinks,
-        First_Name: userProfile?.firstName || '',
-        Last_Name: userProfile?.lastName || '',
-        Email: userProfile?.email || '',
+        First_Name: userProfile?.firstName || "",
+        Last_Name: userProfile?.lastName || "",
+        Email: userProfile?.email || "",
       };
 
       // Make API call
@@ -424,7 +428,7 @@ export class HyperlinkService {
       return {
         success: false,
         timestamp: new Date(),
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: error instanceof Error ? error.message : "Unknown error occurred",
       };
     }
   }
@@ -495,7 +499,7 @@ export class HyperlinkService {
 
       if (processableHyperlinks.length === 0) {
         result.success = true;
-        result.errorMessages.push('No processable hyperlinks found in the document');
+        result.errorMessages.push("No processable hyperlinks found in the document");
         return result;
       }
 
@@ -512,7 +516,7 @@ export class HyperlinkService {
 
       // Phase 3: Apply content ID appending if configured
       if (options.appendContentId) {
-        const contentId = options.contentIdToAppend || '#content';
+        const contentId = options.contentIdToAppend || "#content";
         const appendResult = this.appendContentIdToHyperlinks(processableHyperlinks, contentId);
         result.appendedContentIds = appendResult.appendedCount;
         result.updatedUrls += appendResult.appendedCount;
@@ -531,14 +535,14 @@ export class HyperlinkService {
         displayText: h.displayText,
         type: h.type,
         location: h.containingPart,
-        status: 'processed' as const,
+        status: "processed" as const,
         modifications: [],
       }));
 
       result.modifiedHyperlinks = result.updatedUrls + result.updatedDisplayTexts;
       result.success = true;
     } catch (error) {
-      result.errorMessages.push(error instanceof Error ? error.message : 'Unknown error occurred');
+      result.errorMessages.push(error instanceof Error ? error.message : "Unknown error occurred");
     } finally {
       result.duration = Date.now() - startTime;
     }
@@ -577,10 +581,10 @@ export class HyperlinkService {
         issues.push({
           hyperlinkId: hyperlink.id,
           url: hyperlink.url,
-          issueType: 'invalid_url',
-          severity: 'error',
-          message: 'Invalid URL format',
-          suggestion: 'Fix the URL format or remove the hyperlink',
+          issueType: "invalid_url",
+          severity: "error",
+          message: "Invalid URL format",
+          suggestion: "Fix the URL format or remove the hyperlink",
           autoFixable: false,
         });
       }
@@ -590,10 +594,10 @@ export class HyperlinkService {
         issues.push({
           hyperlinkId: hyperlink.id,
           url: hyperlink.url,
-          issueType: 'invalid_url',
-          severity: 'warning',
-          message: 'TheSource URL missing content ID',
-          suggestion: 'Append #content to the URL',
+          issueType: "invalid_url",
+          severity: "warning",
+          message: "TheSource URL missing content ID",
+          suggestion: "Append #content to the URL",
           autoFixable: true,
         });
       }
@@ -652,9 +656,9 @@ export class HyperlinkService {
       stats.byType[hyperlink.type]++;
 
       // Count by location
-      if (hyperlink.containingPart.includes('header')) {
+      if (hyperlink.containingPart.includes("header")) {
         stats.byLocation.headers++;
-      } else if (hyperlink.containingPart.includes('footer')) {
+      } else if (hyperlink.containingPart.includes("footer")) {
         stats.byLocation.footers++;
       } else {
         stats.byLocation.document++;
@@ -668,7 +672,7 @@ export class HyperlinkService {
       }
 
       // Count content IDs
-      if (hyperlink.url.includes('#content')) {
+      if (hyperlink.url.includes("#content")) {
         stats.withContentId++;
       } else {
         stats.withoutContentId++;
@@ -696,16 +700,16 @@ export class HyperlinkService {
 
     if (options.urlPattern) {
       const pattern =
-        typeof options.urlPattern === 'string'
-          ? new RegExp(options.urlPattern, 'i')
+        typeof options.urlPattern === "string"
+          ? new RegExp(options.urlPattern, "i")
           : options.urlPattern;
       if (!pattern.test(hyperlink.url)) return false;
     }
 
     if (options.displayTextPattern) {
       const pattern =
-        typeof options.displayTextPattern === 'string'
-          ? new RegExp(options.displayTextPattern, 'i')
+        typeof options.displayTextPattern === "string"
+          ? new RegExp(options.displayTextPattern, "i")
           : options.displayTextPattern;
       if (!pattern.test(hyperlink.displayText)) return false;
     }
@@ -769,10 +773,15 @@ export class HyperlinkService {
         let newDisplayText = hyperlink.displayText;
 
         // Remove existing Content_ID pattern (4-6 digits in parentheses)
-        newDisplayText = newDisplayText.replace(/\s*\(\d{4,6}\)\s*$/, '');
+        newDisplayText = newDisplayText.replace(/\s*\((?:[A-Za-z0-9]+-)*\d{4,6}\)\s*$/, "");
 
         // Update title if mismatch detected (normalize em/en dashes and spaces)
-        const normalizedTitle = apiResult.title ? removeEmEnVariants(apiResult.title) : '';
+        // Strip content ID from the API title too, since it may include prefixed IDs like "(CMS-PRD1-086897)"
+        const normalizedTitle = apiResult.title
+          ? removeEmEnVariants(apiResult.title)
+              .replace(/\s*\((?:[A-Za-z0-9]+-)*\d{4,6}\)\s*$/, "")
+              .trimEnd()
+          : "";
         if (normalizedTitle && newDisplayText.trim() !== normalizedTitle.trim()) {
           newDisplayText = normalizedTitle;
         }
@@ -782,14 +791,14 @@ export class HyperlinkService {
           // Extract last digits and pad with zeros if needed
           const contentIdMatch = apiResult.contentId.match(/(\d+)$/);
           if (contentIdMatch) {
-            const digits = contentIdMatch[1].padStart(6, '0').slice(-6);
+            const digits = contentIdMatch[1].padStart(6, "0").slice(-6);
             newDisplayText = `${newDisplayText.trim()} (${digits})`;
           }
         }
 
         // Add status indicators for deprecated or expired documents
-        if (apiResult.status === 'deprecated' || apiResult.status === 'expired') {
-          newDisplayText += ' - Expired';
+        if (apiResult.status === "deprecated" || apiResult.status === "expired") {
+          newDisplayText += " - Expired";
         }
 
         if (newDisplayText !== hyperlink.displayText) {
@@ -801,8 +810,8 @@ export class HyperlinkService {
         // This prevents marking external/internal links that were never meant to be processed
         // (Note: We only reach here if urlContentId or urlDocumentId exists, due to the pre-filter above)
         this.log.warn(`No API result for hyperlink with Lookup_ID: ${hyperlink.url}`);
-        if (!hyperlink.displayText.includes(' - Not Found')) {
-          hyperlink.displayText += ' - Not Found';
+        if (!hyperlink.displayText.includes(" - Not Found")) {
+          hyperlink.displayText += " - Not Found";
           updatedDisplayTexts++;
         }
       }
@@ -862,12 +871,12 @@ export class HyperlinkService {
     // =========================================================================
     // COMPREHENSIVE LOGGING - API CALL START
     // =========================================================================
-    this.log.info('═══════════════════════════════════════════════════════════════');
-    this.log.info('[HyperlinkService] Starting Power Automate API Call');
-    this.log.info('═══════════════════════════════════════════════════════════════');
+    this.log.info("═══════════════════════════════════════════════════════════════");
+    this.log.info("[HyperlinkService] Starting Power Automate API Call");
+    this.log.info("═══════════════════════════════════════════════════════════════");
     this.log.info(`[HyperlinkService] Timestamp: ${new Date().toISOString()}`);
     this.log.info(`[HyperlinkService] Lookup IDs: ${request.Lookup_ID.length} IDs`);
-    this.log.info(`[HyperlinkService] IDs: ${request.Lookup_ID.join(', ')}`);
+    this.log.info(`[HyperlinkService] IDs: ${request.Lookup_ID.join(", ")}`);
     this.log.info(`[HyperlinkService] Hyperlinks Checked: ${request.Hyperlinks_Checked}`);
     this.log.info(`[HyperlinkService] Total Hyperlinks: ${request.Total_Hyperlinks}`);
     this.log.info(`[HyperlinkService] User: ${request.First_Name} ${request.Last_Name}`);
@@ -878,7 +887,7 @@ export class HyperlinkService {
     const sanitizedUrl = sanitizeUrl(settings.apiUrl);
 
     if (sanitizedUrl !== settings.apiUrl) {
-      this.log.info('[HyperlinkService] URL sanitized - Fixed encoding issues');
+      this.log.info("[HyperlinkService] URL sanitized - Fixed encoding issues");
     }
 
     this.log.info(`[HyperlinkService] API URL: ${sanitizedUrl}`);
@@ -886,17 +895,17 @@ export class HyperlinkService {
     // Validate the URL before using it
     const validation = validatePowerAutomateUrl(sanitizedUrl);
     if (!validation.valid) {
-      const errorMsg = `Invalid PowerAutomate URL: ${validation.issues.join(', ')}`;
-      this.log.error('[HyperlinkService] URL Validation FAILED:', errorMsg);
+      const errorMsg = `Invalid PowerAutomate URL: ${validation.issues.join(", ")}`;
+      this.log.error("[HyperlinkService] URL Validation FAILED:", errorMsg);
       throw new Error(errorMsg);
     }
-    this.log.info('[HyperlinkService] URL Validation: PASSED');
+    this.log.info("[HyperlinkService] URL Validation: PASSED");
 
     // Use main process net.request via IPC (matches C# HttpClient behavior on corporate networks)
     // This uses Chromium's networking stack which respects system proxy and certificates
-    if (typeof window !== 'undefined' && window.electronAPI?.callPowerAutomateApi) {
-      this.log.info('[HyperlinkService] Using IPC -> Main Process -> net.request');
-      this.log.info('───────────────────────────────────────────────────────────────');
+    if (typeof window !== "undefined" && window.electronAPI?.callPowerAutomateApi) {
+      this.log.info("[HyperlinkService] Using IPC -> Main Process -> net.request");
+      this.log.info("───────────────────────────────────────────────────────────────");
 
       let lastError: Error | null = null;
 
@@ -904,7 +913,9 @@ export class HyperlinkService {
         try {
           if (attempt > 0) {
             const delay = Math.pow(2, attempt) * 1000;
-            this.log.info(`[HyperlinkService] Retry attempt ${attempt + 1} of ${maxRetries} (waiting ${delay}ms)`);
+            this.log.info(
+              `[HyperlinkService] Retry attempt ${attempt + 1} of ${maxRetries} (waiting ${delay}ms)`
+            );
             await new Promise((resolve) => setTimeout(resolve, delay));
           }
 
@@ -920,17 +931,24 @@ export class HyperlinkService {
           const duration = Date.now() - startTime;
 
           if (!response.success) {
-            this.log.error('[HyperlinkService] API call FAILED');
+            this.log.error("[HyperlinkService] API call FAILED");
             this.log.error(`[HyperlinkService] Error: ${response.error}`);
             this.log.error(`[HyperlinkService] Duration: ${duration}ms`);
             throw new Error(response.error || `API returned status ${response.statusCode}`);
           }
 
-          const data = response.data as { Results?: Array<{ Document_ID?: string; Content_ID?: string; Title?: string; Status?: string }> };
+          const data = response.data as {
+            Results?: Array<{
+              Document_ID?: string;
+              Content_ID?: string;
+              Title?: string;
+              Status?: string;
+            }>;
+          };
 
-          this.log.info('═══════════════════════════════════════════════════════════════');
-          this.log.info('[HyperlinkService] API Call SUCCESS');
-          this.log.info('═══════════════════════════════════════════════════════════════');
+          this.log.info("═══════════════════════════════════════════════════════════════");
+          this.log.info("[HyperlinkService] API Call SUCCESS");
+          this.log.info("═══════════════════════════════════════════════════════════════");
           this.log.info(`[HyperlinkService] Status Code: ${response.statusCode}`);
           this.log.info(`[HyperlinkService] Duration: ${duration}ms`);
           this.log.info(`[HyperlinkService] Results: ${data?.Results?.length || 0} items`);
@@ -946,90 +964,102 @@ export class HyperlinkService {
             this.log.info(`[HyperlinkService] Parsed ${data.Results.length} results into cache`);
           }
 
-          this.log.info('═══════════════════════════════════════════════════════════════');
+          this.log.info("═══════════════════════════════════════════════════════════════");
 
           return apiResponse;
         } catch (error) {
           lastError = error as Error;
           this.log.error(`[HyperlinkService] Attempt ${attempt + 1} failed: ${lastError.message}`);
           // Check if it's a timeout error
-          if (error instanceof Error && error.message.includes('timeout')) {
-            this.log.error('[HyperlinkService] Timeout detected, not retrying');
+          if (error instanceof Error && error.message.includes("timeout")) {
+            this.log.error("[HyperlinkService] Timeout detected, not retrying");
             break;
           }
         }
       }
 
-      if (lastError && lastError.message.includes('timeout')) {
+      if (lastError && lastError.message.includes("timeout")) {
         this.log.error(`[HyperlinkService] Final error: API request timeout after ${timeoutMs}ms`);
         throw new Error(`API request timeout after ${timeoutMs}ms`);
       }
 
       this.log.error(`[HyperlinkService] All ${maxRetries} attempts failed`);
-      throw lastError || new Error('API request failed after retries');
+      throw lastError || new Error("API request failed after retries");
     }
 
     // No Electron API available - provide detailed diagnostics
-    const windowExists = typeof window !== 'undefined';
-    const apiExists = windowExists && typeof window.electronAPI !== 'undefined';
-    const methodExists = apiExists && typeof window.electronAPI?.callPowerAutomateApi === 'function';
+    const windowExists = typeof window !== "undefined";
+    const apiExists = windowExists && typeof window.electronAPI !== "undefined";
+    const methodExists =
+      apiExists && typeof window.electronAPI?.callPowerAutomateApi === "function";
 
-    this.log.error('[HyperlinkService] ERROR: Electron API not available!');
-    this.log.error(`[HyperlinkService] Diagnostics: window=${windowExists}, electronAPI=${apiExists}, callPowerAutomateApi=${methodExists}`);
+    this.log.error("[HyperlinkService] ERROR: Electron API not available!");
+    this.log.error(
+      `[HyperlinkService] Diagnostics: window=${windowExists}, electronAPI=${apiExists}, callPowerAutomateApi=${methodExists}`
+    );
 
     if (!windowExists) {
-      this.log.error('[HyperlinkService] Running in non-browser context (SSR/Node.js)');
+      this.log.error("[HyperlinkService] Running in non-browser context (SSR/Node.js)");
     } else if (!apiExists) {
-      this.log.error('[HyperlinkService] Preload script may not have loaded - check BrowserWindow preload configuration');
+      this.log.error(
+        "[HyperlinkService] Preload script may not have loaded - check BrowserWindow preload configuration"
+      );
     } else if (!methodExists) {
-      this.log.error('[HyperlinkService] electronAPI exists but callPowerAutomateApi method is missing');
+      this.log.error(
+        "[HyperlinkService] electronAPI exists but callPowerAutomateApi method is missing"
+      );
     }
 
-    throw new Error('Electron API not available - cannot make API call. Ensure the app is running in Electron.');
+    throw new Error(
+      "Electron API not available - cannot make API call. Ensure the app is running in Electron."
+    );
   }
 
   /**
    * Parse API results into standardized format with caching
    * Accepts results from both IPC (optional fields) and direct API (required fields)
    */
-  private parseApiResults(results: Array<{
-    Document_ID?: string;
-    Content_ID?: string;
-    Title?: string;
-    Status?: string;
-  }>): HyperlinkApiResponse['body'] {
+  private parseApiResults(
+    results: Array<{
+      Document_ID?: string;
+      Content_ID?: string;
+      Title?: string;
+      Status?: string;
+    }>
+  ): HyperlinkApiResponse["body"] {
     const resultsMap = new Map<string, HyperlinkApiResult>();
 
-    const parsedResults = results?.map((result) => {
-      // Trim whitespace from all fields as specified
-      const rawStatus = result.Status?.trim() || 'Active';
-      // Normalize status to match HyperlinkApiResult type
-      const normalizedStatus: HyperlinkApiResult['status'] =
-        rawStatus.toLowerCase() === 'deprecated'
-          ? 'deprecated'
-          : rawStatus.toLowerCase() === 'expired'
-            ? 'expired'
-            : rawStatus.toLowerCase() === 'moved'
-              ? 'moved'
-              : rawStatus.toLowerCase() === 'not_found'
-                ? 'not_found'
-                : 'active';
+    const parsedResults =
+      results?.map((result) => {
+        // Trim whitespace from all fields as specified
+        const rawStatus = result.Status?.trim() || "Active";
+        // Normalize status to match HyperlinkApiResult type
+        const normalizedStatus: HyperlinkApiResult["status"] =
+          rawStatus.toLowerCase() === "deprecated"
+            ? "deprecated"
+            : rawStatus.toLowerCase() === "expired"
+              ? "expired"
+              : rawStatus.toLowerCase() === "moved"
+                ? "moved"
+                : rawStatus.toLowerCase() === "not_found"
+                  ? "not_found"
+                  : "active";
 
-      const processed: HyperlinkApiResult = {
-        url: '', // Will be constructed from Document_ID
-        documentId: result.Document_ID?.trim() || '',
-        contentId: result.Content_ID?.trim() || '',
-        title: result.Title?.trim() || '',
-        status: normalizedStatus,
-        metadata: {},
-      };
+        const processed: HyperlinkApiResult = {
+          url: "", // Will be constructed from Document_ID
+          documentId: result.Document_ID?.trim() || "",
+          contentId: result.Content_ID?.trim() || "",
+          title: result.Title?.trim() || "",
+          status: normalizedStatus,
+          metadata: {},
+        };
 
-      // Cache by both IDs for quick lookup
-      if (processed.documentId) resultsMap.set(processed.documentId, processed);
-      if (processed.contentId) resultsMap.set(processed.contentId, processed);
+        // Cache by both IDs for quick lookup
+        if (processed.documentId) resultsMap.set(processed.documentId, processed);
+        if (processed.contentId) resultsMap.set(processed.contentId, processed);
 
-      return processed;
-    }) || [];
+        return processed;
+      }) || [];
 
     return {
       results: parsedResults,
@@ -1042,7 +1072,7 @@ export class HyperlinkService {
 
   private isValidUrl(url: string): boolean {
     if (!url) return false;
-    if (url.startsWith('#')) return true; // Internal links
+    if (url.startsWith("#")) return true; // Internal links
 
     try {
       new URL(url);
@@ -1069,11 +1099,11 @@ export class HyperlinkService {
   private extractTitleFromUrl(url: string): string | null {
     try {
       const urlObj = new URL(url);
-      const segments = urlObj.pathname.split('/').filter(Boolean);
+      const segments = urlObj.pathname.split("/").filter(Boolean);
       if (segments.length > 0) {
         const lastSegment = segments[segments.length - 1];
         if (lastSegment && lastSegment.length > 3) {
-          return decodeURIComponent(lastSegment).replace(/[-_]/g, ' ');
+          return decodeURIComponent(lastSegment).replace(/[-_]/g, " ");
         }
       }
     } catch {

@@ -1,6 +1,6 @@
-import { cn } from '@/utils/cn';
-import type { LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { cn } from "@/utils/cn";
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 interface SettingRowProps {
   icon?: LucideIcon;
@@ -20,12 +20,7 @@ export function SettingRow({
   className,
 }: SettingRowProps) {
   return (
-    <div
-      className={cn(
-        'flex items-center justify-between gap-4 py-3',
-        className
-      )}
-    >
+    <div className={cn("flex items-center justify-between gap-4 py-3", className)}>
       <div className="flex items-start gap-3 flex-1 min-w-0">
         {Icon && (
           <div className="p-2 rounded-lg bg-muted shrink-0 mt-0.5">
@@ -41,9 +36,7 @@ export function SettingRow({
               </span>
             )}
           </div>
-          {description && (
-            <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-          )}
+          {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
         </div>
       </div>
       <div className="shrink-0">{children}</div>

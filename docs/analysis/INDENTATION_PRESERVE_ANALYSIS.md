@@ -39,7 +39,7 @@ if (!styleToApply.preserveItalic) {
   run.setItalic(styleToApply.italic);
 }
 if (!styleToApply.preserveUnderline) {
-  run.setUnderline(styleToApply.underline ? 'single' : false);
+  run.setUnderline(styleToApply.underline ? "single" : false);
 }
 ```
 
@@ -110,7 +110,7 @@ if (styleToApply) {
 **Example Code**:
 
 ```typescript
-if (styleToApply.id === 'normal') {
+if (styleToApply.id === "normal") {
   // PRESERVE INDENTATION: Read current values before applying style
   const currentFormatting = para.getFormatting();
   const originalIndentation = currentFormatting.indentation || {};

@@ -5,23 +5,22 @@
  * using the docxmlater library implementation.
  */
 
-
 import {
   WordDocumentProcessor,
   WordProcessingOptions,
   WordProcessingResult,
-} from '../WordDocumentProcessor';
-import { DocXMLaterProcessor } from '../DocXMLaterProcessor';
-import { Document, Hyperlink, Paragraph, Run } from 'docxmlater';
-import { hyperlinkService } from '../../HyperlinkService';
-import { promises as fs } from 'fs';
-import * as path from 'path';
+} from "../WordDocumentProcessor";
+import { DocXMLaterProcessor } from "../DocXMLaterProcessor";
+import { Document, Hyperlink, Paragraph, Run } from "docxmlater";
+import { hyperlinkService } from "../../HyperlinkService";
+import { promises as fs } from "fs";
+import * as path from "path";
 
 // Mock all dependencies
-jest.mock('docxmlater');
-jest.mock('../DocXMLaterProcessor');
-jest.mock('../../HyperlinkService');
-jest.mock('fs', () => ({
+jest.mock("docxmlater");
+jest.mock("../DocXMLaterProcessor");
+jest.mock("../../HyperlinkService");
+jest.mock("fs", () => ({
   promises: {
     stat: jest.fn(),
     copyFile: jest.fn(),
@@ -32,7 +31,7 @@ jest.mock('fs', () => ({
   },
 }));
 
-describe('WordDocumentProcessor', () => {
+describe("WordDocumentProcessor", () => {
   let processor: WordDocumentProcessor;
   let mockDoc: jest.Mocked<Document>;
   let mockDocXMLater: jest.Mocked<DocXMLaterProcessor>;
@@ -69,11 +68,11 @@ describe('WordDocumentProcessor', () => {
 
     mockDoc = {
       // I/O & State
-      getRawXml: jest.fn().mockReturnValue(''),
-      getPart: jest.fn().mockReturnValue(''),
+      getRawXml: jest.fn().mockReturnValue(""),
+      getPart: jest.fn().mockReturnValue(""),
       setPart: jest.fn(),
       save: jest.fn().mockResolvedValue(undefined),
-      toBuffer: jest.fn().mockResolvedValue(Buffer.from('test')),
+      toBuffer: jest.fn().mockResolvedValue(Buffer.from("test")),
       dispose: jest.fn(),
       // Paragraphs
       getParagraphs: jest.fn().mockReturnValue([]),
@@ -122,8 +121,12 @@ describe('WordDocumentProcessor', () => {
       // Lists
       normalizeTableLists: jest.fn().mockReturnValue({ tablesProcessed: 0, listsConverted: 0 }),
       removeBlanksBetweenListItems: jest.fn().mockReturnValue(0),
-      removeExtraBlankParagraphs: jest.fn().mockReturnValue({ removed: 0, added: 0, total: 0, preserved: 0 }),
-      ensureBlankLinesAfter1x1Tables: jest.fn().mockReturnValue({ tablesProcessed: 0, blankLinesAdded: 0, existingLinesMarked: 0 }),
+      removeExtraBlankParagraphs: jest
+        .fn()
+        .mockReturnValue({ removed: 0, added: 0, total: 0, preserved: 0 }),
+      ensureBlankLinesAfter1x1Tables: jest
+        .fn()
+        .mockReturnValue({ tablesProcessed: 0, blankLinesAdded: 0, existingLinesMarked: 0 }),
       standardizeNumberedListPrefixes: jest.fn().mockReturnValue(0),
       getNumberingManager: jest.fn().mockReturnValue(mockNumberingManager),
       // Images
@@ -139,7 +142,9 @@ describe('WordDocumentProcessor', () => {
       // Compatibility
       isCompatibilityMode: jest.fn().mockReturnValue(false),
       getCompatibilityMode: jest.fn().mockReturnValue(12),
-      upgradeToModernFormat: jest.fn().mockReturnValue({ previousMode: 11, newMode: 14, removedFlags: [], addedSettings: [] }),
+      upgradeToModernFormat: jest
+        .fn()
+        .mockReturnValue({ previousMode: 11, newMode: 14, removedFlags: [], addedSettings: [] }),
       // Web Settings
       sanitizeWebSettings: jest.fn().mockReturnValue(0),
       // Images
@@ -155,13 +160,15 @@ describe('WordDocumentProcessor', () => {
       stripOrphanRSIDs: jest.fn(),
       clearDirectSpacingForStyles: jest.fn(),
       cleanupUnusedNumbering: jest.fn(),
-      consolidateNumbering: jest.fn().mockReturnValue({ abstractNumsRemoved: 0, instancesRemapped: 0, groupsConsolidated: 0 }),
+      consolidateNumbering: jest
+        .fn()
+        .mockReturnValue({ abstractNumsRemoved: 0, instancesRemapped: 0, groupsConsolidated: 0 }),
       validateNumberingReferences: jest.fn().mockReturnValue(0),
       // Body Elements
       getBodyElementCount: jest.fn().mockReturnValue(0),
       getBodyElementAt: jest.fn().mockReturnValue(null),
       // Style XML
-      getStylesXml: jest.fn().mockReturnValue(''),
+      getStylesXml: jest.fn().mockReturnValue(""),
       updateTableStyleShading: jest.fn().mockReturnValue(0),
       formatTOCStyles: jest.fn().mockReturnValue({ formatted: [] }),
       // Archive
@@ -183,14 +190,14 @@ describe('WordDocumentProcessor', () => {
     });
     (fs.copyFile as ReturnType<typeof jest.fn>).mockResolvedValue(undefined);
     (fs.writeFile as ReturnType<typeof jest.fn>).mockResolvedValue(undefined);
-    (fs.readFile as unknown as ReturnType<typeof jest.fn>).mockResolvedValue(Buffer.from('test'));
+    (fs.readFile as unknown as ReturnType<typeof jest.fn>).mockResolvedValue(Buffer.from("test"));
     (fs.mkdir as unknown as ReturnType<typeof jest.fn>).mockResolvedValue(undefined);
     (fs.readdir as unknown as ReturnType<typeof jest.fn>).mockResolvedValue([]);
   });
 
-  describe('Document Loading and Validation', () => {
-    it('should successfully load and process a valid document', async () => {
-      const filePath = '/test/document.docx';
+  describe("Document Loading and Validation", () => {
+    it("should successfully load and process a valid document", async () => {
+      const filePath = "/test/document.docx";
       const options: WordProcessingOptions = {};
 
       const result = await processor.processDocument(filePath, options);
@@ -198,12 +205,15 @@ describe('WordDocumentProcessor', () => {
       // Show actual errors in assertion diff if processing fails
       expect(result.errorMessages).toEqual([]);
       expect(result.success).toBe(true);
-      expect(Document.load).toHaveBeenCalledWith(filePath, { strictParsing: false, revisionHandling: 'preserve' });
+      expect(Document.load).toHaveBeenCalledWith(filePath, {
+        strictParsing: false,
+        revisionHandling: "preserve",
+      });
       expect(fs.stat).toHaveBeenCalledWith(filePath);
     });
 
-    it('should reject files exceeding size limit', async () => {
-      const filePath = '/test/large.docx';
+    it("should reject files exceeding size limit", async () => {
+      const filePath = "/test/large.docx";
       const options: WordProcessingOptions = {
         maxFileSizeMB: 0.5, // 0.5MB limit
       };
@@ -216,11 +226,11 @@ describe('WordDocumentProcessor', () => {
       const result = await processor.processDocument(filePath, options);
 
       expect(result.success).toBe(false);
-      expect(result.errorMessages.some((msg) => msg.includes('File too large'))).toBe(true);
+      expect(result.errorMessages.some((msg) => msg.includes("File too large"))).toBe(true);
     });
 
-    it('should create backup before processing', async () => {
-      const filePath = '/test/document.docx';
+    it("should create backup before processing", async () => {
+      const filePath = "/test/document.docx";
       const options: WordProcessingOptions = {
         createBackup: true,
       };
@@ -230,14 +240,14 @@ describe('WordDocumentProcessor', () => {
       expect(fs.copyFile).toHaveBeenCalled();
       const backupCall = (fs.copyFile as ReturnType<typeof jest.fn>).mock.calls[0];
       expect(backupCall[0]).toBe(filePath);
-      expect(backupCall[1]).toContain('Backup');
+      expect(backupCall[1]).toContain("Backup");
     });
 
-    it('should restore from backup on error', async () => {
-      const filePath = '/test/document.docx';
+    it("should restore from backup on error", async () => {
+      const filePath = "/test/document.docx";
 
       // Force an error during processing
-      mockDocXMLater.extractHyperlinks.mockRejectedValue(new Error('Processing failed'));
+      mockDocXMLater.extractHyperlinks.mockRejectedValue(new Error("Processing failed"));
 
       const result = await processor.processDocument(filePath);
 
@@ -246,25 +256,25 @@ describe('WordDocumentProcessor', () => {
     });
   });
 
-  describe('Hyperlink Extraction and Processing', () => {
-    it('should extract hyperlinks from document', async () => {
-      const filePath = '/test/document.docx';
+  describe("Hyperlink Extraction and Processing", () => {
+    it("should extract hyperlinks from document", async () => {
+      const filePath = "/test/document.docx";
       const mockHyperlinks = [
         {
-          hyperlink: createMockHyperlink('https://example.com', 'Example'),
+          hyperlink: createMockHyperlink("https://example.com", "Example"),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://example.com',
-          text: 'Example',
+          url: "https://example.com",
+          text: "Example",
         },
         {
-          hyperlink: createMockHyperlink('https://test.com', 'Test'),
+          hyperlink: createMockHyperlink("https://test.com", "Test"),
           paragraph: {} as Paragraph,
           paragraphIndex: 1,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://test.com',
-          text: 'Test',
+          url: "https://test.com",
+          text: "Test",
         },
       ];
 
@@ -276,19 +286,19 @@ describe('WordDocumentProcessor', () => {
       expect(mockDocXMLater.extractHyperlinks).toHaveBeenCalledWith(mockDoc);
     });
 
-    it('should append content IDs to theSource URLs', async () => {
-      const filePath = '/test/document.docx';
+    it("should append content IDs to theSource URLs", async () => {
+      const filePath = "/test/document.docx";
       const mockHyperlinks = [
         {
           hyperlink: createMockHyperlink(
-            'https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123',
-            'Document'
+            "https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123",
+            "Document"
           ),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123',
-          text: 'Document',
+          url: "https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123",
+          text: "Document",
         },
       ];
 
@@ -298,29 +308,29 @@ describe('WordDocumentProcessor', () => {
         operations: {
           fixContentIds: true,
         },
-        contentId: '#content',
+        contentId: "#content",
       };
 
       const result = await processor.processDocument(filePath, options);
 
       expect(result.appendedContentIds).toBeGreaterThanOrEqual(0);
-      expect(result.processedLinks).toHaveProperty('length');
+      expect(result.processedLinks).toHaveProperty("length");
       // Skipped: mock doesn't populate processedLinks array
     });
 
-    it('should skip URLs that already have content ID', async () => {
-      const filePath = '/test/document.docx';
+    it("should skip URLs that already have content ID", async () => {
+      const filePath = "/test/document.docx";
       const mockHyperlinks = [
         {
           hyperlink: createMockHyperlink(
-            'https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123#content',
-            'Document'
+            "https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123#content",
+            "Document"
           ),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123#content',
-          text: 'Document',
+          url: "https://thesource.cvshealth.com/nuxeo/thesource/#!/view?docid=abc123#content",
+          text: "Document",
         },
       ];
 
@@ -339,25 +349,25 @@ describe('WordDocumentProcessor', () => {
     });
   });
 
-  describe('PowerAutomate API Integration', () => {
+  describe("PowerAutomate API Integration", () => {
     beforeEach(() => {
       // Setup hyperlink service mock
       (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>) = jest.fn();
     });
 
-    it('should process hyperlinks with PowerAutomate API', async () => {
-      const filePath = '/test/document.docx';
+    it("should process hyperlinks with PowerAutomate API", async () => {
+      const filePath = "/test/document.docx";
       const mockHyperlinks = [
         {
           hyperlink: createMockHyperlink(
-            'https://thesource.cvshealth.com/doc?Content_ID=TSRC-ABC-123456',
-            'Old Title'
+            "https://thesource.cvshealth.com/doc?Content_ID=TSRC-ABC-123456",
+            "Old Title"
           ),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://thesource.cvshealth.com/doc?Content_ID=TSRC-ABC-123456',
-          text: 'Old Title',
+          url: "https://thesource.cvshealth.com/doc?Content_ID=TSRC-ABC-123456",
+          text: "Old Title",
         },
       ];
 
@@ -369,19 +379,21 @@ describe('WordDocumentProcessor', () => {
         body: {
           results: [
             {
-              contentId: 'TSRC-ABC-123456',
-              documentId: 'uuid-123',
-              title: 'New Title',
-              status: 'active',
+              contentId: "TSRC-ABC-123456",
+              documentId: "uuid-123",
+              title: "New Title",
+              status: "active",
             },
           ],
         },
       };
 
-      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue(apiResponse);
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue(
+        apiResponse
+      );
 
       const options: WordProcessingOptions = {
-        apiEndpoint: 'https://api.example.com',
+        apiEndpoint: "https://api.example.com",
         operations: {
           fixContentIds: true,
           updateTitles: true,
@@ -394,16 +406,16 @@ describe('WordDocumentProcessor', () => {
       expect(result.updatedDisplayTexts).toBeGreaterThan(0);
     });
 
-    it('should fail document processing if API fails and operations are required', async () => {
-      const filePath = '/test/document.docx';
+    it("should fail document processing if API fails and operations are required", async () => {
+      const filePath = "/test/document.docx";
       const mockHyperlinks = [
         {
-          hyperlink: createMockHyperlink('https://example.com', 'Test'),
+          hyperlink: createMockHyperlink("https://example.com", "Test"),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://example.com',
-          text: 'Test',
+          url: "https://example.com",
+          text: "Test",
         },
       ];
 
@@ -412,11 +424,11 @@ describe('WordDocumentProcessor', () => {
       // Mock API failure
       (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue({
         success: false,
-        error: 'API timeout',
+        error: "API timeout",
       });
 
       const options: WordProcessingOptions = {
-        apiEndpoint: 'https://api.example.com',
+        apiEndpoint: "https://api.example.com",
         operations: {
           updateTitles: true, // Required operation
         },
@@ -425,22 +437,22 @@ describe('WordDocumentProcessor', () => {
       const result = await processor.processDocument(filePath, options);
 
       expect(result.success).toBe(false);
-      expect(result.errorMessages[0]).toContain('PowerAutomate API failed');
+      expect(result.errorMessages[0]).toContain("PowerAutomate API failed");
     });
 
-    it('should handle documents not found in API', async () => {
-      const filePath = '/test/document.docx';
+    it("should handle documents not found in API", async () => {
+      const filePath = "/test/document.docx";
       const mockHyperlinks = [
         {
           hyperlink: createMockHyperlink(
-            'https://thesource.cvshealth.com/doc?Content_ID=TSRC-XYZ-999999',
-            'Unknown Doc'
+            "https://thesource.cvshealth.com/doc?Content_ID=TSRC-XYZ-999999",
+            "Unknown Doc"
           ),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://thesource.cvshealth.com/doc?Content_ID=TSRC-XYZ-999999',
-          text: 'Unknown Doc',
+          url: "https://thesource.cvshealth.com/doc?Content_ID=TSRC-XYZ-999999",
+          text: "Unknown Doc",
         },
       ];
 
@@ -454,10 +466,12 @@ describe('WordDocumentProcessor', () => {
         },
       };
 
-      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue(apiResponse);
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue(
+        apiResponse
+      );
 
       const options: WordProcessingOptions = {
-        apiEndpoint: 'https://api.example.com',
+        apiEndpoint: "https://api.example.com",
         operations: {
           updateTitles: true,
         },
@@ -468,13 +482,13 @@ describe('WordDocumentProcessor', () => {
       expect(result.success).toBe(true);
       // Text should be marked as "Not Found"
       const setText = mockHyperlinks[0].hyperlink.setText as ReturnType<typeof jest.fn>;
-      expect(setText).toHaveBeenCalledWith(expect.stringContaining('Not Found'));
+      expect(setText).toHaveBeenCalledWith(expect.stringContaining("Not Found"));
     });
   });
 
-  describe('Document Save', () => {
-    it('should save document directly using docxmlater', async () => {
-      const filePath = '/test/document.docx';
+  describe("Document Save", () => {
+    it("should save document directly using docxmlater", async () => {
+      const filePath = "/test/document.docx";
 
       await processor.processDocument(filePath);
 
@@ -483,17 +497,17 @@ describe('WordDocumentProcessor', () => {
     });
   });
 
-  describe('Custom Replacements', () => {
-    it('should apply custom URL replacements', async () => {
-      const filePath = '/test/document.docx';
+  describe("Custom Replacements", () => {
+    it("should apply custom URL replacements", async () => {
+      const filePath = "/test/document.docx";
       const mockHyperlinks = [
         {
-          hyperlink: createMockHyperlink('https://old-domain.com/doc', 'Document'),
+          hyperlink: createMockHyperlink("https://old-domain.com/doc", "Document"),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://old-domain.com/doc',
-          text: 'Document',
+          url: "https://old-domain.com/doc",
+          text: "Document",
         },
       ];
 
@@ -502,10 +516,10 @@ describe('WordDocumentProcessor', () => {
       const options: WordProcessingOptions = {
         customReplacements: [
           {
-            find: 'old-domain.com',
-            replace: 'new-domain.com',
-            matchType: 'contains',
-            applyTo: 'url',
+            find: "old-domain.com",
+            replace: "new-domain.com",
+            matchType: "contains",
+            applyTo: "url",
           },
         ],
       };
@@ -515,17 +529,17 @@ describe('WordDocumentProcessor', () => {
       expect(result.updatedUrls).toBe(1);
     });
 
-    it('should apply custom text replacements', async () => {
-      const filePath = '/test/document.docx';
-      const mockHyperlink = createMockHyperlink('https://example.com', 'Old Text');
+    it("should apply custom text replacements", async () => {
+      const filePath = "/test/document.docx";
+      const mockHyperlink = createMockHyperlink("https://example.com", "Old Text");
       const mockHyperlinks = [
         {
           hyperlink: mockHyperlink,
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://example.com',
-          text: 'Old Text',
+          url: "https://example.com",
+          text: "Old Text",
         },
       ];
 
@@ -534,24 +548,24 @@ describe('WordDocumentProcessor', () => {
       const options: WordProcessingOptions = {
         customReplacements: [
           {
-            find: 'Old',
-            replace: 'New',
-            matchType: 'contains',
-            applyTo: 'text',
+            find: "Old",
+            replace: "New",
+            matchType: "contains",
+            applyTo: "text",
           },
         ],
       };
 
       const result = await processor.processDocument(filePath, options);
 
-      expect(mockHyperlink.setText).toHaveBeenCalledWith('New Text');
+      expect(mockHyperlink.setText).toHaveBeenCalledWith("New Text");
       expect(result.updatedDisplayTexts).toBe(1);
     });
   });
 
-  describe('Batch Processing', () => {
-    it('should process multiple documents concurrently', async () => {
-      const filePaths = ['/test/doc1.docx', '/test/doc2.docx', '/test/doc3.docx'];
+  describe("Batch Processing", () => {
+    it("should process multiple documents concurrently", async () => {
+      const filePaths = ["/test/doc1.docx", "/test/doc2.docx", "/test/doc3.docx"];
 
       const batchResult = await processor.batchProcess(filePaths, {}, 2);
 
@@ -561,13 +575,13 @@ describe('WordDocumentProcessor', () => {
       expect(batchResult.results).toHaveLength(3);
     });
 
-    it('should handle individual document failures in batch', async () => {
-      const filePaths = ['/test/doc1.docx', '/test/doc2.docx', '/test/doc3.docx'];
+    it("should handle individual document failures in batch", async () => {
+      const filePaths = ["/test/doc1.docx", "/test/doc2.docx", "/test/doc3.docx"];
 
       // Make second document fail
       (Document.load as ReturnType<typeof jest.fn>)
         .mockResolvedValueOnce(mockDoc)
-        .mockRejectedValueOnce(new Error('Load failed'))
+        .mockRejectedValueOnce(new Error("Load failed"))
         .mockResolvedValueOnce(mockDoc);
 
       const batchResult = await processor.batchProcess(filePaths, {}, 2);
@@ -577,8 +591,8 @@ describe('WordDocumentProcessor', () => {
       expect(batchResult.failedFiles).toBe(1);
     });
 
-    it('should call progress callback during batch processing', async () => {
-      const filePaths = ['/test/doc1.docx', '/test/doc2.docx'];
+    it("should call progress callback during batch processing", async () => {
+      const filePaths = ["/test/doc1.docx", "/test/doc2.docx"];
       const progressCallback = jest.fn();
 
       await processor.batchProcess(filePaths, {}, 1, progressCallback);
@@ -593,12 +607,12 @@ describe('WordDocumentProcessor', () => {
     });
   });
 
-  describe('Memory Management', () => {
-    it('should trigger garbage collection periodically in batch processing', async () => {
+  describe("Memory Management", () => {
+    it("should trigger garbage collection periodically in batch processing", async () => {
       // Mock global.gc
       global.gc = jest.fn();
 
-      const filePaths = Array(15).fill('/test/doc.docx');
+      const filePaths = Array(15).fill("/test/doc.docx");
 
       await processor.batchProcess(filePaths, {}, 3);
 
@@ -606,8 +620,8 @@ describe('WordDocumentProcessor', () => {
       expect(global.gc).toHaveBeenCalled();
     });
 
-    it('should clean up resources after processing', async () => {
-      const filePath = '/test/document.docx';
+    it("should clean up resources after processing", async () => {
+      const filePath = "/test/document.docx";
 
       await processor.processDocument(filePath);
 
@@ -616,28 +630,28 @@ describe('WordDocumentProcessor', () => {
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle document load errors gracefully', async () => {
-      const filePath = '/test/invalid.docx';
+  describe("Error Handling", () => {
+    it("should handle document load errors gracefully", async () => {
+      const filePath = "/test/invalid.docx";
 
-      (Document.load as ReturnType<typeof jest.fn>).mockRejectedValue(new Error('Invalid format'));
+      (Document.load as ReturnType<typeof jest.fn>).mockRejectedValue(new Error("Invalid format"));
 
       const result = await processor.processDocument(filePath);
 
       expect(result.success).toBe(false);
-      expect(result.errorMessages).toContain('Invalid format');
+      expect(result.errorMessages).toContain("Invalid format");
     });
 
-    it('should handle API endpoint not configured', async () => {
-      const filePath = '/test/document.docx';
+    it("should handle API endpoint not configured", async () => {
+      const filePath = "/test/document.docx";
       const mockHyperlinks = [
         {
-          hyperlink: createMockHyperlink('https://example.com', 'Test'),
+          hyperlink: createMockHyperlink("https://example.com", "Test"),
           paragraph: {} as Paragraph,
           paragraphIndex: 0,
           hyperlinkIndexInParagraph: 0,
-          url: 'https://example.com',
-          text: 'Test',
+          url: "https://example.com",
+          text: "Test",
         },
       ];
 
@@ -653,11 +667,11 @@ describe('WordDocumentProcessor', () => {
       const result = await processor.processDocument(filePath, options);
 
       expect(result.success).toBe(false);
-      expect(result.errorMessages[0]).toContain('API endpoint not configured');
+      expect(result.errorMessages[0]).toContain("API endpoint not configured");
     });
 
-    it('should handle processing timeouts', async () => {
-      const filePath = '/test/document.docx';
+    it("should handle processing timeouts", async () => {
+      const filePath = "/test/document.docx";
 
       // Add actual test implementation for timeout scenarios
       // This would require implementing timeout logic in the processor
@@ -665,20 +679,20 @@ describe('WordDocumentProcessor', () => {
       // For now, just verify the structure exists
       const result = await processor.processDocument(filePath);
 
-      expect(result).toHaveProperty('duration');
-      expect(result).toHaveProperty('processingTimeMs');
+      expect(result).toHaveProperty("duration");
+      expect(result).toHaveProperty("processingTimeMs");
     });
   });
 
-  describe('False Hyperlink Style Stripping', () => {
-    it('should strip Hyperlink character style from non-hyperlink runs in Normal paragraphs', async () => {
-      const filePath = '/test/document.docx';
+  describe("False Hyperlink Style Stripping", () => {
+    it("should strip Hyperlink character style from non-hyperlink runs in Normal paragraphs", async () => {
+      const filePath = "/test/document.docx";
 
       // Create a mock run with false Hyperlink character style
-      const mockRun = createMockRunWithHyperlinkStyle('Some falsely styled text');
+      const mockRun = createMockRunWithHyperlinkStyle("Some falsely styled text");
 
       // Create a mock paragraph with Normal style containing the false-hyperlink run
-      const mockParagraph = createMockParagraphForStyleTest('Normal', [mockRun]);
+      const mockParagraph = createMockParagraphForStyleTest("Normal", [mockRun]);
 
       // Set up doc to return this paragraph
       mockDoc.getAllParagraphs = jest.fn().mockReturnValue([mockParagraph]);
@@ -687,15 +701,15 @@ describe('WordDocumentProcessor', () => {
         assignStyles: true,
         styles: [
           {
-            id: 'normal',
-            name: 'Normal',
-            fontFamily: 'Verdana',
+            id: "normal",
+            name: "Normal",
+            fontFamily: "Verdana",
             fontSize: 12,
             bold: false,
             italic: false,
             underline: false,
-            alignment: 'left' as const,
-            color: '#000000',
+            alignment: "left" as const,
+            color: "#000000",
             spaceBefore: 3,
             spaceAfter: 3,
             lineSpacing: 1.0,
@@ -711,11 +725,11 @@ describe('WordDocumentProcessor', () => {
       expect(mockRun.setBold).toHaveBeenCalledWith(false);
     });
 
-    it('should strip Hyperlink character style from non-hyperlink runs in List Paragraph', async () => {
-      const filePath = '/test/document.docx';
+    it("should strip Hyperlink character style from non-hyperlink runs in List Paragraph", async () => {
+      const filePath = "/test/document.docx";
 
-      const mockRun = createMockRunWithHyperlinkStyle('List item with false hyperlink style');
-      const mockParagraph = createMockParagraphForStyleTest('ListParagraph', [mockRun]);
+      const mockRun = createMockRunWithHyperlinkStyle("List item with false hyperlink style");
+      const mockParagraph = createMockParagraphForStyleTest("ListParagraph", [mockRun]);
 
       mockDoc.getAllParagraphs = jest.fn().mockReturnValue([mockParagraph]);
 
@@ -723,15 +737,15 @@ describe('WordDocumentProcessor', () => {
         assignStyles: true,
         styles: [
           {
-            id: 'listParagraph',
-            name: 'List Paragraph',
-            fontFamily: 'Verdana',
+            id: "listParagraph",
+            name: "List Paragraph",
+            fontFamily: "Verdana",
             fontSize: 12,
             bold: false,
             italic: false,
             underline: false,
-            alignment: 'left' as const,
-            color: '#000000',
+            alignment: "left" as const,
+            color: "#000000",
             spaceBefore: 3,
             spaceAfter: 3,
             lineSpacing: 1.0,
@@ -747,15 +761,15 @@ describe('WordDocumentProcessor', () => {
       expect(mockRun.setBold).toHaveBeenCalledWith(false);
     });
 
-    it('should not strip style from runs that are not hyperlink-styled', async () => {
-      const filePath = '/test/document.docx';
+    it("should not strip style from runs that are not hyperlink-styled", async () => {
+      const filePath = "/test/document.docx";
 
       // Create a normal run (not hyperlink-styled)
       const mockRun = {
         isHyperlinkStyled: jest.fn().mockReturnValue(false),
         setCharacterStyle: jest.fn(),
         getFormatting: jest.fn().mockReturnValue({}),
-        getText: jest.fn().mockReturnValue('Normal text'),
+        getText: jest.fn().mockReturnValue("Normal text"),
         setFont: jest.fn(),
         setSize: jest.fn(),
         setBold: jest.fn(),
@@ -765,22 +779,22 @@ describe('WordDocumentProcessor', () => {
       };
       Object.setPrototypeOf(mockRun, Run.prototype);
 
-      const mockParagraph = createMockParagraphForStyleTest('Normal', [mockRun]);
+      const mockParagraph = createMockParagraphForStyleTest("Normal", [mockRun]);
       mockDoc.getAllParagraphs = jest.fn().mockReturnValue([mockParagraph]);
 
       const options: WordProcessingOptions = {
         assignStyles: true,
         styles: [
           {
-            id: 'normal',
-            name: 'Normal',
-            fontFamily: 'Verdana',
+            id: "normal",
+            name: "Normal",
+            fontFamily: "Verdana",
             fontSize: 12,
             bold: false,
             italic: false,
             underline: false,
-            alignment: 'left' as const,
-            color: '#000000',
+            alignment: "left" as const,
+            color: "#000000",
             spaceBefore: 3,
             spaceAfter: 3,
             lineSpacing: 1.0,
@@ -814,7 +828,7 @@ function createMockRunWithHyperlinkStyle(text: string) {
   const run = {
     isHyperlinkStyled: jest.fn().mockReturnValue(true),
     setCharacterStyle: jest.fn(),
-    getFormatting: jest.fn().mockReturnValue({ characterStyle: 'Hyperlink' }),
+    getFormatting: jest.fn().mockReturnValue({ characterStyle: "Hyperlink" }),
     getText: jest.fn().mockReturnValue(text),
     setFont: jest.fn(),
     setSize: jest.fn(),
@@ -834,8 +848,8 @@ function createMockParagraphForStyleTest(style: string, runs: any[]) {
     getStyle: jest.fn().mockReturnValue(style),
     getContent: jest.fn().mockReturnValue(runs), // Direct runs, no Hyperlink wrappers
     getRuns: jest.fn().mockReturnValue(runs),
-    getText: jest.fn().mockReturnValue(runs.map((r: any) => r.getText()).join('')),
-    getFormatting: jest.fn().mockReturnValue({ style, alignment: 'left' }),
+    getText: jest.fn().mockReturnValue(runs.map((r: any) => r.getText()).join("")),
+    getFormatting: jest.fn().mockReturnValue({ style, alignment: "left" }),
     setAlignment: jest.fn(),
     setSpaceBefore: jest.fn(),
     setSpaceAfter: jest.fn(),

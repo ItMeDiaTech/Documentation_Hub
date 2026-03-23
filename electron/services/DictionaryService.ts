@@ -10,18 +10,18 @@
  * @performance SQLite with WAL mode for fast reads
  */
 
-import * as path from 'path';
-import * as fs from 'fs/promises';
-import { app } from 'electron';
-import Database from 'better-sqlite3';
-import { logger } from '../../src/utils/logger';
+import * as path from "path";
+import * as fs from "fs/promises";
+import { app } from "electron";
+import Database from "better-sqlite3";
+import { logger } from "../../src/utils/logger";
 import type {
   DictionaryEntry,
   DictionaryLookupResult,
   DictionarySyncStatus,
-} from '../../src/types/dictionary';
+} from "../../src/types/dictionary";
 
-const log = logger.namespace('DictionaryService');
+const log = logger.namespace("DictionaryService");
 
 /**
  * Service for managing local document dictionary database
@@ -44,7 +44,7 @@ export class DictionaryService {
 
   constructor() {
     // Store database in app data directory
-    this.dbPath = path.join(app.getPath('userData'), 'dictionary.db');
+    this.dbPath = path.join(app.getPath("userData"), "dictionary.db");
   }
 
   /**
@@ -62,9 +62,9 @@ export class DictionaryService {
 
       // Open database with WAL mode for better performance
       this.db = new Database(this.dbPath);
-      this.db.pragma('journal_mode = WAL');
-      this.db.pragma('synchronous = NORMAL');
-      this.db.pragma('cache_size = -64000'); // 64MB cache
+      this.db.pragma("journal_mode = WAL");
+      this.db.pragma("synchronous = NORMAL");
+      this.db.pragma("cache_size = -64000"); // 64MB cache
 
       // Create tables
       this.db.exec(`
@@ -99,11 +99,11 @@ export class DictionaryService {
       // Load sync metadata
       await this.loadSyncMetadata();
 
-      log.info('Dictionary database initialized', { path: this.dbPath, entries: count });
+      log.info("Dictionary database initialized", { path: this.dbPath, entries: count });
       return { success: true, totalEntries: count };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      log.error('Failed to initialize dictionary database', { error: message });
+      const message = error instanceof Error ? error.message : "Unknown error";
+      log.error("Failed to initialize dictionary database", { error: message });
       return { success: false, totalEntries: 0, error: message };
     }
   }
@@ -113,12 +113,12 @@ export class DictionaryService {
    */
   lookup(lookupId: string): DictionaryLookupResult {
     if (!this.db || !this.initialized) {
-      return { found: false, lookupId, lookupType: 'Document_ID' };
+      return { found: false, lookupId, lookupType: "Document_ID" };
     }
 
     try {
       // First try Document_ID (primary key - fastest)
-      let stmt = this.db.prepare('SELECT * FROM dictionary WHERE Document_ID = ?');
+      let stmt = this.db.prepare("SELECT * FROM dictionary WHERE Document_ID = ?");
       let row = stmt.get(lookupId) as DictionaryEntry | undefined;
 
       if (row) {
@@ -126,12 +126,12 @@ export class DictionaryService {
           found: true,
           entry: row,
           lookupId,
-          lookupType: 'Document_ID',
+          lookupType: "Document_ID",
         };
       }
 
       // Try Content_ID (indexed)
-      stmt = this.db.prepare('SELECT * FROM dictionary WHERE Content_ID = ?');
+      stmt = this.db.prepare("SELECT * FROM dictionary WHERE Content_ID = ?");
       row = stmt.get(lookupId) as DictionaryEntry | undefined;
 
       if (row) {
@@ -139,14 +139,14 @@ export class DictionaryService {
           found: true,
           entry: row,
           lookupId,
-          lookupType: 'Content_ID',
+          lookupType: "Content_ID",
         };
       }
 
-      return { found: false, lookupId, lookupType: 'Document_ID' };
+      return { found: false, lookupId, lookupType: "Document_ID" };
     } catch (error) {
-      log.error('Lookup failed', { lookupId, error });
-      return { found: false, lookupId, lookupType: 'Document_ID' };
+      log.error("Lookup failed", { lookupId, error });
+      return { found: false, lookupId, lookupType: "Document_ID" };
     }
   }
 
@@ -158,15 +158,15 @@ export class DictionaryService {
 
     if (!this.db || !this.initialized || lookupIds.length === 0) {
       lookupIds.forEach((id) => {
-        results.set(id, { found: false, lookupId: id, lookupType: 'Document_ID' });
+        results.set(id, { found: false, lookupId: id, lookupType: "Document_ID" });
       });
       return results;
     }
 
     try {
       // Prepare statements once for reuse
-      const docIdStmt = this.db.prepare('SELECT * FROM dictionary WHERE Document_ID = ?');
-      const contentIdStmt = this.db.prepare('SELECT * FROM dictionary WHERE Content_ID = ?');
+      const docIdStmt = this.db.prepare("SELECT * FROM dictionary WHERE Document_ID = ?");
+      const contentIdStmt = this.db.prepare("SELECT * FROM dictionary WHERE Content_ID = ?");
 
       for (const lookupId of lookupIds) {
         // Try Document_ID first
@@ -177,7 +177,7 @@ export class DictionaryService {
             found: true,
             entry: row,
             lookupId,
-            lookupType: 'Document_ID',
+            lookupType: "Document_ID",
           });
           continue;
         }
@@ -190,21 +190,21 @@ export class DictionaryService {
             found: true,
             entry: row,
             lookupId,
-            lookupType: 'Content_ID',
+            lookupType: "Content_ID",
           });
           continue;
         }
 
         // Not found
-        results.set(lookupId, { found: false, lookupId, lookupType: 'Document_ID' });
+        results.set(lookupId, { found: false, lookupId, lookupType: "Document_ID" });
       }
 
       return results;
     } catch (error) {
-      log.error('Batch lookup failed', { count: lookupIds.length, error });
+      log.error("Batch lookup failed", { count: lookupIds.length, error });
       lookupIds.forEach((id) => {
         if (!results.has(id)) {
-          results.set(id, { found: false, lookupId: id, lookupType: 'Document_ID' });
+          results.set(id, { found: false, lookupId: id, lookupType: "Document_ID" });
         }
       });
       return results;
@@ -220,7 +220,7 @@ export class DictionaryService {
     onProgress?: (processed: number, total: number) => void
   ): { success: boolean; imported: number; error?: string } {
     if (!this.db || !this.initialized) {
-      return { success: false, imported: 0, error: 'Database not initialized' };
+      return { success: false, imported: 0, error: "Database not initialized" };
     }
 
     try {
@@ -258,11 +258,11 @@ export class DictionaryService {
       // Save sync metadata
       this.saveSyncMetadata();
 
-      log.info('Imported dictionary entries', { imported, total: this.syncStatus.totalEntries });
+      log.info("Imported dictionary entries", { imported, total: this.syncStatus.totalEntries });
       return { success: true, imported };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      log.error('Import failed', { error: message, entriesCount: entries.length });
+      const message = error instanceof Error ? error.message : "Unknown error";
+      log.error("Import failed", { error: message, entriesCount: entries.length });
       this.syncStatus.syncError = message;
       this.syncStatus.lastSyncSuccess = false;
       return { success: false, imported: 0, error: message };
@@ -274,17 +274,17 @@ export class DictionaryService {
    */
   clearEntries(): { success: boolean; error?: string } {
     if (!this.db || !this.initialized) {
-      return { success: false, error: 'Database not initialized' };
+      return { success: false, error: "Database not initialized" };
     }
 
     try {
-      this.db.exec('DELETE FROM dictionary');
+      this.db.exec("DELETE FROM dictionary");
       this.syncStatus.totalEntries = 0;
-      log.info('Cleared all dictionary entries');
+      log.info("Cleared all dictionary entries");
       return { success: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      log.error('Clear failed', { error: message });
+      const message = error instanceof Error ? error.message : "Unknown error";
+      log.error("Clear failed", { error: message });
       return { success: false, error: message };
     }
   }
@@ -312,7 +312,7 @@ export class DictionaryService {
     }
 
     try {
-      const result = this.db.prepare('SELECT COUNT(*) as count FROM dictionary').get() as {
+      const result = this.db.prepare("SELECT COUNT(*) as count FROM dictionary").get() as {
         count: number;
       };
       return result.count;
@@ -329,11 +329,11 @@ export class DictionaryService {
 
     try {
       const stmt = this.db.prepare(
-        'INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)'
+        "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)"
       );
       stmt.run(key, value);
     } catch (error) {
-      log.error('Failed to set metadata', { key, error });
+      log.error("Failed to set metadata", { key, error });
     }
   }
 
@@ -344,7 +344,7 @@ export class DictionaryService {
     if (!this.db || !this.initialized) return null;
 
     try {
-      const stmt = this.db.prepare('SELECT value FROM sync_metadata WHERE key = ?');
+      const stmt = this.db.prepare("SELECT value FROM sync_metadata WHERE key = ?");
       const row = stmt.get(key) as { value: string } | undefined;
       return row?.value ?? null;
     } catch {
@@ -360,7 +360,7 @@ export class DictionaryService {
       this.db.close();
       this.db = null;
       this.initialized = false;
-      log.info('Dictionary database closed');
+      log.info("Dictionary database closed");
     }
   }
 
@@ -368,12 +368,12 @@ export class DictionaryService {
    * Load sync metadata from database
    */
   private async loadSyncMetadata(): Promise<void> {
-    const lastSyncTime = this.getMetadata('lastSyncTime');
-    const lastSyncSuccess = this.getMetadata('lastSyncSuccess');
-    const fileHash = this.getMetadata('fileHash');
+    const lastSyncTime = this.getMetadata("lastSyncTime");
+    const lastSyncSuccess = this.getMetadata("lastSyncSuccess");
+    const fileHash = this.getMetadata("fileHash");
 
     if (lastSyncTime) this.syncStatus.lastSyncTime = lastSyncTime;
-    if (lastSyncSuccess) this.syncStatus.lastSyncSuccess = lastSyncSuccess === 'true';
+    if (lastSyncSuccess) this.syncStatus.lastSyncSuccess = lastSyncSuccess === "true";
     if (fileHash) this.syncStatus.fileHash = fileHash;
   }
 
@@ -382,11 +382,11 @@ export class DictionaryService {
    */
   private saveSyncMetadata(): void {
     if (this.syncStatus.lastSyncTime) {
-      this.setMetadata('lastSyncTime', this.syncStatus.lastSyncTime);
+      this.setMetadata("lastSyncTime", this.syncStatus.lastSyncTime);
     }
-    this.setMetadata('lastSyncSuccess', String(this.syncStatus.lastSyncSuccess));
+    this.setMetadata("lastSyncSuccess", String(this.syncStatus.lastSyncSuccess));
     if (this.syncStatus.fileHash) {
-      this.setMetadata('fileHash', this.syncStatus.fileHash);
+      this.setMetadata("fileHash", this.syncStatus.fileHash);
     }
   }
 }

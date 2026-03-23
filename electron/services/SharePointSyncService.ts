@@ -11,24 +11,24 @@
  * @performance Supports chunked download with progress reporting
  */
 
-import { createHash } from 'crypto';
-import { BrowserWindow } from 'electron';
+import { createHash } from "crypto";
+import { BrowserWindow } from "electron";
 import {
   ConfidentialClientApplication,
   Configuration,
   ClientCredentialRequest,
-} from '@azure/msal-node';
-import * as XLSX from 'xlsx';
-import { logger } from '../../src/utils/logger';
-import { getDictionaryService } from './DictionaryService';
+} from "@azure/msal-node";
+import * as XLSX from "xlsx";
+import { logger } from "../../src/utils/logger";
+import { getDictionaryService } from "./DictionaryService";
 import type {
   DictionaryEntry,
   SharePointConfig,
   SyncProgressUpdate,
   DictionarySyncResponse,
-} from '../../src/types/dictionary';
+} from "../../src/types/dictionary";
 
-const log = logger.namespace('SharePointSyncService');
+const log = logger.namespace("SharePointSyncService");
 
 /**
  * Service for syncing dictionary from SharePoint
@@ -54,7 +54,7 @@ export class SharePointSyncService {
    */
   configure(config: SharePointConfig): void {
     this.config = config;
-    log.info('SharePoint sync configured', {
+    log.info("SharePoint sync configured", {
       siteUrl: config.siteUrl,
       tenantId: config.tenantId,
     });
@@ -72,11 +72,11 @@ export class SharePointSyncService {
         this.initializeMsal();
       }
 
-      log.info('Client secret configured');
+      log.info("Client secret configured");
       return { success: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      log.error('Failed to set client secret', { error: message });
+      const message = error instanceof Error ? error.message : "Unknown error";
+      log.error("Failed to set client secret", { error: message });
       return { success: false, error: message };
     }
   }
@@ -86,7 +86,7 @@ export class SharePointSyncService {
    */
   private initializeMsal(): void {
     if (!this.config || !this.clientSecret) {
-      throw new Error('Configuration or client secret not set');
+      throw new Error("Configuration or client secret not set");
     }
 
     const msalConfig: Configuration = {
@@ -98,7 +98,7 @@ export class SharePointSyncService {
     };
 
     this.msalApp = new ConfidentialClientApplication(msalConfig);
-    log.info('MSAL client initialized');
+    log.info("MSAL client initialized");
   }
 
   /**
@@ -110,17 +110,17 @@ export class SharePointSyncService {
     }
 
     if (!this.msalApp) {
-      throw new Error('MSAL client not initialized');
+      throw new Error("MSAL client not initialized");
     }
 
     const tokenRequest: ClientCredentialRequest = {
-      scopes: ['https://graph.microsoft.com/.default'],
+      scopes: ["https://graph.microsoft.com/.default"],
     };
 
     const response = await this.msalApp.acquireTokenByClientCredential(tokenRequest);
 
     if (!response?.accessToken) {
-      throw new Error('Failed to acquire access token');
+      throw new Error("Failed to acquire access token");
     }
 
     return response.accessToken;
@@ -131,14 +131,14 @@ export class SharePointSyncService {
    */
   private sendProgress(update: SyncProgressUpdate): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('dictionary:sync-progress', update);
+      this.mainWindow.webContents.send("dictionary:sync-progress", update);
     }
 
     const dictionaryService = getDictionaryService();
     dictionaryService.updateSyncStatus({
-      syncInProgress: update.phase !== 'complete' && update.phase !== 'error',
+      syncInProgress: update.phase !== "complete" && update.phase !== "error",
       syncProgress: update.progress,
-      syncError: update.phase === 'error' ? update.message : null,
+      syncError: update.phase === "error" ? update.message : null,
     });
   }
 
@@ -151,11 +151,11 @@ export class SharePointSyncService {
 
     try {
       if (!this.config) {
-        throw new Error('SharePoint configuration not set');
+        throw new Error("SharePoint configuration not set");
       }
 
       if (!this.clientSecret) {
-        throw new Error('Client secret not set');
+        throw new Error("Client secret not set");
       }
 
       // Initialize dictionary service if needed
@@ -163,30 +163,30 @@ export class SharePointSyncService {
 
       // Phase 1: Authentication
       this.sendProgress({
-        phase: 'authenticating',
+        phase: "authenticating",
         progress: 5,
-        message: 'Authenticating with Microsoft Graph...',
+        message: "Authenticating with Microsoft Graph...",
       });
 
       const accessToken = await this.getAccessToken();
 
       // Phase 2: Download file
       this.sendProgress({
-        phase: 'downloading',
+        phase: "downloading",
         progress: 20,
-        message: 'Downloading dictionary file from SharePoint...',
+        message: "Downloading dictionary file from SharePoint...",
       });
 
       const fileBuffer = await this.downloadFile(accessToken);
-      const fileHash = createHash('sha256').update(fileBuffer).digest('hex');
+      const fileHash = createHash("sha256").update(fileBuffer).digest("hex");
 
       // Check if file has changed
-      const currentHash = dictionaryService.getMetadata('fileHash');
+      const currentHash = dictionaryService.getMetadata("fileHash");
       if (currentHash === fileHash) {
         this.sendProgress({
-          phase: 'complete',
+          phase: "complete",
           progress: 100,
-          message: 'Dictionary is already up to date',
+          message: "Dictionary is already up to date",
         });
 
         return {
@@ -198,16 +198,16 @@ export class SharePointSyncService {
 
       // Phase 3: Parse Excel
       this.sendProgress({
-        phase: 'parsing',
+        phase: "parsing",
         progress: 50,
-        message: 'Parsing dictionary file...',
+        message: "Parsing dictionary file...",
       });
 
       const entries = this.parseExcelFile(fileBuffer);
 
       // Phase 4: Import to database
       this.sendProgress({
-        phase: 'importing',
+        phase: "importing",
         progress: 70,
         message: `Importing ${entries.length.toLocaleString()} entries...`,
         totalEntries: entries.length,
@@ -220,7 +220,7 @@ export class SharePointSyncService {
       const result = dictionaryService.importEntries(entries, (processed, total) => {
         const progress = 70 + Math.floor((processed / total) * 25);
         this.sendProgress({
-          phase: 'importing',
+          phase: "importing",
           progress,
           message: `Importing entries... ${processed.toLocaleString()} / ${total.toLocaleString()}`,
           entriesProcessed: processed,
@@ -229,15 +229,15 @@ export class SharePointSyncService {
       });
 
       if (!result.success) {
-        throw new Error(result.error || 'Import failed');
+        throw new Error(result.error || "Import failed");
       }
 
       // Save file hash
-      dictionaryService.setMetadata('fileHash', fileHash);
+      dictionaryService.setMetadata("fileHash", fileHash);
 
       // Phase 5: Complete
       this.sendProgress({
-        phase: 'complete',
+        phase: "complete",
         progress: 100,
         message: `Successfully imported ${result.imported.toLocaleString()} entries`,
         entriesProcessed: result.imported,
@@ -245,7 +245,7 @@ export class SharePointSyncService {
       });
 
       const duration = Date.now() - startTime;
-      log.info('Dictionary sync completed', {
+      log.info("Dictionary sync completed", {
         entries: result.imported,
         duration: `${duration}ms`,
       });
@@ -256,11 +256,11 @@ export class SharePointSyncService {
         duration,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      log.error('Dictionary sync failed', { error: message });
+      const message = error instanceof Error ? error.message : "Unknown error";
+      log.error("Dictionary sync failed", { error: message });
 
       this.sendProgress({
-        phase: 'error',
+        phase: "error",
         progress: 0,
         message: `Sync failed: ${message}`,
       });
@@ -285,7 +285,7 @@ export class SharePointSyncService {
    */
   private async downloadFile(accessToken: string): Promise<Buffer> {
     if (!this.config) {
-      throw new Error('Configuration not set');
+      throw new Error("Configuration not set");
     }
 
     // Build Graph API URL for file download
@@ -299,7 +299,7 @@ export class SharePointSyncService {
     const encodedPath = encodeURIComponent(this.config.documentLibraryPath);
     const graphUrl = `https://graph.microsoft.com/v1.0/sites/${hostname}:${sitePath}:/drive/root:/${encodedPath}:/content`;
 
-    log.info('Downloading file from SharePoint', { url: graphUrl });
+    log.info("Downloading file from SharePoint", { url: graphUrl });
 
     const response = await fetch(graphUrl, {
       headers: {
@@ -323,10 +323,10 @@ export class SharePointSyncService {
    * Extracts Document_ID, Content_ID, Title, and Status columns.
    */
   parseExcelFile(buffer: Buffer): DictionaryEntry[] {
-    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const workbook = XLSX.read(buffer, { type: "buffer" });
 
     // Find the Daily_Inventory sheet
-    const sheetName = 'Daily_Inventory';
+    const sheetName = "Daily_Inventory";
     const worksheet = workbook.Sheets[sheetName];
 
     if (!worksheet) {
@@ -336,7 +336,7 @@ export class SharePointSyncService {
     // Try to find the Dictionary_Table range
     // Excel tables are stored in workbook metadata
     let tableRange: string | undefined;
-    const tableName = 'Dictionary_Table';
+    const tableName = "Dictionary_Table";
 
     // Check for named ranges (tables appear as defined names)
     if (workbook.Workbook?.Names) {
@@ -357,7 +357,7 @@ export class SharePointSyncService {
     // Convert to JSON with header row, using table range if found
     const parseOptions: XLSX.Sheet2JSONOpts = {
       raw: false,
-      defval: '',
+      defval: "",
     };
     if (tableRange) {
       parseOptions.range = tableRange;
@@ -367,27 +367,27 @@ export class SharePointSyncService {
 
     // Map to DictionaryEntry format - only extract required columns
     const entries: DictionaryEntry[] = rawData.map((row) => ({
-      Document_ID: String(row['Document_ID'] || ''),
-      Content_ID: String(row['Content_ID'] || ''),
-      Title: String(row['Title'] || ''),
-      Summary: String(row['Summary'] || ''),
-      Type: String(row['Type'] || ''),
-      Release_Date: this.parseExcelDate(row['Release_Date']),
-      Expiration_Date: this.parseExcelDate(row['Expiration_Date']),
-      Status: String(row['Status'] || ''),
-      Owner: String(row['Owner'] || ''),
-      BPO: String(row['BPO'] || ''),
-      LOB: String(row['LOB'] || ''),
-      Last_Published_By: String(row['Last_Published_By'] || ''),
+      Document_ID: String(row["Document_ID"] || ""),
+      Content_ID: String(row["Content_ID"] || ""),
+      Title: String(row["Title"] || ""),
+      Summary: String(row["Summary"] || ""),
+      Type: String(row["Type"] || ""),
+      Release_Date: this.parseExcelDate(row["Release_Date"]),
+      Expiration_Date: this.parseExcelDate(row["Expiration_Date"]),
+      Status: String(row["Status"] || ""),
+      Owner: String(row["Owner"] || ""),
+      BPO: String(row["BPO"] || ""),
+      LOB: String(row["LOB"] || ""),
+      Last_Published_By: String(row["Last_Published_By"] || ""),
     }));
 
     // Filter out entries without Document_ID
-    const validEntries = entries.filter((e) => e.Document_ID.trim() !== '');
+    const validEntries = entries.filter((e) => e.Document_ID.trim() !== "");
 
-    log.info('Parsed Excel file', {
+    log.info("Parsed Excel file", {
       totalRows: rawData.length,
       validEntries: validEntries.length,
-      usedTableRange: tableRange || 'full sheet',
+      usedTableRange: tableRange || "full sheet",
     });
 
     return validEntries;
@@ -397,18 +397,18 @@ export class SharePointSyncService {
    * Parse Excel date (handles Excel serial date numbers)
    */
   private parseExcelDate(value: unknown): string {
-    if (!value) return '';
+    if (!value) return "";
 
     // If it's already a string date, return it
-    if (typeof value === 'string') {
+    if (typeof value === "string") {
       return value;
     }
 
     // If it's a number, convert from Excel serial date
-    if (typeof value === 'number') {
+    if (typeof value === "number") {
       // Excel serial date: days since Dec 30, 1899
       const date = new Date((value - 25569) * 86400 * 1000);
-      return date.toISOString().split('T')[0];
+      return date.toISOString().split("T")[0];
     }
 
     return String(value);
@@ -429,7 +429,7 @@ export class SharePointSyncService {
     dictionaryService.updateSyncStatus({ nextScheduledSync: nextSync });
 
     this.schedulerInterval = setInterval(async () => {
-      log.info('Running scheduled dictionary sync');
+      log.info("Running scheduled dictionary sync");
       await this.sync();
 
       // Update next sync time
@@ -437,7 +437,7 @@ export class SharePointSyncService {
       dictionaryService.updateSyncStatus({ nextScheduledSync: nextSyncTime });
     }, intervalMs);
 
-    log.info('Sync scheduler started', { intervalHours, nextSync });
+    log.info("Sync scheduler started", { intervalHours, nextSync });
   }
 
   /**
@@ -451,7 +451,7 @@ export class SharePointSyncService {
       const dictionaryService = getDictionaryService();
       dictionaryService.updateSyncStatus({ nextScheduledSync: null });
 
-      log.info('Sync scheduler stopped');
+      log.info("Sync scheduler stopped");
     }
   }
 

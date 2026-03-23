@@ -28,11 +28,7 @@
     "Utilities",
     "*"
   ],
-  "exclude": [
-    "**/*+(test|spec).ts",
-    "**/node_modules/**",
-    "**/dist/**"
-  ],
+  "exclude": ["**/*+(test|spec).ts", "**/node_modules/**", "**/dist/**"],
   "excludePrivate": true,
   "excludeProtected": false,
   "excludeInternal": false,

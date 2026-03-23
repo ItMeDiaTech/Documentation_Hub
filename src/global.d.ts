@@ -11,7 +11,7 @@ import type {
   BatchProcessingOptions,
   BatchProcessingResult,
   BatchProgress,
-} from './types/hyperlink';
+} from "./types/hyperlink";
 import type {
   BackupCreateResponse,
   BackupRestoreResponse,
@@ -22,7 +22,7 @@ import type {
   BackupStorageInfoResponse,
   BackupSetConfigResponse,
   BackupConfig,
-} from './types/backup';
+} from "./types/backup";
 import type {
   SharePointConfig,
   DictionarySyncStatus,
@@ -30,7 +30,7 @@ import type {
   DictionaryInitResponse,
   DictionaryCredentialsResponse,
   SyncProgressUpdate,
-} from './types/dictionary';
+} from "./types/dictionary";
 
 /**
  * Hyperlink lookup result type (from local dictionary)
@@ -83,9 +83,12 @@ export type ElectronAPI = {
   createFolder: (folderPath: string) => Promise<boolean>;
   copyFileToFolder: (sourcePath: string, destFolder: string) => Promise<boolean>;
   createReportZip: (folderPath: string, zipName: string) => Promise<string>;
-  openOutlookEmail: (subject: string, attachmentPath: string) => Promise<{
+  openOutlookEmail: (
+    subject: string,
+    attachmentPath: string
+  ) => Promise<{
     success: boolean;
-    method: 'outlook' | 'mailto';
+    method: "outlook" | "mailto";
   }>;
 
   // Document text extraction (for comparison views)
@@ -162,11 +165,17 @@ export type ElectronAPI = {
     sync: () => Promise<DictionarySyncResponse>;
     startScheduler: (intervalHours: number) => Promise<{ success: boolean; error?: string }>;
     stopScheduler: () => Promise<{ success: boolean; error?: string }>;
-    lookup: (lookupId: string) => Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }>;
-    batchLookup: (lookupIds: string[]) => Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }>;
+    lookup: (
+      lookupId: string
+    ) => Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }>;
+    batchLookup: (
+      lookupIds: string[]
+    ) => Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }>;
     getStatus: () => Promise<{ success: boolean; status?: DictionarySyncStatus; error?: string }>;
     // Interactive SharePoint retrieval (using browser login)
-    retrieveFromSharePoint: (fileUrl: string) => Promise<{ success: boolean; entriesImported?: number; error?: string }>;
+    retrieveFromSharePoint: (
+      fileUrl: string
+    ) => Promise<{ success: boolean; entriesImported?: number; error?: string }>;
     sharePointLogin: () => Promise<{ success: boolean; error?: string }>;
     isSharePointAuthenticated: () => Promise<{ authenticated: boolean }>;
     onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => () => void;
@@ -175,19 +184,22 @@ export type ElectronAPI = {
 
   // Display/Monitor operations
   display: {
-    getAllDisplays: () => Promise<Array<{
-      id: number;
-      label: string;
-      bounds: { x: number; y: number; width: number; height: number };
-      workArea: { x: number; y: number; width: number; height: number };
-      scaleFactor: number;
-      isPrimary: boolean;
-    }>>;
+    getAllDisplays: () => Promise<
+      Array<{
+        id: number;
+        label: string;
+        bounds: { x: number; y: number; width: number; height: number };
+        workArea: { x: number; y: number; width: number; height: number };
+        scaleFactor: number;
+        isPrimary: boolean;
+      }>
+    >;
     identifyMonitors: () => Promise<{ success: boolean }>;
     openComparison: (
       backupPath: string,
       processedPath: string,
-      monitorIndex: number
+      workArea: { x: number; y: number; width: number; height: number },
+      scaleFactor: number
     ) => Promise<{ success: boolean; error?: string }>;
   };
 
@@ -198,8 +210,13 @@ export type ElectronAPI = {
   getCurrentVersion: () => Promise<string>;
 
   // SharePoint update source
-  setUpdateProvider: (config: { type: 'github' | 'sharepoint'; sharePointUrl?: string }) => Promise<{ success: boolean; error?: string }>;
-  testSharePointConnection: (url: string) => Promise<{ success: boolean; message: string; authenticated?: boolean }>;
+  setUpdateProvider: (config: {
+    type: "github" | "sharepoint";
+    sharePointUrl?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  testSharePointConnection: (
+    url: string
+  ) => Promise<{ success: boolean; message: string; authenticated?: boolean }>;
   sharePointLogin: () => Promise<{ success: boolean; error?: string }>;
   sharePointLogout: () => Promise<void>;
 

@@ -28,13 +28,13 @@ In OpenXML, hyperlinks use a two-part reference system:
 ### Basic Hyperlink Manager
 
 ```typescript
-import { Document, ExternalHyperlink, InternalHyperlink, TextRun, Paragraph } from 'docx';
-import JSZip from 'jszip';
-import { parseStringPromise, Builder } from 'xml2js';
+import { Document, ExternalHyperlink, InternalHyperlink, TextRun, Paragraph } from "docx";
+import JSZip from "jszip";
+import { parseStringPromise, Builder } from "xml2js";
 
 interface HyperlinkData {
   id: string;
-  type: 'external' | 'internal';
+  type: "external" | "internal";
   target: string;
   text: string;
   created: Date;
@@ -50,7 +50,7 @@ export class HyperlinkManager {
 
     this.relationships.set(id, {
       id,
-      type: 'external',
+      type: "external",
       target: url,
       text,
       created: new Date(),
@@ -61,7 +61,7 @@ export class HyperlinkManager {
       children: [
         new TextRun({
           text,
-          style: 'Hyperlink',
+          style: "Hyperlink",
         }),
       ],
     });
@@ -72,7 +72,7 @@ export class HyperlinkManager {
 
     this.relationships.set(id, {
       id,
-      type: 'internal',
+      type: "internal",
       target: `#${bookmarkId}`,
       text,
       created: new Date(),
@@ -83,7 +83,7 @@ export class HyperlinkManager {
       children: [
         new TextRun({
           text,
-          style: 'Hyperlink',
+          style: "Hyperlink",
         }),
       ],
     });
@@ -104,10 +104,10 @@ export class HyperlinkModifier {
     const changes: Change[] = [];
 
     // Parse relationships
-    const relsFile = zip.file('word/_rels/document.xml.rels');
-    if (!relsFile) throw new Error('Relationships file not found');
+    const relsFile = zip.file("word/_rels/document.xml.rels");
+    if (!relsFile) throw new Error("Relationships file not found");
 
-    const relsXml = await relsFile.async('string');
+    const relsXml = await relsFile.async("string");
     const parsed = await parseStringPromise(relsXml);
 
     // Update matching relationships
@@ -126,9 +126,9 @@ export class HyperlinkModifier {
     // Save changes
     const builder = new Builder();
     const updatedXml = builder.buildObject(parsed);
-    zip.file('word/_rels/document.xml.rels', updatedXml);
+    zip.file("word/_rels/document.xml.rels", updatedXml);
 
-    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+    const buffer = await zip.generateAsync({ type: "nodebuffer" });
     await fs.writeFile(documentPath, buffer);
 
     return { success: true, changes };
@@ -137,38 +137,38 @@ export class HyperlinkModifier {
   async updateText(documentPath: string, relationshipId: string, newText: string): Promise<void> {
     const zip = await JSZip.loadAsync(await fs.readFile(documentPath));
 
-    const docFile = zip.file('word/document.xml');
-    if (!docFile) throw new Error('Document file not found');
+    const docFile = zip.file("word/document.xml");
+    if (!docFile) throw new Error("Document file not found");
 
-    const docXml = await docFile.async('string');
+    const docXml = await docFile.async("string");
     const parsed = await parseStringPromise(docXml);
 
     // Find and update hyperlink text
     this.findAndUpdateHyperlink(parsed, relationshipId, newText);
 
     const builder = new Builder();
-    zip.file('word/document.xml', builder.buildObject(parsed));
+    zip.file("word/document.xml", builder.buildObject(parsed));
 
-    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+    const buffer = await zip.generateAsync({ type: "nodebuffer" });
     await fs.writeFile(documentPath, buffer);
   }
 
   private findAndUpdateHyperlink(doc: any, relationshipId: string, newText: string): void {
     const traverse = (node: any): void => {
-      if (!node || typeof node !== 'object') return;
+      if (!node || typeof node !== "object") return;
 
-      if (node['w:hyperlink']) {
-        const hyperlinks = Array.isArray(node['w:hyperlink'])
-          ? node['w:hyperlink']
-          : [node['w:hyperlink']];
+      if (node["w:hyperlink"]) {
+        const hyperlinks = Array.isArray(node["w:hyperlink"])
+          ? node["w:hyperlink"]
+          : [node["w:hyperlink"]];
 
         for (const hyperlink of hyperlinks) {
-          if (hyperlink.$?.['r:id'] === relationshipId) {
+          if (hyperlink.$?.["r:id"] === relationshipId) {
             // Update text in runs
-            const runs = hyperlink['w:r'] || [];
+            const runs = hyperlink["w:r"] || [];
             for (const run of runs) {
-              if (run['w:t']) {
-                run['w:t'] = [newText];
+              if (run["w:t"]) {
+                run["w:t"] = [newText];
               }
             }
           }
@@ -190,8 +190,8 @@ Since `docx` library doesn't support native Word track changes, implement custom
 ```typescript
 interface TrackedChange {
   id: string;
-  type: 'insert' | 'delete' | 'modify';
-  elementType: 'hyperlink';
+  type: "insert" | "delete" | "modify";
+  elementType: "hyperlink";
   author: string;
   timestamp: Date;
   before?: HyperlinkData;
@@ -208,7 +208,7 @@ export class ChangeTracker {
   }
 
   track(
-    operation: 'insert' | 'delete' | 'modify',
+    operation: "insert" | "delete" | "modify",
     data: {
       id: string;
       before?: HyperlinkData;
@@ -218,15 +218,15 @@ export class ChangeTracker {
     this.changes.push({
       id: crypto.randomUUID(),
       type: operation,
-      elementType: 'hyperlink',
-      author: process.env.USER || 'unknown',
+      elementType: "hyperlink",
+      author: process.env.USER || "unknown",
       timestamp: new Date(),
       before: data.before,
       after: data.after,
     });
 
     // Update snapshot
-    if (operation === 'delete') {
+    if (operation === "delete") {
       this.snapshots.delete(data.id);
     } else if (data.after) {
       this.snapshots.set(data.id, data.after);
@@ -243,7 +243,7 @@ export class ChangeTracker {
         {
           children: [
             new Paragraph({
-              text: 'Change History',
+              text: "Change History",
               heading: HeadingLevel.HEADING_1,
             }),
             ...this.changes.map(
@@ -273,11 +273,11 @@ export class HyperlinkUtils {
     const zip = await JSZip.loadAsync(await fs.readFile(documentPath));
 
     // Get used relationship IDs from document
-    const docXml = await zip.file('word/document.xml')?.async('string');
+    const docXml = await zip.file("word/document.xml")?.async("string");
     const usedIds = this.extractUsedRelationshipIds(docXml);
 
     // Get all relationship IDs
-    const relsXml = await zip.file('word/_rels/document.xml.rels')?.async('string');
+    const relsXml = await zip.file("word/_rels/document.xml.rels")?.async("string");
     const parsed = await parseStringPromise(relsXml);
 
     // Remove orphaned
@@ -292,8 +292,8 @@ export class HyperlinkUtils {
 
     if (removed > 0) {
       const builder = new Builder();
-      zip.file('word/_rels/document.xml.rels', builder.buildObject(parsed));
-      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+      zip.file("word/_rels/document.xml.rels", builder.buildObject(parsed));
+      const buffer = await zip.generateAsync({ type: "nodebuffer" });
       await fs.writeFile(documentPath, buffer);
     }
 
@@ -303,7 +303,7 @@ export class HyperlinkUtils {
   // Consolidate duplicate URLs
   static async consolidateDuplicates(documentPath: string): Promise<ConsolidationResult> {
     const zip = await JSZip.loadAsync(await fs.readFile(documentPath));
-    const relsXml = await zip.file('word/_rels/document.xml.rels')?.async('string');
+    const relsXml = await zip.file("word/_rels/document.xml.rels")?.async("string");
     const parsed = await parseStringPromise(relsXml);
 
     const urlMap = new Map<string, string[]>();
@@ -336,8 +336,8 @@ export class HyperlinkUtils {
 
     if (consolidations.length > 0) {
       const builder = new Builder();
-      zip.file('word/_rels/document.xml.rels', builder.buildObject(parsed));
-      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+      zip.file("word/_rels/document.xml.rels", builder.buildObject(parsed));
+      const buffer = await zip.generateAsync({ type: "nodebuffer" });
       await fs.writeFile(documentPath, buffer);
     }
 
@@ -349,29 +349,29 @@ export class HyperlinkUtils {
     const issues: ValidationIssue[] = [];
     const zip = await JSZip.loadAsync(await fs.readFile(documentPath));
 
-    const relsXml = await zip.file('word/_rels/document.xml.rels')?.async('string');
+    const relsXml = await zip.file("word/_rels/document.xml.rels")?.async("string");
     const parsed = await parseStringPromise(relsXml);
 
     for (const rel of parsed.Relationships.Relationship) {
-      if (rel.$.Type?.includes('hyperlink')) {
+      if (rel.$.Type?.includes("hyperlink")) {
         // Check URL validity
         try {
           new URL(rel.$.Target);
         } catch {
           issues.push({
             id: rel.$.Id,
-            type: 'invalid_url',
+            type: "invalid_url",
             message: `Invalid URL: ${rel.$.Target}`,
           });
         }
 
         // Check for broken internal links
-        if (rel.$.Target?.startsWith('#')) {
+        if (rel.$.Target?.startsWith("#")) {
           const bookmarkId = rel.$.Target.substring(1);
           if (!(await this.bookmarkExists(zip, bookmarkId))) {
             issues.push({
               id: rel.$.Id,
-              type: 'broken_bookmark',
+              type: "broken_bookmark",
               message: `Bookmark not found: ${bookmarkId}`,
             });
           }
@@ -412,7 +412,7 @@ export class HyperlinkProcessor {
     }
 
     // Write once
-    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+    const buffer = await zip.generateAsync({ type: "nodebuffer" });
     await fs.writeFile(documentPath, buffer);
 
     return {
@@ -426,7 +426,7 @@ export class HyperlinkProcessor {
   // Stream processing for large documents
   async *streamHyperlinks(documentPath: string): AsyncGenerator<HyperlinkData> {
     const zip = await JSZip.loadAsync(await fs.readFile(documentPath));
-    const docXml = await zip.file('word/document.xml')?.async('string');
+    const docXml = await zip.file("word/document.xml")?.async("string");
 
     // Parse in chunks to avoid memory issues
     const chunks = this.splitIntoChunks(docXml, 1000);
@@ -469,11 +469,11 @@ async function processDocument(inputPath: string, outputPath: string) {
   await tracker.initialize(inputPath);
 
   // Update URL
-  const result = await modifier.updateUrl(inputPath, 'http://old-url.com', 'https://new-url.com');
+  const result = await modifier.updateUrl(inputPath, "http://old-url.com", "https://new-url.com");
 
   // Track changes
   result.changes.forEach((change) => {
-    tracker.track('modify', {
+    tracker.track("modify", {
       id: change.relationshipId,
       before: { target: change.oldTarget },
       after: { target: change.newTarget },
@@ -487,7 +487,7 @@ async function processDocument(inputPath: string, outputPath: string) {
   // Validate
   const validation = await HyperlinkUtils.validate(inputPath);
   if (!validation.valid) {
-    console.error('Validation issues:', validation.issues);
+    console.error("Validation issues:", validation.issues);
   }
 
   // Export change report

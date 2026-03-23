@@ -9,22 +9,15 @@
  * before and after processing. Supports navigation between multiple documents.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import {
-  X,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  RefreshCw,
-  AlertCircle,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
-import { Button } from '@/components/common/Button';
-import { SideBySideDiff } from '@/components/comparison/SideBySideDiff';
-import { DocumentSnapshotService } from '@/services/document/DocumentSnapshotService';
-import type { Document } from '@/types/session';
-import logger from '@/utils/logger';
+import { useState, useEffect, useCallback } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { X, ChevronLeft, ChevronRight, FileText, RefreshCw, AlertCircle } from "lucide-react";
+import { cn } from "@/utils/cn";
+import { Button } from "@/components/common/Button";
+import { SideBySideDiff } from "@/components/comparison/SideBySideDiff";
+import { DocumentSnapshotService } from "@/services/document/DocumentSnapshotService";
+import type { Document } from "@/types/session";
+import logger from "@/utils/logger";
 
 interface DocumentComparisonModalProps {
   /** Whether the modal is open */
@@ -70,7 +63,7 @@ export function DocumentComparisonModal({
         originalText: [],
         processedText: [],
         isLoading: false,
-        error: 'Document path not available',
+        error: "Document path not available",
       });
       return;
     }
@@ -79,17 +72,15 @@ export function DocumentComparisonModal({
 
     try {
       // Load original text from snapshot
-      const snapshot = await DocumentSnapshotService.getSnapshot(
-        sessionId,
-        currentDoc.id
-      );
+      const snapshot = await DocumentSnapshotService.getSnapshot(sessionId, currentDoc.id);
 
       if (!snapshot) {
         setComparisonState({
           originalText: [],
           processedText: [],
           isLoading: false,
-          error: 'Original document snapshot not available. The snapshot may have expired or was not captured.',
+          error:
+            "Original document snapshot not available. The snapshot may have expired or was not captured.",
         });
         return;
       }
@@ -102,7 +93,7 @@ export function DocumentComparisonModal({
           originalText: snapshot.textContent,
           processedText: [],
           isLoading: false,
-          error: result.error || 'Failed to extract processed document text',
+          error: result.error || "Failed to extract processed document text",
         });
         return;
       }
@@ -119,12 +110,12 @@ export function DocumentComparisonModal({
           `${snapshot.textContent.length} original paragraphs, ${result.textContent.length} processed paragraphs`
       );
     } catch (error) {
-      logger.error('[DocumentComparisonModal] Error loading comparison:', error);
+      logger.error("[DocumentComparisonModal] Error loading comparison:", error);
       setComparisonState({
         originalText: [],
         processedText: [],
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to load comparison data',
+        error: error instanceof Error ? error.message : "Failed to load comparison data",
       });
     }
   }, [currentDoc, sessionId]);
@@ -167,17 +158,17 @@ export function DocumentComparisonModal({
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' && currentDocIndex > 0) {
+      if (e.key === "ArrowLeft" && currentDocIndex > 0) {
         handlePrevious();
-      } else if (e.key === 'ArrowRight' && currentDocIndex < documents.length - 1) {
+      } else if (e.key === "ArrowRight" && currentDocIndex < documents.length - 1) {
         handleNext();
-      } else if (e.key === 'Escape') {
+      } else if (e.key === "Escape") {
         onClose();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, currentDocIndex, documents.length, handlePrevious, handleNext, onClose]);
 
   if (documents.length === 0) {
@@ -191,14 +182,14 @@ export function DocumentComparisonModal({
         <Dialog.Content
           aria-describedby={undefined}
           className={cn(
-            'fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%]',
-            'w-[95vw] max-w-6xl h-[90vh] rounded-lg border border-border bg-card shadow-xl',
-            'flex flex-col overflow-hidden',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-            'data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]',
-            'data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]'
+            "fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%]",
+            "w-[95vw] max-w-6xl h-[90vh] rounded-lg border border-border bg-card shadow-xl",
+            "flex flex-col overflow-hidden",
+            "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+            "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+            "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
+            "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]"
           )}
         >
           {/* Header */}
@@ -206,7 +197,7 @@ export function DocumentComparisonModal({
             <div className="flex items-center gap-3">
               <FileText className="w-5 h-5 text-primary" />
               <Dialog.Title className="font-semibold text-foreground">
-                Compare: {currentDoc?.name || 'Document'}
+                Compare: {currentDoc?.name || "Document"}
               </Dialog.Title>
             </div>
 
@@ -242,12 +233,7 @@ export function DocumentComparisonModal({
 
               {/* Close button */}
               <Dialog.Close asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  title="Close (Escape)"
-                >
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Close (Escape)">
                   <X className="w-4 h-4" />
                 </Button>
               </Dialog.Close>
@@ -267,12 +253,7 @@ export function DocumentComparisonModal({
                 <AlertCircle className="w-10 h-10 mb-4 text-destructive" />
                 <p className="text-lg font-medium text-destructive">Unable to load comparison</p>
                 <p className="text-sm mt-2 max-w-md text-center">{comparisonState.error}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={loadComparisonData}
-                >
+                <Button variant="outline" size="sm" className="mt-4" onClick={loadComparisonData}>
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Retry
                 </Button>
@@ -292,8 +273,8 @@ export function DocumentComparisonModal({
           {/* Footer */}
           <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-muted/20 text-xs text-muted-foreground">
             <div>
-              Original: {comparisonState.originalText.length} paragraphs |
-              Processed: {comparisonState.processedText.length} paragraphs
+              Original: {comparisonState.originalText.length} paragraphs | Processed:{" "}
+              {comparisonState.processedText.length} paragraphs
             </div>
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">

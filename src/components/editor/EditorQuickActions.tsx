@@ -9,8 +9,8 @@
  * - Tracked changes (accept all, reject all)
  */
 
-import { useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown,
   ChevronRight,
@@ -40,9 +40,9 @@ import {
   XCircle,
   Search,
   SeparatorHorizontal,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
-import type { QuickActionId, CellSelection } from '@/types/editor';
+} from "lucide-react";
+import { cn } from "@/utils/cn";
+import type { QuickActionId, CellSelection } from "@/types/editor";
 
 interface EditorQuickActionsProps {
   /** Handler for quick action clicks */
@@ -95,9 +95,9 @@ function QuickActionButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors',
-        'hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed',
-        'text-left'
+        "w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors",
+        "hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed",
+        "text-left"
       )}
       title={action.description || action.label}
     >
@@ -133,11 +133,7 @@ function ActionGroupSection({
         onClick={onToggle}
         className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
       >
-        {isOpen ? (
-          <ChevronDown className="w-4 h-4" />
-        ) : (
-          <ChevronRight className="w-4 h-4" />
-        )}
+        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         <group.icon className="w-4 h-4" />
         <span className="flex-1 text-left">{group.label}</span>
       </button>
@@ -146,7 +142,7 @@ function ActionGroupSection({
         {isOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
@@ -187,7 +183,7 @@ export function EditorQuickActions({
   disabled = false,
 }: EditorQuickActionsProps) {
   const [openGroups, setOpenGroups] = useState<Set<string>>(
-    new Set(['Text Formatting', 'Table Shading'])
+    new Set(["Text Formatting", "Table Shading"])
   );
 
   const toggleGroup = useCallback((label: string) => {
@@ -205,239 +201,239 @@ export function EditorQuickActions({
   // Define action groups
   const actionGroups: ActionGroup[] = [
     {
-      label: 'Table Shading',
+      label: "Table Shading",
       icon: Paintbrush,
       defaultOpen: true,
       actions: [
         {
-          id: 'apply-h2-shading',
+          id: "apply-h2-shading",
           icon: Paintbrush,
-          label: 'Apply Header 2 Shading',
-          description: `Apply ${tableShadingSettings?.header2Shading || '#BFBFBF'} shading`,
+          label: "Apply Header 2 Shading",
+          description: `Apply ${tableShadingSettings?.header2Shading || "#BFBFBF"} shading`,
           requiresTable: true,
         },
         {
-          id: 'apply-other-shading',
+          id: "apply-other-shading",
           icon: Paintbrush,
-          label: 'Apply Other Shading',
-          description: `Apply ${tableShadingSettings?.otherShading || '#DFDFDF'} shading`,
+          label: "Apply Other Shading",
+          description: `Apply ${tableShadingSettings?.otherShading || "#DFDFDF"} shading`,
           requiresTable: true,
         },
       ],
     },
     {
-      label: 'Text Formatting',
+      label: "Text Formatting",
       icon: Bold,
       defaultOpen: true,
       actions: [
         {
-          id: 'bold',
+          id: "bold",
           icon: Bold,
-          label: 'Bold',
-          description: 'Toggle bold (Ctrl+B)',
+          label: "Bold",
+          description: "Toggle bold (Ctrl+B)",
           requiresSelection: true,
         },
         {
-          id: 'italic',
+          id: "italic",
           icon: Italic,
-          label: 'Italic',
-          description: 'Toggle italic (Ctrl+I)',
+          label: "Italic",
+          description: "Toggle italic (Ctrl+I)",
           requiresSelection: true,
         },
         {
-          id: 'underline',
+          id: "underline",
           icon: Underline,
-          label: 'Underline',
-          description: 'Toggle underline (Ctrl+U)',
+          label: "Underline",
+          description: "Toggle underline (Ctrl+U)",
           requiresSelection: true,
         },
         {
-          id: 'clear-formatting',
+          id: "clear-formatting",
           icon: RemoveFormatting,
-          label: 'Clear Formatting',
-          description: 'Remove all formatting',
+          label: "Clear Formatting",
+          description: "Remove all formatting",
           requiresSelection: true,
         },
       ],
     },
     {
-      label: 'Hyperlinks',
+      label: "Hyperlinks",
       icon: Link2,
       actions: [
         {
-          id: 'insert-hyperlink',
+          id: "insert-hyperlink",
           icon: Link2,
-          label: 'Insert Hyperlink',
-          description: 'Add hyperlink to selection',
+          label: "Insert Hyperlink",
+          description: "Add hyperlink to selection",
           requiresSelection: true,
         },
         {
-          id: 'remove-hyperlink',
+          id: "remove-hyperlink",
           icon: Unlink,
-          label: 'Remove Hyperlink',
-          description: 'Convert hyperlink to plain text',
+          label: "Remove Hyperlink",
+          description: "Convert hyperlink to plain text",
           requiresSelection: true,
         },
       ],
     },
     {
-      label: 'Paragraph Styles',
+      label: "Paragraph Styles",
       icon: FileText,
       actions: [
         {
-          id: 'style-heading1',
+          id: "style-heading1",
           icon: FileText,
-          label: 'Heading 1',
-          description: 'Apply Heading 1 style',
+          label: "Heading 1",
+          description: "Apply Heading 1 style",
         },
         {
-          id: 'style-heading2',
+          id: "style-heading2",
           icon: FileText,
-          label: 'Heading 2',
-          description: 'Apply Heading 2 style',
+          label: "Heading 2",
+          description: "Apply Heading 2 style",
         },
         {
-          id: 'style-normal',
+          id: "style-normal",
           icon: FileText,
-          label: 'Normal',
-          description: 'Apply Normal style',
+          label: "Normal",
+          description: "Apply Normal style",
         },
         {
-          id: 'style-list-paragraph',
+          id: "style-list-paragraph",
           icon: ListOrdered,
-          label: 'List Paragraph',
-          description: 'Apply List Paragraph style',
+          label: "List Paragraph",
+          description: "Apply List Paragraph style",
         },
       ],
     },
     {
-      label: 'Table Rows',
+      label: "Table Rows",
       icon: ArrowUp,
       actions: [
         {
-          id: 'table-add-row-above',
+          id: "table-add-row-above",
           icon: ArrowUp,
-          label: 'Add Row Above',
-          description: 'Insert row above selection',
+          label: "Add Row Above",
+          description: "Insert row above selection",
           requiresTable: true,
         },
         {
-          id: 'table-add-row-below',
+          id: "table-add-row-below",
           icon: ArrowDown,
-          label: 'Add Row Below',
-          description: 'Insert row below selection',
+          label: "Add Row Below",
+          description: "Insert row below selection",
           requiresTable: true,
         },
         {
-          id: 'table-delete-row',
+          id: "table-delete-row",
           icon: Minus,
-          label: 'Delete Row',
-          description: 'Delete selected row',
+          label: "Delete Row",
+          description: "Delete selected row",
           requiresTable: true,
         },
       ],
     },
     {
-      label: 'Table Columns',
+      label: "Table Columns",
       icon: ArrowLeft,
       actions: [
         {
-          id: 'table-add-col-left',
+          id: "table-add-col-left",
           icon: ArrowLeft,
-          label: 'Add Column Left',
-          description: 'Insert column to the left',
+          label: "Add Column Left",
+          description: "Insert column to the left",
           requiresTable: true,
         },
         {
-          id: 'table-add-col-right',
+          id: "table-add-col-right",
           icon: ArrowRight,
-          label: 'Add Column Right',
-          description: 'Insert column to the right',
+          label: "Add Column Right",
+          description: "Insert column to the right",
           requiresTable: true,
         },
         {
-          id: 'table-delete-col',
+          id: "table-delete-col",
           icon: Minus,
-          label: 'Delete Column',
-          description: 'Delete selected column',
+          label: "Delete Column",
+          description: "Delete selected column",
           requiresTable: true,
         },
       ],
     },
     {
-      label: 'Table Cells',
+      label: "Table Cells",
       icon: Grid3X3,
       actions: [
         {
-          id: 'table-merge-cells',
+          id: "table-merge-cells",
           icon: Merge,
-          label: 'Merge Cells',
-          description: 'Merge selected cells',
+          label: "Merge Cells",
+          description: "Merge selected cells",
           requiresTable: true,
         },
         {
-          id: 'table-split-cell',
+          id: "table-split-cell",
           icon: Split,
-          label: 'Split Cell',
-          description: 'Split merged cell',
+          label: "Split Cell",
+          description: "Split merged cell",
           requiresTable: true,
         },
         {
-          id: 'table-cell-shading',
+          id: "table-cell-shading",
           icon: Paintbrush,
-          label: 'Cell Shading',
-          description: 'Set cell background color',
+          label: "Cell Shading",
+          description: "Set cell background color",
           requiresTable: true,
         },
         {
-          id: 'table-cell-borders',
+          id: "table-cell-borders",
           icon: Grid3X3,
-          label: 'Cell Borders',
-          description: 'Configure cell borders',
+          label: "Cell Borders",
+          description: "Configure cell borders",
           requiresTable: true,
         },
         {
-          id: 'table-vertical-align',
+          id: "table-vertical-align",
           icon: AlignVerticalJustifyCenter,
-          label: 'Vertical Alignment',
-          description: 'Set cell vertical alignment',
+          label: "Vertical Alignment",
+          description: "Set cell vertical alignment",
           requiresTable: true,
         },
       ],
     },
     {
-      label: 'Structure',
+      label: "Structure",
       icon: SeparatorHorizontal,
       actions: [
         {
-          id: 'page-break',
+          id: "page-break",
           icon: SeparatorHorizontal,
-          label: 'Insert Page Break',
-          description: 'Add page break before paragraph',
+          label: "Insert Page Break",
+          description: "Add page break before paragraph",
         },
         {
-          id: 'find-replace',
+          id: "find-replace",
           icon: Search,
-          label: 'Find & Replace',
-          description: 'Search and replace text',
+          label: "Find & Replace",
+          description: "Search and replace text",
         },
       ],
     },
     {
-      label: 'Tracked Changes',
+      label: "Tracked Changes",
       icon: Check,
       actions: [
         {
-          id: 'accept-all-changes',
+          id: "accept-all-changes",
           icon: Check,
-          label: 'Accept All Changes',
-          description: 'Accept all tracked changes',
+          label: "Accept All Changes",
+          description: "Accept all tracked changes",
         },
         {
-          id: 'reject-all-changes',
+          id: "reject-all-changes",
           icon: XCircle,
-          label: 'Reject All Changes',
-          description: 'Reject all tracked changes',
+          label: "Reject All Changes",
+          description: "Reject all tracked changes",
         },
       ],
     },
@@ -450,10 +446,10 @@ export function EditorQuickActions({
         <h3 className="font-medium">Quick Actions</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
           {hasTableSelection
-            ? 'Table cell selected'
+            ? "Table cell selected"
             : hasTextSelection
-              ? 'Text selected'
-              : 'Click to select content'}
+              ? "Text selected"
+              : "Click to select content"}
         </p>
       </div>
 

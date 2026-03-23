@@ -15,20 +15,22 @@ import { createCanvas, loadImage } from "canvas";
 import { Document, Image, ImageRun, Paragraph, Revision } from "docxmlater";
 
 // ── Detection constants ──────────────────────────────────────────────
-const DARK_THRESHOLD = 80; // luminance <= this = border pixel
-const LIGHT_THRESHOLD = 230; // luminance >= this = gap/padding pixel
-const EDGE_CONSENSUS = 0.65; // 65 % of scan lines must detect border
-const MIN_BORDERED_EDGES = 3; // at least 3 of 4 edges
-const MAX_BORDER_THICKNESS = 4; // border line max 4 px
-const MIN_GAP_THICKNESS = 5; // white gap at least 5 px
-const SAMPLE_INTERVAL = 5; // sample every 5th column / row
-const MAX_CROP_FRACTION = 0.15; // never crop > 15 % from one edge
-const MIN_DIMENSION_PX = 80; // skip images < 80 px
-const TRANSITION_DEPTH = 10; // check pixels at depth 4-10 for light transition
+export const DARK_THRESHOLD = 80; // luminance <= this = border pixel
+export const EDGE_CONSENSUS = 0.65; // 65 % of scan lines must detect border
+export const MIN_BORDERED_EDGES = 4; // all 4 edges must have border pattern for cropping
+export const MIN_BORDER_SKIP_EDGES = 3; // 3+ edges with border pattern → skip adding pipeline border
+export const MAX_BORDER_THICKNESS = 4; // border line max 4 px
+export const SAMPLE_INTERVAL = 5; // sample every 5th column / row
+export const MAX_CROP_FRACTION = 0.20; // never crop > 20 % from one edge
+export const MIN_DIMENSION_PX = 80; // skip images < 80 px
+export const TRANSITION_DEPTH = 10; // check pixels at depth 4-10 for light transition
+export const MAX_BORDER_ZONE = 16; // max depth to search for border pixels (must accommodate initial skip + border thickness)
+export const MAX_INITIAL_SKIP = 20; // max non-dark pixels to skip at edge start (white padding before border)
+export const MIN_POST_BORDER_NONDARK = 2; // consecutive non-dark pixels to confirm border ended
+export const MAX_POSITION_SPREAD = 8; // max crop position variation across scan lines (gap-skipping adds variation)
+export const CONTENT_SAFETY_MARGIN = 3; // pixels to pull back from crop edge to avoid clipping content
 
-const EMUS_PER_PIXEL = 9525;
-
-type Edge = "top" | "bottom" | "left" | "right";
+export type Edge = "top" | "bottom" | "left" | "right";
 
 // ── Public API ───────────────────────────────────────────────────────
 
@@ -38,6 +40,10 @@ export interface CropResult {
   errorCount: number;
   /** Images detected as having baked-in dark borders on all 4 sides. */
   allSideBakedBorderImages: Set<Image>;
+  /** Images that had their embedded border cropped away and need a pipeline border. */
+  croppedImages: Set<Image>;
+  /** Images with Word crop — skipped analysis, need border check by caller */
+  wordCroppedImages: Set<Image>;
 }
 
 interface CropRect {
@@ -47,9 +53,15 @@ interface CropRect {
   right: number;
 }
 
-interface EdgeResult {
+export interface EdgeResult {
   detected: boolean;
   cropPosition: number;
+  /** Number of scan lines that detected a border pattern. */
+  sampleHits: number;
+  /** Total number of scan lines sampled. */
+  sampleCount: number;
+  /** Max minus min crop position across detecting scan lines. -1 if not enough hits. */
+  spread: number;
 }
 
 /**
@@ -60,7 +72,7 @@ export async function cropEmbeddedImageBorders(
   doc: Document,
   log: { debug: Function; info: Function; warn: Function }
 ): Promise<CropResult> {
-  const result: CropResult = { croppedCount: 0, skippedCount: 0, errorCount: 0, allSideBakedBorderImages: new Set() };
+  const result: CropResult = { croppedCount: 0, skippedCount: 0, errorCount: 0, allSideBakedBorderImages: new Set(), croppedImages: new Set(), wordCroppedImages: new Set() };
 
   const images = collectImages(doc);
   log.debug(`Found ${images.length} images to analyse for embedded borders`);
@@ -80,7 +92,7 @@ export async function cropEmbeddedImageBorders(
 }
 
 /** Pixel-level check: are all 4 edges predominantly dark? */
-function pixelsHaveAllSideBakedBorder(
+export function pixelsHaveAllSideBakedBorder(
   pixels: Uint8ClampedArray,
   width: number,
   height: number
@@ -126,6 +138,12 @@ function collectImages(doc: Document): Image[] {
   return images;
 }
 
+// ── Word crop helpers ─────────────────────────────────────────────────
+
+function hasWordCrop(crop: { left: number; top: number; right: number; bottom: number } | undefined): boolean {
+  return !!crop && (crop.left > 0 || crop.top > 0 || crop.right > 0 || crop.bottom > 0);
+}
+
 // ── Per-image processing ─────────────────────────────────────────────
 
 async function processOneImage(
@@ -141,13 +159,25 @@ async function processOneImage(
     return;
   }
 
+  const MAX_IMAGE_BUFFER_BYTES = 50 * 1024 * 1024; // 50 MB
   const buf = image.getImageDataSafe();
   if (!buf || buf.length === 0) {
     result.skippedCount++;
     return;
   }
+  if (buf.length > MAX_IMAGE_BUFFER_BYTES) {
+    result.skippedCount++;
+    return;
+  }
 
-  // Load into canvas to get pixel data
+  // Word-cropped images: skip all analysis, caller handles border
+  const wordCrop = image.getCrop?.();
+  if (hasWordCrop(wordCrop)) {
+    result.wordCroppedImages.add(image);
+    return;
+  }
+
+  // Load into canvas to get full pixel data
   const img = await loadImage(buf);
   const w = img.width;
   const h = img.height;
@@ -157,22 +187,30 @@ async function processOneImage(
     return;
   }
 
+  const MAX_PIXEL_COUNT = 25_000_000;
+  if (w * h > MAX_PIXEL_COUNT) {
+    log.debug(`Skipping image: ${w}x${h} exceeds pixel budget`);
+    result.skippedCount++;
+    return;
+  }
+
   const canvas = createCanvas(w, h);
   const ctx = canvas.getContext("2d");
   ctx.drawImage(img, 0, 0);
+
   const imageData = ctx.getImageData(0, 0, w, h);
-  const pixels = imageData.data; // Uint8ClampedArray [r,g,b,a, ...]
+  const analysisPixels = imageData.data;
 
-  // Record all-side baked border for bordering decisions (cache for later)
-  if (pixelsHaveAllSideBakedBorder(pixels, w, h)) {
-    result.allSideBakedBorderImages.add(image);
-    log.debug("Image has baked-in border on all 4 sides (recorded for bordering)");
-  }
+  // Run crop detection
+  const { cropRect, detectedEdges } = detectEmbeddedBorder(analysisPixels, w, h, log);
 
-  // Proceed with crop detection unconditionally — detectEmbeddedBorder's
-  // own strict pattern matching (border+gap, 3+ edges, consensus) is sufficient
-  const cropRect = detectEmbeddedBorder(pixels, w, h);
   if (!cropRect) {
+    if (detectedEdges >= MIN_BORDER_SKIP_EDGES || pixelsHaveAllSideBakedBorder(analysisPixels, w, h)) {
+      result.allSideBakedBorderImages.add(image);
+      log.debug(
+        `No crop needed: image has border on ${detectedEdges}/4 edges (>= ${MIN_BORDER_SKIP_EDGES} → skip pipeline border)`
+      );
+    }
     result.skippedCount++;
     return;
   }
@@ -198,7 +236,7 @@ async function processOneImage(
     return;
   }
 
-  // Crop via canvas
+  // Crop from the analysis canvas
   const cropCanvas = createCanvas(newW, newH);
   const cropCtx = cropCanvas.getContext("2d");
   cropCtx.drawImage(canvas, cropRect.left, cropRect.top, newW, newH, 0, 0, newW, newH);
@@ -223,15 +261,22 @@ async function processOneImage(
     `Cropped embedded border: ${w}x${h} → ${newW}x${newH} (removed T:${cropRect.top} B:${cropRect.bottom} L:${cropRect.left} R:${cropRect.right})`
   );
   result.croppedCount++;
+  result.croppedImages.add(image);
 }
 
 // ── Border detection ─────────────────────────────────────────────────
 
+interface BorderDetectionResult {
+  cropRect: CropRect | null;
+  detectedEdges: number;
+}
+
 function detectEmbeddedBorder(
   pixels: Uint8ClampedArray,
   width: number,
-  height: number
-): CropRect | null {
+  height: number,
+  log?: { debug: Function }
+): BorderDetectionResult {
   const edges: Edge[] = ["top", "bottom", "left", "right"];
   const results: Record<Edge, EdgeResult> = {} as Record<Edge, EdgeResult>;
   let detectedCount = 0;
@@ -241,13 +286,31 @@ function detectEmbeddedBorder(
     if (results[edge].detected) detectedCount++;
   }
 
-  if (detectedCount < MIN_BORDERED_EDGES) return null;
+  // Per-edge diagnostic summary
+  if (log) {
+    const parts = edges.map((e) => {
+      const r = results[e];
+      const pct = r.sampleCount > 0 ? Math.round((r.sampleHits / r.sampleCount) * 100) : 0;
+      if (r.detected) return `${e}=${r.cropPosition}px(s:${r.spread},${pct}%)`;
+      return `${e}=REJECT(s:${r.spread},${pct}%)`;
+    });
+    log.debug(
+      `Edge crop [${width}x${height}]: ${parts.join(" ")} → ${detectedCount}/${edges.length} need ${MIN_BORDERED_EDGES}`
+    );
+  }
+
+  if (detectedCount < MIN_BORDERED_EDGES) return { cropRect: null, detectedEdges: detectedCount };
+
+  const safeCrop = (pos: number): number => Math.max(0, pos - CONTENT_SAFETY_MARGIN);
 
   return {
-    top: results.top.detected ? results.top.cropPosition : 0,
-    bottom: results.bottom.detected ? results.bottom.cropPosition : 0,
-    left: results.left.detected ? results.left.cropPosition : 0,
-    right: results.right.detected ? results.right.cropPosition : 0,
+    cropRect: {
+      top: results.top.detected ? safeCrop(results.top.cropPosition) : 0,
+      bottom: results.bottom.detected ? safeCrop(results.bottom.cropPosition) : 0,
+      left: results.left.detected ? safeCrop(results.left.cropPosition) : 0,
+      right: results.right.detected ? safeCrop(results.right.cropPosition) : 0,
+    },
+    detectedEdges: detectedCount,
   };
 }
 
@@ -264,9 +327,10 @@ function analyzeEdge(
   height: number,
   edge: Edge
 ): EdgeResult {
+  const noResult: EdgeResult = { detected: false, cropPosition: 0, sampleHits: 0, sampleCount: 0, spread: -1 };
   const perpLength = edge === "top" || edge === "bottom" ? width : height;
   const sampleCount = Math.floor(perpLength / SAMPLE_INTERVAL);
-  if (sampleCount === 0) return { detected: false, cropPosition: 0 };
+  if (sampleCount === 0) return noResult;
 
   const cropPositions: number[] = [];
 
@@ -278,14 +342,21 @@ function analyzeEdge(
 
   const needed = Math.ceil(sampleCount * EDGE_CONSENSUS);
   if (cropPositions.length < needed) {
-    return { detected: false, cropPosition: 0 };
+    return { detected: false, cropPosition: 0, sampleHits: cropPositions.length, sampleCount, spread: -1 };
   }
 
   // Use median crop position (robust against corner artifacts)
   cropPositions.sort((a, b) => a - b);
   const median = cropPositions[Math.floor(cropPositions.length / 2)];
 
-  return { detected: true, cropPosition: median };
+  // Reject if crop positions vary too much — genuine embedded borders are uniform,
+  // content borders (like T_3.png) produce variable positions across scan lines
+  const spread = cropPositions[cropPositions.length - 1] - cropPositions[0];
+  if (spread > MAX_POSITION_SPREAD) {
+    return { detected: false, cropPosition: 0, sampleHits: cropPositions.length, sampleCount, spread };
+  }
+
+  return { detected: true, cropPosition: median, sampleHits: cropPositions.length, sampleCount, spread };
 }
 
 /**
@@ -296,7 +367,7 @@ function analyzeEdge(
  * The transition check prevents false positives on dark-themed screenshots
  * where the edge content itself is dark but is not a thin border line.
  */
-function edgeIsDark(pixels: Uint8ClampedArray, width: number, height: number, edge: Edge): boolean {
+export function edgeIsDark(pixels: Uint8ClampedArray, width: number, height: number, edge: Edge): boolean {
   const perpLength = edge === "top" || edge === "bottom" ? width : height;
   const depthDimension = edge === "top" || edge === "bottom" ? height : width;
   const sampleCount = Math.floor(perpLength / SAMPLE_INTERVAL);
@@ -331,12 +402,21 @@ function edgeIsDark(pixels: Uint8ClampedArray, width: number, height: number, ed
 }
 
 /**
- * Scan one line from the given edge inward, looking for the
- * dark-border + white-gap pattern.
+ * Scan one line from the given edge inward, looking for a border pattern.
+ * Handles compound/anti-aliased borders where the outermost pixel(s)
+ * may be white or mid-tone, and the border may consist of multiple dark
+ * lines separated by small gaps (e.g., T_4.png has dark at depth 1 and 4).
  *
- * @returns crop position (pixels from edge) where content starts, or null
+ * 4-phase algorithm:
+ *   Phase 1:   Find first dark pixel within MAX_INITIAL_SKIP px from edge.
+ *   Phase 2:   Scan border zone (MAX_BORDER_ZONE px anchored to first dark pixel).
+ *   Phase 3:   Verify MIN_POST_BORDER_NONDARK consecutive non-dark pixels
+ *              immediately after the last dark pixel (confirms border ended).
+ *   Phase 4:   Skip white gap after border to reach content.
+ *
+ * @returns crop position (lastDarkDepth + 1, just past the border), or null
  */
-function scanLine(
+export function scanLine(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
@@ -345,58 +425,55 @@ function scanLine(
 ): number | null {
   const depthDimension = edge === "top" || edge === "bottom" ? height : width;
   const maxDepth = Math.floor(depthDimension * MAX_CROP_FRACTION);
-  let borderPixels = 0;
-  let gapPixels = 0;
-  let inBorder = true;
 
-  for (let depth = 0; depth < maxDepth; depth++) {
+  // ── Phase 1: Find first dark pixel (skip initial white gap) ──
+  let firstDarkDepth = -1;
+  const skipLimit = Math.min(MAX_INITIAL_SKIP + 1, maxDepth);
+  for (let depth = 0; depth < skipLimit; depth++) {
+    if (getPixelLuminance(pixels, width, height, edge, lineIndex, depth) <= DARK_THRESHOLD) {
+      firstDarkDepth = depth;
+      break;
+    }
+  }
+  if (firstDarkDepth === -1) return null; // no border pixels found within skip zone
+
+  // ── Phase 2: Scan border zone anchored to firstDarkDepth ──
+  let lastDarkDepth = firstDarkDepth;
+  let darkCount = 1;
+  const borderZoneEnd = Math.min(firstDarkDepth + MAX_BORDER_ZONE, maxDepth);
+  for (let depth = firstDarkDepth + 1; depth < borderZoneEnd; depth++) {
+    if (getPixelLuminance(pixels, width, height, edge, lineIndex, depth) <= DARK_THRESHOLD) {
+      lastDarkDepth = depth;
+      darkCount++;
+    }
+  }
+  if (darkCount > MAX_BORDER_THICKNESS) return null; // too many dark pixels for a border
+
+  // ── Phase 3: Verify border ended ─────────────────────────────────
+  // Need MIN_POST_BORDER_NONDARK consecutive non-dark pixels after last dark
+  let nondarkRun = 0;
+  for (let depth = lastDarkDepth + 1; depth < maxDepth; depth++) {
     const lum = getPixelLuminance(pixels, width, height, edge, lineIndex, depth);
-
-    if (inBorder) {
-      if (lum <= DARK_THRESHOLD) {
-        borderPixels++;
-        if (borderPixels > MAX_BORDER_THICKNESS) return null; // too thick for a border
-      } else if (borderPixels > 0 && lum >= LIGHT_THRESHOLD) {
-        // Transition: dark → light (border ended, gap started)
-        inBorder = false;
-        gapPixels = 1;
-      } else if (borderPixels === 0 && lum >= LIGHT_THRESHOLD) {
-        // No dark border — not a border pattern, skip this scan line
-        return null;
-      } else {
-        // Mid-tone pixel before finding border — not a clean border
-        if (borderPixels === 0) return null;
-        // After some border pixels, a mid-tone could be anti-aliasing; keep scanning
-        borderPixels++;
-        if (borderPixels > MAX_BORDER_THICKNESS) return null;
+    if (lum > DARK_THRESHOLD) {
+      nondarkRun++;
+      if (nondarkRun >= MIN_POST_BORDER_NONDARK) {
+        // Crop right after the border line — do NOT skip whitespace gap.
+        // The whitespace is part of the screenshot's layout padding and should stay.
+        return lastDarkDepth + 1;
       }
     } else {
-      // In gap region
-      if (lum >= LIGHT_THRESHOLD) {
-        gapPixels++;
-      } else {
-        // Hit non-light pixel — gap ended, content starts
-        if (gapPixels >= MIN_GAP_THICKNESS) {
-          return depth; // content starts here
-        }
-        return null; // gap too thin
-      }
+      return null; // more dark pixels beyond border zone — not a clean border
     }
   }
 
-  // Reached max scan depth while still in gap — content starts at maxDepth
-  if (!inBorder && gapPixels >= MIN_GAP_THICKNESS) {
-    return maxDepth;
-  }
-
-  return null;
+  return null; // ran out of pixels before confirming border ended
 }
 
 /**
  * Get luminance (0-255) for a pixel identified by edge, perpendicular line
  * index, and depth from the edge.
  */
-function getPixelLuminance(
+export function getPixelLuminance(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
@@ -438,6 +515,6 @@ function getPixelLuminance(
 }
 
 /** Standard perceived luminance (ITU-R BT.601). */
-function getLuminance(r: number, g: number, b: number): number {
+export function getLuminance(r: number, g: number, b: number): number {
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }

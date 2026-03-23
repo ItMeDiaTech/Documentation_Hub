@@ -1,21 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
-import { Minus, Square, X, Pin, PinOff } from 'lucide-react';
-import { cn } from '@/utils/cn';
-import { motion, AnimatePresence } from 'framer-motion';
-import { SimpleTooltip, TooltipProvider } from '@/components/common/Tooltip';
+import { useState, useEffect, useRef } from "react";
+import { Minus, Square, X, Pin, PinOff } from "lucide-react";
+import { cn } from "@/utils/cn";
+import { motion, AnimatePresence } from "framer-motion";
+import { SimpleTooltip, TooltipProvider } from "@/components/common/Tooltip";
 
 export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
-  const [platform, setPlatform] = useState<NodeJS.Platform>('win32');
+  const [platform, setPlatform] = useState<NodeJS.Platform>("win32");
   const [clickCount, setClickCount] = useState(0);
   const [showDebugToast, setShowDebugToast] = useState(false);
   const resetTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
     // Safely check if electronAPI is available (may not be in browser-only mode)
-    if (typeof window.electronAPI === 'undefined') {
-      console.warn('TitleBar: electronAPI not available (running in browser mode?)');
+    if (typeof window.electronAPI === "undefined") {
+      console.warn("TitleBar: electronAPI not available (running in browser mode?)");
       return;
     }
 
@@ -25,7 +25,9 @@ export function TitleBar() {
 
     const unsubMaximized = window.electronAPI.onWindowMaximized(() => setIsMaximized(true));
     const unsubUnmaximized = window.electronAPI.onWindowUnmaximized(() => setIsMaximized(false));
-    const unsubAlwaysOnTop = window.electronAPI.onAlwaysOnTopChanged((isOnTop: boolean) => setIsAlwaysOnTop(isOnTop));
+    const unsubAlwaysOnTop = window.electronAPI.onAlwaysOnTopChanged((isOnTop: boolean) =>
+      setIsAlwaysOnTop(isOnTop)
+    );
 
     return () => {
       unsubMaximized();
@@ -79,8 +81,8 @@ export function TitleBar() {
     };
   }, []);
 
-  const isWindows = platform === 'win32';
-  const isMac = platform === 'darwin';
+  const isWindows = platform === "win32";
+  const isMac = platform === "darwin";
 
   return (
     <>
@@ -98,28 +100,24 @@ export function TitleBar() {
         {isWindows && (
           <TooltipProvider>
             <div className="flex no-drag">
-              <SimpleTooltip content={isAlwaysOnTop ? 'Unpin from top' : 'Pin on top'}>
+              <SimpleTooltip content={isAlwaysOnTop ? "Unpin from top" : "Pin on top"}>
                 <button
                   onClick={handleToggleAlwaysOnTop}
                   className={cn(
-                    'px-3 h-8 hover:bg-muted transition-colors',
-                    'focus:outline-none focus-visible:bg-muted',
-                    isAlwaysOnTop && 'text-primary bg-primary/10'
+                    "px-3 h-8 hover:bg-muted transition-colors",
+                    "focus:outline-none focus-visible:bg-muted",
+                    isAlwaysOnTop && "text-primary bg-primary/10"
                   )}
-                  aria-label={isAlwaysOnTop ? 'Unpin from top' : 'Pin on top'}
+                  aria-label={isAlwaysOnTop ? "Unpin from top" : "Pin on top"}
                 >
-                  {isAlwaysOnTop ? (
-                    <PinOff className="w-3 h-3" />
-                  ) : (
-                    <Pin className="w-3 h-3" />
-                  )}
+                  {isAlwaysOnTop ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
                 </button>
               </SimpleTooltip>
               <button
                 onClick={handleMinimize}
                 className={cn(
-                  'px-4 h-8 hover:bg-muted transition-colors',
-                  'focus:outline-none focus-visible:bg-muted'
+                  "px-4 h-8 hover:bg-muted transition-colors",
+                  "focus:outline-none focus-visible:bg-muted"
                 )}
                 aria-label="Minimize"
               >
@@ -128,18 +126,18 @@ export function TitleBar() {
               <button
                 onClick={handleMaximize}
                 className={cn(
-                  'px-4 h-8 hover:bg-muted transition-colors',
-                  'focus:outline-none focus-visible:bg-muted'
+                  "px-4 h-8 hover:bg-muted transition-colors",
+                  "focus:outline-none focus-visible:bg-muted"
                 )}
-                aria-label={isMaximized ? 'Restore' : 'Maximize'}
+                aria-label={isMaximized ? "Restore" : "Maximize"}
               >
                 <Square className="w-2.5 h-2.5" />
               </button>
               <button
                 onClick={handleClose}
                 className={cn(
-                  'px-4 h-8 hover:bg-destructive hover:text-destructive-foreground transition-colors',
-                  'focus:outline-none focus-visible:bg-destructive focus-visible:text-destructive-foreground'
+                  "px-4 h-8 hover:bg-destructive hover:text-destructive-foreground transition-colors",
+                  "focus:outline-none focus-visible:bg-destructive focus-visible:text-destructive-foreground"
                 )}
                 aria-label="Close"
               >

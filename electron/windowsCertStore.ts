@@ -1,13 +1,13 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import * as fs from 'fs';
-import * as path from 'path';
-import { app } from 'electron';
-import * as crypto from 'crypto';
-import { logger } from '../src/utils/logger';
+import { exec } from "child_process";
+import { promisify } from "util";
+import * as fs from "fs";
+import * as path from "path";
+import { app } from "electron";
+import * as crypto from "crypto";
+import { logger } from "../src/utils/logger";
 
 const execAsync = promisify(exec);
-const log = logger.namespace('WindowsCertStore');
+const log = logger.namespace("WindowsCertStore");
 
 /**
  * Windows Certificate Store Integration
@@ -19,7 +19,7 @@ export class WindowsCertStore {
   private readonly tempCertDir: string;
 
   constructor() {
-    this.tempCertDir = path.join(app.getPath('userData'), 'certs');
+    this.tempCertDir = path.join(app.getPath("userData"), "certs");
     this.ensureCertDirectory();
   }
 
@@ -29,7 +29,7 @@ export class WindowsCertStore {
   private ensureCertDirectory(): void {
     if (!fs.existsSync(this.tempCertDir)) {
       fs.mkdirSync(this.tempCertDir, { recursive: true });
-      log.info('[ZscalerConfig] Created certificate directory:', this.tempCertDir);
+      log.info("[ZscalerConfig] Created certificate directory:", this.tempCertDir);
     }
   }
 
@@ -37,12 +37,12 @@ export class WindowsCertStore {
    * Search for Zscaler certificate in Windows certificate store
    */
   public async findZscalerCertificate(): Promise<string | null> {
-    if (process.platform !== 'win32') {
-      log.info('[ZscalerConfig] Not on Windows, skipping certificate store search');
+    if (process.platform !== "win32") {
+      log.info("[ZscalerConfig] Not on Windows, skipping certificate store search");
       return null;
     }
 
-    log.info('[ZscalerConfig] Searching for Zscaler certificate in Windows store...');
+    log.info("[ZscalerConfig] Searching for Zscaler certificate in Windows store...");
 
     try {
       // PowerShell script to find and export Zscaler certificate
@@ -134,7 +134,7 @@ export class WindowsCertStore {
 
         Write-Host "NOTFOUND:No Zscaler certificate found in Windows stores"
         exit 1
-      `.replace(/\n/g, ' ');
+      `.replace(/\n/g, " ");
 
       const { stdout } = await execAsync(
         `powershell -NoProfile -NonInteractive -Command "${psScript}"`,
@@ -142,54 +142,54 @@ export class WindowsCertStore {
       );
 
       // Parse the output
-      if (stdout.includes('-----BEGIN CERTIFICATE-----')) {
-        log.info('[ZscalerConfig] Found Zscaler certificate in Windows store');
+      if (stdout.includes("-----BEGIN CERTIFICATE-----")) {
+        log.info("[ZscalerConfig] Found Zscaler certificate in Windows store");
 
         // Extract certificate info
-        const lines = stdout.split('\n');
+        const lines = stdout.split("\n");
         let certInfo: any = {};
-        let certPEM = '';
+        let certPEM = "";
         let inCert = false;
 
         for (const line of lines) {
-          if (line.startsWith('FOUND:')) {
+          if (line.startsWith("FOUND:")) {
             certInfo.store = line.substring(6).trim();
-          } else if (line.startsWith('SUBJECT:')) {
+          } else if (line.startsWith("SUBJECT:")) {
             certInfo.subject = line.substring(8).trim();
-          } else if (line.startsWith('ISSUER:')) {
+          } else if (line.startsWith("ISSUER:")) {
             certInfo.issuer = line.substring(7).trim();
-          } else if (line.startsWith('THUMBPRINT:')) {
+          } else if (line.startsWith("THUMBPRINT:")) {
             certInfo.thumbprint = line.substring(11).trim();
-          } else if (line.startsWith('NOTAFTER:')) {
+          } else if (line.startsWith("NOTAFTER:")) {
             certInfo.notAfter = line.substring(9).trim();
-          } else if (line.includes('-----BEGIN CERTIFICATE-----')) {
+          } else if (line.includes("-----BEGIN CERTIFICATE-----")) {
             inCert = true;
-            certPEM += line + '\n';
-          } else if (line.includes('-----END CERTIFICATE-----')) {
-            certPEM += line + '\n';
+            certPEM += line + "\n";
+          } else if (line.includes("-----END CERTIFICATE-----")) {
+            certPEM += line + "\n";
             inCert = false;
           } else if (inCert) {
-            certPEM += line.trim() + '\n';
+            certPEM += line.trim() + "\n";
           }
         }
 
-        log.info('[ZscalerConfig] Certificate info:', certInfo);
+        log.info("[ZscalerConfig] Certificate info:", certInfo);
 
         // Save certificate to file (PEM files are text files, use UTF-8)
-        const certPath = path.join(this.tempCertDir, 'zscaler-root.pem');
-        fs.writeFileSync(certPath, certPEM, 'utf-8');
-        log.info('[ZscalerConfig] Saved certificate to:', certPath);
+        const certPath = path.join(this.tempCertDir, "zscaler-root.pem");
+        fs.writeFileSync(certPath, certPEM, "utf-8");
+        log.info("[ZscalerConfig] Saved certificate to:", certPath);
 
         // Cache the certificate
-        this.certificateCache.set('zscaler', certPath);
+        this.certificateCache.set("zscaler", certPath);
 
         return certPath;
       } else {
-        log.info('[ZscalerConfig] No Zscaler certificate found in Windows store');
+        log.info("[ZscalerConfig] No Zscaler certificate found in Windows store");
         return null;
       }
     } catch (error) {
-      log.error('[ZscalerConfig] Error searching for certificate:', error);
+      log.error("[ZscalerConfig] Error searching for certificate:", error);
       return null;
     }
   }
@@ -198,11 +198,11 @@ export class WindowsCertStore {
    * Export all trusted root certificates from Windows store
    */
   public async exportTrustedRootCertificates(): Promise<string | null> {
-    if (process.platform !== 'win32') {
+    if (process.platform !== "win32") {
       return null;
     }
 
-    log.info('[ZscalerConfig] Exporting trusted root certificates...');
+    log.info("[ZscalerConfig] Exporting trusted root certificates...");
 
     try {
       const psScript = `
@@ -230,43 +230,43 @@ export class WindowsCertStore {
 
         $store.Close()
         Write-Host "EXPORTED:$certCount certificates"
-      `.replace(/\n/g, ' ');
+      `.replace(/\n/g, " ");
 
       const { stdout } = await execAsync(
         `powershell -NoProfile -NonInteractive -Command "${psScript}"`,
         { maxBuffer: 50 * 1024 * 1024 } // 50MB buffer for all certificates
       );
 
-      if (stdout.includes('-----BEGIN CERTIFICATE-----')) {
+      if (stdout.includes("-----BEGIN CERTIFICATE-----")) {
         // Save bundle to file
-        const bundlePath = path.join(this.tempCertDir, 'windows-ca-bundle.pem');
+        const bundlePath = path.join(this.tempCertDir, "windows-ca-bundle.pem");
 
         // Extract just the certificates
-        const certLines = stdout.split('\n');
-        let bundle = '';
+        const certLines = stdout.split("\n");
+        let bundle = "";
         let inCert = false;
 
         for (const line of certLines) {
-          if (line.includes('-----BEGIN CERTIFICATE-----')) {
+          if (line.includes("-----BEGIN CERTIFICATE-----")) {
             inCert = true;
-            bundle += line + '\n';
-          } else if (line.includes('-----END CERTIFICATE-----')) {
-            bundle += line + '\n';
+            bundle += line + "\n";
+          } else if (line.includes("-----END CERTIFICATE-----")) {
+            bundle += line + "\n";
             inCert = false;
           } else if (inCert) {
-            bundle += line.trim() + '\n';
+            bundle += line.trim() + "\n";
           }
         }
 
         fs.writeFileSync(bundlePath, bundle);
-        log.info('[ZscalerConfig] Exported Windows CA bundle to:', bundlePath);
+        log.info("[ZscalerConfig] Exported Windows CA bundle to:", bundlePath);
 
         return bundlePath;
       }
 
       return null;
     } catch (error) {
-      log.error('[ZscalerConfig] Error exporting certificates:', error);
+      log.error("[ZscalerConfig] Error exporting certificates:", error);
       return null;
     }
   }
@@ -275,7 +275,7 @@ export class WindowsCertStore {
    * Find certificate by thumbprint
    */
   public async findCertificateByThumbprint(thumbprint: string): Promise<string | null> {
-    if (process.platform !== 'win32') {
+    if (process.platform !== "win32") {
       return null;
     }
 
@@ -299,13 +299,13 @@ export class WindowsCertStore {
           }
           Write-Host "-----END CERTIFICATE-----"
         }
-      `.replace(/\n/g, ' ');
+      `.replace(/\n/g, " ");
 
       const { stdout } = await execAsync(
         `powershell -NoProfile -NonInteractive -Command "${psScript}"`
       );
 
-      if (stdout.includes('-----BEGIN CERTIFICATE-----')) {
+      if (stdout.includes("-----BEGIN CERTIFICATE-----")) {
         const certPath = path.join(this.tempCertDir, `cert-${thumbprint}.pem`);
         fs.writeFileSync(certPath, stdout.trim());
         this.certificateCache.set(thumbprint, certPath);
@@ -314,7 +314,7 @@ export class WindowsCertStore {
 
       return null;
     } catch (error) {
-      log.error('[ZscalerConfig] Error finding certificate by thumbprint:', error);
+      log.error("[ZscalerConfig] Error finding certificate by thumbprint:", error);
       return null;
     }
   }
@@ -323,7 +323,7 @@ export class WindowsCertStore {
    * Check if running with elevated privileges (might be needed for some cert operations)
    */
   public async checkElevation(): Promise<boolean> {
-    if (process.platform !== 'win32') {
+    if (process.platform !== "win32") {
       return false;
     }
 
@@ -331,7 +331,7 @@ export class WindowsCertStore {
       const { stdout } = await execAsync(
         'powershell -Command "[Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains \\"S-1-5-32-544\\""'
       );
-      return stdout.trim().toLowerCase() === 'true';
+      return stdout.trim().toLowerCase() === "true";
     } catch {
       return false;
     }
@@ -342,15 +342,15 @@ export class WindowsCertStore {
    */
   public getCertificateInfo(pemPath: string): any {
     try {
-      const pemContent = fs.readFileSync(pemPath, 'utf8');
-      const lines = pemContent.split('\n');
+      const pemContent = fs.readFileSync(pemPath, "utf8");
+      const lines = pemContent.split("\n");
 
       // Basic parsing - in production you'd use a proper X.509 parser
       const info = {
         path: pemPath,
         exists: true,
         size: fs.statSync(pemPath).size,
-        hash: crypto.createHash('sha256').update(pemContent).digest('hex')
+        hash: crypto.createHash("sha256").update(pemContent).digest("hex"),
       };
 
       return info;
@@ -364,37 +364,37 @@ export class WindowsCertStore {
    */
   public async createCombinedBundle(additionalCerts: string[] = []): Promise<string | null> {
     try {
-      const bundlePath = path.join(this.tempCertDir, 'combined-ca-bundle.pem');
-      let combinedBundle = '';
+      const bundlePath = path.join(this.tempCertDir, "combined-ca-bundle.pem");
+      let combinedBundle = "";
 
       // Add Windows trusted roots
       const windowsBundle = await this.exportTrustedRootCertificates();
       if (windowsBundle && fs.existsSync(windowsBundle)) {
-        combinedBundle += fs.readFileSync(windowsBundle, 'utf8') + '\n';
+        combinedBundle += fs.readFileSync(windowsBundle, "utf8") + "\n";
       }
 
       // Add Zscaler certificate
       const zscalerCert = await this.findZscalerCertificate();
       if (zscalerCert && fs.existsSync(zscalerCert)) {
-        combinedBundle += fs.readFileSync(zscalerCert, 'utf8') + '\n';
+        combinedBundle += fs.readFileSync(zscalerCert, "utf8") + "\n";
       }
 
       // Add any additional certificates
       for (const certPath of additionalCerts) {
         if (fs.existsSync(certPath)) {
-          combinedBundle += fs.readFileSync(certPath, 'utf8') + '\n';
+          combinedBundle += fs.readFileSync(certPath, "utf8") + "\n";
         }
       }
 
       if (combinedBundle) {
         fs.writeFileSync(bundlePath, combinedBundle);
-        log.info('[ZscalerConfig] Created combined certificate bundle:', bundlePath);
+        log.info("[ZscalerConfig] Created combined certificate bundle:", bundlePath);
         return bundlePath;
       }
 
       return null;
     } catch (error) {
-      log.error('[ZscalerConfig] Error creating combined bundle:', error);
+      log.error("[ZscalerConfig] Error creating combined bundle:", error);
       return null;
     }
   }
@@ -418,7 +418,7 @@ export class WindowsCertStore {
         }
       }
     } catch (error) {
-      log.error('[ZscalerConfig] Error cleaning up certificates:', error);
+      log.error("[ZscalerConfig] Error cleaning up certificates:", error);
     }
   }
 }

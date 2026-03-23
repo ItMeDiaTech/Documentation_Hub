@@ -35,7 +35,7 @@ export interface UpdateSettings {
  */
 export interface LocalDictionarySettings {
   enabled: boolean;
-  sharePointFileUrl: string;      // Direct URL to .xlsx file on SharePoint
+  sharePointFileUrl: string; // Direct URL to .xlsx file on SharePoint
   lastRetrievalTime: string | null;
   lastRetrievalSuccess: boolean;
   totalEntries: number;
@@ -71,9 +71,9 @@ export interface UserSettings {
 
 export const defaultUserSettings: UserSettings = {
   profile: {
-    firstName: 'John',
-    lastName: 'Doe',
-    email: 'john.doe@example.com',
+    firstName: "John",
+    lastName: "Doe",
+    email: "john.doe@example.com",
   },
   notifications: {
     emailNotifications: false,
@@ -83,22 +83,22 @@ export const defaultUserSettings: UserSettings = {
     weeklyDigest: false,
   },
   apiConnections: {
-    powerAutomateUrl: 'https://www.example.com',
-    bugReportUrl: 'https://www.example.com',
-    submitIdeaUrl: 'https://www.example.com',
+    powerAutomateUrl: "https://www.example.com",
+    bugReportUrl: "https://www.example.com",
+    submitIdeaUrl: "https://www.example.com",
   },
-  language: 'English (US)',
-  timezone: 'UTC-05:00 Eastern Time (ET)',
-  dateFormat: 'MM/DD/YYYY',
+  language: "English (US)",
+  timezone: "UTC-05:00 Eastern Time (ET)",
+  dateFormat: "MM/DD/YYYY",
   updateSettings: {
     autoUpdateOnLaunch: true,
     checkForPreReleases: false,
     useSharePointSource: false,
-    sharePointFolderUrl: '',
+    sharePointFolderUrl: "",
   },
   localDictionary: {
     enabled: false,
-    sharePointFileUrl: '',
+    sharePointFileUrl: "",
     lastRetrievalTime: null,
     lastRetrievalSuccess: false,
     totalEntries: 0,

@@ -7,16 +7,16 @@
  * - Change visualization
  */
 
-import logger from '@/utils/logger';
+import logger from "@/utils/logger";
 import type {
   DocumentSnapshot,
   SerializedDocumentSnapshot,
   HyperlinkSnapshot,
-} from '@/types/editor';
+} from "@/types/editor";
 
-const DB_NAME = 'DocHub_Snapshots';
+const DB_NAME = "DocHub_Snapshots";
 const DB_VERSION = 1;
-const SNAPSHOTS_STORE = 'documentSnapshots';
+const SNAPSHOTS_STORE = "documentSnapshots";
 
 // Maximum age for snapshots (7 days in milliseconds)
 const MAX_SNAPSHOT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -65,20 +65,20 @@ class SnapshotConnectionPool {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        logger.error('[SnapshotDB] Connection failed:', request.error);
+        logger.error("[SnapshotDB] Connection failed:", request.error);
         reject(new Error(`Failed to open snapshot database: ${request.error?.message}`));
       };
 
       request.onsuccess = () => {
         const db = request.result;
-        logger.info('[SnapshotDB] Connection established');
+        logger.info("[SnapshotDB] Connection established");
 
         db.onerror = (event) => {
-          logger.error('[SnapshotDB] Database error:', event);
+          logger.error("[SnapshotDB] Database error:", event);
         };
 
         db.onclose = () => {
-          logger.info('[SnapshotDB] Connection closed');
+          logger.info("[SnapshotDB] Connection closed");
           this.db = null;
         };
 
@@ -91,14 +91,14 @@ class SnapshotConnectionPool {
         // Create snapshots store if not exists
         if (!db.objectStoreNames.contains(SNAPSHOTS_STORE)) {
           const store = db.createObjectStore(SNAPSHOTS_STORE, {
-            keyPath: ['sessionId', 'documentId'],
+            keyPath: ["sessionId", "documentId"],
           });
 
           // Create indexes for queries
-          store.createIndex('sessionId', 'sessionId', { unique: false });
-          store.createIndex('timestamp', 'timestamp', { unique: false });
+          store.createIndex("sessionId", "sessionId", { unique: false });
+          store.createIndex("timestamp", "timestamp", { unique: false });
 
-          logger.info('[SnapshotDB] Created document snapshots store');
+          logger.info("[SnapshotDB] Created document snapshots store");
         }
       };
     });
@@ -116,8 +116,8 @@ class SnapshotConnectionPool {
 const connectionPool = new SnapshotConnectionPool();
 
 // Close on window unload
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
     connectionPool.close();
   });
 }
@@ -156,7 +156,7 @@ export class DocumentSnapshotService {
       };
 
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([SNAPSHOTS_STORE], 'readwrite');
+        const transaction = db.transaction([SNAPSHOTS_STORE], "readwrite");
         const store = transaction.objectStore(SNAPSHOTS_STORE);
 
         // Use put to overwrite existing snapshot for same session/document
@@ -171,12 +171,12 @@ export class DocumentSnapshotService {
         };
 
         request.onerror = () => {
-          logger.error('[SnapshotDB] Failed to capture snapshot:', request.error);
+          logger.error("[SnapshotDB] Failed to capture snapshot:", request.error);
           reject(new Error(`Failed to capture snapshot: ${request.error?.message}`));
         };
       });
     } catch (error) {
-      logger.error('[SnapshotDB] Error capturing snapshot:', error);
+      logger.error("[SnapshotDB] Error capturing snapshot:", error);
       throw error;
     }
   }
@@ -196,7 +196,7 @@ export class DocumentSnapshotService {
       const db = await connectionPool.getConnection();
 
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([SNAPSHOTS_STORE], 'readonly');
+        const transaction = db.transaction([SNAPSHOTS_STORE], "readonly");
         const store = transaction.objectStore(SNAPSHOTS_STORE);
         const request = store.get([sessionId, documentId]);
 
@@ -216,12 +216,12 @@ export class DocumentSnapshotService {
         };
 
         request.onerror = () => {
-          logger.error('[SnapshotDB] Failed to get snapshot:', request.error);
+          logger.error("[SnapshotDB] Failed to get snapshot:", request.error);
           reject(new Error(`Failed to get snapshot: ${request.error?.message}`));
         };
       });
     } catch (error) {
-      logger.error('[SnapshotDB] Error getting snapshot:', error);
+      logger.error("[SnapshotDB] Error getting snapshot:", error);
       return null;
     }
   }
@@ -237,7 +237,7 @@ export class DocumentSnapshotService {
       const db = await connectionPool.getConnection();
 
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([SNAPSHOTS_STORE], 'readwrite');
+        const transaction = db.transaction([SNAPSHOTS_STORE], "readwrite");
         const store = transaction.objectStore(SNAPSHOTS_STORE);
         const request = store.delete([sessionId, documentId]);
 
@@ -247,12 +247,12 @@ export class DocumentSnapshotService {
         };
 
         request.onerror = () => {
-          logger.error('[SnapshotDB] Failed to delete snapshot:', request.error);
+          logger.error("[SnapshotDB] Failed to delete snapshot:", request.error);
           reject(new Error(`Failed to delete snapshot: ${request.error?.message}`));
         };
       });
     } catch (error) {
-      logger.error('[SnapshotDB] Error deleting snapshot:', error);
+      logger.error("[SnapshotDB] Error deleting snapshot:", error);
       throw error;
     }
   }
@@ -268,9 +268,9 @@ export class DocumentSnapshotService {
       const db = await connectionPool.getConnection();
 
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([SNAPSHOTS_STORE], 'readwrite');
+        const transaction = db.transaction([SNAPSHOTS_STORE], "readwrite");
         const store = transaction.objectStore(SNAPSHOTS_STORE);
-        const index = store.index('sessionId');
+        const index = store.index("sessionId");
         const request = index.getAllKeys(sessionId);
 
         request.onsuccess = () => {
@@ -287,7 +287,9 @@ export class DocumentSnapshotService {
             deleteRequest.onsuccess = () => {
               deletedCount++;
               if (deletedCount === keys.length) {
-                logger.info(`[SnapshotDB] Cleaned up ${deletedCount} snapshots for session ${sessionId}`);
+                logger.info(
+                  `[SnapshotDB] Cleaned up ${deletedCount} snapshots for session ${sessionId}`
+                );
                 resolve(deletedCount);
               }
             };
@@ -299,7 +301,7 @@ export class DocumentSnapshotService {
         };
       });
     } catch (error) {
-      logger.error('[SnapshotDB] Error cleaning up session snapshots:', error);
+      logger.error("[SnapshotDB] Error cleaning up session snapshots:", error);
       return 0;
     }
   }
@@ -315,9 +317,9 @@ export class DocumentSnapshotService {
       const cutoffDate = new Date(Date.now() - MAX_SNAPSHOT_AGE_MS).toISOString();
 
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([SNAPSHOTS_STORE], 'readwrite');
+        const transaction = db.transaction([SNAPSHOTS_STORE], "readwrite");
         const store = transaction.objectStore(SNAPSHOTS_STORE);
-        const index = store.index('timestamp');
+        const index = store.index("timestamp");
 
         // Get all keys with timestamp before cutoff
         const range = IDBKeyRange.upperBound(cutoffDate);
@@ -349,7 +351,7 @@ export class DocumentSnapshotService {
         };
       });
     } catch (error) {
-      logger.error('[SnapshotDB] Error cleaning up old snapshots:', error);
+      logger.error("[SnapshotDB] Error cleaning up old snapshots:", error);
       return 0;
     }
   }
@@ -365,9 +367,9 @@ export class DocumentSnapshotService {
       const db = await connectionPool.getConnection();
 
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([SNAPSHOTS_STORE], 'readonly');
+        const transaction = db.transaction([SNAPSHOTS_STORE], "readonly");
         const store = transaction.objectStore(SNAPSHOTS_STORE);
-        const index = store.index('sessionId');
+        const index = store.index("sessionId");
         const request = index.getAll(sessionId);
 
         request.onsuccess = () => {
@@ -384,7 +386,7 @@ export class DocumentSnapshotService {
         };
       });
     } catch (error) {
-      logger.error('[SnapshotDB] Error getting session snapshots:', error);
+      logger.error("[SnapshotDB] Error getting session snapshots:", error);
       return [];
     }
   }
@@ -411,7 +413,7 @@ export class DocumentSnapshotService {
       const db = await connectionPool.getConnection();
 
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([SNAPSHOTS_STORE], 'readonly');
+        const transaction = db.transaction([SNAPSHOTS_STORE], "readonly");
         const store = transaction.objectStore(SNAPSHOTS_STORE);
         const request = store.getAll();
 
@@ -423,10 +425,11 @@ export class DocumentSnapshotService {
             // ArrayBuffer size
             totalSize += snapshot.buffer.byteLength;
             // Approximate JSON overhead
-            totalSize += JSON.stringify({
-              ...snapshot,
-              buffer: null,
-            }).length * 2; // UTF-16
+            totalSize +=
+              JSON.stringify({
+                ...snapshot,
+                buffer: null,
+              }).length * 2; // UTF-16
           }
 
           resolve(totalSize);
@@ -437,7 +440,7 @@ export class DocumentSnapshotService {
         };
       });
     } catch (error) {
-      logger.error('[SnapshotDB] Error calculating storage size:', error);
+      logger.error("[SnapshotDB] Error calculating storage size:", error);
       return 0;
     }
   }
@@ -451,9 +454,9 @@ export class DocumentSnapshotService {
       const db = await connectionPool.getConnection();
 
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([SNAPSHOTS_STORE], 'readonly');
+        const transaction = db.transaction([SNAPSHOTS_STORE], "readonly");
         const store = transaction.objectStore(SNAPSHOTS_STORE);
-        const index = store.index('timestamp');
+        const index = store.index("timestamp");
         const request = index.getAll();
 
         request.onsuccess = () => {
@@ -470,7 +473,7 @@ export class DocumentSnapshotService {
         };
       });
     } catch (error) {
-      logger.error('[SnapshotDB] Error getting oldest snapshots:', error);
+      logger.error("[SnapshotDB] Error getting oldest snapshots:", error);
       return [];
     }
   }
@@ -488,7 +491,7 @@ export class DocumentSnapshotService {
       let deletedCount = 0;
 
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([SNAPSHOTS_STORE], 'readwrite');
+        const transaction = db.transaction([SNAPSHOTS_STORE], "readwrite");
         const store = transaction.objectStore(SNAPSHOTS_STORE);
 
         for (const { sessionId, documentId } of snapshots) {
@@ -508,7 +511,7 @@ export class DocumentSnapshotService {
         };
       });
     } catch (error) {
-      logger.error('[SnapshotDB] Error deleting snapshots:', error);
+      logger.error("[SnapshotDB] Error deleting snapshots:", error);
       return 0;
     }
   }
@@ -535,13 +538,13 @@ export class DocumentSnapshotService {
       const maxIterations = 10; // Safety limit
 
       while (newSize > MAX_STORAGE_BYTES && iterationCount < maxIterations) {
-        logger.warn('[SnapshotDB] Still over limit, deleting oldest snapshots');
+        logger.warn("[SnapshotDB] Still over limit, deleting oldest snapshots");
 
         // Get oldest snapshots (batch of 5)
         const oldestSnapshots = await this.getOldestSnapshots(5);
 
         if (oldestSnapshots.length === 0) {
-          logger.warn('[SnapshotDB] No more snapshots to delete');
+          logger.warn("[SnapshotDB] No more snapshots to delete");
           break;
         }
 
@@ -556,17 +559,15 @@ export class DocumentSnapshotService {
 
         // Recalculate size
         newSize = await this.calculateStorageSize();
-        logger.debug(
-          `[SnapshotDB] Size after cleanup: ${(newSize / 1024 / 1024).toFixed(2)}MB`
-        );
+        logger.debug(`[SnapshotDB] Size after cleanup: ${(newSize / 1024 / 1024).toFixed(2)}MB`);
 
         iterationCount++;
       }
 
       if (iterationCount >= maxIterations) {
-        logger.warn('[SnapshotDB] Max cleanup iterations reached');
+        logger.warn("[SnapshotDB] Max cleanup iterations reached");
       } else if (newSize <= MAX_STORAGE_BYTES) {
-        logger.info('[SnapshotDB] Storage now within limits');
+        logger.info("[SnapshotDB] Storage now within limits");
       }
     }
   }

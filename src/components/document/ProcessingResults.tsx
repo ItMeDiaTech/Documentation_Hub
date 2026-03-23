@@ -1,7 +1,7 @@
-import { Button } from '@/components/common/Button';
-import type { Document, DocumentChange } from '@/types/session';
-import { cn } from '@/utils/cn';
-import { motion } from 'framer-motion';
+import { Button } from "@/components/common/Button";
+import type { Document, DocumentChange } from "@/types/session";
+import { cn } from "@/utils/cn";
+import { motion } from "framer-motion";
 import {
   AlertCircle,
   Archive,
@@ -15,8 +15,8 @@ import {
   RotateCcw,
   Share2,
   TrendingUp,
-} from 'lucide-react';
-import { TrackedChangesDetail } from './TrackedChangesDetail';
+} from "lucide-react";
+import { TrackedChangesDetail } from "./TrackedChangesDetail";
 
 interface ProcessingResultsProps {
   document: Document;
@@ -39,15 +39,15 @@ export function ProcessingResults({
 
   if (!processingResult) {
     return (
-      <div className={cn('text-center py-8', className)}>
+      <div className={cn("text-center py-8", className)}>
         <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
         <p className="text-muted-foreground">No processing results available</p>
       </div>
     );
   }
 
-  const isSuccess = document.status === 'completed';
-  const hasErrors = document.status === 'error';
+  const isSuccess = document.status === "completed";
+  const hasErrors = document.status === "error";
 
   const formatDuration = (ms: number): string => {
     if (ms < 1000) return `${ms}ms`;
@@ -57,32 +57,32 @@ export function ProcessingResults({
     return `${minutes}m ${seconds}s`;
   };
 
-  const getChangeIcon = (type: DocumentChange['type']) => {
+  const getChangeIcon = (type: DocumentChange["type"]) => {
     switch (type) {
-      case 'hyperlink':
+      case "hyperlink":
         return <Link className="w-4 h-4 text-blue-500" />;
-      case 'text':
+      case "text":
         return <FileText className="w-4 h-4 text-green-500" />;
-      case 'style':
+      case "style":
         return <TrendingUp className="w-4 h-4 text-purple-500" />;
-      case 'structure':
+      case "structure":
         return <Archive className="w-4 h-4 text-orange-500" />;
     }
   };
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn("space-y-6", className)}>
       {/* Status Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className={cn(
-          'p-6 rounded-xl border-2',
+          "p-6 rounded-xl border-2",
           isSuccess
-            ? 'bg-green-500/5 border-green-500/20'
+            ? "bg-green-500/5 border-green-500/20"
             : hasErrors
-              ? 'bg-red-500/5 border-red-500/20'
-              : 'bg-muted/30 border-border'
+              ? "bg-red-500/5 border-red-500/20"
+              : "bg-muted/30 border-border"
         )}
       >
         <div className="flex items-start gap-4">
@@ -97,10 +97,10 @@ export function ProcessingResults({
           <div className="flex-1">
             <h3 className="text-xl font-semibold mb-1">
               {isSuccess
-                ? 'Processing Completed Successfully'
+                ? "Processing Completed Successfully"
                 : hasErrors
-                  ? 'Processing Failed'
-                  : 'Processing Results'}
+                  ? "Processing Failed"
+                  : "Processing Results"}
             </h3>
             <p className="text-muted-foreground">{document.name}</p>
 
@@ -187,7 +187,7 @@ export function ProcessingResults({
         >
           <Clock className="w-6 h-6 text-orange-500 mx-auto mb-2" />
           <p className="text-2xl font-bold text-orange-500">
-            {processingResult.duration ? formatDuration(processingResult.duration) : 'N/A'}
+            {processingResult.duration ? formatDuration(processingResult.duration) : "N/A"}
           </p>
           <p className="text-xs text-muted-foreground">Processing Time</p>
         </motion.div>

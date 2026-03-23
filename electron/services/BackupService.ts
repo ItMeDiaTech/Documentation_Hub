@@ -19,15 +19,15 @@
  * ```
  */
 
-import { createHash } from 'crypto';
-import * as path from 'path';
-import * as fs from 'fs/promises';
-import * as os from 'os';
-import { app } from 'electron';
-import { logger } from '../../src/utils/logger';
+import { createHash } from "crypto";
+import * as path from "path";
+import * as fs from "fs/promises";
+import * as os from "os";
+import { app } from "electron";
+import { logger } from "../../src/utils/logger";
 
 // Create namespaced logger for backup operations
-const log = logger.namespace('BackupService');
+const log = logger.namespace("BackupService");
 
 /**
  * Service for managing document backups in the main process
@@ -40,7 +40,7 @@ export class BackupService {
   constructor() {
     // Use app data directory for backups
     // In main process, we can access os and path directly
-    this.backupDir = path.join(os.homedir(), '.dochub', 'backups');
+    this.backupDir = path.join(os.homedir(), ".dochub", "backups");
     this.ensureBackupDirectory();
   }
 
@@ -54,15 +54,15 @@ export class BackupService {
   async createBackup(documentPath: string): Promise<string> {
     try {
       // Validate input path
-      if (!documentPath || typeof documentPath !== 'string') {
-        throw new Error('Invalid document path');
+      if (!documentPath || typeof documentPath !== "string") {
+        throw new Error("Invalid document path");
       }
 
       // Read original document
       const documentData = await fs.readFile(documentPath);
 
       // Generate backup filename with timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const originalName = path.basename(documentPath, path.extname(documentPath));
       const extension = path.extname(documentPath);
       const hash = this.generateHash(documentData).substring(0, 8);
@@ -84,11 +84,11 @@ export class BackupService {
       // Clean up old backups
       await this.cleanupOldBackups(documentPath);
 
-      log.info('Created backup', { backupPath, size: documentData.length, checksum: hash });
+      log.info("Created backup", { backupPath, size: documentData.length, checksum: hash });
       return backupPath;
     } catch (error) {
-      const message = `Failed to create backup: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      log.error('Create backup failed', { error: message, documentPath });
+      const message = `Failed to create backup: ${error instanceof Error ? error.message : "Unknown error"}`;
+      log.error("Create backup failed", { error: message, documentPath });
       throw new Error(message);
     }
   }
@@ -104,7 +104,7 @@ export class BackupService {
     try {
       // Validate inputs
       if (!backupPath || !targetPath) {
-        throw new Error('Invalid backup or target path');
+        throw new Error("Invalid backup or target path");
       }
 
       // Verify backup exists
@@ -118,17 +118,17 @@ export class BackupService {
       if (metadata) {
         const currentChecksum = this.generateHash(backupData);
         if (currentChecksum !== metadata.checksum) {
-          throw new Error('Backup integrity check failed - file may be corrupted');
+          throw new Error("Backup integrity check failed - file may be corrupted");
         }
       }
 
       // Restore to target path
       await fs.writeFile(targetPath, backupData);
 
-      log.info('Restored backup', { backupPath, targetPath });
+      log.info("Restored backup", { backupPath, targetPath });
     } catch (error) {
-      const message = `Failed to restore backup: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      log.error('Restore backup failed', { error: message, backupPath, targetPath });
+      const message = `Failed to restore backup: ${error instanceof Error ? error.message : "Unknown error"}`;
+      log.error("Restore backup failed", { error: message, backupPath, targetPath });
       throw new Error(message);
     }
   }
@@ -146,7 +146,7 @@ export class BackupService {
       const backups: BackupInfo[] = [];
 
       for (const file of files) {
-        if (file.startsWith(documentName) && !file.endsWith('.meta')) {
+        if (file.startsWith(documentName) && !file.endsWith(".meta")) {
           const filePath = path.join(this.backupDir, file);
           const stats = await fs.stat(filePath);
           const metadata = await this.getBackupMetadata(filePath);
@@ -166,7 +166,7 @@ export class BackupService {
       // Sort by creation date (newest first)
       return backups.sort((a, b) => b.created.getTime() - a.created.getTime());
     } catch (error) {
-      log.error('Failed to list backups', { error, documentPath });
+      log.error("Failed to list backups", { error, documentPath });
       return [];
     }
   }
@@ -189,10 +189,10 @@ export class BackupService {
         // Metadata file might not exist - ignore
       }
 
-      log.info('Deleted backup', { backupPath });
+      log.info("Deleted backup", { backupPath });
     } catch (error) {
-      const message = `Failed to delete backup: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      log.error('Delete backup failed', { error: message, backupPath });
+      const message = `Failed to delete backup: ${error instanceof Error ? error.message : "Unknown error"}`;
+      log.error("Delete backup failed", { error: message, backupPath });
       throw new Error(message);
     }
   }
@@ -227,7 +227,7 @@ export class BackupService {
     }
 
     if (deletedCount > 0) {
-      log.info('Cleaned up old backups', { deletedCount, documentPath });
+      log.info("Cleaned up old backups", { deletedCount, documentPath });
     }
 
     return deletedCount;
@@ -245,7 +245,7 @@ export class BackupService {
       const now = Date.now();
 
       for (const file of files) {
-        if (!file.endsWith('.meta')) {
+        if (!file.endsWith(".meta")) {
           const filePath = path.join(this.backupDir, file);
           const stats = await fs.stat(filePath);
           const age = now - stats.birthtime.getTime();
@@ -257,10 +257,10 @@ export class BackupService {
         }
       }
 
-      log.info('Cleaned up all old backups', { deletedCount });
+      log.info("Cleaned up all old backups", { deletedCount });
       return deletedCount;
     } catch (error) {
-      log.error('Failed to cleanup all old backups', { error });
+      log.error("Failed to cleanup all old backups", { error });
       return 0;
     }
   }
@@ -300,7 +300,7 @@ export class BackupService {
       let fileCount = 0;
 
       for (const file of files) {
-        if (!file.endsWith('.meta')) {
+        if (!file.endsWith(".meta")) {
           const filePath = path.join(this.backupDir, file);
           const stats = await fs.stat(filePath);
           totalSize += stats.size;
@@ -352,7 +352,7 @@ export class BackupService {
     if (config.maxBackupsPerDocument !== undefined) {
       this.maxBackupsPerDocument = config.maxBackupsPerDocument;
     }
-    log.info('Configuration updated', { config });
+    log.info("Configuration updated", { config });
   }
 
   // Private helper methods
@@ -363,9 +363,9 @@ export class BackupService {
   private async ensureBackupDirectory(): Promise<void> {
     try {
       await fs.mkdir(this.backupDir, { recursive: true });
-      log.debug('Backup directory ensured', { backupDir: this.backupDir });
+      log.debug("Backup directory ensured", { backupDir: this.backupDir });
     } catch (error) {
-      log.error('Failed to create backup directory', { error, backupDir: this.backupDir });
+      log.error("Failed to create backup directory", { error, backupDir: this.backupDir });
     }
   }
 
@@ -376,7 +376,7 @@ export class BackupService {
    * @returns Hex string of hash
    */
   private generateHash(data: Buffer): string {
-    return createHash('sha256').update(data).digest('hex');
+    return createHash("sha256").update(data).digest("hex");
   }
 
   /**
@@ -396,7 +396,7 @@ export class BackupService {
     try {
       await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
     } catch (error) {
-      log.error('Failed to save backup metadata', { error, metadataPath });
+      log.error("Failed to save backup metadata", { error, metadataPath });
     }
   }
 
@@ -410,7 +410,7 @@ export class BackupService {
     const metadataPath = `${backupPath}.meta`;
 
     try {
-      const data = await fs.readFile(metadataPath, 'utf-8');
+      const data = await fs.readFile(metadataPath, "utf-8");
       return JSON.parse(data);
     } catch {
       return null;

@@ -8,7 +8,7 @@
  * - Hyperlink changes: Link icon badge with URL diff tooltip
  */
 
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import {
   FileText,
   Link2,
@@ -22,9 +22,9 @@ import {
   MoveRight,
   ArrowRightFromLine,
   ArrowRightToLine,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
-import type { ChangeEntry } from '@/types/session';
+} from "lucide-react";
+import { cn } from "@/utils/cn";
+import type { ChangeEntry } from "@/types/session";
 
 interface InlineChangesViewProps {
   /** All changes from tracked changes */
@@ -54,21 +54,21 @@ interface InlineChangesViewProps {
  */
 function getChangeIcon(revisionType: string) {
   switch (revisionType) {
-    case 'insert':
+    case "insert":
       return Plus;
-    case 'delete':
+    case "delete":
       return Trash2;
-    case 'moveFrom':
+    case "moveFrom":
       return ArrowRightFromLine;
-    case 'moveTo':
+    case "moveTo":
       return ArrowRightToLine;
-    case 'runPropertiesChange':
-    case 'paragraphPropertiesChange':
+    case "runPropertiesChange":
+    case "paragraphPropertiesChange":
       return Edit3;
-    case 'hyperlinkChange':
+    case "hyperlinkChange":
       return Link2;
-    case 'tablePropertiesChange':
-    case 'tableCellPropertiesChange':
+    case "tablePropertiesChange":
+    case "tableCellPropertiesChange":
       return Table;
     default:
       return Type;
@@ -78,63 +78,67 @@ function getChangeIcon(revisionType: string) {
 /**
  * Get styling classes for change type
  */
-function getChangeStyles(revisionType: string, isHighlighted: boolean, isMoveLinked: boolean = false) {
-  const baseClasses = 'inline-flex items-center rounded px-1 py-0.5 transition-all';
-  const highlightClasses = isHighlighted ? 'ring-2 ring-primary ring-offset-1' : '';
-  const moveLinkClasses = isMoveLinked ? 'ring-2 ring-amber-400 ring-offset-1 animate-pulse' : '';
+function getChangeStyles(
+  revisionType: string,
+  isHighlighted: boolean,
+  isMoveLinked: boolean = false
+) {
+  const baseClasses = "inline-flex items-center rounded px-1 py-0.5 transition-all";
+  const highlightClasses = isHighlighted ? "ring-2 ring-primary ring-offset-1" : "";
+  const moveLinkClasses = isMoveLinked ? "ring-2 ring-amber-400 ring-offset-1 animate-pulse" : "";
 
   switch (revisionType) {
-    case 'insert':
+    case "insert":
       return cn(
         baseClasses,
         highlightClasses,
-        'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+        "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
       );
-    case 'delete':
+    case "delete":
       return cn(
         baseClasses,
         highlightClasses,
-        'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 line-through'
+        "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 line-through"
       );
-    case 'moveFrom':
+    case "moveFrom":
       return cn(
         baseClasses,
         highlightClasses,
         moveLinkClasses,
-        'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-dashed border-amber-400'
+        "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-dashed border-amber-400"
       );
-    case 'moveTo':
+    case "moveTo":
       return cn(
         baseClasses,
         highlightClasses,
         moveLinkClasses,
-        'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-solid border-amber-400'
+        "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-solid border-amber-400"
       );
-    case 'runPropertiesChange':
-    case 'paragraphPropertiesChange':
+    case "runPropertiesChange":
+    case "paragraphPropertiesChange":
       return cn(
         baseClasses,
         highlightClasses,
-        'border-b-2 border-dashed border-blue-500 text-blue-700 dark:text-blue-300'
+        "border-b-2 border-dashed border-blue-500 text-blue-700 dark:text-blue-300"
       );
-    case 'hyperlinkChange':
+    case "hyperlinkChange":
       return cn(
         baseClasses,
         highlightClasses,
-        'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300'
+        "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300"
       );
-    case 'tablePropertiesChange':
-    case 'tableCellPropertiesChange':
+    case "tablePropertiesChange":
+    case "tableCellPropertiesChange":
       return cn(
         baseClasses,
         highlightClasses,
-        'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+        "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
       );
     default:
       return cn(
         baseClasses,
         highlightClasses,
-        'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+        "bg-muted text-muted-foreground"
       );
   }
 }
@@ -159,7 +163,7 @@ function ChangeBadge({
 }) {
   const [showTooltip, setShowTooltip] = useState(false);
   const Icon = getChangeIcon(change.revisionType);
-  const isMove = change.revisionType === 'moveFrom' || change.revisionType === 'moveTo';
+  const isMove = change.revisionType === "moveFrom" || change.revisionType === "moveTo";
   const moveId = (change as ChangeEntry & { moveId?: string }).moveId;
 
   const getDisplayText = () => {
@@ -172,7 +176,7 @@ function ChangeBadge({
     if (change.content?.before) {
       return change.content.before;
     }
-    return change.description || 'Change';
+    return change.description || "Change";
   };
 
   const handleMouseEnter = () => {
@@ -192,7 +196,10 @@ function ChangeBadge({
   return (
     <span className="relative inline-block">
       <span
-        className={cn(getChangeStyles(change.revisionType, isHighlighted, isMoveLinked), 'cursor-pointer')}
+        className={cn(
+          getChangeStyles(change.revisionType, isHighlighted, isMoveLinked),
+          "cursor-pointer"
+        )}
         onClick={onClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -200,69 +207,63 @@ function ChangeBadge({
         <Icon className="w-3 h-3 mr-1 inline" />
         <span className="text-sm">{getDisplayText()}</span>
         {/* Move indicator */}
-        {isMove && (
-          <MoveRight className="w-3 h-3 ml-1 inline opacity-60" />
-        )}
+        {isMove && <MoveRight className="w-3 h-3 ml-1 inline opacity-60" />}
       </span>
 
       {/* Tooltip */}
       {showTooltip && (
         <div className="absolute z-50 bottom-full left-0 mb-1 p-2 bg-popover border border-border rounded-lg shadow-lg text-xs max-w-xs">
           <div className="font-medium mb-1">{change.description}</div>
-          {change.author && (
-            <div className="text-muted-foreground">By: {change.author}</div>
-          )}
+          {change.author && <div className="text-muted-foreground">By: {change.author}</div>}
           {change.date && (
-            <div className="text-muted-foreground">
-              {new Date(change.date).toLocaleString()}
-            </div>
+            <div className="text-muted-foreground">{new Date(change.date).toLocaleString()}</div>
           )}
           {/* Content ID for hyperlink changes */}
           {change.content?.hyperlinkChange?.contentId && (
             <div className="mt-1 pt-1 border-t border-border">
-              <span className="text-muted-foreground">Content ID:</span>{' '}
+              <span className="text-muted-foreground">Content ID:</span>{" "}
               <code className="bg-primary/10 text-primary px-1 py-0.5 rounded text-[10px]">
                 {change.content.hyperlinkChange.contentId}
               </code>
             </div>
           )}
           {/* URL change for hyperlinks */}
-          {change.content?.hyperlinkChange?.urlBefore && change.content?.hyperlinkChange?.urlAfter && (
-            <div className="mt-1 pt-1 border-t border-border">
-              <div className="text-muted-foreground mb-0.5">URL:</div>
-              <div className="line-through text-red-500 break-all">
-                {change.content.hyperlinkChange.urlBefore.slice(0, 60)}
-                {change.content.hyperlinkChange.urlBefore.length > 60 && '...'}
+          {change.content?.hyperlinkChange?.urlBefore &&
+            change.content?.hyperlinkChange?.urlAfter && (
+              <div className="mt-1 pt-1 border-t border-border">
+                <div className="text-muted-foreground mb-0.5">URL:</div>
+                <div className="line-through text-red-500 break-all">
+                  {change.content.hyperlinkChange.urlBefore.slice(0, 60)}
+                  {change.content.hyperlinkChange.urlBefore.length > 60 && "..."}
+                </div>
+                <div className="text-green-500 break-all">
+                  {change.content.hyperlinkChange.urlAfter.slice(0, 60)}
+                  {change.content.hyperlinkChange.urlAfter.length > 60 && "..."}
+                </div>
               </div>
-              <div className="text-green-500 break-all">
-                {change.content.hyperlinkChange.urlAfter.slice(0, 60)}
-                {change.content.hyperlinkChange.urlAfter.length > 60 && '...'}
-              </div>
-            </div>
-          )}
+            )}
           {/* Text to Display change for hyperlinks */}
-          {change.content?.hyperlinkChange?.textBefore && change.content?.hyperlinkChange?.textAfter && (
-            <div className="mt-1 pt-1 border-t border-border">
-              <div className="text-muted-foreground mb-0.5">Text to Display:</div>
-              <div className="line-through text-red-500">
-                {change.content.hyperlinkChange.textBefore.slice(0, 50)}
-                {change.content.hyperlinkChange.textBefore.length > 50 && '...'}
+          {change.content?.hyperlinkChange?.textBefore &&
+            change.content?.hyperlinkChange?.textAfter && (
+              <div className="mt-1 pt-1 border-t border-border">
+                <div className="text-muted-foreground mb-0.5">Text to Display:</div>
+                <div className="line-through text-red-500">
+                  {change.content.hyperlinkChange.textBefore.slice(0, 50)}
+                  {change.content.hyperlinkChange.textBefore.length > 50 && "..."}
+                </div>
+                <div className="text-green-500">
+                  {change.content.hyperlinkChange.textAfter.slice(0, 50)}
+                  {change.content.hyperlinkChange.textAfter.length > 50 && "..."}
+                </div>
               </div>
-              <div className="text-green-500">
-                {change.content.hyperlinkChange.textAfter.slice(0, 50)}
-                {change.content.hyperlinkChange.textAfter.length > 50 && '...'}
-              </div>
-            </div>
-          )}
+            )}
           {change.propertyChange && (
             <div className="mt-1 pt-1 border-t border-border">
-              <span className="text-muted-foreground">{change.propertyChange.property}:</span>{' '}
+              <span className="text-muted-foreground">{change.propertyChange.property}:</span>{" "}
               <span className="line-through text-red-500">
-                {change.propertyChange.oldValue || 'none'}
-              </span>{' '}
-              <span className="text-green-500">
-                {change.propertyChange.newValue || 'none'}
-              </span>
+                {change.propertyChange.oldValue || "none"}
+              </span>{" "}
+              <span className="text-green-500">{change.propertyChange.newValue || "none"}</span>
             </div>
           )}
           {/* Generic before/after (for non-hyperlink changes) */}
@@ -270,11 +271,11 @@ function ChangeBadge({
             <div className="mt-1 pt-1 border-t border-border">
               <div className="line-through text-red-500">
                 {change.content.before.slice(0, 50)}
-                {change.content.before.length > 50 && '...'}
+                {change.content.before.length > 50 && "..."}
               </div>
               <div className="text-green-500">
                 {change.content.after.slice(0, 50)}
-                {change.content.after.length > 50 && '...'}
+                {change.content.after.length > 50 && "..."}
               </div>
             </div>
           )}
@@ -346,7 +347,7 @@ function ParagraphWithChanges({
 
   // Check if any change in this paragraph is linked via move
   const hasMoveChanges = changes.some(
-    (c) => c.revisionType === 'moveFrom' || c.revisionType === 'moveTo'
+    (c) => c.revisionType === "moveFrom" || c.revisionType === "moveTo"
   );
 
   return (
@@ -356,11 +357,7 @@ function ParagraphWithChanges({
         onClick={() => setIsLocalExpanded(!isLocalExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
       >
-        {isExpanded ? (
-          <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ChevronRight className="w-3 h-3" />
-        )}
+        {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         <span>Paragraph {paragraphIndex + 1}</span>
         {hasMoveChanges && (
           <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-[10px]">
@@ -368,7 +365,7 @@ function ParagraphWithChanges({
           </span>
         )}
         <span className="ml-auto px-1.5 py-0.5 bg-muted rounded-full">
-          {changes.length} {changes.length === 1 ? 'change' : 'changes'}
+          {changes.length} {changes.length === 1 ? "change" : "changes"}
         </span>
       </button>
 
@@ -378,13 +375,14 @@ function ParagraphWithChanges({
           {paragraphText && (
             <p className="text-sm text-muted-foreground mb-2 font-mono">
               {paragraphText.slice(0, 200)}
-              {paragraphText.length > 200 && '...'}
+              {paragraphText.length > 200 && "..."}
             </p>
           )}
           <div className="flex flex-wrap gap-2">
             {sortedChanges.map((change, idx) => {
               const changeWithMoveId = change as ChangeEntry & { moveId?: string };
-              const isMoveLinked = hoveredMoveId !== null && changeWithMoveId.moveId === hoveredMoveId;
+              const isMoveLinked =
+                hoveredMoveId !== null && changeWithMoveId.moveId === hoveredMoveId;
 
               return (
                 <ChangeBadge
@@ -445,14 +443,10 @@ function OtherChanges({
         onClick={() => setIsLocalExpanded(!isLocalExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
       >
-        {isExpanded ? (
-          <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ChevronRight className="w-3 h-3" />
-        )}
+        {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         <span>Document-level Changes</span>
         <span className="ml-auto px-1.5 py-0.5 bg-muted rounded-full">
-          {changes.length} {changes.length === 1 ? 'change' : 'changes'}
+          {changes.length} {changes.length === 1 ? "change" : "changes"}
         </span>
       </button>
 
@@ -461,7 +455,8 @@ function OtherChanges({
           <div className="flex flex-wrap gap-2">
             {changes.map((change, idx) => {
               const changeWithMoveId = change as ChangeEntry & { moveId?: string };
-              const isMoveLinked = hoveredMoveId !== null && changeWithMoveId.moveId === hoveredMoveId;
+              const isMoveLinked =
+                hoveredMoveId !== null && changeWithMoveId.moveId === hoveredMoveId;
 
               return (
                 <ChangeBadge
@@ -516,7 +511,7 @@ function VirtualizedParagraph({
         }
       },
       {
-        rootMargin: '100px', // Pre-load items 100px before they come into view
+        rootMargin: "100px", // Pre-load items 100px before they come into view
         threshold: 0,
       }
     );
@@ -586,16 +581,15 @@ export function InlineChangesView({
 
   // Statistics
   const stats = useMemo(() => {
-    const insertions = changes.filter((c) => c.revisionType === 'insert').length;
-    const deletions = changes.filter((c) => c.revisionType === 'delete').length;
+    const insertions = changes.filter((c) => c.revisionType === "insert").length;
+    const deletions = changes.filter((c) => c.revisionType === "delete").length;
     const formatting = changes.filter(
       (c) =>
-        c.revisionType === 'runPropertiesChange' ||
-        c.revisionType === 'paragraphPropertiesChange'
+        c.revisionType === "runPropertiesChange" || c.revisionType === "paragraphPropertiesChange"
     ).length;
-    const hyperlinks = changes.filter((c) => c.revisionType === 'hyperlinkChange').length;
+    const hyperlinks = changes.filter((c) => c.revisionType === "hyperlinkChange").length;
     const moves = changes.filter(
-      (c) => c.revisionType === 'moveFrom' || c.revisionType === 'moveTo'
+      (c) => c.revisionType === "moveFrom" || c.revisionType === "moveTo"
     ).length;
 
     return { insertions, deletions, formatting, hyperlinks, moves };

@@ -1,17 +1,17 @@
-import { useState, useMemo, useEffect, useRef, memo } from 'react';
-import { motion } from 'framer-motion';
-import Fuse from 'fuse.js';
+import { useState, useMemo, useEffect, useRef, memo } from "react";
+import { motion } from "framer-motion";
+import Fuse from "fuse.js";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/common/Card';
-import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
-import { useSession } from '@/contexts/SessionContext';
-import { cn } from '@/utils/cn';
+} from "@/components/common/Card";
+import { Input } from "@/components/common/Input";
+import { Button } from "@/components/common/Button";
+import { useSession } from "@/contexts/SessionContext";
+import { cn } from "@/utils/cn";
 import {
   Search as SearchIcon,
   Filter,
@@ -22,12 +22,12 @@ import {
   Clock,
   XCircle,
   ChevronRight,
-} from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { Document } from '@/types/session';
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Document } from "@/types/session";
 
-type StatusFilter = 'all' | 'completed' | 'pending' | 'error';
-type DateRange = 'all' | 'today' | 'week' | 'month' | 'custom';
+type StatusFilter = "all" | "completed" | "pending" | "error";
+type DateRange = "all" | "today" | "week" | "month" | "custom";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -52,9 +52,9 @@ const itemVariants = {
 
 // PERFORMANCE: Wrap in memo to prevent re-renders when parent state changes
 export const Search = memo(function Search() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [selectedSessionId, setSelectedSessionId] = useState<string>("all");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -81,9 +81,9 @@ export const Search = memo(function Search() {
   const fuse = useMemo(() => {
     return new Fuse(allDocuments, {
       keys: [
-        { name: 'name', weight: 2 },
-        { name: 'sessionName', weight: 1 },
-        { name: 'path', weight: 0.5 },
+        { name: "name", weight: 2 },
+        { name: "sessionName", weight: 1 },
+        { name: "path", weight: 0.5 },
       ],
       threshold: 0.4,
       includeScore: true,
@@ -97,12 +97,12 @@ export const Search = memo(function Search() {
       : allDocuments;
 
     // Apply status filter
-    if (statusFilter !== 'all') {
+    if (statusFilter !== "all") {
       results = results.filter((doc) => doc.status === statusFilter);
     }
 
     // Apply session filter
-    if (selectedSessionId !== 'all') {
+    if (selectedSessionId !== "all") {
       results = results.filter((doc) => doc.sessionId === selectedSessionId);
     }
 
@@ -114,20 +114,20 @@ export const Search = memo(function Search() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!filteredDocuments.length) return;
 
-      if (e.key === 'ArrowDown') {
+      if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex((prev) => (prev < filteredDocuments.length - 1 ? prev + 1 : prev));
-      } else if (e.key === 'ArrowUp') {
+      } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
-      } else if (e.key === 'Enter' && filteredDocuments[selectedIndex]) {
+      } else if (e.key === "Enter" && filteredDocuments[selectedIndex]) {
         e.preventDefault();
         handleOpenDocument(filteredDocuments[selectedIndex]);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [filteredDocuments, selectedIndex]);
 
   // Reset selected index when results change
@@ -140,7 +140,7 @@ export const Search = memo(function Search() {
     if (resultsRef.current) {
       const selectedElement = resultsRef.current.querySelector(`[data-index="${selectedIndex}"]`);
       if (selectedElement) {
-        selectedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        selectedElement.scrollIntoView({ block: "nearest", behavior: "smooth" });
       }
     }
   }, [selectedIndex]);
@@ -151,11 +151,11 @@ export const Search = memo(function Search() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'completed':
+      case "completed":
         return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-      case 'pending':
+      case "pending":
         return <Clock className="w-4 h-4 text-yellow-500" />;
-      case 'error':
+      case "error":
         return <XCircle className="w-4 h-4 text-red-500" />;
       default:
         return <FileText className="w-4 h-4 text-muted-foreground" />;
@@ -163,21 +163,21 @@ export const Search = memo(function Search() {
   };
 
   const statusOptions = [
-    { value: 'all' as StatusFilter, label: 'All Status', count: allDocuments.length },
+    { value: "all" as StatusFilter, label: "All Status", count: allDocuments.length },
     {
-      value: 'completed' as StatusFilter,
-      label: 'Completed',
-      count: allDocuments.filter((d) => d.status === 'completed').length,
+      value: "completed" as StatusFilter,
+      label: "Completed",
+      count: allDocuments.filter((d) => d.status === "completed").length,
     },
     {
-      value: 'pending' as StatusFilter,
-      label: 'Pending',
-      count: allDocuments.filter((d) => d.status === 'pending').length,
+      value: "pending" as StatusFilter,
+      label: "Pending",
+      count: allDocuments.filter((d) => d.status === "pending").length,
     },
     {
-      value: 'error' as StatusFilter,
-      label: 'Error',
-      count: allDocuments.filter((d) => d.status === 'error').length,
+      value: "error" as StatusFilter,
+      label: "Error",
+      count: allDocuments.filter((d) => d.status === "error").length,
     },
   ];
 
@@ -212,7 +212,7 @@ export const Search = memo(function Search() {
           />
           <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Button
-            variant={showFilters ? 'default' : 'ghost'}
+            variant={showFilters ? "default" : "ghost"}
             size="icon"
             className="absolute right-2 top-1/2 -translate-y-1/2"
             onClick={() => setShowFilters(!showFilters)}
@@ -225,7 +225,7 @@ export const Search = memo(function Search() {
         {showFilters && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
+            animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg border border-border"
           >
@@ -236,7 +236,7 @@ export const Search = memo(function Search() {
                 {statusOptions.map((option) => (
                   <Button
                     key={option.value}
-                    variant={statusFilter === option.value ? 'default' : 'outline'}
+                    variant={statusFilter === option.value ? "default" : "outline"}
                     size="sm"
                     onClick={() => setStatusFilter(option.value)}
                     className="gap-2"
@@ -271,7 +271,7 @@ export const Search = memo(function Search() {
       {/* Results Summary */}
       <motion.div variants={itemVariants} className="flex items-center justify-between">
         <p className="text-sm text-foreground">
-          {filteredDocuments.length} {filteredDocuments.length === 1 ? 'result' : 'results'} found
+          {filteredDocuments.length} {filteredDocuments.length === 1 ? "result" : "results"} found
           {searchQuery && (
             <span className="ml-1">
               for "<span className="font-semibold text-foreground">{searchQuery}</span>"
@@ -306,11 +306,11 @@ export const Search = memo(function Search() {
               onClick={() => handleOpenDocument(doc)}
               onMouseEnter={() => setSelectedIndex(index)}
               className={cn(
-                'p-4 rounded-lg border cursor-pointer transition-all duration-150',
-                'hover:border-primary hover:bg-accent/50',
+                "p-4 rounded-lg border cursor-pointer transition-all duration-150",
+                "hover:border-primary hover:bg-accent/50",
                 selectedIndex === index
-                  ? 'border-primary bg-accent/50 shadow-xs'
-                  : 'border-border bg-card'
+                  ? "border-primary bg-accent/50 shadow-xs"
+                  : "border-border bg-card"
               )}
             >
               <div className="flex items-start justify-between gap-4">
@@ -335,8 +335,8 @@ export const Search = memo(function Search() {
                 </div>
                 <ChevronRight
                   className={cn(
-                    'w-5 h-5 text-muted-foreground transition-transform',
-                    selectedIndex === index && 'text-primary translate-x-1'
+                    "w-5 h-5 text-muted-foreground transition-transform",
+                    selectedIndex === index && "text-primary translate-x-1"
                   )}
                 />
               </div>

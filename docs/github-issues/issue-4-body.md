@@ -29,7 +29,7 @@ const debouncedPersistSessions = useCallback(async () => {
       await handleQuotaExceededError(async () => saveSession(truncatedSession), session.id);
     }
   } catch (err) {
-    log.error('Failed to persist sessions:', err);
+    log.error("Failed to persist sessions:", err);
   }
 }, []);
 

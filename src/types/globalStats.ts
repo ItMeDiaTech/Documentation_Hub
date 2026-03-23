@@ -116,9 +116,9 @@ export const createEmptyMonthlyStats = (month: string): MonthlyStats => ({
 });
 
 export const createDefaultGlobalStats = (): GlobalStats => {
-  const today = new Date().toISOString().split('T')[0];
-  const monday = getMonday(new Date()).toISOString().split('T')[0];
-  const sunday = getSunday(new Date()).toISOString().split('T')[0];
+  const today = new Date().toISOString().split("T")[0];
+  const monday = getMonday(new Date()).toISOString().split("T")[0];
+  const sunday = getSunday(new Date()).toISOString().split("T")[0];
   const month = today.substring(0, 7); // YYYY-MM
 
   return {

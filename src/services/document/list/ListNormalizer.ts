@@ -41,7 +41,9 @@ function applyIndentationSettings(
   for (const levelConfig of indentationLevels) {
     const level = abstractNum.getLevel(levelConfig.level);
     if (level) {
-      const textIndentTwips = inchesToTwips(levelConfig.textIndent) + extraHangingIndentTwips;
+      // Only apply wider hanging indent to numbered lists, not bullets
+      const extra = isBulletList ? 0 : extraHangingIndentTwips;
+      const textIndentTwips = inchesToTwips(levelConfig.textIndent) + extra;
       const symbolIndentTwips = inchesToTwips(levelConfig.symbolIndent);
       const hangingTwips = textIndentTwips - symbolIndentTwips;
 
@@ -53,6 +55,7 @@ function applyIndentationSettings(
       }
       if (!isBulletList && levelConfig.numberedFormat) {
         level.setFormat(levelConfig.numberedFormat as NumberFormat);
+        level.setText(`%${levelConfig.level + 1}.`);
       }
     }
   }
@@ -119,9 +122,7 @@ export function analyzeCellLists(
         // Look up the actual format from numbering.xml
         const instance = numberingManager.getInstance(item.detection.numId);
         if (instance) {
-          const abstractNum = numberingManager.getAbstractNumbering(
-            instance.getAbstractNumId()
-          );
+          const abstractNum = numberingManager.getAbstractNumbering(instance.getAbstractNumId());
           if (abstractNum) {
             const level = abstractNum.getLevel(item.detection.ilvl ?? 0);
             if (level) {
@@ -176,9 +177,7 @@ export function analyzeCellLists(
  * Analyze lists in an entire table.
  * Returns analysis per cell.
  */
-export function analyzeTableLists(
-  table: Table
-): Map<TableCell, ListAnalysis> {
+export function analyzeTableLists(table: Table): Map<TableCell, ListAnalysis> {
   const results = new Map<TableCell, ListAnalysis>();
 
   for (const row of table.getRows()) {
@@ -308,7 +307,12 @@ export function normalizeListsInCell(
                 const abstractNum = numberingManager.getAbstractNumbering(abstractNumId);
                 if (abstractNum) {
                   const isBullet = item.detection.category === "bullet";
-                  applyIndentationSettings(abstractNum, options.indentationLevels!, isBullet, options.extraHangingIndentTwips ?? 0);
+                  applyIndentationSettings(
+                    abstractNum,
+                    options.indentationLevels!,
+                    isBullet,
+                    options.extraHangingIndentTwips ?? 0
+                  );
                   updatedAbstractNums.add(abstractNumId);
                 }
               }
@@ -336,7 +340,10 @@ export function normalizeListsInCell(
           const numbering = para.getNumbering();
           if (numbering) {
             if (!restartedNumIds.has(numbering.numId)) {
-              restartedNumIds.set(numbering.numId, numberingManager.restartNumbering(numbering.numId));
+              restartedNumIds.set(
+                numbering.numId,
+                numberingManager.restartNumbering(numbering.numId)
+              );
             }
 
             const newNumId = restartedNumIds.get(numbering.numId)!;
@@ -461,7 +468,7 @@ export function normalizeListsInCell(
           detection.indentationTwips === 0 &&
           parentDetection.indentationTwips === 0 &&
           detection.inferredLevel === 0 &&
-          (i - Math.max(lastNumberedItemIndex, lastSubItemIndex === -1 ? 0 : lastSubItemIndex)) <= 3
+          i - Math.max(lastNumberedItemIndex, lastSubItemIndex === -1 ? 0 : lastSubItemIndex) <= 3
         ) {
           bulletAsSubItemIndices.add(i);
           parentIndexByIndex.set(i, lastNumberedItemIndex);
@@ -503,7 +510,7 @@ export function normalizeListsInCell(
           detection.indentationTwips === 0 &&
           parentDetection.indentationTwips === 0 &&
           detection.inferredLevel === 0 &&
-          (i - Math.max(lastBulletItemIndex, lastSubItemIndex === -1 ? 0 : lastSubItemIndex)) <= 3
+          i - Math.max(lastBulletItemIndex, lastSubItemIndex === -1 ? 0 : lastSubItemIndex) <= 3
         ) {
           numberedAsSubItemIndices.add(i);
           parentIndexByIndex.set(i, lastBulletItemIndex);
@@ -594,7 +601,12 @@ export function normalizeListsInCell(
         if (instance) {
           const abstractNum = numberingManager.getAbstractNumbering(instance.getAbstractNumId());
           if (abstractNum) {
-            applyIndentationSettings(abstractNum, options.indentationLevels, majorityCategory !== "numbered", options.extraHangingIndentTwips ?? 0);
+            applyIndentationSettings(
+              abstractNum,
+              options.indentationLevels,
+              majorityCategory !== "numbered",
+              options.extraHangingIndentTwips ?? 0
+            );
           }
         }
       }
@@ -634,7 +646,12 @@ export function normalizeListsInCell(
         if (instance) {
           const abstractNum = numberingManager.getAbstractNumbering(instance.getAbstractNumId());
           if (abstractNum) {
-            applyIndentationSettings(abstractNum, options.indentationLevels, true, options.extraHangingIndentTwips ?? 0);
+            applyIndentationSettings(
+              abstractNum,
+              options.indentationLevels,
+              true,
+              options.extraHangingIndentTwips ?? 0
+            );
           }
         }
       }
@@ -693,7 +710,11 @@ export function normalizeListsInCell(
           // indentation alone — "1.", "2.", "3." are level 0 regardless of indent.
           // For bullet/dash/arrow formats, indentation IS the nesting signal since
           // all bullet chars map to inferredLevel=0.
-          if (detection.format === 'bullet' || detection.format === 'dash' || detection.format === 'arrow') {
+          if (
+            detection.format === "bullet" ||
+            detection.format === "dash" ||
+            detection.format === "arrow"
+          ) {
             targetLevel = indentBasedLevel;
           } else {
             targetLevel = 0;
@@ -704,7 +725,8 @@ export function normalizeListsInCell(
       } else if (bulletAsSubItemIndices.has(index) || numberedAsSubItemIndices.has(index)) {
         // Sub-item: use parent's NORMALIZED level + 1
         const parentIndex = parentIndexByIndex.get(index);
-        const parentNormalizedLevel = parentIndex !== undefined ? getNormalizedLevel(parentIndex) : 0;
+        const parentNormalizedLevel =
+          parentIndex !== undefined ? getNormalizedLevel(parentIndex) : 0;
         targetLevel = parentNormalizedLevel + 1;
       } else {
         targetLevel = Math.max(0, detection.inferredLevel - levelShift);
@@ -751,7 +773,12 @@ export function normalizeListsInCell(
           action: "normalized",
           reason: `Numbered → bullet at level ${targetLevel}`,
         });
-      } else if (isWordList && detection.category === "bullet" && majorityCategory === "numbered" && !bulletAsSubItemIndices.has(index)) {
+      } else if (
+        isWordList &&
+        detection.category === "bullet" &&
+        majorityCategory === "numbered" &&
+        !bulletAsSubItemIndices.has(index)
+      ) {
         // Trailing bullet in numbered-majority cell - preserve as bullet
         lastTypedFormatByLevel.set(targetLevel, null);
         para.setNumbering(getBulletNumId(targetLevel), targetLevel);
@@ -904,14 +931,10 @@ export function normalizeOrphanListLevelsInTable(table: Table): number {
 /**
  * Get existing or create new numbered list numId.
  */
-function getOrCreateNumberedListNumId(
-  numberingManager: NumberingManager
-): number {
+function getOrCreateNumberedListNumId(numberingManager: NumberingManager): number {
   const instances = numberingManager.getAllInstances();
   for (const instance of instances) {
-    const abstractNum = numberingManager.getAbstractNumbering(
-      instance.getAbstractNumId()
-    );
+    const abstractNum = numberingManager.getAbstractNumbering(instance.getAbstractNumId());
     if (abstractNum) {
       const level0 = abstractNum.getLevel(0);
       if (level0) {
@@ -929,14 +952,10 @@ function getOrCreateNumberedListNumId(
 /**
  * Get existing or create new bullet list numId.
  */
-function getOrCreateBulletListNumId(
-  numberingManager: NumberingManager
-): number {
+function getOrCreateBulletListNumId(numberingManager: NumberingManager): number {
   const instances = numberingManager.getAllInstances();
   for (const instance of instances) {
-    const abstractNum = numberingManager.getAbstractNumbering(
-      instance.getAbstractNumId()
-    );
+    const abstractNum = numberingManager.getAbstractNumbering(instance.getAbstractNumId());
     if (abstractNum) {
       const level0 = abstractNum.getLevel(0);
       if (level0) {
@@ -1014,24 +1033,18 @@ export class ListNormalizer {
     }
 
     if (aggregateReport.normalized > 0) {
-      logger.info(
-        `List normalization complete: ${aggregateReport.normalized} items normalized`
-      );
+      logger.info(`List normalization complete: ${aggregateReport.normalized} items normalized`);
     }
 
     return aggregateReport;
   }
 
-  private resolveOptions(
-    partial: Partial<ListNormalizationOptions>
-  ): ListNormalizationOptions {
+  private resolveOptions(partial: Partial<ListNormalizationOptions>): ListNormalizationOptions {
     return {
       numberedStyleNumId:
-        partial.numberedStyleNumId ??
-        getOrCreateNumberedListNumId(this.numberingManager),
+        partial.numberedStyleNumId ?? getOrCreateNumberedListNumId(this.numberingManager),
       bulletStyleNumId:
-        partial.bulletStyleNumId ??
-        getOrCreateBulletListNumId(this.numberingManager),
+        partial.bulletStyleNumId ?? getOrCreateBulletListNumId(this.numberingManager),
       scope: partial.scope ?? "cell",
       forceMajority: partial.forceMajority ?? false,
       preserveIndentation: partial.preserveIndentation ?? false,

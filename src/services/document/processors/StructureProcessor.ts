@@ -67,17 +67,16 @@ export class StructureProcessor {
 
       for (let i = paragraphs.length - 1; i >= searchStartIndex; i--) {
         const text = paragraphs[i].getText() || "";
-        if (
-          text.includes("electronic data") ||
-          text.includes("not to be reproduced")
-        ) {
+        if (text.includes("electronic data") || text.includes("not to be reproduced")) {
           log.debug("Document warning already exists");
           return false;
         }
       }
 
       // Create warning paragraphs
-      const warningParagraph1 = Paragraph.create("This is electronic data and is not to be reproduced, copied, or distributed.");
+      const warningParagraph1 = Paragraph.create(
+        "This is electronic data and is not to be reproduced, copied, or distributed."
+      );
       warningParagraph1.setAlignment("center");
       warningParagraph1.setSpaceBefore(240);
       warningParagraph1.setSpaceAfter(0);

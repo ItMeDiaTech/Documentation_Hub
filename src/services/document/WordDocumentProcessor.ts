@@ -793,12 +793,16 @@ export class WordDocumentProcessor {
         throw new Error(`File too large: ${fileSizeMB.toFixed(2)}MB exceeds limit`);
       }
 
-      // Create backup
+      // Create backup (skip when explicitly disabled, e.g., batch processing)
       this.log.debug("=== BACKUP CREATION ===");
-      const backupPath = await this.createBackup(filePath);
-      result.backupPath = backupPath;
-      backupCreated = true;
-      this.log.info(`Backup created: ${backupPath}`);
+      if (options.createBackup !== false) {
+        const backupPath = await this.createBackup(filePath);
+        result.backupPath = backupPath;
+        backupCreated = true;
+        this.log.info(`Backup created: ${backupPath}`);
+      } else {
+        this.log.debug("Backup creation skipped (createBackup: false)");
+      }
 
       // Load document using DocXMLater
       // ALWAYS load with 'preserve' to capture pre-existing tracked changes first
@@ -2318,20 +2322,43 @@ export class WordDocumentProcessor {
         let skippedBorderCount = 0;
 
         for (const paragraph of doc.getAllParagraphs()) {
-          const largeImages = collectParagraphImages(paragraph).filter(
+          const allImages = collectParagraphImages(paragraph);
+          const largeImages = allImages.filter(
             (image) => image.getWidth() >= minEmus || image.getHeight() >= minEmus
           );
+          // Cropped/word-cropped images may not meet the size threshold — include them too
+          const extraImages = allImages.filter(
+            (image) => (cropResult.croppedImages.has(image) || cropResult.wordCroppedImages.has(image)) && !largeImages.includes(image)
+          );
+          const imagesToProcess = [...largeImages, ...extraImages];
 
-          if (largeImages.length === 0) continue;
+          if (imagesToProcess.length === 0) continue;
 
           // Center the paragraph (always, regardless of border decision)
+          // Override style-inherited indentation from ListParagraph by explicitly
+          // setting left indent and first line to 0. Also switch style to Normal.
+          const imgParaStyle = paragraph.getStyle() || "";
+          if (imgParaStyle === "ListParagraph" || imgParaStyle === "List Paragraph") {
+            paragraph.setStyle("Normal");
+          }
           paragraph.formatting.indentation = undefined;
+          paragraph.setLeftIndent(0);
+          paragraph.setFirstLineIndent(0);
           paragraph.setAlignment("center");
           centeredCount++;
 
           // Selectively border each image (uses cached results from crop step)
-          for (const image of largeImages) {
-            if (cropResult.allSideBakedBorderImages.has(image)) {
+          for (const image of imagesToProcess) {
+            if (cropResult.wordCroppedImages.has(image)) {
+              // Word-cropped: preserve crop, ensure border at UI thickness
+              const existing = image.getBorder();
+              if (existing && existing.width === borderWidth) {
+                skippedBorderCount++;
+              } else {
+                image.setBorder(borderWidth);
+                borderedCount++;
+              }
+            } else if (cropResult.allSideBakedBorderImages.has(image)) {
               skippedBorderCount++;
               this.log.debug("Skipped Word border for image with baked-in border on all 4 sides");
             } else {
@@ -2361,6 +2388,8 @@ export class WordDocumentProcessor {
       }
 
       // === IMAGE COMPRESSION (always-on) ===
+      // Must run after the bordering stage above — allSideBakedBorderImages cache
+      // relies on Image object identity from cropEmbeddedImageBorders().
       this.log.debug("=== OPTIMIZING IMAGES ===");
       const imageOptResult = await doc.optimizeImages();
       if (imageOptResult.optimizedCount > 0) {
@@ -5814,6 +5843,9 @@ export class WordDocumentProcessor {
     const nextText = next.getText() || "";
     if (nextText.length === 0 || nextText.startsWith(" ")) return false;
 
+    // Don't add space before punctuation (e.g., period, comma after a hyperlink)
+    if (/^[^a-zA-Z0-9]/.test(nextText)) return false;
+
     next.setText(" " + nextText);
     return true;
   }
@@ -8405,8 +8437,8 @@ export class WordDocumentProcessor {
 
       const symbolTwips = Math.round(symbolIndent * 1440);
       const baseTextTwips = Math.round(textIndent * 1440);
-      const extraTwips = this.getExtraHangingTwips();
-      const textTwips = baseTextTwips + extraTwips;
+      // Bullet lists never get wider hanging indent — only numbered lists need it
+      const textTwips = baseTextTwips;
       const hangingTwips = textTwips - symbolTwips;
 
       // Get font-specific character and font for this bullet type
@@ -8479,8 +8511,8 @@ export class WordDocumentProcessor {
             const levelConfig = settings.indentationLevels[levelIndex];
             if (levelConfig) {
               const symbolTwips = Math.round(levelConfig.symbolIndent * 1440);
-              const extraTwips = this.getExtraHangingTwips();
-              const textTwips = Math.round(levelConfig.textIndent * 1440) + extraTwips;
+              // Bullet lists never get wider hanging indent
+              const textTwips = Math.round(levelConfig.textIndent * 1440);
               const hangingTwips = textTwips - symbolTwips;
               level.setLeftIndent(textTwips); // Text starts at textIndent
               level.setHangingIndent(hangingTwips); // Number hangs back by (textIndent - symbolIndent)
@@ -8643,10 +8675,19 @@ export class WordDocumentProcessor {
 
   /**
    * Get the extra twips to add to text indent when documents have 10+ numbered items.
-   * Centralizes the needsWiderHangingIndent check used across all list indent code paths.
+   * Only applies to numbered lists — bullet lists never need wider hanging indent.
+   *
+   * @param doc - Document (required when numId is provided)
+   * @param numId - If provided, checks whether this specific list is numbered.
+   *               Bullet lists return 0 even when needsWiderHangingIndent is true.
    */
-  private getExtraHangingTwips(): number {
-    return this.needsWiderHangingIndent ? WIDE_HANGING_EXTRA_TWIPS : 0;
+  private getExtraHangingTwips(doc?: Document, numId?: number): number {
+    if (!this.needsWiderHangingIndent) return 0;
+    // If numId provided, only apply to numbered lists
+    if (doc && numId !== undefined) {
+      if (!this.isNumberedList(doc, numId)) return 0;
+    }
+    return WIDE_HANGING_EXTRA_TWIPS;
   }
 
   /**
@@ -9039,23 +9080,22 @@ export class WordDocumentProcessor {
 
         // Detection threshold: at least 2 matches and all (or all-but-one) cells match
         if (matchCount >= 2 && matchCount >= totalCells - 1) {
-          const processedAbstractNums = new Set<number>();
-
-          for (const numId of matchingNumIds) {
-            const instance = manager.getInstance(numId);
-            if (!instance) continue;
-
-            const abstractNumId = instance.getAbstractNumId();
-            if (processedAbstractNums.has(abstractNumId)) continue;
-            processedAbstractNums.add(abstractNumId);
-
-            const abstractNum = manager.getAbstractNumbering(abstractNumId);
-            if (!abstractNum) continue;
-
-            const level = abstractNum.getLevel(0);
-            if (level) {
-              abstractNum.removeLevel(0);
-              abstractNum.addLevel(
+          // Create ONE shared numId for all step column cells so they count sequentially (1, 2, 3...)
+          // Without this, each cell has its own restarted numId and all show "1"
+          // Use restartNumbering() to add startOverride=1 — this ensures the list restarts
+          // at 1 even if consolidateNumbering() merges the abstractNum with another table's.
+          let sharedNumId = manager.createNumberedList();
+          sharedNumId = manager.restartNumbering(sharedNumId);
+          const sharedInstance = manager.getInstance(sharedNumId);
+          if (sharedInstance) {
+            const sharedAbstractNumId = sharedInstance.getAbstractNumId();
+            const sharedAbstractNum = manager.getAbstractNumbering(sharedAbstractNumId);
+            if (sharedAbstractNum) {
+              const existingLevel = sharedAbstractNum.getLevel(0);
+              if (existingLevel) {
+                sharedAbstractNum.removeLevel(0);
+              }
+              sharedAbstractNum.addLevel(
                 NumberingLevel.create({
                   level: 0,
                   format: "decimal",
@@ -9070,18 +9110,18 @@ export class WordDocumentProcessor {
                   color: "000000",
                 })
               );
+
+              // Re-register with the manager to mark as modified
+              manager.addAbstractNumbering(sharedAbstractNum);
+
+              // Track for protection against downstream overrides
+              this._rowNumberAbstractNumIds.add(sharedAbstractNumId);
             }
-
-            // Re-register with the manager to mark as modified —
-            // removeLevel/addLevel don't notify the NumberingManager
-            manager.addAbstractNumbering(abstractNum);
-
-            // Track for protection against downstream overrides
-            this._rowNumberAbstractNumIds.add(abstractNumId);
           }
 
-          // Format each matched paragraph
+          // Format each matched paragraph and assign the SHARED numId
           for (const para of matchingParas) {
+            para.setNumbering(sharedNumId, 0);
             para.setAlignment("center");
             para.setSpaceBefore(pointsToTwips(normalStyle.spaceBefore));
             para.setSpaceAfter(pointsToTwips(normalStyle.spaceAfter));
@@ -9334,7 +9374,9 @@ export class WordDocumentProcessor {
       for (const levelConfig of settings.indentationLevels) {
         const level = abstractNum.getLevel(levelConfig.level);
         if (level) {
-          const extraTwips = this.getExtraHangingTwips();
+          // Only apply wider hanging indent to numbered lists, not bullets
+          const isBullet = level.getFormat() === "bullet";
+          const extraTwips = isBullet ? 0 : this.getExtraHangingTwips();
           const textTwips = inchesToTwips(levelConfig.textIndent) + extraTwips;
           const symbolTwips = inchesToTwips(levelConfig.symbolIndent);
           level.setLeftIndent(textTwips);
@@ -10937,6 +10979,20 @@ export class WordDocumentProcessor {
             foundTopHyperlink = true;
             this.log.debug("Applied formatting to direct Hyperlink");
           }
+          // Case 1b: _top anchor hyperlink with WRONG text (e.g., "[Link]", "Link")
+          // This happens when ComplexField HYPERLINK _top fields lose display text
+          // during DocXMLater's save/regeneration cycle
+          else if (item.getAnchor && item.getAnchor() === "_top") {
+            const currentText = sanitizeHyperlinkText(item.getText()).trim();
+            if (!currentText || currentText === "Link" || currentText === "[Link]") {
+              this.log.info(
+                `Fixing corrupted _top hyperlink text: "${currentText}" → "Top of the Document"`
+              );
+              item.setText("Top of the Document");
+              this.applyTopHyperlinkFormatting(item);
+              foundTopHyperlink = true;
+            }
+          }
         }
         // Case 2: Hyperlinks inside Revision elements (w:ins tracked changes)
         else if (item instanceof Revision) {
@@ -10957,38 +11013,30 @@ export class WordDocumentProcessor {
           }
         }
         // Case 3: HYPERLINK field codes (ComplexField)
+        // ComplexField hyperlinks pointing to _top lose their display text during
+        // DocXMLater's save/regeneration, resulting in "[Link]" or "Link" text.
+        // Fix: replace the ComplexField with a proper inline hyperlink.
         else if (item instanceof ComplexField) {
           if (item.isHyperlinkField()) {
             const parsedHyperlink = item.getParsedHyperlink();
             const resultText = item.getResult() || "";
 
-            // Check if text indicates TOD hyperlink (regardless of current anchor)
-            // This allows us to fix hyperlinks pointing to wrong anchors
-            if (this.isTopOfDocumentHyperlink(resultText)) {
-              // Apply formatting to the field result with explicit bold/italic false
-              item.setResultFormatting({
+            // Check if this is a _top hyperlink (by anchor OR by text)
+            const isTopByText = this.isTopOfDocumentHyperlink(resultText);
+            const isTopByAnchor = parsedHyperlink?.anchor === "_top";
+
+            if (isTopByText || isTopByAnchor) {
+              // REPLACE the ComplexField with a proper inline hyperlink to prevent
+              // text corruption during DocXMLater's document regeneration.
+              const newHyperlink = Hyperlink.createInternal("_top", "Top of the Document", {
                 font: "Verdana",
                 size: 12,
                 color: "0000FF",
                 underline: "single",
-                bold: false,
-                italic: false,
               });
-
-              // Update anchor to _top if not already set
-              // ComplexField uses setInstruction() with buildHyperlinkInstruction()
-              if (parsedHyperlink?.anchor !== "_top") {
-                const newInstruction = buildHyperlinkInstruction(
-                  parsedHyperlink?.url || "", // Keep URL (empty for internal links)
-                  "_top", // New anchor
-                  parsedHyperlink?.tooltip // Preserve tooltip if any
-                );
-                item.setInstruction(newInstruction);
-                this.log.debug(`Updated ComplexField instruction to use "_top" anchor`);
-              }
-
+              para.replaceContent(item, [newHyperlink]);
               foundTopHyperlink = true;
-              this.log.debug("Applied formatting to HYPERLINK field code");
+              this.log.info("Replaced ComplexField _top hyperlink with inline hyperlink");
             }
           }
         }
@@ -11151,47 +11199,30 @@ export class WordDocumentProcessor {
       // Skip floating tables and tables containing nested tables
       if (tableProcessor.shouldSkipTable(table)) return;
 
-      let hasHeader2 = false;
-
-      // ENHANCEMENT 3: Check if this table is a 1x1 table (user request)
-      // Skip shaded 1x1 tables - they don't need Top of Document links
       const rows = table.getRows();
       const is1x1Table = rows.length === 1 && rows[0]?.getCells().length === 1;
 
+      // ALL 1x1 tables get a Top of Document hyperlink (these are section headers)
       if (is1x1Table) {
-        // Check if the cell is shaded - if so, skip adding Top of Document link
-        const cell = rows[0].getCells()[0];
-        const cellFormatting = cell?.getFormatting();
-        const shadingFill = cellFormatting?.shading?.fill?.toUpperCase();
-        const isShaded = shadingFill && shadingFill !== "AUTO" && shadingFill !== "FFFFFF";
+        tablesWithHeader2.push({ tableIndex, table, hasHeader2: true });
+        return;
+      }
 
-        if (isShaded) {
-          this.log.debug(
-            `Table ${tableIndex} is a shaded 1x1 table (fill: ${shadingFill}) - skipping Top of Document link`
-          );
-        } else {
-          // Treat unshaded 1x1 tables the same as Header 2 tables
-          hasHeader2 = true;
-          this.log.debug(
-            `Table ${tableIndex} is an unshaded 1x1 table - will add Top of Document link`
-          );
-        }
-      } else {
-        // Original Header 2 detection for non-1x1 tables
-        table.getRows().forEach((row) => {
-          row.getCells().forEach((cell) => {
-            cell.getParagraphs().forEach((para) => {
-              const style = para.getStyle() || para.getFormatting().style;
-              if (
-                style &&
-                (style === "Heading2" || style === "Heading 2" || style.includes("Heading2"))
-              ) {
-                hasHeader2 = true;
-              }
-            });
+      // For non-1x1 tables, check for Heading 2 style paragraphs
+      let hasHeader2 = false;
+      table.getRows().forEach((row) => {
+        row.getCells().forEach((cell) => {
+          cell.getParagraphs().forEach((para) => {
+            const style = para.getStyle() || para.getFormatting().style;
+            if (
+              style &&
+              (style === "Heading2" || style === "Heading 2" || style.includes("Heading2"))
+            ) {
+              hasHeader2 = true;
+            }
           });
         });
-      }
+      });
 
       if (hasHeader2) {
         tablesWithHeader2.push({ tableIndex, table, hasHeader2 });
@@ -11220,6 +11251,40 @@ export class WordDocumentProcessor {
       }
     });
 
+    // Pre-scan: collect positions of ALL existing "Top of Document" links in the document.
+    // This avoids the problem of content tables blocking the lookback scan.
+    const existingTopLinkPositions = new Set<number>();
+    bodyElements.forEach((element, idx) => {
+      if (element instanceof Paragraph) {
+        const content = element.getContent();
+        const hasTopLink = content.some((item: any) => {
+          if (item instanceof Hyperlink) {
+            const text = sanitizeHyperlinkText(item.getText()).toLowerCase();
+            if (text.includes("top of")) return true;
+          }
+          if (item instanceof ComplexField && item.isHyperlinkField()) {
+            const text = (item.getResult() || "").toLowerCase();
+            if (text.includes("top of")) return true;
+          }
+          if (item instanceof Run) {
+            const runText = item.getText().toLowerCase();
+            if (runText.includes("top of the document")) return true;
+          }
+          if (item instanceof PreservedElement) {
+            const rawXml = item.getRawXml().toLowerCase();
+            if (rawXml.includes("top of") && (rawXml.includes("document") || rawXml.includes("_top"))) return true;
+          }
+          if (item instanceof Revision) {
+            const revText = item.getText().toLowerCase();
+            if (revText.includes("top of")) return true;
+          }
+          return false;
+        });
+        if (hasTopLink) existingTopLinkPositions.add(idx);
+      }
+    });
+    this.log.debug(`Pre-scan found ${existingTopLinkPositions.size} existing Top of Document links`);
+
     // Process tables in reverse order to avoid index shifting
     // Skip the first table (index 0), process from end to beginning
     for (let i = tablesWithHeader2.length - 1; i >= 1; i--) {
@@ -11233,78 +11298,24 @@ export class WordDocumentProcessor {
           continue;
         }
 
-        // Check if there's already a "Top of" hyperlink paragraph before this table
-        // Look back up to 5 elements to account for blank paragraphs between link and table
+        // Check if there's already a "Top of" link between the previous header table and this one.
+        // Uses the pre-scanned positions to avoid being blocked by content tables in between.
         let shouldInsert = true;
 
-        for (let lookback = 1; lookback <= 5 && tablePosition - lookback >= 0; lookback++) {
-          const prevElement = bodyElements[tablePosition - lookback];
+        // Find the previous header table's position (section boundary)
+        let prevHeaderTablePos = 0;
+        if (i > 0) {
+          const prevTable = tablesWithHeader2[i - 1].table;
+          prevHeaderTablePos = tablePositions.get(prevTable) ?? 0;
+        }
 
-          if (prevElement instanceof Paragraph) {
-            const content = prevElement.getContent();
-
-            const hasTopLink = content.some((item: any) => {
-              // Check Hyperlink objects
-              if (item instanceof Hyperlink) {
-                const text = sanitizeHyperlinkText(item.getText()).toLowerCase();
-                // Check for any "top of" hyperlink (regardless of exact text)
-                if (text.includes("top of")) {
-                  return true;
-                }
-              }
-              // Also check ComplexField hyperlinks (fallback for any field codes not converted)
-              if (item instanceof ComplexField && item.isHyperlinkField()) {
-                const text = (item.getResult() || "").toLowerCase();
-                if (text.includes("top of")) {
-                  return true;
-                }
-              }
-              // Also check for raw text containing "Top of the Document"
-              if (item instanceof Run) {
-                const runText = item.getText().toLowerCase();
-                if (runText.includes("top of the document")) {
-                  return true;
-                }
-              }
-              // Also check PreservedElement raw XML (nested tracked changes wrapping hyperlinks)
-              if (item instanceof PreservedElement) {
-                const rawXml = item.getRawXml().toLowerCase();
-                if (
-                  rawXml.includes("top of") &&
-                  (rawXml.includes("document") || rawXml.includes("_top"))
-                ) {
-                  return true;
-                }
-              }
-              // Check Revision text (unassembled field runs inside tracked changes)
-              if (item instanceof Revision) {
-                const revText = item.getText().toLowerCase();
-                if (revText.includes("top of")) {
-                  return true;
-                }
-              }
-              return false;
-            });
-
-            if (hasTopLink) {
-              // SAFE: Skip existing hyperlinks (never modify existing document objects)
-              // Modifying existing objects with setText() corrupts DocXMLater's internal state
-              // See CORRUPTION_FIX.md for detailed explanation of this principle
-              this.log.debug(
-                `Hyperlink already exists at position ${tablePosition - lookback} before table ${tableIndex}, skipping`
-              );
-              shouldInsert = false;
-              break;
-            }
-
-            // Stop looking back if we hit content (non-empty, non-hyperlink paragraph)
-            const paraText = prevElement.getText().trim();
-            if (paraText && !content.some((c: any) => c instanceof Hyperlink)) {
-              // Hit content paragraph - stop looking back
-              break;
-            }
-          } else {
-            // Hit a table or other non-paragraph element - stop looking back
+        // Check if any existing top link falls between previous header table and this one
+        for (const linkPos of existingTopLinkPositions) {
+          if (linkPos > prevHeaderTablePos && linkPos < tablePosition) {
+            this.log.debug(
+              `Existing Top link at position ${linkPos} found between tables (${prevHeaderTablePos}-${tablePosition}), skipping insert`
+            );
+            shouldInsert = false;
             break;
           }
         }
@@ -11329,6 +11340,31 @@ export class WordDocumentProcessor {
         this.log.warn(
           `Failed to process table ${tableIndex}: ${error instanceof Error ? error.message : "Unknown error"}`
         );
+      }
+    }
+
+    // Deduplicate: keep exactly ONE TopHyperlink after the last 1x1 table
+    // (for above the disclaimer). Remove any extras from fixExistingTopHyperlinks.
+    if (tablesWithHeader2.length > 0) {
+      const lastTable = tablesWithHeader2[tablesWithHeader2.length - 1].table;
+      const freshBodyElements = doc.getBodyElements();
+      let lastTableIdx = -1;
+      for (let idx = freshBodyElements.length - 1; idx >= 0; idx--) {
+        if (freshBodyElements[idx] === lastTable) { lastTableIdx = idx; break; }
+      }
+      if (lastTableIdx >= 0) {
+        let foundFirst = false;
+        for (let idx = lastTableIdx + 1; idx < freshBodyElements.length; idx++) {
+          const el = freshBodyElements[idx];
+          if (el instanceof Paragraph && el.getStyle() === "TopHyperlink") {
+            if (!foundFirst) {
+              foundFirst = true; // Keep the first one
+            } else {
+              doc.removeParagraph(el); // Remove duplicates
+              this.log.debug("Removed duplicate Top link after last 1x1 table");
+            }
+          }
+        }
       }
     }
 
@@ -11465,75 +11501,9 @@ export class WordDocumentProcessor {
       }
     }
 
-    // Step 2b: Check if "Top of Document" hyperlink exists near end of document
-    // If not, add one above the warning with a blank line separator
-    const refreshedParagraphs = doc.getAllParagraphs();
-    const checkStartIndex = Math.max(0, refreshedParagraphs.length - 2);
-    let hasTopHyperlinkNearEnd = false;
-
-    for (let i = refreshedParagraphs.length - 1; i >= checkStartIndex; i--) {
-      const content = refreshedParagraphs[i].getContent();
-      for (const item of content) {
-        // Check Hyperlink objects
-        if (item instanceof Hyperlink) {
-          const text = sanitizeHyperlinkText(item.getText()).toLowerCase();
-          if (text.includes("top of")) {
-            hasTopHyperlinkNearEnd = true;
-            break;
-          }
-        }
-        // Also check ComplexField hyperlinks (fallback for any field codes not converted)
-        if (item instanceof ComplexField && item.isHyperlinkField()) {
-          const text = (item.getResult() || "").toLowerCase();
-          if (text.includes("top of")) {
-            hasTopHyperlinkNearEnd = true;
-            break;
-          }
-        }
-        // Check plain Run text (unassembled field runs)
-        if (item instanceof Run) {
-          const runText = item.getText().toLowerCase();
-          if (runText.includes("top of the document")) {
-            hasTopHyperlinkNearEnd = true;
-            break;
-          }
-        }
-        // Check PreservedElement raw XML (nested tracked changes)
-        if (item instanceof PreservedElement) {
-          const rawXml = item.getRawXml().toLowerCase();
-          if (
-            rawXml.includes("top of") &&
-            (rawXml.includes("document") || rawXml.includes("_top"))
-          ) {
-            hasTopHyperlinkNearEnd = true;
-            break;
-          }
-        }
-        // Check Revision text (unassembled field runs inside tracked changes)
-        if (item instanceof Revision) {
-          const revText = item.getText().toLowerCase();
-          if (revText.includes("top of")) {
-            hasTopHyperlinkNearEnd = true;
-            break;
-          }
-        }
-      }
-      if (hasTopHyperlinkNearEnd) break;
-    }
-
-    // If no "Top of Document" hyperlink near end, add one above the warning
-    if (!hasTopHyperlinkNearEnd) {
-      // Insert blank line for separation from content above
-      const separatorPara = doc.createParagraph("");
-      separatorPara.setStyle("Normal");
-      separatorPara.setSpaceBefore(pointsToTwips(0));
-      separatorPara.setSpaceAfter(pointsToTwips(0));
-
-      // Insert Top of Document hyperlink
-      this.createTopHyperlinkParagraph(doc);
-
-      this.log.debug("Added Top of Document hyperlink above document warning");
-    }
+    // NOTE: Do NOT insert a "Top of Document" hyperlink here.
+    // That is handled by updateTopOfDocumentHyperlinks() which runs separately
+    // and has its own duplicate detection. Inserting here causes double links.
 
     // Step 3: Create blank line for separation before warning
     const blankPara = doc.createParagraph("");

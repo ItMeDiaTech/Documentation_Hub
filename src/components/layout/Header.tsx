@@ -1,36 +1,36 @@
-import { ChevronRight, Zap, Moon, Sun, Clock, Monitor } from 'lucide-react';
-import { useTheme } from '@/contexts/ThemeContext';
-import { cn } from '@/utils/cn';
-import { useState, useEffect, memo, useCallback, useMemo, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { SimpleTooltip } from '@/components/common/Tooltip';
+import { ChevronRight, Zap, Moon, Sun, Clock, Monitor } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
+import { cn } from "@/utils/cn";
+import { useState, useEffect, memo, useCallback, useMemo, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { SimpleTooltip } from "@/components/common/Tooltip";
 
 const pathToTitle: Record<string, string> = {
-  '/': 'Dashboard',
-  '/projects': 'Projects',
-  '/analytics': 'Analytics',
-  '/team': 'Team',
-  '/documents': 'Documents',
-  '/plugins': 'Plugins',
-  '/notifications': 'Notifications',
-  '/search': 'Search',
-  '/profile': 'Profile',
-  '/settings': 'Settings',
-  '/sessions': 'Sessions',
+  "/": "Dashboard",
+  "/projects": "Projects",
+  "/analytics": "Analytics",
+  "/team": "Team",
+  "/documents": "Documents",
+  "/plugins": "Plugins",
+  "/notifications": "Notifications",
+  "/search": "Search",
+  "/profile": "Profile",
+  "/settings": "Settings",
+  "/sessions": "Sessions",
 };
 
 const pathDescriptions: Record<string, string> = {
-  '/': 'Manage your document processing sessions',
-  '/projects': 'View and manage your projects',
-  '/analytics': 'Track performance and insights',
-  '/team': 'Collaborate with your team members',
-  '/documents': 'Browse and manage documents',
-  '/plugins': 'Extend functionality with plugins',
-  '/notifications': 'View your notifications',
-  '/search': 'Search across your workspace',
-  '/profile': 'Manage your profile',
-  '/settings': 'Manage your account and application preferences',
-  '/sessions': 'View and manage all sessions',
+  "/": "Manage your document processing sessions",
+  "/projects": "View and manage your projects",
+  "/analytics": "Track performance and insights",
+  "/team": "Collaborate with your team members",
+  "/documents": "Browse and manage documents",
+  "/plugins": "Extend functionality with plugins",
+  "/notifications": "View your notifications",
+  "/search": "Search across your workspace",
+  "/profile": "Manage your profile",
+  "/settings": "Manage your account and application preferences",
+  "/sessions": "View and manage all sessions",
 };
 
 export const Header = memo(function Header({ onCommandPalette }: { onCommandPalette: () => void }) {
@@ -49,17 +49,17 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
   }, []);
 
   const formatTime = useCallback((date: Date) => {
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
       hour12: true,
     });
   }, []);
 
   const breadcrumbs = useMemo(() => {
-    const paths = location.pathname.split('/').filter(Boolean);
+    const paths = location.pathname.split("/").filter(Boolean);
     const result = [];
-    let currentPath = '';
+    let currentPath = "";
 
     for (const path of paths) {
       currentPath += `/${path}`;
@@ -70,21 +70,21 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
     }
 
     if (result.length === 0) {
-      result.push({ label: 'Dashboard', path: '/' });
+      result.push({ label: "Dashboard", path: "/" });
     }
 
     return result;
   }, [location.pathname]);
 
   const currentPath = location.pathname;
-  const description = pathDescriptions[currentPath] || '';
+  const description = pathDescriptions[currentPath] || "";
 
   const toggleThemeMenu = useCallback(() => {
     setShowThemeMenu((prev) => !prev);
   }, []);
 
   const handleThemeChange = useCallback(
-    (value: 'light' | 'dark' | 'system') => {
+    (value: "light" | "dark" | "system") => {
       setTheme(value);
       setShowThemeMenu(false);
     },
@@ -102,13 +102,13 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
                 <button
                   onClick={() => index < breadcrumbs.length - 1 && navigate(crumb.path)}
                   className={cn(
-                    'text-base font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm',
+                    "text-base font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm",
                     index === breadcrumbs.length - 1
-                      ? 'text-foreground cursor-default pointer-events-none'
-                      : 'text-muted-foreground hover:text-foreground cursor-pointer'
+                      ? "text-foreground cursor-default pointer-events-none"
+                      : "text-muted-foreground hover:text-foreground cursor-pointer"
                   )}
                   disabled={index === breadcrumbs.length - 1}
-                  aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}
+                  aria-current={index === breadcrumbs.length - 1 ? "page" : undefined}
                 >
                   {crumb.label}
                 </button>
@@ -130,9 +130,9 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
             <button
               onClick={onCommandPalette}
               className={cn(
-                'p-2 rounded-md',
-                'hover:bg-accent hover:text-accent-foreground transition-colors',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                "p-2 rounded-md",
+                "hover:bg-accent hover:text-accent-foreground transition-colors",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               )}
               aria-label="Quick actions (Ctrl+K)"
             >
@@ -140,20 +140,22 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
             </button>
           </SimpleTooltip>
 
-          <SimpleTooltip content={`Theme: ${theme === 'light' ? 'Light' : theme === 'dark' ? 'Dark' : 'System'}`}>
+          <SimpleTooltip
+            content={`Theme: ${theme === "light" ? "Light" : theme === "dark" ? "Dark" : "System"}`}
+          >
             <div className="relative">
               <button
                 onClick={toggleThemeMenu}
                 className={cn(
-                  'p-2 rounded-md',
-                  'hover:bg-accent hover:text-accent-foreground transition-colors',
-                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                  "p-2 rounded-md",
+                  "hover:bg-accent hover:text-accent-foreground transition-colors",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 )}
                 aria-label="Theme switcher"
               >
-                {theme === 'light' && <Sun className="w-4 h-4" />}
-                {theme === 'dark' && <Moon className="w-4 h-4" />}
-                {theme === 'system' && <Monitor className="w-4 h-4" />}
+                {theme === "light" && <Sun className="w-4 h-4" />}
+                {theme === "dark" && <Moon className="w-4 h-4" />}
+                {theme === "system" && <Monitor className="w-4 h-4" />}
               </button>
 
               {showThemeMenu && (
@@ -161,17 +163,17 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
                   <div className="fixed inset-0 z-10" onClick={() => setShowThemeMenu(false)} />
                   <div className="absolute right-0 top-full mt-2 w-36 rounded-md border border-border bg-popover p-1 shadow-md z-20">
                     {[
-                      { value: 'light' as const, icon: Sun, label: 'Light' },
-                      { value: 'dark' as const, icon: Moon, label: 'Dark' },
-                      { value: 'system' as const, icon: Monitor, label: 'System' },
+                      { value: "light" as const, icon: Sun, label: "Light" },
+                      { value: "dark" as const, icon: Moon, label: "Dark" },
+                      { value: "system" as const, icon: Monitor, label: "System" },
                     ].map(({ value, icon: Icon, label }) => (
                       <button
                         key={value}
                         onClick={() => handleThemeChange(value)}
                         className={cn(
-                          'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm',
-                          'hover:bg-accent hover:text-accent-foreground transition-colors',
-                          theme === value && 'bg-accent text-accent-foreground'
+                          "w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm",
+                          "hover:bg-accent hover:text-accent-foreground transition-colors",
+                          theme === value && "bg-accent text-accent-foreground"
                         )}
                       >
                         <Icon className="w-3 h-3" />

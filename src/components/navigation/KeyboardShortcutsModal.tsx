@@ -1,7 +1,7 @@
-import * as Dialog from '@radix-ui/react-dialog';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Keyboard } from 'lucide-react';
-import { cn } from '@/utils/cn';
+import * as Dialog from "@radix-ui/react-dialog";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Keyboard } from "lucide-react";
+import { cn } from "@/utils/cn";
 
 interface ShortcutItem {
   keys: string[];
@@ -15,53 +15,54 @@ interface ShortcutGroup {
 
 const shortcutGroups: ShortcutGroup[] = [
   {
-    title: 'General',
+    title: "General",
     shortcuts: [
-      { keys: ['Ctrl', 'K'], description: 'Open command palette' },
-      { keys: ['Ctrl', 'Q'], description: 'Toggle sidebar' },
-      { keys: ['?'], description: 'Show keyboard shortcuts' },
-      { keys: ['Esc'], description: 'Close dialogs / Cancel' },
+      { keys: ["Ctrl", "K"], description: "Open command palette" },
+      { keys: ["Ctrl", "Q"], description: "Toggle sidebar" },
+      { keys: ["?"], description: "Show keyboard shortcuts" },
+      { keys: ["Esc"], description: "Close dialogs / Cancel" },
     ],
   },
   {
-    title: 'Navigation',
+    title: "Navigation",
     shortcuts: [
-      { keys: ['Ctrl', '1'], description: 'Go to Dashboard' },
-      { keys: ['Ctrl', '2'], description: 'Go to Sessions' },
-      { keys: ['Ctrl', '3'], description: 'Go to Analytics' },
-      { keys: ['Ctrl', '4'], description: 'Go to Documents' },
-      { keys: ['Ctrl', ','], description: 'Open Settings' },
+      { keys: ["Ctrl", "1"], description: "Go to Dashboard" },
+      { keys: ["Ctrl", "2"], description: "Go to Sessions" },
+      { keys: ["Ctrl", "3"], description: "Go to Analytics" },
+      { keys: ["Ctrl", "4"], description: "Go to Documents" },
+      { keys: ["Ctrl", ","], description: "Open Settings" },
     ],
   },
   {
-    title: 'Session Actions',
+    title: "Session Actions",
     shortcuts: [
-      { keys: ['Ctrl', 'N'], description: 'New session' },
-      { keys: ['Ctrl', 'O'], description: 'Add documents' },
-      { keys: ['Ctrl', 'Enter'], description: 'Process all documents' },
-      { keys: ['Ctrl', 'S'], description: 'Save session' },
+      { keys: ["Ctrl", "N"], description: "New session" },
+      { keys: ["Ctrl", "O"], description: "Add documents" },
+      { keys: ["Ctrl", "Enter"], description: "Process all documents" },
+      { keys: ["Ctrl", "S"], description: "Save session" },
     ],
   },
   {
-    title: 'Document Actions',
+    title: "Document Actions",
     shortcuts: [
-      { keys: ['Delete'], description: 'Remove selected document' },
-      { keys: ['Ctrl', 'Click'], description: 'Multi-select documents' },
-      { keys: ['Shift', 'Click'], description: 'Range select documents' },
+      { keys: ["Delete"], description: "Remove selected document" },
+      { keys: ["Ctrl", "Click"], description: "Multi-select documents" },
+      { keys: ["Shift", "Click"], description: "Range select documents" },
     ],
   },
 ];
 
 // For Mac, replace Ctrl with Cmd
-const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+const isMac =
+  typeof navigator !== "undefined" && navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
 function formatKey(key: string): string {
-  if (isMac && key === 'Ctrl') return '\u2318';
-  if (key === 'Shift') return '\u21E7';
-  if (key === 'Alt') return isMac ? '\u2325' : 'Alt';
-  if (key === 'Enter') return '\u23CE';
-  if (key === 'Esc') return 'Esc';
-  if (key === 'Delete') return isMac ? '\u232B' : 'Del';
+  if (isMac && key === "Ctrl") return "\u2318";
+  if (key === "Shift") return "\u21E7";
+  if (key === "Alt") return isMac ? "\u2325" : "Alt";
+  if (key === "Enter") return "\u23CE";
+  if (key === "Esc") return "Esc";
+  if (key === "Delete") return isMac ? "\u232B" : "Del";
   return key;
 }
 
@@ -89,12 +90,12 @@ export function KeyboardShortcutsModal({ open, onOpenChange }: KeyboardShortcuts
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                transition={{ type: 'spring', duration: 0.3 }}
+                transition={{ type: "spring", duration: 0.3 }}
                 className={cn(
-                  'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50',
-                  'w-full max-w-2xl max-h-[85vh] overflow-hidden',
-                  'bg-background rounded-xl border border-border shadow-2xl',
-                  'flex flex-col'
+                  "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50",
+                  "w-full max-w-2xl max-h-[85vh] overflow-hidden",
+                  "bg-background rounded-xl border border-border shadow-2xl",
+                  "flex flex-col"
                 )}
               >
                 {/* Header */}
@@ -160,7 +161,11 @@ export function KeyboardShortcutsModal({ open, onOpenChange }: KeyboardShortcuts
                 {/* Footer */}
                 <div className="px-6 py-3 border-t border-border bg-muted/30">
                   <p className="text-xs text-muted-foreground text-center">
-                    Press <kbd className="px-1 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">?</kbd> anytime to show this dialog
+                    Press{" "}
+                    <kbd className="px-1 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">
+                      ?
+                    </kbd>{" "}
+                    anytime to show this dialog
                   </p>
                 </div>
               </motion.div>

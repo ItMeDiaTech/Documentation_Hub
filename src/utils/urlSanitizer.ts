@@ -12,24 +12,24 @@
  * @module urlSanitizer
  */
 
-import logger from './logger';
+import logger from "./logger";
 
 /**
  * List of allowed URL protocols that are safe for href attributes
  */
-const ALLOWED_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:', 'ftp:', 'ftps:'] as const;
+const ALLOWED_PROTOCOLS = ["http:", "https:", "mailto:", "tel:", "ftp:", "ftps:"] as const;
 
 /**
  * List of dangerous protocols that should be blocked
  * These can execute code or access local resources
  */
 const DANGEROUS_PROTOCOLS = [
-  'javascript:',
-  'data:',
-  'vbscript:',
-  'file:',
-  'about:',
-  'blob:',
+  "javascript:",
+  "data:",
+  "vbscript:",
+  "file:",
+  "about:",
+  "blob:",
 ] as const;
 
 /**
@@ -54,27 +54,27 @@ const DANGEROUS_PROTOCOLS = [
  */
 export function sanitizeUrl(url: string | null | undefined): string {
   // Handle null, undefined, or empty strings
-  if (!url || typeof url !== 'string') {
-    return '#';
+  if (!url || typeof url !== "string") {
+    return "#";
   }
 
   // Trim whitespace
   const trimmedUrl = url.trim();
 
   // Check for empty string after trimming
-  if (trimmedUrl === '' || trimmedUrl === '#') {
-    return '#';
+  if (trimmedUrl === "" || trimmedUrl === "#") {
+    return "#";
   }
 
   // Handle relative URLs (consider safe if they don't start with dangerous patterns)
-  if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../')) {
+  if (trimmedUrl.startsWith("/") || trimmedUrl.startsWith("./") || trimmedUrl.startsWith("../")) {
     // Relative URLs are generally safe in web contexts
     // But in Electron, we want to be cautious
-    return '#';
+    return "#";
   }
 
   // Check if URL starts with a hash (anchor link - safe)
-  if (trimmedUrl.startsWith('#')) {
+  if (trimmedUrl.startsWith("#")) {
     return trimmedUrl;
   }
 
@@ -88,19 +88,19 @@ export function sanitizeUrl(url: string | null | undefined): string {
     } catch {
       // If URL parsing fails, it might be a relative URL or malformed
       // Check if it looks like it has a protocol
-      if (trimmedUrl.includes(':')) {
+      if (trimmedUrl.includes(":")) {
         // Has a colon, might be a protocol - check if dangerous
-        const colonIndex = trimmedUrl.indexOf(':');
+        const colonIndex = trimmedUrl.indexOf(":");
         const possibleProtocol = trimmedUrl.substring(0, colonIndex + 1).toLowerCase();
 
         // Check against dangerous protocols
         if (DANGEROUS_PROTOCOLS.includes(possibleProtocol as any)) {
-          return '#';
+          return "#";
         }
       }
 
       // If no protocol or unknown format, return safe fallback
-      return '#';
+      return "#";
     }
 
     // Convert protocol to lowercase for case-insensitive comparison
@@ -108,7 +108,7 @@ export function sanitizeUrl(url: string | null | undefined): string {
 
     // Check against dangerous protocols
     if (DANGEROUS_PROTOCOLS.includes(protocol as any)) {
-      return '#';
+      return "#";
     }
 
     // Check if protocol is in allowed list
@@ -117,11 +117,11 @@ export function sanitizeUrl(url: string | null | undefined): string {
     }
 
     // Unknown protocol - reject for safety
-    return '#';
+    return "#";
   } catch (error) {
     // If any error occurs during parsing, return safe fallback
-    logger.warn('[URL Sanitizer] Failed to parse URL:', url, error);
-    return '#';
+    logger.warn("[URL Sanitizer] Failed to parse URL:", url, error);
+    return "#";
   }
 }
 
@@ -138,7 +138,7 @@ export function sanitizeUrl(url: string | null | undefined): string {
  * ```
  */
 export function isSafeUrl(url: string | null | undefined): boolean {
-  return sanitizeUrl(url) !== '#';
+  return sanitizeUrl(url) !== "#";
 }
 
 /**

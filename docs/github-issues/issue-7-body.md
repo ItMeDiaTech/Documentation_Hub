@@ -106,23 +106,23 @@ app.whenReady().then(async () => {
   setImmediate(async () => {
     try {
       // STEP 2A: Validate certificates (BLOCKING for updater)
-      log.info('[Init] Validating certificates...');
+      log.info("[Init] Validating certificates...");
       await performPreflightCertificateCheck();
-      log.info('[Init] Certificates validated');
+      log.info("[Init] Certificates validated");
 
       // Notify renderer
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('certificate-check-complete', {
+        mainWindow.webContents.send("certificate-check-complete", {
           success: true,
           timestamp: new Date().toISOString(),
         });
       }
     } catch (error) {
-      log.error('[Init] Certificate validation failed:', error);
+      log.error("[Init] Certificate validation failed:", error);
 
       // Notify renderer of failure
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('certificate-check-complete', {
+        mainWindow.webContents.send("certificate-check-complete", {
           success: false,
           error: error.message,
           timestamp: new Date().toISOString(),
@@ -131,17 +131,17 @@ app.whenReady().then(async () => {
     }
 
     // STEP 2B: Initialize updater (AFTER certificates validated)
-    log.info('[Init] Initializing auto-updater...');
+    log.info("[Init] Initializing auto-updater...");
     updaterHandler = new AutoUpdaterHandler(mainWindow);
 
     if (!isDev) {
       setTimeout(() => {
-        log.info('[Init] Checking for updates...');
+        log.info("[Init] Checking for updates...");
         updaterHandler.checkOnStartup();
       }, 2000); // 2 second delay AFTER certs validated
     }
 
-    log.info('[Init] Background initialization complete');
+    log.info("[Init] Background initialization complete");
   });
 });
 ```

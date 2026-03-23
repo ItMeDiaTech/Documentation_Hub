@@ -506,7 +506,6 @@ const cleanedCount = doc.cleanFormatting();
 ### Test Cases to Add
 
 1. **Format Options Application**
-
    - Font, size, color application
    - Emphasis (bold, italic, underline)
    - Alignment
@@ -514,14 +513,12 @@ const cleanedCount = doc.cleanFormatting();
    - Indentation conversions (inches → twips)
 
 2. **Property Preservation**
-
    - Keep specified properties
    - Clear non-specified properties
    - Preserve paragraph-level properties
    - Preserve run-level properties
 
 3. **Style Matching**
-
    - Case-insensitive matching
    - Multiple style name variants
    - Normal style fallback logic

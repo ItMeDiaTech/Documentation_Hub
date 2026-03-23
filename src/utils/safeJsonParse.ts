@@ -1,4 +1,4 @@
-import { logger } from './logger';
+import { logger } from "./logger";
 
 /**
  * Safely parse JSON with error handling
@@ -16,12 +16,12 @@ export function safeJsonParse<T>(
   try {
     return JSON.parse(jsonString) as T;
   } catch (error) {
-    const log = logger.namespace('SafeJsonParse');
+    const log = logger.namespace("SafeJsonParse");
     log.error(
-      `Failed to parse JSON${context ? ` in ${context}` : ''}:`,
-      error instanceof Error ? error.message : 'Unknown error'
+      `Failed to parse JSON${context ? ` in ${context}` : ""}:`,
+      error instanceof Error ? error.message : "Unknown error"
     );
-    log.debug('Invalid JSON string:', jsonString.substring(0, 100));
+    log.debug("Invalid JSON string:", jsonString.substring(0, 100));
     return defaultValue;
   }
 }
@@ -38,10 +38,10 @@ export function safeJsonStringify(
   try {
     return JSON.stringify(value, null, space);
   } catch (error) {
-    const log = logger.namespace('SafeJsonStringify');
+    const log = logger.namespace("SafeJsonStringify");
     log.error(
-      `Failed to stringify JSON${context ? ` in ${context}` : ''}:`,
-      error instanceof Error ? error.message : 'Unknown error'
+      `Failed to stringify JSON${context ? ` in ${context}` : ""}:`,
+      error instanceof Error ? error.message : "Unknown error"
     );
     return null;
   }
@@ -51,7 +51,7 @@ export function safeJsonStringify(
  * Type guard to check if a value is a valid JSON object
  */
 export function isValidJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

@@ -29,13 +29,13 @@ export function sanitizeUrl(url: string): string {
 
   // Step 1: Decode Unicode escapes (\u0026 → &)
   // Common when URLs are stored in JSON or JavaScript strings
-  sanitized = sanitized.replace(/\\u0026/g, '&');
+  sanitized = sanitized.replace(/\\u0026/g, "&");
 
   // Step 2: Decode HTML entities (&amp; → &, &lt; → <, &gt; → >)
   // Common when URLs are copied from HTML documents
-  sanitized = sanitized.replace(/&amp;/g, '&');
-  sanitized = sanitized.replace(/&lt;/g, '<');
-  sanitized = sanitized.replace(/&gt;/g, '>');
+  sanitized = sanitized.replace(/&amp;/g, "&");
+  sanitized = sanitized.replace(/&lt;/g, "<");
+  sanitized = sanitized.replace(/&gt;/g, ">");
   sanitized = sanitized.replace(/&quot;/g, '"');
 
   // Step 3: Decode URL encoding (%26 → &, %3D → =, etc.)
@@ -52,7 +52,7 @@ export function sanitizeUrl(url: string): string {
     });
 
     if (params.length > 0) {
-      sanitized = `${urlObj.origin}${urlObj.pathname}?${params.join('&')}${urlObj.hash}`;
+      sanitized = `${urlObj.origin}${urlObj.pathname}?${params.join("&")}${urlObj.hash}`;
     }
   } catch (e) {
     // If URL parsing fails, return the partially sanitized version
@@ -82,16 +82,16 @@ export function validatePowerAutomateUrl(url: string): {
   const warnings: string[] = [];
 
   if (!url) {
-    issues.push('URL is empty');
+    issues.push("URL is empty");
     return { valid: false, issues, warnings };
   }
 
   // Check for encoded characters that should be decoded
-  if (url.includes('\\u0026')) {
-    warnings.push('URL contains Unicode escapes (\\u0026). These will be auto-decoded.');
+  if (url.includes("\\u0026")) {
+    warnings.push("URL contains Unicode escapes (\\u0026). These will be auto-decoded.");
   }
-  if (url.includes('&amp;')) {
-    warnings.push('URL contains HTML entities (&amp;). These will be auto-decoded.');
+  if (url.includes("&amp;")) {
+    warnings.push("URL contains HTML entities (&amp;). These will be auto-decoded.");
   }
 
   // Try to parse the URL
@@ -99,32 +99,31 @@ export function validatePowerAutomateUrl(url: string): {
     const urlObj = new URL(sanitizeUrl(url));
 
     // Must be HTTPS for Azure Logic Apps
-    if (urlObj.protocol !== 'https:') {
-      issues.push('URL must use HTTPS protocol for Azure Logic Apps');
+    if (urlObj.protocol !== "https:") {
+      issues.push("URL must use HTTPS protocol for Azure Logic Apps");
     }
 
     // Check for required Azure Logic Apps query parameters
     const searchParams = new URLSearchParams(urlObj.search);
 
-    if (!searchParams.has('api-version')) {
-      issues.push('Missing required parameter: api-version');
+    if (!searchParams.has("api-version")) {
+      issues.push("Missing required parameter: api-version");
     }
-    if (!searchParams.has('sp')) {
+    if (!searchParams.has("sp")) {
       warnings.push(
         'Missing "sp" parameter (shared access policy). May be required depending on your Logic App configuration.'
       );
     }
-    if (!searchParams.has('sv')) {
+    if (!searchParams.has("sv")) {
       warnings.push(
         'Missing "sv" parameter (signature version). May be required depending on your Logic App configuration.'
       );
     }
-    if (!searchParams.has('sig')) {
+    if (!searchParams.has("sig")) {
       warnings.push('Missing "sig" parameter (signature). May be required for authentication.');
     }
-
   } catch (e) {
-    issues.push(`Invalid URL format: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    issues.push(`Invalid URL format: ${e instanceof Error ? e.message : "Unknown error"}`);
   }
 
   return {
@@ -157,7 +156,7 @@ export async function testUrlReachability(
 
     // Make a HEAD request to avoid downloading large payloads
     const response = await fetch(sanitized, {
-      method: 'HEAD',
+      method: "HEAD",
       signal: controller.signal,
     });
 
@@ -170,7 +169,7 @@ export async function testUrlReachability(
   } catch (error) {
     clearTimeout(timeout);
 
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (error instanceof Error && error.name === "AbortError") {
       return {
         reachable: false,
         error: `Request timed out after ${timeoutMs}ms`,
@@ -179,7 +178,7 @@ export async function testUrlReachability(
 
     return {
       reachable: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : "Unknown error",
     };
   }
 }
@@ -218,11 +217,11 @@ export function hasEncodingIssues(url: string): boolean {
   if (!url) return false;
 
   return (
-    url.includes('\\u0026') ||
-    url.includes('&amp;') ||
-    url.includes('&lt;') ||
-    url.includes('&gt;') ||
-    url.includes('&quot;')
+    url.includes("\\u0026") ||
+    url.includes("&amp;") ||
+    url.includes("&lt;") ||
+    url.includes("&gt;") ||
+    url.includes("&quot;")
   );
 }
 
@@ -247,7 +246,7 @@ export function validateUrlScheme(url: string): {
   isHttp: boolean;
   error?: string;
 } {
-  if (!url || url.trim() === '') {
+  if (!url || url.trim() === "") {
     return { valid: true, isHttp: false }; // Allow empty (will be handled elsewhere)
   }
 
@@ -256,7 +255,7 @@ export function validateUrlScheme(url: string): {
     const parsed = new URL(url);
 
     // Whitelist only HTTP/HTTPS protocols
-    const allowedSchemes = ['http:', 'https:'];
+    const allowedSchemes = ["http:", "https:"];
     const isAllowed = allowedSchemes.includes(parsed.protocol.toLowerCase());
 
     if (!isAllowed) {
@@ -273,27 +272,27 @@ export function validateUrlScheme(url: string): {
     // Check for obvious dangerous patterns even if URL parse fails
     const lowerUrl = url.toLowerCase().trim();
 
-    if (lowerUrl.startsWith('javascript:')) {
+    if (lowerUrl.startsWith("javascript:")) {
       return {
         valid: false,
         isHttp: false,
-        error: 'JavaScript URLs are not allowed for security reasons.',
+        error: "JavaScript URLs are not allowed for security reasons.",
       };
     }
 
-    if (lowerUrl.startsWith('data:')) {
+    if (lowerUrl.startsWith("data:")) {
       return {
         valid: false,
         isHttp: false,
-        error: 'Data URLs are not allowed for security reasons.',
+        error: "Data URLs are not allowed for security reasons.",
       };
     }
 
-    if (lowerUrl.startsWith('file:')) {
+    if (lowerUrl.startsWith("file:")) {
       return {
         valid: false,
         isHttp: false,
-        error: 'File URLs are not allowed for security reasons.',
+        error: "File URLs are not allowed for security reasons.",
       };
     }
 

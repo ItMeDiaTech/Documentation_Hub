@@ -1,15 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/common/Card';
-import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
-import { AlertCircle, CheckCircle2, Upload, Shield, Download, Info, Trash2 } from 'lucide-react';
-import logger from '@/utils/logger';
+} from "@/components/common/Card";
+import { Button } from "@/components/common/Button";
+import { Input } from "@/components/common/Input";
+import { AlertCircle, CheckCircle2, Upload, Shield, Download, Info, Trash2 } from "lucide-react";
+import logger from "@/utils/logger";
 
 interface Certificate {
   path: string;
@@ -25,13 +25,13 @@ export function CertificateManager() {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [isZscalerDetected, setIsZscalerDetected] = useState(false);
   const [certificateStatus, setCertificateStatus] = useState<
-    'checking' | 'configured' | 'not-configured' | 'error'
-  >('checking');
+    "checking" | "configured" | "not-configured" | "error"
+  >("checking");
   const [importStatus, setImportStatus] = useState<{
-    type: 'success' | 'error' | 'info' | null;
+    type: "success" | "error" | "info" | null;
     message: string;
-  }>({ type: null, message: '' });
-  const [currentCertPath, setCurrentCertPath] = useState<string>('');
+  }>({ type: null, message: "" });
+  const [currentCertPath, setCurrentCertPath] = useState<string>("");
 
   // Timeout refs for cleanup
   const importTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -44,15 +44,15 @@ export function CertificateManager() {
 
     // Listen for certificate configuration from main process
     const handleCertificateConfigured = (_event: unknown, data: { certPath: string }) => {
-      setCertificateStatus('configured');
+      setCertificateStatus("configured");
       setCurrentCertPath(data.certPath);
       loadExistingCertificates();
     };
 
-    window.electronAPI.on('certificate-configured', handleCertificateConfigured);
+    window.electronAPI.on("certificate-configured", handleCertificateConfigured);
 
     return () => {
-      window.electronAPI.removeListener('certificate-configured', handleCertificateConfigured);
+      window.electronAPI.removeListener("certificate-configured", handleCertificateConfigured);
     };
   }, []);
 
@@ -80,14 +80,14 @@ export function CertificateManager() {
       // Check current certificate configuration
       const certPath = await window.electronAPI.getCertificatePath();
       if (certPath) {
-        setCertificateStatus('configured');
+        setCertificateStatus("configured");
         setCurrentCertPath(certPath);
       } else {
-        setCertificateStatus('not-configured');
+        setCertificateStatus("not-configured");
       }
     } catch (_error) {
-      logger.error('Error checking certificate status:', _error);
-      setCertificateStatus('error');
+      logger.error("Error checking certificate status:", _error);
+      setCertificateStatus("error");
     }
   };
 
@@ -96,12 +96,12 @@ export function CertificateManager() {
       const certPaths = await window.electronAPI.getInstalledCertificates();
       const certs: Certificate[] = certPaths.map((path: string) => ({
         path,
-        name: path.split('/').pop() || path,
+        name: path.split("/").pop() || path,
         isActive: path === currentCertPath,
       }));
       setCertificates(certs);
     } catch (_error) {
-      logger.error('Error loading certificates:', _error);
+      logger.error("Error loading certificates:", _error);
     }
   };
 
@@ -111,21 +111,21 @@ export function CertificateManager() {
 
       if (result.success) {
         setImportStatus({
-          type: 'success',
+          type: "success",
           message: `Certificate imported successfully: ${result.name}`,
         });
-        setCertificateStatus('configured');
+        setCertificateStatus("configured");
         loadExistingCertificates();
       } else {
         setImportStatus({
-          type: 'error',
-          message: result.error || 'Failed to import certificate',
+          type: "error",
+          message: result.error || "Failed to import certificate",
         });
       }
     } catch (_error) {
       setImportStatus({
-        type: 'error',
-        message: 'Error importing certificate',
+        type: "error",
+        message: "Error importing certificate",
       });
     }
 
@@ -134,7 +134,7 @@ export function CertificateManager() {
       clearTimeout(importTimeoutRef.current);
     }
     importTimeoutRef.current = setTimeout(() => {
-      setImportStatus({ type: null, message: '' });
+      setImportStatus({ type: null, message: "" });
       importTimeoutRef.current = null;
     }, 5000);
   };
@@ -143,36 +143,36 @@ export function CertificateManager() {
     try {
       // Open instructions in browser
       await window.electronAPI.openExternal(
-        'https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Export-Certificate-From-Browser'
+        "https://github.com/ItMeDiaTech/Documentation_Hub/wiki/Export-Certificate-From-Browser"
       );
     } catch (_error) {
-      logger.error('Error opening browser guide:', _error);
+      logger.error("Error opening browser guide:", _error);
     }
   };
 
   const handleAutoDetect = async () => {
-    setImportStatus({ type: 'info', message: 'Searching for certificates in Windows store...' });
+    setImportStatus({ type: "info", message: "Searching for certificates in Windows store..." });
 
     try {
       const result = await window.electronAPI.autoDetectCertificates();
 
       if (result.success) {
         setImportStatus({
-          type: 'success',
+          type: "success",
           message: `Found and configured ${result.count} certificate(s)`,
         });
-        setCertificateStatus('configured');
+        setCertificateStatus("configured");
         loadExistingCertificates();
       } else {
         setImportStatus({
-          type: 'error',
-          message: 'No Zscaler certificates found. You may need to export manually.',
+          type: "error",
+          message: "No Zscaler certificates found. You may need to export manually.",
         });
       }
     } catch (_error) {
       setImportStatus({
-        type: 'error',
-        message: 'Error detecting certificates',
+        type: "error",
+        message: "Error detecting certificates",
       });
     }
 
@@ -180,7 +180,7 @@ export function CertificateManager() {
       clearTimeout(detectTimeoutRef.current);
     }
     detectTimeoutRef.current = setTimeout(() => {
-      setImportStatus({ type: null, message: '' });
+      setImportStatus({ type: null, message: "" });
       detectTimeoutRef.current = null;
     }, 5000);
   };
@@ -192,31 +192,31 @@ export function CertificateManager() {
         loadExistingCertificates();
       }
     } catch (_error) {
-      logger.error('Error removing certificate:', _error);
+      logger.error("Error removing certificate:", _error);
     }
   };
 
   const handleTestConnection = async () => {
-    setImportStatus({ type: 'info', message: 'Testing connection to GitHub...' });
+    setImportStatus({ type: "info", message: "Testing connection to GitHub..." });
 
     try {
       const result = await window.electronAPI.testGitHubConnection();
 
       if (result.success) {
         setImportStatus({
-          type: 'success',
-          message: 'Connection successful! Updates should work now.',
+          type: "success",
+          message: "Connection successful! Updates should work now.",
         });
       } else {
         setImportStatus({
-          type: 'error',
+          type: "error",
           message: `Connection failed: ${result.error}`,
         });
       }
     } catch (_error) {
       setImportStatus({
-        type: 'error',
-        message: 'Error testing connection',
+        type: "error",
+        message: "Error testing connection",
       });
     }
 
@@ -224,7 +224,7 @@ export function CertificateManager() {
       clearTimeout(testTimeoutRef.current);
     }
     testTimeoutRef.current = setTimeout(() => {
-      setImportStatus({ type: null, message: '' });
+      setImportStatus({ type: null, message: "" });
       testTimeoutRef.current = null;
     }, 5000);
   };
@@ -259,16 +259,16 @@ export function CertificateManager() {
           {/* Current Status */}
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted">
             <div className="flex items-center gap-3">
-              {certificateStatus === 'configured' ? (
+              {certificateStatus === "configured" ? (
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
               ) : (
                 <AlertCircle className="h-5 w-5 text-yellow-600" />
               )}
               <div>
                 <p className="font-medium">
-                  {certificateStatus === 'configured'
-                    ? 'Certificate Configured'
-                    : 'Certificate Not Configured'}
+                  {certificateStatus === "configured"
+                    ? "Certificate Configured"
+                    : "Certificate Not Configured"}
                 </p>
                 {currentCertPath && (
                   <p className="text-sm text-muted-foreground">{currentCertPath}</p>
@@ -284,11 +284,11 @@ export function CertificateManager() {
           {importStatus.type && (
             <div
               className={`p-3 rounded-lg flex items-center gap-2 ${
-                importStatus.type === 'success'
-                  ? 'bg-green-50 text-green-700 dark:bg-green-950/20'
-                  : importStatus.type === 'error'
-                    ? 'bg-red-50 text-red-700 dark:bg-red-950/20'
-                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/20'
+                importStatus.type === "success"
+                  ? "bg-green-50 text-green-700 dark:bg-green-950/20"
+                  : importStatus.type === "error"
+                    ? "bg-red-50 text-red-700 dark:bg-red-950/20"
+                    : "bg-blue-50 text-blue-700 dark:bg-blue-950/20"
               }`}
             >
               <Info className="h-4 w-4" />

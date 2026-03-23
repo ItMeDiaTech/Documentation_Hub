@@ -7,7 +7,7 @@ import React, {
   useCallback,
   useMemo,
   useRef,
-} from 'react';
+} from "react";
 import {
   GlobalStats,
   GlobalStatsContextType,
@@ -19,9 +19,9 @@ import {
   createEmptyDailyStats,
   createEmptyWeeklyStats,
   createEmptyMonthlyStats,
-} from '@/types/globalStats';
-import { loadGlobalStats, saveGlobalStats, resetGlobalStats } from '@/utils/indexedDB';
-import { logger } from '@/utils/logger';
+} from "@/types/globalStats";
+import { loadGlobalStats, saveGlobalStats, resetGlobalStats } from "@/utils/indexedDB";
+import { logger } from "@/utils/logger";
 
 const GlobalStatsContext = createContext<GlobalStatsContextType | undefined>(undefined);
 
@@ -32,8 +32,8 @@ const GlobalStatsContext = createContext<GlobalStatsContextType | undefined>(und
  */
 const formatLocalDate = (date: Date): string => {
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
 
@@ -42,12 +42,12 @@ const formatLocalDate = (date: Date): string => {
  */
 const formatLocalMonth = (date: Date): string => {
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
 };
 
 export function GlobalStatsProvider({ children }: { children: ReactNode }) {
-  const log = logger.namespace('GlobalStats');
+  const log = logger.namespace("GlobalStats");
   const [stats, setStats] = useState<GlobalStats>(createDefaultGlobalStats());
   const [isLoading, setIsLoading] = useState(true);
 
@@ -90,7 +90,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         if (isMounted) {
-          log.error('Failed to initialize GlobalStats:', error);
+          log.error("Failed to initialize GlobalStats:", error);
         }
       } finally {
         if (isMounted) {
@@ -232,7 +232,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
         saveTimerRef.current = setTimeout(() => {
           // Use latestStatsRef to ensure we save the most recent state
           saveGlobalStats(latestStatsRef.current).catch((error: Error) =>
-            log.error('Failed to save stats:', error)
+            log.error("Failed to save stats:", error)
           );
         }, 1000); // 1 second debounce
 
@@ -375,7 +375,7 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
 export function useGlobalStats() {
   const context = useContext(GlobalStatsContext);
   if (context === undefined) {
-    throw new Error('useGlobalStats must be used within a GlobalStatsProvider');
+    throw new Error("useGlobalStats must be used within a GlobalStatsProvider");
   }
   return context;
 }

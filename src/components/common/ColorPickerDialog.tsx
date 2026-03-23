@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Palette, Pipette } from 'lucide-react';
-import { Button } from './Button';
-import { cn } from '@/utils/cn';
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Check, Palette, Pipette } from "lucide-react";
+import { Button } from "./Button";
+import { cn } from "@/utils/cn";
 
 interface ColorPickerDialogProps {
   isOpen: boolean;
@@ -17,7 +17,7 @@ export function ColorPickerDialog({
   onClose,
   color,
   onColorChange,
-  title = 'Pick a Color',
+  title = "Pick a Color",
 }: ColorPickerDialogProps) {
   const [tempColor, setTempColor] = useState(color);
 
@@ -113,39 +113,39 @@ export function ColorPickerDialog({
                   <p className="text-xs text-muted-foreground mb-2">Quick Colors</p>
                   <div className="grid grid-cols-8 gap-2">
                     {[
-                      '#ef4444',
-                      '#f97316',
-                      '#f59e0b',
-                      '#eab308',
-                      '#84cc16',
-                      '#22c55e',
-                      '#10b981',
-                      '#14b8a6',
-                      '#06b6d4',
-                      '#0ea5e9',
-                      '#3b82f6',
-                      '#6366f1',
-                      '#8b5cf6',
-                      '#a855f7',
-                      '#d946ef',
-                      '#ec4899',
-                      '#f43f5e',
-                      '#64748b',
-                      '#475569',
-                      '#334155',
-                      '#1e293b',
-                      '#0f172a',
-                      '#ffffff',
-                      '#000000',
+                      "#ef4444",
+                      "#f97316",
+                      "#f59e0b",
+                      "#eab308",
+                      "#84cc16",
+                      "#22c55e",
+                      "#10b981",
+                      "#14b8a6",
+                      "#06b6d4",
+                      "#0ea5e9",
+                      "#3b82f6",
+                      "#6366f1",
+                      "#8b5cf6",
+                      "#a855f7",
+                      "#d946ef",
+                      "#ec4899",
+                      "#f43f5e",
+                      "#64748b",
+                      "#475569",
+                      "#334155",
+                      "#1e293b",
+                      "#0f172a",
+                      "#ffffff",
+                      "#000000",
                     ].map((presetColor) => (
                       <button
                         key={presetColor}
                         onClick={() => setTempColor(presetColor)}
                         className={cn(
-                          'w-8 h-8 rounded border-2 transition-all',
+                          "w-8 h-8 rounded border-2 transition-all",
                           tempColor === presetColor
-                            ? 'border-primary scale-110'
-                            : 'border-border hover:border-muted-foreground hover:scale-105'
+                            ? "border-primary scale-110"
+                            : "border-border hover:border-muted-foreground hover:scale-105"
                         )}
                         style={{ backgroundColor: presetColor }}
                         aria-label={`Select ${presetColor}`}

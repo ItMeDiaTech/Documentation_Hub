@@ -14,10 +14,10 @@
  * - Timeout handling
  */
 
-import { net, session } from 'electron';
-import { logger } from '../../src/utils/logger';
+import { net, session } from "electron";
+import { logger } from "../../src/utils/logger";
 
-const log = logger.namespace('PowerAutomateApi');
+const log = logger.namespace("PowerAutomateApi");
 
 export interface PowerAutomateRequest {
   Lookup_ID: string[];
@@ -50,30 +50,30 @@ export interface PowerAutomateResponse {
 export async function callPowerAutomateApi(
   apiUrl: string,
   payload: PowerAutomateRequest,
-  timeoutMs: number = 30000
+  timeoutMs: number = 45000
 ): Promise<PowerAutomateResponse> {
   const jsonPayload = JSON.stringify(payload);
   const startTime = Date.now();
 
-  log.info('═══════════════════════════════════════════════════════════════════');
-  log.info('[MainProcess] Starting Power Automate HTTP Request');
-  log.info('═══════════════════════════════════════════════════════════════════');
+  log.info("═══════════════════════════════════════════════════════════════════");
+  log.info("[MainProcess] Starting Power Automate HTTP Request");
+  log.info("═══════════════════════════════════════════════════════════════════");
   log.info(`[MainProcess] Timestamp: ${new Date().toISOString()}`);
   log.info(`[MainProcess] URL: ${apiUrl}`);
   log.info(`[MainProcess] Lookup IDs: ${payload.Lookup_ID.length}`);
-  log.info(`[MainProcess] IDs: ${payload.Lookup_ID.join(', ')}`);
+  log.info(`[MainProcess] IDs: ${payload.Lookup_ID.join(", ")}`);
   log.info(`[MainProcess] Timeout: ${timeoutMs}ms`);
-  log.info('───────────────────────────────────────────────────────────────────');
+  log.info("───────────────────────────────────────────────────────────────────");
 
   return new Promise((resolve) => {
-    log.info('[MainProcess] Sending request via Electron net.request...');
+    log.info("[MainProcess] Sending request via Electron net.request...");
 
     const timeoutHandle = setTimeout(() => {
       const duration = Date.now() - startTime;
-      log.error('═══════════════════════════════════════════════════════════════════');
-      log.error('[MainProcess] REQUEST TIMEOUT');
+      log.error("═══════════════════════════════════════════════════════════════════");
+      log.error("[MainProcess] REQUEST TIMEOUT");
       log.error(`[MainProcess] Timeout after ${timeoutMs}ms`);
-      log.error('═══════════════════════════════════════════════════════════════════');
+      log.error("═══════════════════════════════════════════════════════════════════");
       resolve({
         success: false,
         error: `Request timeout after ${timeoutMs}ms`,
@@ -83,26 +83,28 @@ export async function callPowerAutomateApi(
 
     try {
       const netRequest = net.request({
-        method: 'POST',
+        method: "POST",
         url: apiUrl,
         session: session.defaultSession,
       });
 
       // Set headers
-      netRequest.setHeader('Content-Type', 'application/json; charset=utf-8');
-      netRequest.setHeader('User-Agent', 'DocHub/1.0');
-      netRequest.setHeader('Accept', 'application/json');
+      netRequest.setHeader("Content-Type", "application/json; charset=utf-8");
+      netRequest.setHeader("User-Agent", "DocHub/1.0");
+      netRequest.setHeader("Accept", "application/json");
 
-      let responseData = '';
+      let responseData = "";
 
-      netRequest.on('response', (response) => {
-        log.info(`[MainProcess] Response received: ${response.statusCode} ${response.statusMessage}`);
+      netRequest.on("response", (response) => {
+        log.info(
+          `[MainProcess] Response received: ${response.statusCode} ${response.statusMessage}`
+        );
 
-        response.on('data', (chunk) => {
+        response.on("data", (chunk) => {
           responseData += chunk.toString();
         });
 
-        response.on('end', () => {
+        response.on("end", () => {
           clearTimeout(timeoutHandle);
           const duration = Date.now() - startTime;
 
@@ -111,10 +113,10 @@ export async function callPowerAutomateApi(
           if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
             try {
               const data = JSON.parse(responseData);
-              log.info('═══════════════════════════════════════════════════════════════════');
-              log.info('[MainProcess] API Call SUCCESS');
+              log.info("═══════════════════════════════════════════════════════════════════");
+              log.info("[MainProcess] API Call SUCCESS");
               log.info(`[MainProcess] Results: ${data?.Results?.length || 0} items`);
-              log.info('═══════════════════════════════════════════════════════════════════');
+              log.info("═══════════════════════════════════════════════════════════════════");
 
               resolve({
                 success: true,
@@ -123,21 +125,21 @@ export async function callPowerAutomateApi(
                 duration,
               });
             } catch (parseError) {
-              log.error('[MainProcess] Failed to parse response JSON:', parseError);
+              log.error("[MainProcess] Failed to parse response JSON:", parseError);
               resolve({
                 success: false,
                 statusCode: response.statusCode,
-                error: 'Failed to parse API response',
+                error: "Failed to parse API response",
                 rawResponse: responseData,
                 duration,
               });
             }
           } else {
-            log.error('═══════════════════════════════════════════════════════════════════');
-            log.error('[MainProcess] API Call FAILED');
+            log.error("═══════════════════════════════════════════════════════════════════");
+            log.error("[MainProcess] API Call FAILED");
             log.error(`[MainProcess] Status: ${response.statusCode}`);
             log.error(`[MainProcess] Response: ${responseData.substring(0, 500)}`);
-            log.error('═══════════════════════════════════════════════════════════════════');
+            log.error("═══════════════════════════════════════════════════════════════════");
 
             resolve({
               success: false,
@@ -149,10 +151,10 @@ export async function callPowerAutomateApi(
           }
         });
 
-        response.on('error', (error) => {
+        response.on("error", (error) => {
           clearTimeout(timeoutHandle);
           const duration = Date.now() - startTime;
-          log.error('[MainProcess] Response error:', error);
+          log.error("[MainProcess] Response error:", error);
           resolve({
             success: false,
             error: error.message,
@@ -161,10 +163,10 @@ export async function callPowerAutomateApi(
         });
       });
 
-      netRequest.on('error', (error) => {
+      netRequest.on("error", (error) => {
         clearTimeout(timeoutHandle);
         const duration = Date.now() - startTime;
-        log.error('[MainProcess] Request error:', error);
+        log.error("[MainProcess] Request error:", error);
         resolve({
           success: false,
           error: error.message,
@@ -178,10 +180,10 @@ export async function callPowerAutomateApi(
     } catch (error) {
       clearTimeout(timeoutHandle);
       const duration = Date.now() - startTime;
-      log.error('[MainProcess] Exception creating request:', error);
+      log.error("[MainProcess] Exception creating request:", error);
       resolve({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
         duration,
       });
     }
@@ -200,7 +202,7 @@ export async function callPowerAutomateApiWithRetry(
     retryDelay?: number;
   } = {}
 ): Promise<PowerAutomateResponse> {
-  const { timeout = 30000, maxRetries = 3, retryDelay = 1000 } = options;
+  const { timeout = 45000, maxRetries = 3, retryDelay = 1000 } = options;
 
   let lastError: PowerAutomateResponse | null = null;
 
@@ -220,12 +222,12 @@ export async function callPowerAutomateApiWithRetry(
     lastError = response;
 
     // Don't retry on timeout
-    if (response.error?.includes('timeout')) {
-      log.error('[MainProcess] Timeout detected, not retrying');
+    if (response.error?.includes("timeout")) {
+      log.error("[MainProcess] Timeout detected, not retrying");
       break;
     }
   }
 
   log.error(`[MainProcess] All ${maxRetries} attempts failed`);
-  return lastError || { success: false, error: 'API request failed after retries' };
+  return lastError || { success: false, error: "API request failed after retries" };
 }

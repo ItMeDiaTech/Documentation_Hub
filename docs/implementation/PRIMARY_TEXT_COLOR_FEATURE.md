@@ -19,7 +19,7 @@ When custom colors are enabled, the system:
 ```typescript
 // ThemeContext.tsx line 216
 const primaryTextColor = getContrastTextColor(customPrimaryColor);
-root.style.setProperty('--custom-primary-text', hexToHSL(primaryTextColor));
+root.style.setProperty("--custom-primary-text", hexToHSL(primaryTextColor));
 ```
 
 ### 2. CSS Variable Application (global.css)
@@ -28,15 +28,15 @@ The calculated text color is applied through CSS variables:
 
 ```css
 /* Line 275-276: Override the CSS variable */
-[data-custom-colors='true'] {
+[data-custom-colors="true"] {
   --color-primary-foreground: hsl(var(--custom-primary-text)) !important;
 }
 
 /* Lines 279-285: Apply to all primary elements */
-[data-custom-colors='true'] .bg-primary,
-[data-custom-colors='true'] .bg-primary *,
-[data-custom-colors='true'] button.bg-primary,
-[data-custom-colors='true'] button.bg-primary * {
+[data-custom-colors="true"] .bg-primary,
+[data-custom-colors="true"] .bg-primary *,
+[data-custom-colors="true"] button.bg-primary,
+[data-custom-colors="true"] button.bg-primary * {
   color: hsl(var(--custom-primary-text)) !important;
 }
 ```
@@ -185,7 +185,7 @@ All elements using these classes:
 
 ```typescript
 // Line 165 - Current threshold
-return luminance > 0.5 ? '#000000' : '#FFFFFF';
+return luminance > 0.5 ? "#000000" : "#FFFFFF";
 
 // If needed, adjust to 0.45 or 0.55 for better results
 ```

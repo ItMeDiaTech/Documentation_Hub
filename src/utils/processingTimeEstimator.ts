@@ -67,7 +67,7 @@ class ProcessingTimeEstimator {
    * Update the average API time based on completed documents
    */
   private updateAverageApiTime(): void {
-    const completedTimings = this.timings.filter(t => t.endTime);
+    const completedTimings = this.timings.filter((t) => t.endTime);
     if (completedTimings.length === 0) return;
 
     // Calculate average time per API call
@@ -97,12 +97,14 @@ class ProcessingTimeEstimator {
     let currentDocRemaining = 0;
     if (this.currentTiming) {
       const elapsed = Date.now() - this.currentTiming.startTime;
-      const estimatedTotal = this.currentTiming.apiCallCount * this.averageApiTime + MIN_PROCESSING_TIME_MS;
+      const estimatedTotal =
+        this.currentTiming.apiCallCount * this.averageApiTime + MIN_PROCESSING_TIME_MS;
       currentDocRemaining = Math.max(0, estimatedTotal - elapsed);
     }
 
     // Time for remaining documents (not including current)
-    const remainingDocsTime = (documentsRemaining - (this.currentTiming ? 1 : 0)) *
+    const remainingDocsTime =
+      (documentsRemaining - (this.currentTiming ? 1 : 0)) *
       (estimatedApiCallsPerDoc * this.averageApiTime + MIN_PROCESSING_TIME_MS);
 
     return currentDocRemaining + remainingDocsTime;
@@ -119,7 +121,7 @@ class ProcessingTimeEstimator {
    * Format milliseconds to human-readable string
    */
   static formatTime(ms: number): string {
-    if (ms <= 0) return '0s';
+    if (ms <= 0) return "0s";
 
     const seconds = Math.ceil(ms / 1000);
     if (seconds < 60) return `${seconds}s`;

@@ -1,11 +1,11 @@
-import { memo, useCallback, CSSProperties } from 'react';
+import { memo, useCallback, CSSProperties } from "react";
 // @ts-ignore - react-window exports these despite TypeScript not recognizing them
-import { VariableSizeList as List } from 'react-window';
-import { motion } from 'framer-motion';
-import { FileText, CheckCircle, Clock, AlertCircle, ExternalLink, Download } from 'lucide-react';
-import { Document } from '@/types/session';
-import { cn } from '@/utils/cn';
-import { Button } from '../common/Button';
+import { VariableSizeList as List } from "react-window";
+import { motion } from "framer-motion";
+import { FileText, CheckCircle, Clock, AlertCircle, ExternalLink, Download } from "lucide-react";
+import { Document } from "@/types/session";
+import { cn } from "@/utils/cn";
+import { Button } from "../common/Button";
 
 interface VirtualDocumentListProps {
   documents: Document[];
@@ -55,17 +55,17 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
 
   const getStatusIcon = () => {
     switch (document.status) {
-      case 'pending':
+      case "pending":
         return <Clock className="w-4 h-4 text-yellow-500" />;
-      case 'processing':
+      case "processing":
         return (
           <div className="animate-spin">
             <Clock className="w-4 h-4 text-primary" />
           </div>
         );
-      case 'completed':
+      case "completed":
         return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'error':
+      case "error":
         return <AlertCircle className="w-4 h-4 text-red-500" />;
       default:
         return <FileText className="w-4 h-4 text-muted-foreground" />;
@@ -73,7 +73,7 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
   };
 
   const formatFileSize = (bytes?: number) => {
-    if (!bytes) return 'Unknown size';
+    if (!bytes) return "Unknown size";
     const mb = bytes / (1024 * 1024);
     return mb < 1 ? `${(bytes / 1024).toFixed(1)} KB` : `${mb.toFixed(1)} MB`;
   };
@@ -89,10 +89,10 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
         whileTap={{ scale: 0.995 }}
         onClick={handleClick}
         className={cn(
-          'mx-2 p-3 rounded-lg border cursor-pointer transition-all',
-          'hover:shadow-sm hover:border-primary/20',
-          isSelected && 'border-primary bg-primary/5',
-          !isSelected && 'border-border bg-card'
+          "mx-2 p-3 rounded-lg border cursor-pointer transition-all",
+          "hover:shadow-sm hover:border-primary/20",
+          isSelected && "border-primary bg-primary/5",
+          !isSelected && "border-border bg-card"
         )}
       >
         <div className="flex items-start justify-between gap-3">
@@ -131,7 +131,7 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
               )}
 
               {/* Error message */}
-              {document.status === 'error' && document.errors && document.errors.length > 0 && (
+              {document.status === "error" && document.errors && document.errors.length > 0 && (
                 <div className="mt-2 text-xs text-red-600 dark:text-red-400">
                   {document.errors[0]}
                 </div>
@@ -142,13 +142,13 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
           {/* Actions */}
           {data.showActions && (
             <div className="flex items-center gap-1">
-              {document.status === 'pending' && (
+              {document.status === "pending" && (
                 <Button size="sm" variant="ghost" onClick={handleProcess} className="h-7 px-2">
                   Process
                 </Button>
               )}
 
-              {document.status === 'completed' && (
+              {document.status === "completed" && (
                 <>
                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Open document">
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -164,9 +164,9 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
         </div>
 
         {/* Progress bar for processing */}
-        {document.status === 'processing' && (
+        {document.status === "processing" && (
           <div className="mt-3 w-full bg-muted rounded-full h-1.5">
-            <div className="bg-primary h-1.5 rounded-full animate-pulse" style={{ width: '50%' }} />
+            <div className="bg-primary h-1.5 rounded-full animate-pulse" style={{ width: "50%" }} />
           </div>
         )}
       </motion.div>
@@ -174,7 +174,7 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
   );
 });
 
-DocumentRow.displayName = 'DocumentRow';
+DocumentRow.displayName = "DocumentRow";
 
 /**
  * Virtual scrolling document list component
@@ -195,7 +195,7 @@ export const VirtualDocumentList = memo(function VirtualDocumentList({
       let baseHeight = 80; // Base height for minimal content
 
       // Add height for error messages
-      if (document.status === 'error' && document.errors && document.errors.length > 0) {
+      if (document.status === "error" && document.errors && document.errors.length > 0) {
         baseHeight += 20;
       }
 
@@ -205,7 +205,7 @@ export const VirtualDocumentList = memo(function VirtualDocumentList({
       }
 
       // Add height for progress bar
-      if (document.status === 'processing') {
+      if (document.status === "processing") {
         baseHeight += 20;
       }
 

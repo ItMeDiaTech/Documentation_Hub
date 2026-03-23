@@ -18,6 +18,18 @@ import {
 } from "docxmlater";
 
 /**
+ * Checks if a Run contains VML image content (legacy `<w:pict>` / `<v:imagedata>` format).
+ * VML runs are plain Run objects (not ImageRun) with content entries of type 'vml'.
+ */
+function hasVmlContent(run: Run): boolean {
+  try {
+    return run.getContent().some((c: { type: string }) => c.type === "vml");
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Checks if a paragraph is blank (no meaningful content).
  * Ported from Document.ts:8146-8215
  */
@@ -63,13 +75,21 @@ export function isParagraphBlank(para: Paragraph): boolean {
       if (revisionText !== "") {
         return false;
       }
-      // Also check if revision contains hyperlinks (may have empty display text)
+      // Check if revision contains non-text content (images, hyperlinks, shapes, etc.)
       for (const revContent of item.getContent()) {
-        if (revContent instanceof Hyperlink) {
-          return false;
-        }
+        if (revContent instanceof Hyperlink) return false;
+        if (revContent instanceof ImageRun) return false;
+        if (revContent instanceof Shape) return false;
+        if (revContent instanceof TextBox) return false;
+        if (revContent instanceof Field) return false;
+        if (revContent instanceof Run && hasVmlContent(revContent)) return false;
       }
       continue; // Already checked, move to next item
+    }
+
+    // VML image runs (legacy format) are visual content
+    if (item instanceof Run && hasVmlContent(item)) {
+      return false;
     }
 
     // Check runs for non-whitespace text
@@ -94,9 +114,9 @@ export function startsWithBoldColon(para: Paragraph): boolean {
   if (!content || content.length === 0) return false;
 
   // Get first content item that is a text Run (skip ImageRun and non-Run items)
-  const firstRun = content.find(
-    (item) => item instanceof Run && !(item instanceof ImageRun)
-  ) as Run | undefined;
+  const firstRun = content.find((item) => item instanceof Run && !(item instanceof ImageRun)) as
+    | Run
+    | undefined;
   if (!firstRun) return false;
 
   // Check if first run is bold
@@ -149,6 +169,15 @@ export function isTextOnlyParagraph(para: Paragraph): boolean {
     if (item instanceof ImageRun) return false;
     if (item instanceof Shape) return false;
     if (item instanceof TextBox) return false;
+    if (item instanceof Run && hasVmlContent(item)) return false;
+    if (item instanceof Revision) {
+      for (const revContent of item.getContent()) {
+        if (revContent instanceof ImageRun) return false;
+        if (revContent instanceof Shape) return false;
+        if (revContent instanceof TextBox) return false;
+        if (revContent instanceof Run && hasVmlContent(revContent)) return false;
+      }
+    }
   }
 
   const text = para.getText();

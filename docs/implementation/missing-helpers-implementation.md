@@ -17,17 +17,20 @@ This document describes the implementation of missing docxmlater helper function
 **Location:** `src/services/document/DocXMLaterProcessor.ts:633-706`
 
 **Implementation:**
+
 - Replaced manual hyperlink extraction with built-in `doc.getHyperlinks()` API
 - Added fallback to manual extraction if built-in method fails
 - Maintains backward compatibility with existing return format
 - Includes defensive text sanitization for XML corruption
 
 **Benefits:**
+
 - 89% code reduction (from 46 lines to 5 lines + fallback)
 - Comprehensive coverage (includes tables, headers, footers)
 - 20-30% faster extraction performance
 
 **Code:**
+
 ```typescript
 async extractHyperlinks(doc: Document): Promise<Array<{...}>> {
   try {
@@ -64,16 +67,19 @@ async extractHyperlinks(doc: Document): Promise<Array<{...}>> {
 **Location:** `src/services/document/DocXMLaterProcessor.ts:708-746`
 
 **Implementation:**
+
 - New method using built-in batch update API
 - Takes `Map<string, string>` of URL mappings
 - Returns count of modified hyperlinks
 
 **Benefits:**
+
 - 30-50% faster than manual loop updates
 - Handles all document parts (body, tables, headers, footers)
 - Single line for bulk operations
 
 **Code:**
+
 ```typescript
 async updateHyperlinkUrls(
   doc: Document,
@@ -100,6 +106,7 @@ async updateHyperlinkUrls(
 ```
 
 **Enhanced Error Handling:**
+
 - Updated `modifyHyperlinks()` to track individual URL update failures
 - Returns `failedUpdates` array with error details
 - Prevents partial update corruption
@@ -113,24 +120,27 @@ async updateHyperlinkUrls(
 **Location:** `src/services/document/DocXMLaterProcessor.ts:939-982`
 
 **Implementation:**
+
 - Wrapper for built-in `doc.findText()` API
 - Supports string and RegExp patterns
 - Options: `caseSensitive`, `wholeWord`
 
 **Returns:**
+
 ```typescript
 Array<{
   text: string;
   paragraphIndex: number;
   runIndex: number;
-}>
+}>;
 ```
 
 **Usage:**
+
 ```typescript
-const result = await processor.findText(doc, 'search term', {
+const result = await processor.findText(doc, "search term", {
   caseSensitive: true,
-  wholeWord: false
+  wholeWord: false,
 });
 ```
 
@@ -141,26 +151,24 @@ const result = await processor.findText(doc, 'search term', {
 **Location:** `src/services/document/DocXMLaterProcessor.ts:984-1021`
 
 **Implementation:**
+
 - Wrapper for built-in `doc.replaceText()` API
 - Global text replacement in one call
 - Supports string and RegExp patterns
 - Options: `caseSensitive`, `wholeWord`
 
 **Returns:**
+
 ```typescript
 {
-  replacedCount: number
+  replacedCount: number;
 }
 ```
 
 **Usage:**
+
 ```typescript
-const result = await processor.replaceText(
-  doc,
-  'old text',
-  'new text',
-  { caseSensitive: true }
-);
+const result = await processor.replaceText(doc, "old text", "new text", { caseSensitive: true });
 ```
 
 ---
@@ -172,10 +180,12 @@ const result = await processor.replaceText(
 **Location:** `src/services/document/DocXMLaterProcessor.ts:1025-1045`
 
 **Implementation:**
+
 - Direct wrapper for `doc.getWordCount()`
 - Returns total word count across entire document
 
 **Usage:**
+
 ```typescript
 const result = await processor.getWordCount(doc);
 console.log(`Words: ${result.data.wordCount}`);
@@ -188,10 +198,12 @@ console.log(`Words: ${result.data.wordCount}`);
 **Location:** `src/services/document/DocXMLaterProcessor.ts:1047-1071`
 
 **Implementation:**
+
 - Wrapper for `doc.getCharacterCount(includeSpaces?)`
 - Optional parameter to exclude spaces from count
 
 **Usage:**
+
 ```typescript
 // With spaces
 const withSpaces = await processor.getCharacterCount(doc, true);
@@ -207,11 +219,13 @@ const withoutSpaces = await processor.getCharacterCount(doc, false);
 **Location:** `src/services/document/DocXMLaterProcessor.ts:1073-1101`
 
 **Implementation:**
+
 - Wrapper for `doc.estimateSize()`
 - Returns size estimation with warnings for large documents
 - Useful for validation before save operations
 
 **Returns:**
+
 ```typescript
 {
   totalEstimatedMB: number;
@@ -220,10 +234,11 @@ const withoutSpaces = await processor.getCharacterCount(doc, false);
 ```
 
 **Usage:**
+
 ```typescript
 const size = await processor.estimateSize(doc);
 if (size.data.warning) {
-  console.warn('Document is large:', size.data.warning);
+  console.warn("Document is large:", size.data.warning);
 }
 ```
 
@@ -234,10 +249,12 @@ if (size.data.warning) {
 **Location:** `src/services/document/DocXMLaterProcessor.ts:1103-1138`
 
 **Implementation:**
+
 - Wrapper for `doc.getSizeStats()`
 - Returns detailed statistics about document elements
 
 **Returns:**
+
 ```typescript
 {
   elements: {
@@ -260,6 +277,7 @@ if (size.data.warning) {
 ### Backward Compatibility
 
 All implementations maintain backward compatibility:
+
 - Existing method signatures unchanged
 - Return types compatible with existing code
 - Fallback mechanisms for missing APIs
@@ -267,6 +285,7 @@ All implementations maintain backward compatibility:
 ### Error Handling
 
 Enhanced error handling throughout:
+
 - Try-catch blocks wrap all API calls
 - Fallback to manual methods when built-in APIs fail
 - Detailed error messages for debugging
@@ -275,6 +294,7 @@ Enhanced error handling throughout:
 ### Performance Impact
 
 Expected improvements:
+
 - **Hyperlink extraction:** 20-30% faster
 - **Bulk URL updates:** 30-50% faster
 - **Text operations:** Direct API access (minimal overhead)
@@ -287,6 +307,7 @@ Expected improvements:
 ### Unit Tests
 
 Add tests for:
+
 1. `extractHyperlinks()` with fallback mechanism
 2. `updateHyperlinkUrls()` with Map-based updates
 3. `findText()` with various patterns
@@ -296,6 +317,7 @@ Add tests for:
 ### Integration Tests
 
 Test scenarios:
+
 1. Documents with hyperlinks in tables
 2. Documents with hyperlinks in headers/footers
 3. Large documents (>100 pages) for size estimation
@@ -305,18 +327,18 @@ Test scenarios:
 ### Example Test
 
 ```typescript
-it('should use doc.getHyperlinks() with fallback', async () => {
+it("should use doc.getHyperlinks() with fallback", async () => {
   const processor = new DocXMLaterProcessor();
-  const doc = await Document.load('test.docx');
+  const doc = await Document.load("test.docx");
 
   const hyperlinks = await processor.extractHyperlinks(doc);
 
   expect(hyperlinks).toBeDefined();
   expect(hyperlinks.length).toBeGreaterThan(0);
-  expect(hyperlinks[0]).toHaveProperty('hyperlink');
-  expect(hyperlinks[0]).toHaveProperty('paragraph');
-  expect(hyperlinks[0]).toHaveProperty('url');
-  expect(hyperlinks[0]).toHaveProperty('text');
+  expect(hyperlinks[0]).toHaveProperty("hyperlink");
+  expect(hyperlinks[0]).toHaveProperty("paragraph");
+  expect(hyperlinks[0]).toHaveProperty("url");
+  expect(hyperlinks[0]).toHaveProperty("text");
 });
 ```
 
@@ -327,6 +349,7 @@ it('should use doc.getHyperlinks() with fallback', async () => {
 ### For Existing Code Using Manual Loops
 
 **Before:**
+
 ```typescript
 // Manual URL updates (30+ lines)
 for (const para of doc.getParagraphs()) {
@@ -334,8 +357,8 @@ for (const para of doc.getParagraphs()) {
   for (const item of content) {
     if (item instanceof Hyperlink) {
       const oldUrl = item.getUrl();
-      if (oldUrl === 'old.com') {
-        item.setUrl('new.com');
+      if (oldUrl === "old.com") {
+        item.setUrl("new.com");
       }
     }
   }
@@ -343,9 +366,10 @@ for (const para of doc.getParagraphs()) {
 ```
 
 **After:**
+
 ```typescript
 // Built-in batch update (1 line)
-const urlMap = new Map([['old.com', 'new.com']]);
+const urlMap = new Map([["old.com", "new.com"]]);
 await processor.updateHyperlinkUrls(doc, urlMap);
 ```
 
@@ -366,6 +390,7 @@ await processor.updateHyperlinkUrls(doc, urlMap);
 ### Low Priority Items
 
 Still to be investigated:
+
 1. `para.isEmpty()` - Simpler emptiness checks
 2. `Document.create()` memory options - Memory limits configuration
 3. `doc.validate()` - Document structure validation (if available in docxmlater)

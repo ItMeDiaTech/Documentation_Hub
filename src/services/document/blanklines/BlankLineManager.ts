@@ -22,10 +22,7 @@ import { isParagraphBlank } from "./helpers/paragraphChecks";
 import { createBlankParagraph } from "./helpers/blankLineInsertion";
 import { getImageRunFromParagraph, isImageSmall } from "./helpers/imageChecks";
 import type { BlankLineSnapshot } from "./helpers/blankLineSnapshot";
-import {
-  wasOriginallyBlankAtBody,
-  wasOriginallyBlankInCell,
-} from "./helpers/blankLineSnapshot";
+import { wasOriginallyBlankAtBody, wasOriginallyBlankInCell } from "./helpers/blankLineSnapshot";
 import { removalRules } from "./rules/removalRules";
 import { additionRules } from "./rules/additionRules";
 import { applyIndentationRules } from "./rules/indentationRules";
@@ -40,7 +37,7 @@ import type { BlankLineOptions } from "./types";
 const log = logger.namespace("BlankLineManager");
 
 function buildBlankLineOptions(
-  normalStyle?: BlankLineProcessingOptions['normalStyleFormatting']
+  normalStyle?: BlankLineProcessingOptions["normalStyleFormatting"]
 ): BlankLineOptions {
   return {
     spacingAfter: normalStyle?.spaceAfter ?? 120,
@@ -400,7 +397,12 @@ export class BlankLineManager {
 
               // Check if a removal rule would remove this blank
               const removalMatch = this.findMatchingCellRemovalForPosition(
-                doc, cell, paras, ci, ci + 1, table
+                doc,
+                cell,
+                paras,
+                ci,
+                ci + 1,
+                table
               );
               if (removalMatch) continue;
 
@@ -429,18 +431,14 @@ export class BlankLineManager {
   ): BlankLineRule | null {
     const prev = doc.getBodyElementAt(prevIndex);
     const next =
-      blankIndex < doc.getBodyElementCount()
-        ? doc.getBodyElementAt(blankIndex)
-        : undefined;
+      blankIndex < doc.getBodyElementCount() ? doc.getBodyElementAt(blankIndex) : undefined;
 
     const ctx: RuleContext = {
       doc,
       currentIndex: blankIndex,
       currentElement: Paragraph.create(), // Simulate a blank paragraph
-      prevElement:
-        prev instanceof Paragraph || prev instanceof Table ? prev : undefined,
-      nextElement:
-        next instanceof Paragraph || next instanceof Table ? next : undefined,
+      prevElement: prev instanceof Paragraph || prev instanceof Table ? prev : undefined,
+      nextElement: next instanceof Paragraph || next instanceof Table ? next : undefined,
       scope: "body",
     };
 
@@ -594,21 +592,15 @@ export class BlankLineManager {
     const element = doc.getBodyElementAt(index);
     const prev = index > 0 ? doc.getBodyElementAt(index - 1) : undefined;
     const next =
-      index < doc.getBodyElementCount() - 1
-        ? doc.getBodyElementAt(index + 1)
-        : undefined;
+      index < doc.getBodyElementCount() - 1 ? doc.getBodyElementAt(index + 1) : undefined;
 
     return {
       doc,
       currentIndex: index,
       currentElement:
-        element instanceof Paragraph || element instanceof Table
-          ? element
-          : (element as any),
-      prevElement:
-        prev instanceof Paragraph || prev instanceof Table ? prev : undefined,
-      nextElement:
-        next instanceof Paragraph || next instanceof Table ? next : undefined,
+        element instanceof Paragraph || element instanceof Table ? element : (element as any),
+      prevElement: prev instanceof Paragraph || prev instanceof Table ? prev : undefined,
+      nextElement: next instanceof Paragraph || next instanceof Table ? next : undefined,
       scope: "body",
     };
   }
@@ -628,10 +620,7 @@ export class BlankLineManager {
       currentIndex: paraIndex,
       currentElement: paragraphs[paraIndex],
       prevElement: paraIndex > 0 ? paragraphs[paraIndex - 1] : undefined,
-      nextElement:
-        paraIndex < paragraphs.length - 1
-          ? paragraphs[paraIndex + 1]
-          : undefined,
+      nextElement: paraIndex < paragraphs.length - 1 ? paragraphs[paraIndex + 1] : undefined,
       scope: "cell",
       cell,
       cellParagraphs: paragraphs,

@@ -7,7 +7,7 @@
  * @module documentUtils
  */
 
-import { Document } from 'docxmlater';
+import { Document } from "docxmlater";
 
 /**
  * Options for document loading
@@ -16,7 +16,7 @@ export interface DocumentLoadOptions {
   /** Enable strict XML parsing (default: false for compatibility) */
   strictParsing?: boolean;
   /** How to handle tracked changes: 'preserve' keeps them, 'accept' accepts them */
-  revisionHandling?: 'preserve' | 'accept';
+  revisionHandling?: "preserve" | "accept";
   /** Whether to accept all revisions on load (default: false) */
   acceptRevisions?: boolean;
 }

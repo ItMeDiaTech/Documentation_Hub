@@ -78,7 +78,7 @@ export function removeSmallIndents(doc: Document): number {
 
     log.debug(
       `Removing small indent (${indent} twips / ${(indent / TWIPS_PER_INCH).toFixed(2)}") ` +
-      `from body paragraph: "${element.getText()?.substring(0, 40)}..."`
+        `from body paragraph: "${element.getText()?.substring(0, 40)}..."`
     );
     element.setLeftIndent(0);
     fixed++;
@@ -104,7 +104,7 @@ export function removeSmallIndents(doc: Document): number {
 
           log.debug(
             `Removing small indent (${indent} twips / ${(indent / TWIPS_PER_INCH).toFixed(2)}") ` +
-            `from table cell paragraph: "${para.getText()?.substring(0, 40)}..."`
+              `from table cell paragraph: "${para.getText()?.substring(0, 40)}..."`
           );
           para.setLeftIndent(0);
           fixed++;
@@ -173,10 +173,7 @@ function findPrecedingListItemInCell(
 /**
  * Get the text indentation in twips for a given list level.
  */
-function getTextIndentForLevel(
-  options: BlankLineProcessingOptions,
-  level: number
-): number | null {
+function getTextIndentForLevel(options: BlankLineProcessingOptions, level: number): number | null {
   if (!options.listBulletSettings?.indentationLevels) return null;
 
   const levels = options.listBulletSettings.indentationLevels;
@@ -212,10 +209,7 @@ function getLevel0TextIndent(options: BlankLineProcessingOptions): number | null
  *         match the list item's text indentation. If not a list item, match
  *         the level-0 bullet text indentation.
  */
-export function applyIndentationRules(
-  doc: Document,
-  options: BlankLineProcessingOptions
-): number {
+export function applyIndentationRules(doc: Document, options: BlankLineProcessingOptions): number {
   if (!options.listBulletSettings?.indentationLevels) {
     return 0;
   }
@@ -289,11 +283,7 @@ export function applyIndentationRules(
           } else {
             // Consecutive indented lines without a list item
             const prevPara = paras[ci - 1];
-            if (
-              prevPara &&
-              !isParagraphBlank(prevPara) &&
-              !prevPara.getNumbering()
-            ) {
+            if (prevPara && !isParagraphBlank(prevPara) && !prevPara.getNumbering()) {
               const prevIndent = prevPara.getFormatting()?.indentation?.left;
               if (prevIndent && prevIndent > 0) {
                 const level0Indent = getLevel0TextIndent(options);

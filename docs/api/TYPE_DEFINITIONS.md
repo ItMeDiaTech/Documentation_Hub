@@ -30,14 +30,16 @@ interface ProcessorResult<T = any> {
 ```
 
 **Properties:**
+
 - `success` (boolean) - Indicates if the operation succeeded
 - `data` (T, optional) - Result data if successful
 - `error` (string, optional) - Error message if failed
 - `warnings` (string[], optional) - Warning messages
 
 **Example:**
+
 ```typescript
-const result: ProcessorResult<Document> = await processor.loadFromFile('file.docx');
+const result: ProcessorResult<Document> = await processor.loadFromFile("file.docx");
 
 if (result.success) {
   const doc = result.data; // TypeScript knows data exists
@@ -61,14 +63,16 @@ interface DocXMLaterOptions {
 ```
 
 **Properties:**
+
 - `preserveFormatting` (boolean, optional, default: true) - Preserve existing formatting when applying styles
 - `validateOutput` (boolean, optional, default: false) - Validate document structure before saving
 
 **Example:**
+
 ```typescript
 const processor = new DocXMLaterProcessor({
   preserveFormatting: true,
-  validateOutput: false
+  validateOutput: false,
 });
 ```
 
@@ -89,8 +93,9 @@ interface DocumentReadResult extends ProcessorResult {
 **Extends:** `ProcessorResult`
 
 **Example:**
+
 ```typescript
-const result: DocumentReadResult = await processor.readDocument('file.docx');
+const result: DocumentReadResult = await processor.readDocument("file.docx");
 
 if (result.success && result.data) {
   console.log(`Paragraphs: ${result.data.content.paragraphs.length}`);
@@ -113,15 +118,17 @@ interface DocumentModifyResult extends ProcessorResult {
 **Extends:** `ProcessorResult`
 
 **Properties:**
+
 - `data` (Buffer, optional) - Modified DOCX file as buffer
 
 **Example:**
+
 ```typescript
 const result: DocumentModifyResult = await processor.toBuffer(doc);
 
 if (result.success && result.data) {
   // result.data is a Buffer containing the DOCX file
-  await fs.writeFile('output.docx', result.data);
+  await fs.writeFile("output.docx", result.data);
 }
 ```
 
@@ -141,21 +148,25 @@ interface StyleApplicationResult {
 ```
 
 **Properties:**
+
 - `appliedCount` (number) - Number of paragraphs where style was applied
 - `skippedCount` (number) - Number of paragraphs that didn't match criteria
 - `paragraphsModified` (number[]) - Array of modified paragraph indices
 - `totalParagraphs` (number) - Total number of paragraphs in document
 
 **Example:**
+
 ```typescript
 const result: ProcessorResult<StyleApplicationResult> = await processor.applyStyleToParagraphs(
   doc,
-  'Heading1',
-  { target: 'all' }
+  "Heading1",
+  { target: "all" }
 );
 
 if (result.success && result.data) {
-  console.log(`Applied to ${result.data.appliedCount} of ${result.data.totalParagraphs} paragraphs`);
+  console.log(
+    `Applied to ${result.data.appliedCount} of ${result.data.totalParagraphs} paragraphs`
+  );
   console.log(`Modified paragraphs:`, result.data.paragraphsModified);
 }
 ```
@@ -184,6 +195,7 @@ interface TextStyle {
 ```
 
 **Properties:**
+
 - `fontFamily` (string, optional) - Font name (e.g., "Arial", "Times New Roman")
 - `fontSize` (number, optional) - Font size in points
 - `bold` (boolean, optional) - Bold formatting
@@ -196,16 +208,17 @@ interface TextStyle {
 - `highlight` (string, optional) - Highlight color name
 
 **Example:**
+
 ```typescript
 const textStyle: TextStyle = {
-  fontFamily: 'Arial',
+  fontFamily: "Arial",
   fontSize: 12,
   bold: true,
-  color: '#FF0000', // Red text
-  highlight: 'yellow'
+  color: "#FF0000", // Red text
+  highlight: "yellow",
 };
 
-await processor.createParagraph(doc, 'Important Text', textStyle);
+await processor.createParagraph(doc, "Important Text", textStyle);
 ```
 
 ---
@@ -216,7 +229,7 @@ Paragraph formatting properties for alignment, spacing, and indentation.
 
 ```typescript
 interface ParagraphStyle {
-  alignment?: 'left' | 'center' | 'right' | 'justify';
+  alignment?: "left" | "center" | "right" | "justify";
   indentLeft?: number;
   indentRight?: number;
   indentFirstLine?: number;
@@ -229,6 +242,7 @@ interface ParagraphStyle {
 ```
 
 **Properties:**
+
 - `alignment` ('left'|'center'|'right'|'justify', optional) - Text alignment
 - `indentLeft` (number, optional) - Left indentation in twips
 - `indentRight` (number, optional) - Right indentation in twips
@@ -242,19 +256,20 @@ interface ParagraphStyle {
 **Note:** 1 inch = 1440 twips, 1 point = 20 twips
 
 **Example:**
+
 ```typescript
 const processor = new DocXMLaterProcessor();
 
 const paragraphStyle: ParagraphStyle = {
-  alignment: 'justify',
-  indentLeft: processor.inchesToTwips(0.5),    // 0.5 inch = 720 twips
+  alignment: "justify",
+  indentLeft: processor.inchesToTwips(0.5), // 0.5 inch = 720 twips
   indentFirstLine: processor.inchesToTwips(0.25), // 0.25 inch = 360 twips
-  spaceBefore: processor.pointsToTwips(12),    // 12 points = 240 twips
-  spaceAfter: processor.pointsToTwips(6),      // 6 points = 120 twips
-  keepNext: true
+  spaceBefore: processor.pointsToTwips(12), // 12 points = 240 twips
+  spaceAfter: processor.pointsToTwips(6), // 6 points = 120 twips
+  keepNext: true,
 };
 
-await processor.createParagraph(doc, 'Formatted paragraph', paragraphStyle);
+await processor.createParagraph(doc, "Formatted paragraph", paragraphStyle);
 ```
 
 ---
@@ -265,7 +280,7 @@ Targeting criteria for applying styles to paragraphs.
 
 ```typescript
 interface StyleApplication {
-  target: 'all' | 'pattern' | 'indices';
+  target: "all" | "pattern" | "indices";
   styleId: string;
   pattern?: string | RegExp;
   indices?: number[];
@@ -273,6 +288,7 @@ interface StyleApplication {
 ```
 
 **Properties:**
+
 - `target` ('all'|'pattern'|'indices') - Target mode selector
   - `'all'` - Apply to all paragraphs
   - `'pattern'` - Apply to paragraphs matching pattern
@@ -282,28 +298,29 @@ interface StyleApplication {
 - `indices` (number[], optional) - Paragraph indices (required if target='indices')
 
 **Examples:**
+
 ```typescript
 // Apply to all paragraphs
 const applyAll: StyleApplication = {
-  target: 'all',
-  styleId: 'Normal'
+  target: "all",
+  styleId: "Normal",
 };
 
 // Apply to paragraphs containing specific text
 const applyPattern: StyleApplication = {
-  target: 'pattern',
-  styleId: 'Heading1',
-  pattern: /^Chapter \d+/i
+  target: "pattern",
+  styleId: "Heading1",
+  pattern: /^Chapter \d+/i,
 };
 
 // Apply to specific paragraph indices
 const applyIndices: StyleApplication = {
-  target: 'indices',
-  styleId: 'Title',
-  indices: [0, 5, 10]
+  target: "indices",
+  styleId: "Title",
+  indices: [0, 5, 10],
 };
 
-const result = await processor.applyStyleToParagraphs(doc, 'Heading1', applyPattern);
+const result = await processor.applyStyleToParagraphs(doc, "Heading1", applyPattern);
 ```
 
 ---
@@ -315,15 +332,16 @@ Numbering/list formatting properties.
 ```typescript
 interface NumberingStyle {
   level: number;
-  format: 'bullet' | 'decimal' | 'lowerLetter' | 'upperLetter' | 'lowerRoman' | 'upperRoman';
+  format: "bullet" | "decimal" | "lowerLetter" | "upperLetter" | "lowerRoman" | "upperRoman";
   text?: string;
-  alignment?: 'left' | 'center' | 'right';
+  alignment?: "left" | "center" | "right";
   indentLeft?: number;
   indentHanging?: number;
 }
 ```
 
 **Properties:**
+
 - `level` (number) - List level (0-8, total 9 levels)
 - `format` (string) - Numbering format type
 - `text` (string, optional) - For bullets, the character to use
@@ -349,14 +367,16 @@ interface DocxDocument {
 ```
 
 **Properties:**
+
 - `styles` (DocxStyles) - Document styles
 - `numbering` (DocxNumbering) - Numbering definitions
 - `fonts` (DocxFonts) - Font definitions
 - `content` (DocxContent) - Document content (paragraphs, tables)
 
 **Example:**
+
 ```typescript
-const result: DocumentReadResult = await processor.readDocument('file.docx');
+const result: DocumentReadResult = await processor.readDocument("file.docx");
 
 if (result.success && result.data) {
   const doc: DocxDocument = result.data;
@@ -392,6 +412,7 @@ interface Paragraph {
 ```
 
 **Properties:**
+
 - `text` (string) - Combined text from all runs
 - `style` (string, optional) - Style name applied to paragraph
 - `numbering` (object, optional) - Numbering/list information
@@ -411,6 +432,7 @@ interface Run {
 ```
 
 **Properties:**
+
 - `text` (string) - Text content
 - `style` (TextStyle, optional) - Text formatting
 
@@ -428,6 +450,7 @@ interface Table {
 ```
 
 **Properties:**
+
 - `rows` (TableRow[]) - Array of table rows
 - `style` (string, optional) - Table style name
 
@@ -444,6 +467,7 @@ interface TableRow {
 ```
 
 **Properties:**
+
 - `cells` (TableCell[]) - Array of cells in the row
 
 ---
@@ -463,6 +487,7 @@ interface TableCell {
 ```
 
 **Properties:**
+
 - `text` (string) - Combined text from all paragraphs
 - `colspan` (number) - Column span (1 = no merge, >1 = merged cells)
 - `rowspan` (number) - Row span (1 = no merge, >1 = merged cells)
@@ -470,8 +495,9 @@ interface TableCell {
 - `style` (any, optional) - Cell style (deprecated, kept for compatibility)
 
 **Example:**
+
 ```typescript
-const result = await processor.readDocument('file.docx');
+const result = await processor.readDocument("file.docx");
 
 if (result.success && result.data) {
   result.data.content.tables?.forEach((table) => {
@@ -508,6 +534,7 @@ interface DocumentReadOptions {
 ```
 
 **Properties:**
+
 - `parseStyles` (boolean, optional) - Parse style definitions
 - `parseNumbering` (boolean, optional) - Parse numbering definitions
 - `parseFonts` (boolean, optional) - Parse font definitions
@@ -529,6 +556,7 @@ interface DocumentModifyOptions {
 ```
 
 **Properties:**
+
 - `operation` (DocumentOperation) - Type of operation
 - `preserveFormatting` (boolean, optional) - Preserve existing formatting
 - `updateStyles` (boolean, optional) - Update style definitions
@@ -542,15 +570,16 @@ Enum for document operation types.
 
 ```typescript
 enum DocumentOperation {
-  CREATE = 'create',
-  READ = 'read',
-  MODIFY = 'modify',
-  MODIFY_TEMPLATE = 'modify_template',
-  MODIFY_XML = 'modify_xml',
+  CREATE = "create",
+  READ = "read",
+  MODIFY = "modify",
+  MODIFY_TEMPLATE = "modify_template",
+  MODIFY_XML = "modify_xml",
 }
 ```
 
 **Values:**
+
 - `CREATE` - Create new document
 - `READ` - Read existing document
 - `MODIFY` - Modify existing document
@@ -573,24 +602,26 @@ class DocxProcessingError extends Error {
     public details?: any
   ) {
     super(message);
-    this.name = 'DocxProcessingError';
+    this.name = "DocxProcessingError";
   }
 }
 ```
 
 **Properties:**
+
 - `message` (string) - Error message
 - `code` (string) - Error code from ErrorCode enum
 - `details` (any, optional) - Additional error details
 
 **Example:**
+
 ```typescript
 try {
   // DOCX processing...
 } catch (error) {
   if (error instanceof DocxProcessingError) {
     console.error(`Error ${error.code}: ${error.message}`);
-    console.error('Details:', error.details);
+    console.error("Details:", error.details);
   }
 }
 ```
@@ -603,17 +634,18 @@ Enum for standardized error codes.
 
 ```typescript
 enum ErrorCode {
-  INVALID_DOCX = 'INVALID_DOCX',
-  FILE_NOT_FOUND = 'FILE_NOT_FOUND',
-  PARSE_ERROR = 'PARSE_ERROR',
-  XML_ERROR = 'XML_ERROR',
-  STYLE_NOT_FOUND = 'STYLE_NOT_FOUND',
-  NUMBERING_NOT_FOUND = 'NUMBERING_NOT_FOUND',
-  UNSUPPORTED_OPERATION = 'UNSUPPORTED_OPERATION',
+  INVALID_DOCX = "INVALID_DOCX",
+  FILE_NOT_FOUND = "FILE_NOT_FOUND",
+  PARSE_ERROR = "PARSE_ERROR",
+  XML_ERROR = "XML_ERROR",
+  STYLE_NOT_FOUND = "STYLE_NOT_FOUND",
+  NUMBERING_NOT_FOUND = "NUMBERING_NOT_FOUND",
+  UNSUPPORTED_OPERATION = "UNSUPPORTED_OPERATION",
 }
 ```
 
 **Values:**
+
 - `INVALID_DOCX` - Invalid or corrupted DOCX file
 - `FILE_NOT_FOUND` - File does not exist
 - `PARSE_ERROR` - Failed to parse document
@@ -641,6 +673,7 @@ interface HyperlinkInfo {
 ```
 
 **Properties:**
+
 - `hyperlink` (Hyperlink) - Hyperlink object instance
 - `paragraph` (Paragraph) - Parent paragraph containing the hyperlink
 - `paragraphIndex` (number) - Index of the paragraph in document
@@ -648,6 +681,7 @@ interface HyperlinkInfo {
 - `text` (string) - Display text (automatically sanitized)
 
 **Example:**
+
 ```typescript
 const hyperlinks: HyperlinkInfo[] = await processor.extractHyperlinks(doc);
 
@@ -673,14 +707,16 @@ interface SearchResult {
 ```
 
 **Properties:**
+
 - `text` (string) - Matched text
 - `paragraphIndex` (number) - Index of paragraph containing match
 - `runIndex` (number) - Index of run within paragraph
 
 **Example:**
+
 ```typescript
-const results: SearchResult[] = await processor.findText(doc, 'important', {
-  caseSensitive: false
+const results: SearchResult[] = await processor.findText(doc, "important", {
+  caseSensitive: false,
 });
 
 results.forEach((result) => {
@@ -702,6 +738,7 @@ interface SizeEstimate {
 ```
 
 **Properties:**
+
 - `totalEstimatedMB` (number) - Estimated size in megabytes
 - `warning` (string, optional) - Warning if size exceeds thresholds
 
@@ -727,6 +764,7 @@ interface SizeStats {
 ```
 
 **Properties:**
+
 - `elements` (object) - Element counts
   - `paragraphs` (number) - Number of paragraphs
   - `tables` (number) - Number of tables
@@ -737,10 +775,11 @@ interface SizeStats {
 - `warnings` (string[], optional) - Array of warning messages
 
 **Example:**
+
 ```typescript
 const stats: SizeStats = await processor.getSizeStats(doc);
 
-console.log('Document Statistics:');
+console.log("Document Statistics:");
 console.log(`- Paragraphs: ${stats.elements.paragraphs}`);
 console.log(`- Tables: ${stats.elements.tables}`);
 console.log(`- Images: ${stats.elements.images}`);
@@ -760,12 +799,14 @@ if (stats.warnings) {
 
 ```typescript
 // Check if result succeeded
-function isSuccess<T>(result: ProcessorResult<T>): result is ProcessorResult<T> & { success: true; data: T } {
+function isSuccess<T>(
+  result: ProcessorResult<T>
+): result is ProcessorResult<T> & { success: true; data: T } {
   return result.success === true && result.data !== undefined;
 }
 
 // Usage
-const result = await processor.loadFromFile('file.docx');
+const result = await processor.loadFromFile("file.docx");
 if (isSuccess(result)) {
   const doc = result.data; // TypeScript knows data exists
   // Work with document...
@@ -807,9 +848,9 @@ function twipsToInches(twips: number): number {
 ### 1. Always check result success
 
 ```typescript
-const result = await processor.loadFromFile('file.docx');
+const result = await processor.loadFromFile("file.docx");
 if (!result.success) {
-  console.error('Error:', result.error);
+  console.error("Error:", result.error);
   return;
 }
 const doc = result.data;
@@ -832,18 +873,18 @@ function processDocument(result: ProcessorResult<Document>): void {
 ```typescript
 const combinedStyle: TextStyle & ParagraphStyle = {
   // Text formatting
-  fontFamily: 'Arial',
+  fontFamily: "Arial",
   fontSize: 12,
   bold: true,
-  color: '#0066CC',
+  color: "#0066CC",
 
   // Paragraph formatting
-  alignment: 'left',
+  alignment: "left",
   indentLeft: processor.inchesToTwips(0.5),
-  spaceBefore: processor.pointsToTwips(12)
+  spaceBefore: processor.pointsToTwips(12),
 };
 
-await processor.createParagraph(doc, 'Formatted text', combinedStyle);
+await processor.createParagraph(doc, "Formatted text", combinedStyle);
 ```
 
 ### 4. Use utility functions for units
@@ -856,9 +897,9 @@ const halfInch = processor.inchesToTwips(0.5);
 const twelvePoints = processor.pointsToTwips(12);
 
 // Use in formatting
-await processor.createParagraph(doc, 'Text', {
+await processor.createParagraph(doc, "Text", {
   indentLeft: halfInch,
-  spaceBefore: twelvePoints
+  spaceBefore: twelvePoints,
 });
 ```
 

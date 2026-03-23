@@ -4,11 +4,11 @@
  * Configures Node.js heap size and memory limits for document processing operations.
  */
 
-import { app } from 'electron';
-import * as os from 'os';
-import { logger } from '../src/utils/logger';
+import { app } from "electron";
+import * as os from "os";
+import { logger } from "../src/utils/logger";
 
-const log = logger.namespace('MemoryConfig');
+const log = logger.namespace("MemoryConfig");
 
 export interface MemoryConfiguration {
   heapSizeMB: number;
@@ -77,47 +77,47 @@ export class MemoryConfig {
   static configureApp(): void {
     const config = this.getConfiguration();
 
-    log.info('========================================');
-    log.info('Configuration Summary:');
+    log.info("========================================");
+    log.info("Configuration Summary:");
     log.info(`  System Total RAM: ${config.systemTotalMB.toFixed(0)}MB`);
     log.info(`  System Free RAM: ${config.systemFreeMB.toFixed(0)}MB`);
     log.info(`  Heap Size: ${config.heapSizeMB}MB`);
     log.info(`  Max Document Size: ${config.maxDocumentSizeMB}MB`);
     log.info(`  Recommended Concurrency: ${config.recommendedConcurrency}`);
-    log.info('========================================');
+    log.info("========================================");
 
     // Set heap size via V8 flags
     // Note: These must be set before app initialization
     try {
-      app.commandLine.appendSwitch('--js-flags', `--max-old-space-size=${config.heapSizeMB}`);
+      app.commandLine.appendSwitch("--js-flags", `--max-old-space-size=${config.heapSizeMB}`);
       log.info(`✓ Set --max-old-space-size=${config.heapSizeMB}`);
     } catch (error) {
-      log.error('✗ Failed to set heap size:', error);
+      log.error("✗ Failed to set heap size:", error);
     }
 
     // Enable GC exposure for manual garbage collection if needed
     // Useful for cleaning up after large document operations
     try {
-      app.commandLine.appendSwitch('--js-flags', '--expose-gc');
-      log.info('✓ Enabled garbage collection exposure');
+      app.commandLine.appendSwitch("--js-flags", "--expose-gc");
+      log.info("✓ Enabled garbage collection exposure");
     } catch (error) {
-      log.warn('⚠️ Could not enable GC exposure:', error);
+      log.warn("⚠️ Could not enable GC exposure:", error);
     }
 
     // Optimize garbage collection for document processing
     // More aggressive GC to prevent memory buildup
     try {
-      app.commandLine.appendSwitch('--js-flags', '--gc-interval=100');
-      log.info('✓ Configured aggressive garbage collection');
+      app.commandLine.appendSwitch("--js-flags", "--gc-interval=100");
+      log.info("✓ Configured aggressive garbage collection");
     } catch (error) {
-      log.warn('⚠️ Could not configure GC interval:', error);
+      log.warn("⚠️ Could not configure GC interval:", error);
     }
   }
 
   /**
    * Log current memory usage
    */
-  static logMemoryUsage(label: string = 'Current'): void {
+  static logMemoryUsage(label: string = "Current"): void {
     const usage = process.memoryUsage();
     const config = this.getConfiguration();
 
@@ -156,7 +156,9 @@ export class MemoryConfig {
       return false;
     }
 
-    log.info(`✓ Sufficient memory for ${documentSizeMB.toFixed(2)}MB document (${availableMB.toFixed(2)}MB available)`);
+    log.info(
+      `✓ Sufficient memory for ${documentSizeMB.toFixed(2)}MB document (${availableMB.toFixed(2)}MB available)`
+    );
     return true;
   }
 

@@ -5,4 +5,4 @@
  * - SideBySideDiff: GitHub/VS Code style side-by-side comparison
  */
 
-export { SideBySideDiff } from './SideBySideDiff';
+export { SideBySideDiff } from "./SideBySideDiff";

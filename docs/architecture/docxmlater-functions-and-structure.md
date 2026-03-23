@@ -12,6 +12,7 @@ A comprehensive, production-ready TypeScript/JavaScript library for creating, re
 > For detailed version history and recent features, see [Version History](../versions/changelog.md)
 >
 > **Recent Highlights:**
+>
 > - v1.15.0: Hyperlink Defragmentation API
 > - v1.14.0: List Formatting Helpers & Special Characters
 > - v1.13.0: Fixed Hyperlink Duplication from Google Docs
@@ -23,14 +24,14 @@ npm install docxmlater
 ```
 
 ```typescript
-import { Document } from 'docxmlater';
+import { Document } from "docxmlater";
 
 // Create document
 const doc = Document.create();
-doc.createParagraph('Hello World').setStyle('Title');
+doc.createParagraph("Hello World").setStyle("Title");
 
 // Save document
-await doc.save('output.docx');
+await doc.save("output.docx");
 ```
 
 ## Complete API Reference
@@ -324,35 +325,35 @@ await doc.save('output.docx');
 
 ```typescript
 const doc = Document.create();
-doc.createParagraph('Title').setStyle('Title');
-doc.createParagraph('This is a simple document.');
-await doc.save('simple.docx');
+doc.createParagraph("Title").setStyle("Title");
+doc.createParagraph("This is a simple document.");
+await doc.save("simple.docx");
 ```
 
 ### Add Formatted Text
 
 ```typescript
 const para = doc.createParagraph();
-para.addText('Bold', { bold: true });
-para.addText(' and ');
-para.addText('Colored', { color: 'FF0000' });
+para.addText("Bold", { bold: true });
+para.addText(" and ");
+para.addText("Colored", { color: "FF0000" });
 ```
 
 ### Create a Table with Borders
 
 ```typescript
 const table = doc.createTable(3, 3);
-table.setAllBorders({ style: 'single', size: 8, color: '000000' });
-table.getCell(0, 0)?.createParagraph('Header 1');
-table.getRow(0)?.getCell(0)?.setShading({ fill: '4472C4' });
+table.setAllBorders({ style: "single", size: 8, color: "000000" });
+table.getCell(0, 0)?.createParagraph("Header 1");
+table.getRow(0)?.getCell(0)?.setShading({ fill: "4472C4" });
 ```
 
 ### Insert an Image
 
 ```typescript
-import { Image, inchesToEmus } from 'docxmlater';
+import { Image, inchesToEmus } from "docxmlater";
 
-const image = Image.fromFile('./photo.jpg');
+const image = Image.fromFile("./photo.jpg");
 image.setWidth(inchesToEmus(4), true); // 4 inches, maintain ratio
 doc.addImage(image);
 ```
@@ -361,33 +362,33 @@ doc.addImage(image);
 
 ```typescript
 const para = doc.createParagraph();
-para.addText('Visit ');
-para.addHyperlink(Hyperlink.createExternal('https://example.com', 'our website'));
+para.addText("Visit ");
+para.addHyperlink(Hyperlink.createExternal("https://example.com", "our website"));
 ```
 
 ### Search and Replace Text
 
 ```typescript
 // Find all occurrences
-const results = doc.findText('old text', { caseSensitive: true });
+const results = doc.findText("old text", { caseSensitive: true });
 console.log(`Found ${results.length} occurrences`);
 
 // Replace all
-const count = doc.replaceText('old text', 'new text', { wholeWord: true });
+const count = doc.replaceText("old text", "new text", { wholeWord: true });
 console.log(`Replaced ${count} occurrences`);
 ```
 
 ### Load and Modify Existing Document
 
 ```typescript
-const doc = await Document.load('existing.docx');
-doc.createParagraph('Added paragraph');
+const doc = await Document.load("existing.docx");
+doc.createParagraph("Added paragraph");
 
 // Update all hyperlinks
-const urlMap = new Map([['https://old-site.com', 'https://new-site.com']]);
+const urlMap = new Map([["https://old-site.com", "https://new-site.com"]]);
 doc.updateHyperlinkUrls(urlMap);
 
-await doc.save('modified.docx');
+await doc.save("modified.docx");
 ```
 
 ### Create Lists
@@ -395,48 +396,48 @@ await doc.save('modified.docx');
 ```typescript
 // Bullet list
 const bulletId = doc.createBulletList(3);
-doc.createParagraph('First item').setNumbering(bulletId, 0);
-doc.createParagraph('Second item').setNumbering(bulletId, 0);
+doc.createParagraph("First item").setNumbering(bulletId, 0);
+doc.createParagraph("Second item").setNumbering(bulletId, 0);
 
 // Numbered list
 const numberId = doc.createNumberedList(3);
-doc.createParagraph('Step 1').setNumbering(numberId, 0);
-doc.createParagraph('Step 2').setNumbering(numberId, 0);
+doc.createParagraph("Step 1").setNumbering(numberId, 0);
+doc.createParagraph("Step 2").setNumbering(numberId, 0);
 ```
 
 ### Apply Custom Styles
 
 ```typescript
-import { Style } from 'docxmlater';
+import { Style } from "docxmlater";
 
 const customStyle = Style.create({
-  styleId: 'CustomHeading',
-  name: 'Custom Heading',
-  basedOn: 'Normal',
-  runFormatting: { bold: true, size: 14, color: '2E74B5' },
-  paragraphFormatting: { alignment: 'center', spaceAfter: 240 },
+  styleId: "CustomHeading",
+  name: "Custom Heading",
+  basedOn: "Normal",
+  runFormatting: { bold: true, size: 14, color: "2E74B5" },
+  paragraphFormatting: { alignment: "center", spaceAfter: 240 },
 });
 
 doc.addStyle(customStyle);
-doc.createParagraph('Custom Styled Text').setStyle('CustomHeading');
+doc.createParagraph("Custom Styled Text").setStyle("CustomHeading");
 ```
 
 ### Add Headers and Footers
 
 ```typescript
-import { Header, Footer, Field } from 'docxmlater';
+import { Header, Footer, Field } from "docxmlater";
 
 // Header with page numbers
 const header = Header.create();
-header.addParagraph('Document Title').setAlignment('center');
+header.addParagraph("Document Title").setAlignment("center");
 
 // Footer with page numbers
 const footer = Footer.create();
 const footerPara = footer.addParagraph();
-footerPara.addText('Page ');
-footerPara.addField(Field.create({ type: 'PAGE' }));
-footerPara.addText(' of ');
-footerPara.addField(Field.create({ type: 'NUMPAGES' }));
+footerPara.addText("Page ");
+footerPara.addField(Field.create({ type: "PAGE" }));
+footerPara.addText(" of ");
+footerPara.addField(Field.create({ type: "NUMPAGES" }));
 
 doc.setHeader(header);
 doc.setFooter(footer);
@@ -446,9 +447,9 @@ doc.setFooter(footer);
 
 ```typescript
 // Get word and character counts
-console.log('Words:', doc.getWordCount());
-console.log('Characters:', doc.getCharacterCount());
-console.log('Characters (no spaces):', doc.getCharacterCount(false));
+console.log("Words:", doc.getWordCount());
+console.log("Characters:", doc.getCharacterCount());
+console.log("Characters (no spaces):", doc.getCharacterCount(false));
 
 // Check document size
 const size = doc.estimateSize();
@@ -471,17 +472,17 @@ const doc = Document.create({
 // Process document...
 
 // Clean up resources after saving
-await doc.save('large-document.docx');
+await doc.save("large-document.docx");
 doc.dispose(); // Free memory
 ```
 
 ### Parse XML to JavaScript Objects (Advanced)
 
 ```typescript
-import { XMLParser, DocumentParser } from 'docxmlater';
+import { XMLParser, DocumentParser } from "docxmlater";
 
 // Parse relationships
-const relsXml = DocumentParser.getRawXml(doc.zipHandler, 'word/_rels/document.xml.rels');
+const relsXml = DocumentParser.getRawXml(doc.zipHandler, "word/_rels/document.xml.rels");
 if (relsXml) {
   const parsed = XMLParser.parseToObject(relsXml);
 
@@ -491,24 +492,24 @@ if (relsXml) {
     : [parsed.Relationships.Relationship];
 
   relationships.forEach((rel) => {
-    console.log(`${rel['@_Id']}: ${rel['@_Target']}`);
+    console.log(`${rel["@_Id"]}: ${rel["@_Target"]}`);
   });
 }
 
 // Parse with options
-const stylesXml = DocumentParser.getRawXml(doc.zipHandler, 'word/styles.xml');
+const stylesXml = DocumentParser.getRawXml(doc.zipHandler, "word/styles.xml");
 if (stylesXml) {
   const styles = XMLParser.parseToObject(stylesXml, {
     ignoreNamespace: true, // Strip w: prefix
     parseAttributeValue: true, // Convert "123" to 123
-    attributeNamePrefix: '$', // Use $ instead of @_
+    attributeNamePrefix: "$", // Use $ instead of @_
   });
 }
 
 // Extract specific elements
-const docXml = DocumentParser.getRawXml(doc.zipHandler, 'word/document.xml');
+const docXml = DocumentParser.getRawXml(doc.zipHandler, "word/document.xml");
 if (docXml) {
-  const paragraphs = XMLParser.extractElements(docXml, 'w:p');
+  const paragraphs = XMLParser.extractElements(docXml, "w:p");
   console.log(`Found ${paragraphs.length} paragraphs`);
 
   paragraphs.forEach((paraXml) => {
@@ -522,16 +523,16 @@ if (docXml) {
 
 ```typescript
 // Get raw XML
-const documentXml = await doc.getPart('word/document.xml');
+const documentXml = await doc.getPart("word/document.xml");
 console.log(documentXml?.content);
 
 // Modify raw XML (use with caution)
-await doc.setPart('word/custom.xml', '<custom>data</custom>');
-await doc.addContentType('/word/custom.xml', 'application/xml');
+await doc.setPart("word/custom.xml", "<custom>data</custom>");
+await doc.addContentType("/word/custom.xml", "application/xml");
 
 // List all parts
 const parts = await doc.listParts();
-console.log('Document contains:', parts.length, 'parts');
+console.log("Document contains:", parts.length, "parts");
 ```
 
 ## Features

@@ -25,18 +25,26 @@ jest.mock("docxmlater", () => {
       this.text = text;
       this.formatting = formatting;
     }
-    getText() { return this.text; }
-    getFormatting() { return this.formatting; }
+    getText() {
+      return this.text;
+    }
+    getFormatting() {
+      return this.formatting;
+    }
     setSize(_n: number) {}
     setFont(_f: string) {}
   }
 
   class MockImageRun extends MockRun {
-    getImageElement() { return { getWidth: () => 50, getHeight: () => 50 }; }
+    getImageElement() {
+      return { getWidth: () => 50, getHeight: () => 50 };
+    }
   }
 
   class MockHyperlink {
-    getText() { return "link text"; }
+    getText() {
+      return "link text";
+    }
   }
 
   class MockParagraph {
@@ -47,13 +55,15 @@ jest.mock("docxmlater", () => {
     private numbering: any;
     private preserved: boolean;
 
-    constructor(opts: {
-      content?: any[];
-      style?: string;
-      alignment?: string;
-      formatting?: any;
-      numbering?: any;
-    } = {}) {
+    constructor(
+      opts: {
+        content?: any[];
+        style?: string;
+        alignment?: string;
+        formatting?: any;
+        numbering?: any;
+      } = {}
+    ) {
       this.content = opts.content ?? [];
       this.style = opts.style ?? "Normal";
       this.alignment = opts.alignment ?? "left";
@@ -62,25 +72,39 @@ jest.mock("docxmlater", () => {
       this.preserved = false;
     }
 
-    getContent() { return this.content; }
+    getContent() {
+      return this.content;
+    }
     getText() {
       return this.content
         .filter((c: any) => c.getText)
         .map((c: any) => c.getText())
         .join("");
     }
-    getStyle() { return this.style; }
-    getAlignment() { return this.alignment; }
-    getFormatting() { return this.formatting; }
-    getNumbering() { return this.numbering; }
-    getRuns() {
-      return this.content.filter(
-        (c: any) => c instanceof MockRun && !(c instanceof MockImageRun)
-      );
+    getStyle() {
+      return this.style;
     }
-    isPreserved() { return this.preserved; }
-    setPreserved(val: boolean) { this.preserved = val; }
-    setStyle(s: string) { this.style = s; }
+    getAlignment() {
+      return this.alignment;
+    }
+    getFormatting() {
+      return this.formatting;
+    }
+    getNumbering() {
+      return this.numbering;
+    }
+    getRuns() {
+      return this.content.filter((c: any) => c instanceof MockRun && !(c instanceof MockImageRun));
+    }
+    isPreserved() {
+      return this.preserved;
+    }
+    setPreserved(val: boolean) {
+      this.preserved = val;
+    }
+    setStyle(s: string) {
+      this.style = s;
+    }
     setSpaceAfter(_n: number) {}
     setSpaceBefore(_n: number) {}
     setLineSpacing(_n: number) {}
@@ -96,30 +120,48 @@ jest.mock("docxmlater", () => {
     constructor(paragraphs: any[] = []) {
       this.paragraphs = [...paragraphs];
     }
-    getParagraphs() { return [...this.paragraphs]; }
+    getParagraphs() {
+      return [...this.paragraphs];
+    }
     addParagraphAt(index: number, para: any) {
       this.paragraphs.splice(index, 0, para);
     }
     removeParagraph(index: number) {
       this.paragraphs.splice(index, 1);
     }
-    hasNestedTables() { return false; }
+    hasNestedTables() {
+      return false;
+    }
   }
 
   class MockRow {
     private cells: any[];
-    constructor(cells: any[]) { this.cells = cells; }
-    getCells() { return this.cells; }
-    getTablePropertyExceptions() { return null; }
+    constructor(cells: any[]) {
+      this.cells = cells;
+    }
+    getCells() {
+      return this.cells;
+    }
+    getTablePropertyExceptions() {
+      return null;
+    }
     setTablePropertyExceptions(_v: any) {}
   }
 
   class MockTable {
     private rows: any[];
-    constructor(rows: any[]) { this.rows = rows; }
-    getRows() { return this.rows; }
-    getRowCount() { return this.rows.length; }
-    getColumnCount() { return this.rows[0]?.getCells().length ?? 0; }
+    constructor(rows: any[]) {
+      this.rows = rows;
+    }
+    getRows() {
+      return this.rows;
+    }
+    getRowCount() {
+      return this.rows.length;
+    }
+    getColumnCount() {
+      return this.rows[0]?.getCells().length ?? 0;
+    }
     getCell(r: number, c: number) {
       return this.rows[r]?.getCells()[c];
     }
@@ -134,16 +176,30 @@ jest.mock("docxmlater", () => {
       this.tables = opts.tables ?? [];
     }
 
-    getBodyElementAt(i: number) { return this.bodyElements[i]; }
-    getBodyElementCount() { return this.bodyElements.length; }
+    getBodyElementAt(i: number) {
+      return this.bodyElements[i];
+    }
+    getBodyElementCount() {
+      return this.bodyElements.length;
+    }
     insertBodyElementAt(i: number, el: any) {
       this.bodyElements.splice(i, 0, el);
     }
-    removeBodyElementAt(i: number) { this.bodyElements.splice(i, 1); }
-    getAllTables() { return this.tables; }
-    getBodyElements() { return this.bodyElements; }
-    setBodyElements(elements: any[]) { this.bodyElements = elements; }
-    getStyle(_id: string) { return null; }
+    removeBodyElementAt(i: number) {
+      this.bodyElements.splice(i, 1);
+    }
+    getAllTables() {
+      return this.tables;
+    }
+    getBodyElements() {
+      return this.bodyElements;
+    }
+    setBodyElements(elements: any[]) {
+      this.bodyElements = elements;
+    }
+    getStyle(_id: string) {
+      return null;
+    }
   }
 
   class MockShape {}
@@ -158,8 +214,12 @@ jest.mock("docxmlater", () => {
       this.text = text;
       this.content = content;
     }
-    getText() { return this.text; }
-    getContent() { return this.content; }
+    getText() {
+      return this.text;
+    }
+    getContent() {
+      return this.content;
+    }
   }
 
   return {
@@ -200,14 +260,8 @@ jest.mock("@/utils/logger", () => ({
 import { Paragraph, Run, Document, Table, TableCell } from "docxmlater";
 const { __MockRow: MockRow } = require("docxmlater");
 
-import {
-  startsWithBoldColon,
-  isParagraphBlank,
-} from "../helpers/paragraphChecks";
-import {
-  aboveBoldColonNoIndentRule,
-  boldColonNoIndentAfterRule,
-} from "../rules/additionRules";
+import { startsWithBoldColon, isParagraphBlank } from "../helpers/paragraphChecks";
+import { aboveBoldColonNoIndentRule, boldColonNoIndentAfterRule } from "../rules/additionRules";
 import { BlankLineManager } from "../BlankLineManager";
 import type { RuleContext } from "../rules/ruleTypes";
 
@@ -216,10 +270,7 @@ import type { RuleContext } from "../rules/ruleTypes";
 /** Create a paragraph where the first run is bold with a colon. */
 function makeBoldColonPara(label: string, rest: string = ""): any {
   return new (Paragraph as any)({
-    content: [
-      new (Run as any)(label, { bold: true }),
-      ...(rest ? [new (Run as any)(rest)] : []),
-    ],
+    content: [new (Run as any)(label, { bold: true }), ...(rest ? [new (Run as any)(rest)] : [])],
   });
 }
 
@@ -239,10 +290,7 @@ function makeBlankPara(): any {
 
 describe("Test A: Rule matching in isolation", () => {
   it("startsWithBoldColon detects 'Exceptions:' paragraph", () => {
-    const para = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const para = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     expect(startsWithBoldColon(para)).toBe(true);
   });
 
@@ -252,19 +300,13 @@ describe("Test A: Rule matching in isolation", () => {
   });
 
   it("isParagraphBlank returns false for 'Exceptions:' paragraph", () => {
-    const para = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const para = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     expect(isParagraphBlank(para)).toBe(false);
   });
 
   it("isBoldColonNoIndent returns true for 'Exceptions:' (tested via rule)", () => {
     // isBoldColonNoIndent is not exported, so test through the rule
-    const exceptionsPara = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const exceptionsPara = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     const plainPara = makePlainPara("No Mail Tag");
     const doc = new (Document as any)();
 
@@ -323,10 +365,7 @@ describe("Test A: Rule matching in isolation", () => {
 describe("Test B: Rule matching in cell context", () => {
   it("aboveBoldColonNoIndentRule matches at ci=0 in 2-paragraph cell", () => {
     const para0 = makePlainPara("No Mail Tag");
-    const para1 = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const para1 = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     const paras = [para0, para1];
 
     const doc = new (Document as any)();
@@ -377,10 +416,7 @@ describe("Test B: Rule matching in cell context", () => {
 
   it("rule does not match when nextElement is undefined (last para)", () => {
     const para0 = makePlainPara("No Mail Tag");
-    const para1 = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const para1 = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     const paras = [para0, para1];
 
     const doc = new (Document as any)();
@@ -417,20 +453,13 @@ describe("Test C: Full cell addition loop", () => {
 
   it("adds blank line above 'Exceptions:' in 2-paragraph cell", () => {
     const para0 = makePlainPara("No Mail Tag");
-    const para1 = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const para1 = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     const cell = new (TableCell as any)([para0, para1]);
     const table = new (Table as any)([new MockRow([cell])]);
     const doc = new (Document as any)({ tables: [table] });
 
     const manager = new BlankLineManager();
-    const added = (manager as any).applyAdditionRulesCells(
-      doc,
-      options,
-      blankOpts
-    );
+    const added = (manager as any).applyAdditionRulesCells(doc, options, blankOpts);
 
     expect(added).toBeGreaterThanOrEqual(1);
 
@@ -451,11 +480,7 @@ describe("Test C: Full cell addition loop", () => {
     const doc = new (Document as any)({ tables: [table] });
 
     const manager = new BlankLineManager();
-    const added = (manager as any).applyAdditionRulesCells(
-      doc,
-      options,
-      blankOpts
-    );
+    const added = (manager as any).applyAdditionRulesCells(doc, options, blankOpts);
 
     expect(added).toBeGreaterThanOrEqual(1);
 
@@ -476,11 +501,7 @@ describe("Test C: Full cell addition loop", () => {
     const doc = new (Document as any)({ tables: [table] });
 
     const manager = new BlankLineManager();
-    const added = (manager as any).applyAdditionRulesCells(
-      doc,
-      options,
-      blankOpts
-    );
+    const added = (manager as any).applyAdditionRulesCells(doc, options, blankOpts);
 
     expect(added).toBe(0);
     expect(cell.getParagraphs().length).toBe(1);
@@ -499,13 +520,8 @@ describe("Test D: Compare 2-paragraph vs 3-paragraph cells", () => {
 
   it("both 2-para and 3-para cells get blank lines inserted", () => {
     // Cell 3 scenario (2 paragraphs) — P_73.docx failing case
-    const cell3Para0 = makePlainPara(
-      "No Mail Tag"
-    );
-    const cell3Para1 = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const cell3Para0 = makePlainPara("No Mail Tag");
+    const cell3Para1 = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     const cell3 = new (TableCell as any)([cell3Para0, cell3Para1]);
 
     // Cell 2 scenario (3 paragraphs) — P_73.docx working case
@@ -514,17 +530,11 @@ describe("Test D: Compare 2-paragraph vs 3-paragraph cells", () => {
     const cell2Para2 = makeBoldColonPara("Example:", " This is an example.");
     const cell2 = new (TableCell as any)([cell2Para0, cell2Para1, cell2Para2]);
 
-    const table = new (Table as any)([
-      new MockRow([cell2, cell3]),
-    ]);
+    const table = new (Table as any)([new MockRow([cell2, cell3])]);
     const doc = new (Document as any)({ tables: [table] });
 
     const manager = new BlankLineManager();
-    const added = (manager as any).applyAdditionRulesCells(
-      doc,
-      options,
-      blankOpts
-    );
+    const added = (manager as any).applyAdditionRulesCells(doc, options, blankOpts);
 
     // Both cells should have blanks added
     expect(added).toBeGreaterThanOrEqual(2);
@@ -546,10 +556,7 @@ describe("Test D: Compare 2-paragraph vs 3-paragraph cells", () => {
   it("2-para cell isLastInCell is correctly false at ci=0", () => {
     // Explicitly verify that the isLastInCell guard doesn't block insertion
     const para0 = makePlainPara("No Mail Tag");
-    const para1 = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const para1 = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     const paras = [para0, para1];
 
     // At ci=0 with 2 paragraphs: isLastInCell = (0 === 2-1) = (0 === 1) = false
@@ -560,10 +567,7 @@ describe("Test D: Compare 2-paragraph vs 3-paragraph cells", () => {
 
   it("full processBlankLines does not remove the added blank via dedup", () => {
     const para0 = makePlainPara("No Mail Tag");
-    const para1 = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const para1 = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     const cell = new (TableCell as any)([para0, para1]);
     const table = new (Table as any)([new MockRow([cell])]);
     const doc = new (Document as any)({
@@ -603,10 +607,7 @@ describe("Test E: Cell-level nested content guard (root cause fix)", () => {
     // Simulate P_73.docx scenario: a large table where SOME cells have
     // nested content but the "Exceptions:" cell does not.
     const para0 = makePlainPara("No Mail Tag");
-    const para1 = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const para1 = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     const targetCell = new (TableCell as any)([para0, para1]);
 
     // Create a cell that reports hasNestedTables() = true
@@ -614,17 +615,11 @@ describe("Test E: Cell-level nested content guard (root cause fix)", () => {
     // Override hasNestedTables for this specific cell
     (nestedCell as any).hasNestedTables = () => true;
 
-    const table = new (Table as any)([
-      new MockRow([nestedCell, targetCell]),
-    ]);
+    const table = new (Table as any)([new MockRow([nestedCell, targetCell])]);
     const doc = new (Document as any)({ tables: [table] });
 
     const manager = new BlankLineManager();
-    const added = (manager as any).applyAdditionRulesCells(
-      doc,
-      options,
-      blankOpts
-    );
+    const added = (manager as any).applyAdditionRulesCells(doc, options, blankOpts);
 
     // The targetCell (no nested tables) should still get a blank line
     expect(added).toBe(1);
@@ -635,10 +630,7 @@ describe("Test E: Cell-level nested content guard (root cause fix)", () => {
 
   it("skips cells that DO have nested tables", () => {
     const para0 = makePlainPara("No Mail Tag");
-    const para1 = makeBoldColonPara(
-      "Exceptions:",
-      " Client Requires Mail Tag."
-    );
+    const para1 = makeBoldColonPara("Exceptions:", " Client Requires Mail Tag.");
     const nestedCell = new (TableCell as any)([para0, para1]);
     // This cell has nested tables — should be skipped
     (nestedCell as any).hasNestedTables = () => true;
@@ -647,11 +639,7 @@ describe("Test E: Cell-level nested content guard (root cause fix)", () => {
     const doc = new (Document as any)({ tables: [table] });
 
     const manager = new BlankLineManager();
-    const added = (manager as any).applyAdditionRulesCells(
-      doc,
-      options,
-      blankOpts
-    );
+    const added = (manager as any).applyAdditionRulesCells(doc, options, blankOpts);
 
     // Cell has nested tables — should not be modified
     expect(added).toBe(0);

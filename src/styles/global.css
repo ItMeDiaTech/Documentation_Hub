@@ -1,5 +1,5 @@
 /* Tailwind CSS v4 - Modern CSS-First Configuration */
-@import 'tailwindcss';
+@import "tailwindcss";
 
 /* Enable class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -76,98 +76,98 @@
      ======================================== */
 
   /* Purple Accent */
-  [data-accent='purple'] {
+  [data-accent="purple"] {
     --color-primary: hsl(270 91% 65%);
     --color-ring: hsl(270 91% 65%);
     --gradient-from: hsl(270 91% 65%);
     --gradient-to: hsl(270 91% 57%);
   }
 
-  [data-accent='purple'].dark {
+  [data-accent="purple"].dark {
     --color-primary: hsl(270 91% 76%);
     --color-primary-foreground: hsl(0 0% 98%);
     --color-ring: hsl(270 91% 65%);
   }
 
   /* Green Accent */
-  [data-accent='green'] {
+  [data-accent="green"] {
     --color-primary: hsl(142 71% 45%);
     --color-ring: hsl(142 71% 45%);
     --gradient-from: hsl(142 71% 45%);
     --gradient-to: hsl(142 70% 37%);
   }
 
-  [data-accent='green'].dark {
+  [data-accent="green"].dark {
     --color-primary: hsl(142 71% 65%);
     --color-primary-foreground: hsl(0 0% 98%);
     --color-ring: hsl(142 71% 45%);
   }
 
   /* Orange Accent */
-  [data-accent='orange'] {
+  [data-accent="orange"] {
     --color-primary: hsl(25 95% 53%);
     --color-ring: hsl(25 95% 53%);
     --gradient-from: hsl(25 95% 53%);
     --gradient-to: hsl(25 95% 48%);
   }
 
-  [data-accent='orange'].dark {
+  [data-accent="orange"].dark {
     --color-primary: hsl(25 95% 61%);
     --color-primary-foreground: hsl(0 0% 98%);
     --color-ring: hsl(25 95% 53%);
   }
 
   /* Pink Accent */
-  [data-accent='pink'] {
+  [data-accent="pink"] {
     --color-primary: hsl(330 81% 60%);
     --color-ring: hsl(330 81% 60%);
     --gradient-from: hsl(330 81% 60%);
     --gradient-to: hsl(330 81% 50%);
   }
 
-  [data-accent='pink'].dark {
+  [data-accent="pink"].dark {
     --color-primary: hsl(330 81% 70%);
     --color-primary-foreground: hsl(0 0% 98%);
     --color-ring: hsl(330 81% 60%);
   }
 
   /* Cyan Accent */
-  [data-accent='cyan'] {
+  [data-accent="cyan"] {
     --color-primary: hsl(189 94% 43%);
     --color-ring: hsl(189 94% 43%);
     --gradient-from: hsl(189 94% 43%);
     --gradient-to: hsl(189 94% 37%);
   }
 
-  [data-accent='cyan'].dark {
+  [data-accent="cyan"].dark {
     --color-primary: hsl(189 94% 53%);
     --color-primary-foreground: hsl(0 0% 98%);
     --color-ring: hsl(189 94% 43%);
   }
 
   /* Indigo Accent */
-  [data-accent='indigo'] {
+  [data-accent="indigo"] {
     --color-primary: hsl(239 84% 67%);
     --color-ring: hsl(239 84% 67%);
     --gradient-from: hsl(239 84% 67%);
     --gradient-to: hsl(239 84% 59%);
   }
 
-  [data-accent='indigo'].dark {
+  [data-accent="indigo"].dark {
     --color-primary: hsl(239 84% 75%);
     --color-primary-foreground: hsl(0 0% 98%);
     --color-ring: hsl(239 84% 67%);
   }
 
   /* Custom Accent (user-defined) */
-  [data-accent='custom'] {
+  [data-accent="custom"] {
     --color-primary: hsl(var(--custom-accent));
     --color-ring: hsl(var(--custom-accent));
     --gradient-from: hsl(var(--custom-accent));
     --gradient-to: hsl(var(--custom-accent));
   }
 
-  [data-accent='custom'].dark {
+  [data-accent="custom"].dark {
     --color-primary: hsl(var(--custom-accent));
     --color-primary-foreground: hsl(0 0% 98%);
     --color-ring: hsl(var(--custom-accent));
@@ -176,7 +176,7 @@
   /* ========================================
      CUSTOM COLORS OVERRIDE
      ======================================== */
-  [data-custom-colors='true'] {
+  [data-custom-colors="true"] {
     --color-primary: hsl(var(--custom-primary)) !important;
     --color-background: hsl(var(--custom-background)) !important;
     --color-foreground: hsl(
@@ -210,31 +210,31 @@
   }
 
   /* Custom header with auto-calculated text color */
-  [data-custom-colors='true'] .header-bg {
+  [data-custom-colors="true"] .header-bg {
     background-color: hsl(var(--custom-header)) !important;
     color: hsl(var(--custom-header-text)) !important; /* Auto-calculated for contrast */
   }
 
   /* Force all text elements in header to use the auto-calculated header text color */
-  [data-custom-colors='true'] .header-bg *,
-  [data-custom-colors='true'] .header-bg button,
-  [data-custom-colors='true'] .header-bg span,
-  [data-custom-colors='true'] .header-bg p {
+  [data-custom-colors="true"] .header-bg *,
+  [data-custom-colors="true"] .header-bg button,
+  [data-custom-colors="true"] .header-bg span,
+  [data-custom-colors="true"] .header-bg p {
     color: hsl(var(--custom-header-text)) !important;
   }
 
   /* Icons inherit text color */
-  [data-custom-colors='true'] .header-bg svg {
+  [data-custom-colors="true"] .header-bg svg {
     color: inherit !important;
   }
 
   /* Subtle variation for secondary text (descriptions, muted elements) */
-  [data-custom-colors='true'] .header-bg .text-muted-foreground {
+  [data-custom-colors="true"] .header-bg .text-muted-foreground {
     opacity: 0.7;
   }
 
   /* Clock widget background adapts to custom header color */
-  [data-custom-colors='true'] .header-bg .clock-widget {
+  [data-custom-colors="true"] .header-bg .clock-widget {
     background-color: color-mix(
       in srgb,
       hsl(var(--custom-header)) 85%,
@@ -243,23 +243,23 @@
   }
 
   /* Custom sidebar with auto-calculated text color */
-  [data-custom-colors='true'] .sidebar-bg {
+  [data-custom-colors="true"] .sidebar-bg {
     background-color: hsl(var(--custom-sidebar)) !important;
     color: hsl(var(--custom-sidebar-text)) !important; /* Auto-calculated for contrast */
   }
 
   /* Force base text elements in sidebar to use the auto-calculated sidebar text color */
-  [data-custom-colors='true']
+  [data-custom-colors="true"]
     .sidebar-bg
     span:not(.text-primary-foreground):not(.text-accent-foreground),
-  [data-custom-colors='true']
+  [data-custom-colors="true"]
     .sidebar-bg
-    svg:not(.text-primary):not([class*='group-hover:text-primary']) {
+    svg:not(.text-primary):not([class*="group-hover:text-primary"]) {
     color: hsl(var(--custom-sidebar-text)) !important;
   }
 
   /* Sidebar hover states - adaptive background with proper contrast */
-  [data-custom-colors='true'] .sidebar-bg [class*='hover:bg-accent']:hover {
+  [data-custom-colors="true"] .sidebar-bg [class*="hover:bg-accent"]:hover {
     background-color: color-mix(
       in srgb,
       hsl(var(--custom-sidebar-text)) 12%,
@@ -267,46 +267,46 @@
     ) !important;
   }
 
-  [data-custom-colors='true'] .sidebar-bg [class*='hover:text-accent-foreground']:hover {
+  [data-custom-colors="true"] .sidebar-bg [class*="hover:text-accent-foreground"]:hover {
     color: hsl(var(--custom-sidebar-text)) !important;
   }
 
   /* Let active states keep their semantic colors - ensure all text is visible */
   /* Doubled attribute selector bumps specificity to (0,5,1), beating the span:not() rule above at (0,4,1) */
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary span,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary div,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary div span,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary button,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary span,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary div,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary svg {
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg .bg-primary span,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg .bg-primary div,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg .bg-primary div span,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg .bg-primary button,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg button.bg-primary,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg button.bg-primary span,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg button.bg-primary div,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg button.bg-primary svg {
     color: hsl(var(--custom-primary-text)) !important;
   }
 
   /* SVG stroke override for Lucide icons inside active sidebar items */
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary svg,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg .bg-primary svg *,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary svg,
-  [data-custom-colors='true'][data-custom-colors='true'] .sidebar-bg button.bg-primary svg * {
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg .bg-primary svg,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg .bg-primary svg *,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg button.bg-primary svg,
+  [data-custom-colors="true"][data-custom-colors="true"] .sidebar-bg button.bg-primary svg * {
     color: hsl(var(--custom-primary-text)) !important;
     stroke: hsl(var(--custom-primary-text)) !important;
   }
 
   /* Apply subtle secondary text color to muted elements */
-  [data-custom-colors='true'] .text-muted-foreground {
+  [data-custom-colors="true"] .text-muted-foreground {
     color: hsl(var(--custom-secondary-font)) !important;
   }
 
   /* Checkbox/toggle with auto-calculated colors for custom theme */
-  [data-custom-colors='true'] .checkbox-checked,
-  [data-custom-colors='true'] .toggle-checked {
+  [data-custom-colors="true"] .checkbox-checked,
+  [data-custom-colors="true"] .toggle-checked {
     background-color: hsl(var(--custom-primary)) !important;
     border-color: hsl(var(--custom-primary)) !important;
   }
 
   /* Checkmark icon color based on primary color luminance */
-  [data-custom-colors='true'] .checkbox-checkmark {
+  [data-custom-colors="true"] .checkbox-checkmark {
     color: hsl(var(--custom-primary-text)) !important;
   }
 
@@ -314,48 +314,48 @@
      PRIMARY ELEMENT TEXT COLOR (LUMINANCE-BASED)
      ======================================== */
   /* Override primary-foreground color to use luminance-calculated text color */
-  [data-custom-colors='true'] {
+  [data-custom-colors="true"] {
     --color-primary-foreground: hsl(var(--custom-primary-text)) !important;
   }
 
   /* Ensure all text on primary-colored elements uses the calculated color */
-  [data-custom-colors='true'] .bg-primary,
-  [data-custom-colors='true'] .bg-primary *,
-  [data-custom-colors='true'] button.bg-primary,
-  [data-custom-colors='true'] button.bg-primary *,
-  [data-custom-colors='true'] a.bg-primary,
-  [data-custom-colors='true'] a.bg-primary *,
-  [data-custom-colors='true'] div.bg-primary,
-  [data-custom-colors='true'] div.bg-primary * {
+  [data-custom-colors="true"] .bg-primary,
+  [data-custom-colors="true"] .bg-primary *,
+  [data-custom-colors="true"] button.bg-primary,
+  [data-custom-colors="true"] button.bg-primary *,
+  [data-custom-colors="true"] a.bg-primary,
+  [data-custom-colors="true"] a.bg-primary *,
+  [data-custom-colors="true"] div.bg-primary,
+  [data-custom-colors="true"] div.bg-primary * {
     color: hsl(var(--custom-primary-text)) !important;
   }
 
   /* SVG icons within primary backgrounds - force color inheritance */
-  [data-custom-colors='true'] .bg-primary svg,
-  [data-custom-colors='true'] button.bg-primary svg,
-  [data-custom-colors='true'] a.bg-primary svg,
-  [data-custom-colors='true'] div.bg-primary svg {
+  [data-custom-colors="true"] .bg-primary svg,
+  [data-custom-colors="true"] button.bg-primary svg,
+  [data-custom-colors="true"] a.bg-primary svg,
+  [data-custom-colors="true"] div.bg-primary svg {
     color: hsl(var(--custom-primary-text)) !important;
     --svg-color: hsl(var(--custom-primary-text)) !important;
   }
 
   /* Force SVG stroke color for Lucide icons (which use stroke, not fill) */
-  [data-custom-colors='true'] .bg-primary svg,
-  [data-custom-colors='true'] .bg-primary svg *,
-  [data-custom-colors='true'] button.bg-primary svg,
-  [data-custom-colors='true'] button.bg-primary svg * {
+  [data-custom-colors="true"] .bg-primary svg,
+  [data-custom-colors="true"] .bg-primary svg *,
+  [data-custom-colors="true"] button.bg-primary svg,
+  [data-custom-colors="true"] button.bg-primary svg * {
     stroke: hsl(var(--custom-primary-text)) !important;
   }
 
   /* Text elements explicitly marked as primary-foreground */
-  [data-custom-colors='true'] .text-primary-foreground,
-  [data-custom-colors='true'] .text-primary-foreground * {
+  [data-custom-colors="true"] .text-primary-foreground,
+  [data-custom-colors="true"] .text-primary-foreground * {
     color: hsl(var(--custom-primary-text)) !important;
   }
 
   /* Ensure text-primary-foreground SVG icons also adapt */
-  [data-custom-colors='true'] .text-primary-foreground svg,
-  [data-custom-colors='true'] .text-primary-foreground svg * {
+  [data-custom-colors="true"] .text-primary-foreground svg,
+  [data-custom-colors="true"] .text-primary-foreground svg * {
     color: hsl(var(--custom-primary-text)) !important;
     stroke: hsl(var(--custom-primary-text)) !important;
   }
@@ -367,12 +367,12 @@
      the readable version that guarantees 3:1 contrast against the background.
      This does NOT affect bg-primary (backgrounds keep the user's chosen color).
      --custom-primary-readable is auto-calculated in ThemeContext. */
-  [data-custom-colors='true'] .text-primary {
+  [data-custom-colors="true"] .text-primary {
     color: hsl(var(--custom-primary-readable)) !important;
   }
 
-  [data-custom-colors='true'] .text-primary svg,
-  [data-custom-colors='true'] svg.text-primary {
+  [data-custom-colors="true"] .text-primary svg,
+  [data-custom-colors="true"] svg.text-primary {
     color: hsl(var(--custom-primary-readable)) !important;
     stroke: hsl(var(--custom-primary-readable)) !important;
   }
@@ -381,8 +381,8 @@
      TOGGLE BUTTON STYLING
      ======================================== */
   /* Toggle track borders for clear definition (following Radix UI, shadcn/ui patterns) */
-  button[role='switch'],
-  button[aria-label*='Toggle'],
+  button[role="switch"],
+  button[aria-label*="Toggle"],
   button.toggle-checked,
   .toggle-checked {
     border: 2px solid var(--color-border);
@@ -391,26 +391,26 @@
   /* Toggle track - On state gets primary border */
   .toggle-checked,
   button.toggle-checked,
-  button[role='switch'][aria-checked='true'] {
+  button[role="switch"][aria-checked="true"] {
     border-color: hsl(var(--color-primary));
   }
 
   /* Custom colors: toggle borders adapt with proper contrast */
-  [data-custom-colors='true'] button[role='switch'],
-  [data-custom-colors='true'] button[aria-label*='Toggle'] {
+  [data-custom-colors="true"] button[role="switch"],
+  [data-custom-colors="true"] button[aria-label*="Toggle"] {
     border: 2px solid color-mix(in srgb, hsl(var(--custom-foreground)) 50%, transparent) !important;
   }
 
-  [data-custom-colors='true'] .toggle-checked,
-  [data-custom-colors='true'] button[aria-label*='Toggle'].toggle-checked,
-  [data-custom-colors='true'] button[role='switch'][aria-checked='true'] {
+  [data-custom-colors="true"] .toggle-checked,
+  [data-custom-colors="true"] button[aria-label*="Toggle"].toggle-checked,
+  [data-custom-colors="true"] button[role="switch"][aria-checked="true"] {
     border: 2px solid hsl(var(--custom-primary)) !important;
   }
 
   /* Toggle knob - subtle border for definition against track (catches both span and motion.span) */
   /* Fixed vertical alignment: top-0 for perfect centering (track is 24px, border 4px, knob 20px) */
-  button[role='switch'] > span,
-  button[aria-label*='Toggle'] > span {
+  button[role="switch"] > span,
+  button[aria-label*="Toggle"] > span {
     top: 0 !important;
     border: 1px solid rgba(0, 0, 0, 0.1) !important;
     box-shadow:
@@ -419,8 +419,8 @@
   }
 
   /* Dark mode: lighter knob border */
-  .dark button[role='switch'] > span,
-  .dark button[aria-label*='Toggle'] > span {
+  .dark button[role="switch"] > span,
+  .dark button[aria-label*="Toggle"] > span {
     border-color: rgba(255, 255, 255, 0.15) !important;
     box-shadow:
       0 1px 3px rgba(0, 0, 0, 0.3),
@@ -430,19 +430,19 @@
   /* ========================================
      DENSITY MODES
      ======================================== */
-  [data-density='minimal'] {
+  [data-density="minimal"] {
     --spacing-unit: 0.5;
     --content-max-width: 100%;
     font-size: 13px;
   }
 
-  [data-density='compact'] {
+  [data-density="compact"] {
     --spacing-unit: 0.75;
     --content-max-width: 100%;
     font-size: 14px;
   }
 
-  [data-density='comfortable'] {
+  [data-density="comfortable"] {
     --spacing-unit: 1;
     --content-max-width: 100%;
     font-size: 15px;
@@ -478,25 +478,25 @@
   }
 
   /* Fix layout issues in compact/minimal modes */
-  [data-density='compact'] main,
-  [data-density='minimal'] main {
+  [data-density="compact"] main,
+  [data-density="minimal"] main {
     max-width: var(--content-max-width);
     width: 100%;
     margin: 0;
   }
 
   /* Adjust sidebar spacing in density modes */
-  [data-density='minimal'] .sidebar-bg {
+  [data-density="minimal"] .sidebar-bg {
     padding: calc(0.5rem * var(--spacing-unit));
   }
 
-  [data-density='compact'] .sidebar-bg {
+  [data-density="compact"] .sidebar-bg {
     padding: calc(0.75rem * var(--spacing-unit));
   }
 
   /* Fix header spacing */
-  [data-density='minimal'] .header-bg,
-  [data-density='compact'] .header-bg {
+  [data-density="minimal"] .header-bg,
+  [data-density="compact"] .header-bg {
     padding-left: calc(1.5rem * var(--spacing-unit));
     padding-right: calc(1.5rem * var(--spacing-unit));
   }
@@ -506,8 +506,8 @@
     max-width: 100%;
   }
 
-  [data-density='minimal'] .px-6,
-  [data-density='compact'] .px-6 {
+  [data-density="minimal"] .px-6,
+  [data-density="compact"] .px-6 {
     padding-left: calc(1.5rem * var(--spacing-unit));
     padding-right: calc(1.5rem * var(--spacing-unit));
   }
@@ -523,8 +523,8 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-feature-settings:
-      'rlig' 1,
-      'calt' 1;
+      "rlig" 1,
+      "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-size: var(--custom-font-size, 15px);
@@ -600,7 +600,7 @@
   }
 
   /* Custom theme scrollbar colors */
-  [data-custom-colors='true'] ::-webkit-scrollbar-track {
+  [data-custom-colors="true"] ::-webkit-scrollbar-track {
     background-color: color-mix(
       in srgb,
       hsl(var(--custom-background)) 90%,
@@ -608,11 +608,11 @@
     );
   }
 
-  [data-custom-colors='true'] ::-webkit-scrollbar-thumb {
+  [data-custom-colors="true"] ::-webkit-scrollbar-thumb {
     background-color: color-mix(in srgb, hsl(var(--custom-foreground)) 20%, transparent);
   }
 
-  [data-custom-colors='true'] ::-webkit-scrollbar-thumb:hover {
+  [data-custom-colors="true"] ::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in srgb, hsl(var(--custom-foreground)) 30%, transparent);
   }
 
@@ -632,7 +632,7 @@
   }
 
   /* Hide Search Cancel Button */
-  input[type='search']::-webkit-search-cancel-button {
+  input[type="search"]::-webkit-search-cancel-button {
     display: none;
   }
 
@@ -653,7 +653,7 @@
   }
 
   .skeleton::after {
-    content: '';
+    content: "";
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
@@ -720,7 +720,7 @@
   }
 
   .interactive-hover::before {
-    content: '';
+    content: "";
     position: absolute;
     top: var(--mouse-y, 50%);
     left: var(--mouse-x, 50%);

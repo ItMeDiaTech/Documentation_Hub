@@ -1,20 +1,20 @@
-import { cn } from '@/utils/cn';
+import { cn } from "@/utils/cn";
 
 interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'circle' | 'text' | 'card';
+  variant?: "default" | "circle" | "text" | "card";
 }
 
-export function Skeleton({ className, variant = 'default', ...props }: SkeletonProps) {
+export function Skeleton({ className, variant = "default", ...props }: SkeletonProps) {
   const variants = {
-    default: '',
-    circle: 'rounded-full',
-    text: 'h-4 rounded',
-    card: 'h-32 rounded-lg',
+    default: "",
+    circle: "rounded-full",
+    text: "h-4 rounded",
+    card: "h-32 rounded-lg",
   };
 
   return (
     <div
-      className={cn('skeleton', 'bg-muted animate-pulse', variants[variant], className)}
+      className={cn("skeleton", "bg-muted animate-pulse", variants[variant], className)}
       {...props}
     />
   );
@@ -103,18 +103,11 @@ export function SkeletonChart({ height = 200 }: { height?: number }) {
         <Skeleton variant="text" className="w-32 h-5" />
         <Skeleton className="w-24 h-8 rounded-lg" />
       </div>
-      <div
-        className="relative bg-muted/30 rounded-lg overflow-hidden"
-        style={{ height }}
-      >
+      <div className="relative bg-muted/30 rounded-lg overflow-hidden" style={{ height }}>
         {/* Fake bar chart skeleton */}
         <div className="absolute bottom-0 left-0 right-0 flex items-end justify-around gap-2 p-4">
           {[60, 80, 45, 90, 70, 55, 85].map((h, i) => (
-            <Skeleton
-              key={i}
-              className="flex-1 rounded-t"
-              style={{ height: `${h}%` }}
-            />
+            <Skeleton key={i} className="flex-1 rounded-t" style={{ height: `${h}%` }} />
           ))}
         </div>
       </div>
@@ -170,9 +163,9 @@ export function SkeletonTable({ rows = 5, columns = 4 }: { rows?: number; column
                 key={colIndex}
                 variant="text"
                 className={cn(
-                  'flex-1',
-                  colIndex === 0 && 'w-1/4',
-                  colIndex === columns - 1 && 'w-20'
+                  "flex-1",
+                  colIndex === 0 && "w-1/4",
+                  colIndex === columns - 1 && "w-20"
                 )}
               />
             ))}

@@ -33,14 +33,16 @@ The `DocXMLaterProcessor` class provides a comprehensive API for manipulating Mi
 Load a DOCX document from a file path.
 
 **Parameters:**
+
 - `filePath` (string) - Absolute or relative path to the DOCX file
 
 **Returns:** `Promise<ProcessorResult<Document>>`
 
 **Example:**
+
 ```typescript
 const processor = new DocXMLaterProcessor();
-const result = await processor.loadFromFile('./documents/report.docx');
+const result = await processor.loadFromFile("./documents/report.docx");
 
 if (result.success) {
   const doc = result.data;
@@ -56,13 +58,15 @@ if (result.success) {
 Load a DOCX document from a Buffer object.
 
 **Parameters:**
+
 - `buffer` (Buffer) - Buffer containing the DOCX file data
 
 **Returns:** `Promise<ProcessorResult<Document>>`
 
 **Example:**
+
 ```typescript
-const response = await fetch('https://example.com/document.docx');
+const response = await fetch("https://example.com/document.docx");
 const arrayBuffer = await response.arrayBuffer();
 const buffer = Buffer.from(arrayBuffer);
 
@@ -76,16 +80,18 @@ const result = await processor.loadFromBuffer(buffer);
 Save a Document to a file path with atomic operations.
 
 **Parameters:**
+
 - `doc` (Document) - Document instance to save
 - `filePath` (string) - Path where the DOCX file will be saved
 
 **Returns:** `Promise<ProcessorResult<void>>`
 
 **Example:**
+
 ```typescript
-const doc = await processor.loadFromFile('input.docx');
+const doc = await processor.loadFromFile("input.docx");
 // Make modifications...
-await processor.saveToFile(doc.data, 'output.docx');
+await processor.saveToFile(doc.data, "output.docx");
 doc.data.dispose();
 ```
 
@@ -96,15 +102,20 @@ doc.data.dispose();
 Convert a Document to a Buffer object for in-memory operations or HTTP transmission.
 
 **Parameters:**
+
 - `doc` (Document) - Document instance to convert
 
 **Returns:** `Promise<DocumentModifyResult>`
 
 **Example:**
+
 ```typescript
 const result = await processor.toBuffer(doc);
 if (result.success) {
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
   res.send(result.data);
 }
 ```
@@ -118,6 +129,7 @@ if (result.success) {
 Create a new blank document with a custom paragraph style.
 
 **Parameters:**
+
 - `styleId` (string) - Unique identifier for the style
 - `styleName` (string) - Display name for the style
 - `properties` (TextStyle & ParagraphStyle) - Combined formatting properties
@@ -125,20 +137,17 @@ Create a new blank document with a custom paragraph style.
 **Returns:** `Promise<ProcessorResult<Document>>`
 
 **Example:**
+
 ```typescript
-const result = await processor.createDocumentWithStyle(
-  'CustomHeading',
-  'My Custom Heading',
-  {
-    fontFamily: 'Arial',
-    fontSize: 16,
-    bold: true,
-    color: '#0066CC',
-    alignment: 'left',
-    spaceBefore: 240,
-    spaceAfter: 120
-  }
-);
+const result = await processor.createDocumentWithStyle("CustomHeading", "My Custom Heading", {
+  fontFamily: "Arial",
+  fontSize: 16,
+  bold: true,
+  color: "#0066CC",
+  alignment: "left",
+  spaceBefore: 240,
+  spaceAfter: 120,
+});
 ```
 
 ---
@@ -148,6 +157,7 @@ const result = await processor.createDocumentWithStyle(
 Apply a style to paragraphs based on target criteria (all, pattern, or specific indices).
 
 **Parameters:**
+
 - `doc` (Document) - Document containing paragraphs to modify
 - `styleId` (string) - ID of the style to apply
 - `application` (StyleApplication) - Targeting criteria
@@ -155,11 +165,12 @@ Apply a style to paragraphs based on target criteria (all, pattern, or specific 
 **Returns:** `Promise<ProcessorResult<StyleApplicationResult>>`
 
 **Example:**
+
 ```typescript
 // Apply to paragraphs containing "IMPORTANT"
-const result = await processor.applyStyleToParagraphs(doc, 'Heading1', {
-  target: 'pattern',
-  pattern: /IMPORTANT/i
+const result = await processor.applyStyleToParagraphs(doc, "Heading1", {
+  target: "pattern",
+  pattern: /IMPORTANT/i,
 });
 
 console.log(`Applied to ${result.data.appliedCount} paragraphs`);
@@ -174,6 +185,7 @@ console.log(`Applied to ${result.data.appliedCount} paragraphs`);
 Create a formatted table in the document.
 
 **Parameters:**
+
 - `doc` (Document) - Document to add the table to
 - `rows` (number) - Number of rows
 - `columns` (number) - Number of columns
@@ -187,12 +199,13 @@ Create a formatted table in the document.
 **Returns:** `Promise<ProcessorResult<Table>>`
 
 **Example:**
+
 ```typescript
 const result = await processor.createTable(doc, 3, 4, {
   borders: true,
-  borderColor: '0066CC',
+  borderColor: "0066CC",
   borderSize: 6,
-  headerShading: 'E6F2FF'
+  headerShading: "E6F2FF",
 });
 ```
 
@@ -203,15 +216,17 @@ const result = await processor.createTable(doc, 3, 4, {
 Set background color (shading) for a table cell.
 
 **Parameters:**
+
 - `cell` (TableCell) - Table cell to apply shading to
 - `color` (string) - Background color in hex format
 
 **Returns:** `Promise<ProcessorResult<void>>`
 
 **Example:**
+
 ```typescript
 const cell = table.getRow(0).getCell(0);
-await processor.setCellShading(cell, '#E6F2FF');
+await processor.setCellShading(cell, "#E6F2FF");
 ```
 
 ---
@@ -221,6 +236,7 @@ await processor.setCellShading(cell, '#E6F2FF');
 Add formatted text content to a table cell.
 
 **Parameters:**
+
 - `cell` (TableCell) - Table cell to add content to
 - `text` (string) - Text content to add
 - `formatting` (TextStyle, optional) - Text formatting options
@@ -228,11 +244,12 @@ Add formatted text content to a table cell.
 **Returns:** `Promise<ProcessorResult<void>>`
 
 **Example:**
+
 ```typescript
-await processor.addCellContent(headerCell, 'Product Name', {
+await processor.addCellContent(headerCell, "Product Name", {
   bold: true,
   fontSize: 12,
-  color: '#FFFFFF'
+  color: "#FFFFFF",
 });
 ```
 
@@ -245,6 +262,7 @@ await processor.addCellContent(headerCell, 'Product Name', {
 Create a formatted paragraph in the document.
 
 **Parameters:**
+
 - `doc` (Document) - Document to add paragraph to
 - `text` (string) - Text content for the paragraph
 - `formatting` (ParagraphStyle & TextStyle, optional) - Formatting options
@@ -252,16 +270,17 @@ Create a formatted paragraph in the document.
 **Returns:** `Promise<ProcessorResult<Paragraph>>`
 
 **Example:**
+
 ```typescript
-const result = await processor.createParagraph(doc, 'Chapter 1: Introduction', {
-  fontFamily: 'Arial',
+const result = await processor.createParagraph(doc, "Chapter 1: Introduction", {
+  fontFamily: "Arial",
   fontSize: 16,
   bold: true,
-  color: '#0066CC',
-  alignment: 'left',
+  color: "#0066CC",
+  alignment: "left",
   spaceBefore: 240,
   spaceAfter: 120,
-  keepNext: true
+  keepNext: true,
 });
 ```
 
@@ -272,6 +291,7 @@ const result = await processor.createParagraph(doc, 'Chapter 1: Introduction', {
 Set indentation on an existing paragraph.
 
 **Parameters:**
+
 - `para` (Paragraph) - Paragraph to modify
 - `options` (object) - Indentation settings
   - `left` (number, optional) - Left indentation in twips
@@ -281,11 +301,12 @@ Set indentation on an existing paragraph.
 **Returns:** `Promise<ProcessorResult<void>>`
 
 **Example:**
+
 ```typescript
 // Set hanging indent for bibliography
 await processor.setIndentation(paragraphs[0], {
   left: processor.inchesToTwips(0.5),
-  firstLine: processor.inchesToTwips(-0.25)
+  firstLine: processor.inchesToTwips(-0.25),
 });
 ```
 
@@ -298,13 +319,15 @@ await processor.setIndentation(paragraphs[0], {
 Read an existing document and extract its complete structure.
 
 **Parameters:**
+
 - `filePath` (string) - Path to the DOCX file to read
 
 **Returns:** `Promise<DocumentReadResult>`
 
 **Example:**
+
 ```typescript
-const result = await processor.readDocument('./report.docx');
+const result = await processor.readDocument("./report.docx");
 
 if (result.success) {
   console.log(`Paragraphs: ${result.data.content.paragraphs.length}`);
@@ -319,16 +342,18 @@ if (result.success) {
 Perform atomic load-modify-save operations on a document.
 
 **Parameters:**
+
 - `filePath` (string) - Path to the DOCX file to modify
 - `modifications` (function) - Function that receives the document and makes modifications
 
 **Returns:** `Promise<DocumentModifyResult>`
 
 **Example:**
+
 ```typescript
-await processor.modifyDocument('./contract.docx', async (doc) => {
-  doc.replaceText('COMPANY_NAME', 'Acme Corporation');
-  doc.replaceText('CURRENT_YEAR', '2025');
+await processor.modifyDocument("./contract.docx", async (doc) => {
+  doc.replaceText("COMPANY_NAME", "Acme Corporation");
+  doc.replaceText("CURRENT_YEAR", "2025");
 });
 ```
 
@@ -339,16 +364,18 @@ await processor.modifyDocument('./contract.docx', async (doc) => {
 Perform atomic load-modify operations on a document from Buffer.
 
 **Parameters:**
+
 - `buffer` (Buffer) - Buffer containing the DOCX file data
 - `modifications` (function) - Function that receives the document and makes modifications
 
 **Returns:** `Promise<DocumentModifyResult>`
 
 **Example:**
+
 ```typescript
 const result = await processor.modifyDocumentBuffer(inputBuffer, async (doc) => {
-  const para = doc.createParagraph('CONFIDENTIAL');
-  para.setAlignment('center');
+  const para = doc.createParagraph("CONFIDENTIAL");
+  para.setAlignment("center");
 });
 ```
 
@@ -363,11 +390,13 @@ Extract all hyperlinks from a document with comprehensive coverage (body, tables
 **Performance:** 89% code reduction, 20-30% faster than manual extraction
 
 **Parameters:**
+
 - `doc` (Document) - Document to extract hyperlinks from
 
 **Returns:** `Promise<Array<HyperlinkInfo>>`
 
 **Example:**
+
 ```typescript
 const hyperlinks = await processor.extractHyperlinks(doc);
 
@@ -386,16 +415,18 @@ Batch update hyperlink URLs using direct mapping.
 **Performance:** 30-50% faster than modifyHyperlinks for simple replacements
 
 **Parameters:**
+
 - `doc` (Document) - Document to modify
 - `urlMap` (Map<string, string>) - Map of old URLs to new URLs
 
 **Returns:** `Promise<ProcessorResult<UpdateStats>>`
 
 **Example:**
+
 ```typescript
 const urlMap = new Map([
-  ['http://old-site.com/page1', 'https://new-site.com/page1'],
-  ['http://old-site.com/page2', 'https://new-site.com/page2']
+  ["http://old-site.com/page1", "https://new-site.com/page1"],
+  ["http://old-site.com/page2", "https://new-site.com/page2"],
 ]);
 
 const result = await processor.updateHyperlinkUrls(doc, urlMap);
@@ -409,17 +440,19 @@ console.log(`Updated: ${result.data.modifiedHyperlinks}`);
 Modify hyperlinks using a transformation function.
 
 **Parameters:**
+
 - `doc` (Document) - Document to modify
 - `urlTransform` (function) - Function that receives URL and text, returns new URL
 
 **Returns:** `Promise<ProcessorResult<ModifyStats>>`
 
 **Example:**
+
 ```typescript
 // Upgrade HTTP to HTTPS
 await processor.modifyHyperlinks(doc, (url, displayText) => {
-  if (url.startsWith('http://') && url.includes('example.com')) {
-    return url.replace('http://', 'https://');
+  if (url.startsWith("http://") && url.includes("example.com")) {
+    return url.replace("http://", "https://");
   }
   return url;
 });
@@ -432,14 +465,16 @@ await processor.modifyHyperlinks(doc, (url, displayText) => {
 Append Content ID fragment to theSource URLs (CVS Health specific).
 
 **Parameters:**
+
 - `filePath` (string) - Path to the DOCX file to modify
 - `contentId` (string, optional) - Content fragment to append (default: '#content')
 
 **Returns:** `Promise<ProcessorResult<UpdateStats>>`
 
 **Example:**
+
 ```typescript
-const result = await processor.appendContentIdToTheSourceUrls('./document.docx');
+const result = await processor.appendContentIdToTheSourceUrls("./document.docx");
 // Transforms: thesource.cvshealth.com/page/docid=abc -> ...#content
 ```
 
@@ -450,6 +485,7 @@ const result = await processor.appendContentIdToTheSourceUrls('./document.docx')
 Replace hyperlink display text based on a pattern.
 
 **Parameters:**
+
 - `doc` (Document) - Document to modify
 - `pattern` (string | RegExp) - Pattern to match in display text
 - `replacement` (string) - Replacement text
@@ -457,9 +493,10 @@ Replace hyperlink display text based on a pattern.
 **Returns:** `Promise<ProcessorResult<ReplaceStats>>`
 
 **Example:**
+
 ```typescript
 // Regex replacement with capture groups
-await processor.replaceHyperlinkText(doc, /Page (\d+)/, 'Section $1');
+await processor.replaceHyperlinkText(doc, /Page (\d+)/, "Section $1");
 ```
 
 ---
@@ -471,6 +508,7 @@ await processor.replaceHyperlinkText(doc, /Page (\d+)/, 'Section $1');
 Find text in document using built-in search.
 
 **Parameters:**
+
 - `doc` (Document) - Document to search
 - `pattern` (string | RegExp) - Text string or regex pattern
 - `options` (object, optional)
@@ -480,9 +518,10 @@ Find text in document using built-in search.
 **Returns:** `Promise<ProcessorResult<Array<SearchResult>>>`
 
 **Example:**
+
 ```typescript
-const result = await processor.findText(doc, 'important', {
-  caseSensitive: false
+const result = await processor.findText(doc, "important", {
+  caseSensitive: false,
 });
 
 console.log(`Found ${result.data.length} matches`);
@@ -495,6 +534,7 @@ console.log(`Found ${result.data.length} matches`);
 Replace text in document using built-in replace.
 
 **Parameters:**
+
 - `doc` (Document) - Document to modify
 - `find` (string | RegExp) - Text or pattern to find
 - `replace` (string) - Replacement text
@@ -505,12 +545,13 @@ Replace text in document using built-in replace.
 **Returns:** `Promise<ProcessorResult<ReplaceStats>>`
 
 **Example:**
+
 ```typescript
 // Simple text replacement
-await processor.replaceText(doc, '{{COMPANY_NAME}}', 'Acme Corporation');
+await processor.replaceText(doc, "{{COMPANY_NAME}}", "Acme Corporation");
 
 // Regex replacement with capture groups
-await processor.replaceText(doc, /(\d{2})\/(\d{2})\/(\d{4})/, '$3-$1-$2');
+await processor.replaceText(doc, /(\d{2})\/(\d{2})\/(\d{4})/, "$3-$1-$2");
 ```
 
 ---
@@ -522,11 +563,13 @@ await processor.replaceText(doc, /(\d{2})\/(\d{2})\/(\d{4})/, '$3-$1-$2');
 Get word count from document (includes paragraphs, tables, headers, footers).
 
 **Parameters:**
+
 - `doc` (Document) - Document to analyze
 
 **Returns:** `Promise<ProcessorResult<{ wordCount: number }>>`
 
 **Example:**
+
 ```typescript
 const result = await processor.getWordCount(doc);
 console.log(`Document contains ${result.data.wordCount} words`);
@@ -542,12 +585,14 @@ const readingTime = Math.ceil(result.data.wordCount / 200);
 Get character count from document.
 
 **Parameters:**
+
 - `doc` (Document) - Document to analyze
 - `includeSpaces` (boolean, optional) - Include spaces in count (default: true)
 
 **Returns:** `Promise<ProcessorResult<{ characterCount: number }>>`
 
 **Example:**
+
 ```typescript
 const withSpaces = await processor.getCharacterCount(doc, true);
 const withoutSpaces = await processor.getCharacterCount(doc, false);
@@ -563,19 +608,21 @@ console.log(`Characters (no spaces): ${withoutSpaces.data.characterCount}`);
 Estimate document size before saving.
 
 **Parameters:**
+
 - `doc` (Document) - Document to estimate
 
 **Returns:** `Promise<ProcessorResult<{ totalEstimatedMB: number, warning?: string }>>`
 
 **Example:**
+
 ```typescript
 const sizeResult = await processor.estimateSize(doc);
 console.log(`Estimated size: ${sizeResult.data.totalEstimatedMB.toFixed(2)} MB`);
 
 if (sizeResult.data.totalEstimatedMB < 10) {
-  await processor.saveToFile(doc, 'output.docx');
+  await processor.saveToFile(doc, "output.docx");
 } else {
-  console.error('Document too large');
+  console.error("Document too large");
 }
 ```
 
@@ -586,11 +633,13 @@ if (sizeResult.data.totalEstimatedMB < 10) {
 Get detailed document statistics including element counts and size.
 
 **Parameters:**
+
 - `doc` (Document) - Document to analyze
 
 **Returns:** `Promise<ProcessorResult<SizeStats>>`
 
 **Example:**
+
 ```typescript
 const stats = await processor.getSizeStats(doc);
 
@@ -612,10 +661,11 @@ Create a new blank document.
 **Returns:** `Document`
 
 **Example:**
+
 ```typescript
 const doc = processor.createNewDocument();
-await processor.createParagraph(doc, 'Hello World!');
-await processor.saveToFile(doc, 'new-document.docx');
+await processor.createParagraph(doc, "Hello World!");
+await processor.saveToFile(doc, "new-document.docx");
 doc.dispose();
 ```
 
@@ -626,13 +676,15 @@ doc.dispose();
 Convert inches to twips (1 inch = 1440 twips).
 
 **Parameters:**
+
 - `inches` (number) - Measurement in inches
 
 **Returns:** `number`
 
 **Example:**
+
 ```typescript
-const indent = processor.inchesToTwips(0.5);  // 720 twips
+const indent = processor.inchesToTwips(0.5); // 720 twips
 await processor.setIndentation(para, { left: indent });
 ```
 
@@ -643,14 +695,16 @@ await processor.setIndentation(para, { left: indent });
 Convert points to twips (1 point = 20 twips).
 
 **Parameters:**
+
 - `points` (number) - Measurement in points
 
 **Returns:** `number`
 
 **Example:**
+
 ```typescript
-const spacing = processor.pointsToTwips(12);  // 240 twips
-await processor.createParagraph(doc, 'Text', { spaceBefore: spacing });
+const spacing = processor.pointsToTwips(12); // 240 twips
+await processor.createParagraph(doc, "Text", { spaceBefore: spacing });
 ```
 
 ---
@@ -660,11 +714,13 @@ await processor.createParagraph(doc, 'Text', { spaceBefore: spacing });
 Convert twips to points (20 twips = 1 point).
 
 **Parameters:**
+
 - `twips` (number) - Measurement in twips
 
 **Returns:** `number`
 
 **Example:**
+
 ```typescript
 const formatting = para.getFormatting();
 const points = processor.twipsToPoints(formatting.spaceBefore);
@@ -675,37 +731,37 @@ console.log(`Space before: ${points}pt`);
 
 ## Quick Reference Table
 
-| Method | Category | Description | Returns |
-|--------|----------|-------------|---------|
-| `loadFromFile` | Document I/O | Load document from file path | `Promise<ProcessorResult<Document>>` |
-| `loadFromBuffer` | Document I/O | Load document from Buffer | `Promise<ProcessorResult<Document>>` |
-| `saveToFile` | Document I/O | Save document to file path | `Promise<ProcessorResult<void>>` |
-| `toBuffer` | Document I/O | Convert document to Buffer | `Promise<DocumentModifyResult>` |
-| `createDocumentWithStyle` | Style Operations | Create document with custom style | `Promise<ProcessorResult<Document>>` |
-| `applyStyleToParagraphs` | Style Operations | Apply style to paragraphs | `Promise<ProcessorResult<StyleApplicationResult>>` |
-| `createTable` | Table Operations | Create formatted table | `Promise<ProcessorResult<Table>>` |
-| `setCellShading` | Table Operations | Set cell background color | `Promise<ProcessorResult<void>>` |
-| `addCellContent` | Table Operations | Add content to table cell | `Promise<ProcessorResult<void>>` |
-| `createParagraph` | Paragraph Formatting | Create formatted paragraph | `Promise<ProcessorResult<Paragraph>>` |
-| `setIndentation` | Paragraph Formatting | Set paragraph indentation | `Promise<ProcessorResult<void>>` |
-| `readDocument` | High-Level Operations | Read document structure | `Promise<DocumentReadResult>` |
-| `modifyDocument` | High-Level Operations | Atomic load-modify-save | `Promise<DocumentModifyResult>` |
-| `modifyDocumentBuffer` | High-Level Operations | Modify document from Buffer | `Promise<DocumentModifyResult>` |
-| `extractHyperlinks` | Hyperlink Operations | Extract all hyperlinks | `Promise<Array<HyperlinkInfo>>` |
-| `updateHyperlinkUrls` | Hyperlink Operations | Batch update hyperlink URLs | `Promise<ProcessorResult<UpdateStats>>` |
-| `modifyHyperlinks` | Hyperlink Operations | Transform hyperlink URLs | `Promise<ProcessorResult<ModifyStats>>` |
-| `appendContentIdToTheSourceUrls` | Hyperlink Operations | Append #content to theSource | `Promise<ProcessorResult<UpdateStats>>` |
-| `replaceHyperlinkText` | Hyperlink Operations | Replace hyperlink display text | `Promise<ProcessorResult<ReplaceStats>>` |
-| `findText` | Search & Replace | Find text in document | `Promise<ProcessorResult<Array<SearchResult>>>` |
-| `replaceText` | Search & Replace | Replace text in document | `Promise<ProcessorResult<ReplaceStats>>` |
-| `getWordCount` | Document Statistics | Get word count | `Promise<ProcessorResult<{ wordCount: number }>>` |
-| `getCharacterCount` | Document Statistics | Get character count | `Promise<ProcessorResult<{ characterCount: number }>>` |
-| `estimateSize` | Document Statistics | Estimate document size | `Promise<ProcessorResult<SizeEstimate>>` |
-| `getSizeStats` | Document Statistics | Get detailed statistics | `Promise<ProcessorResult<SizeStats>>` |
-| `createNewDocument` | Utilities | Create blank document | `Document` |
-| `inchesToTwips` | Utilities | Convert inches to twips | `number` |
-| `pointsToTwips` | Utilities | Convert points to twips | `number` |
-| `twipsToPoints` | Utilities | Convert twips to points | `number` |
+| Method                           | Category              | Description                       | Returns                                                |
+| -------------------------------- | --------------------- | --------------------------------- | ------------------------------------------------------ |
+| `loadFromFile`                   | Document I/O          | Load document from file path      | `Promise<ProcessorResult<Document>>`                   |
+| `loadFromBuffer`                 | Document I/O          | Load document from Buffer         | `Promise<ProcessorResult<Document>>`                   |
+| `saveToFile`                     | Document I/O          | Save document to file path        | `Promise<ProcessorResult<void>>`                       |
+| `toBuffer`                       | Document I/O          | Convert document to Buffer        | `Promise<DocumentModifyResult>`                        |
+| `createDocumentWithStyle`        | Style Operations      | Create document with custom style | `Promise<ProcessorResult<Document>>`                   |
+| `applyStyleToParagraphs`         | Style Operations      | Apply style to paragraphs         | `Promise<ProcessorResult<StyleApplicationResult>>`     |
+| `createTable`                    | Table Operations      | Create formatted table            | `Promise<ProcessorResult<Table>>`                      |
+| `setCellShading`                 | Table Operations      | Set cell background color         | `Promise<ProcessorResult<void>>`                       |
+| `addCellContent`                 | Table Operations      | Add content to table cell         | `Promise<ProcessorResult<void>>`                       |
+| `createParagraph`                | Paragraph Formatting  | Create formatted paragraph        | `Promise<ProcessorResult<Paragraph>>`                  |
+| `setIndentation`                 | Paragraph Formatting  | Set paragraph indentation         | `Promise<ProcessorResult<void>>`                       |
+| `readDocument`                   | High-Level Operations | Read document structure           | `Promise<DocumentReadResult>`                          |
+| `modifyDocument`                 | High-Level Operations | Atomic load-modify-save           | `Promise<DocumentModifyResult>`                        |
+| `modifyDocumentBuffer`           | High-Level Operations | Modify document from Buffer       | `Promise<DocumentModifyResult>`                        |
+| `extractHyperlinks`              | Hyperlink Operations  | Extract all hyperlinks            | `Promise<Array<HyperlinkInfo>>`                        |
+| `updateHyperlinkUrls`            | Hyperlink Operations  | Batch update hyperlink URLs       | `Promise<ProcessorResult<UpdateStats>>`                |
+| `modifyHyperlinks`               | Hyperlink Operations  | Transform hyperlink URLs          | `Promise<ProcessorResult<ModifyStats>>`                |
+| `appendContentIdToTheSourceUrls` | Hyperlink Operations  | Append #content to theSource      | `Promise<ProcessorResult<UpdateStats>>`                |
+| `replaceHyperlinkText`           | Hyperlink Operations  | Replace hyperlink display text    | `Promise<ProcessorResult<ReplaceStats>>`               |
+| `findText`                       | Search & Replace      | Find text in document             | `Promise<ProcessorResult<Array<SearchResult>>>`        |
+| `replaceText`                    | Search & Replace      | Replace text in document          | `Promise<ProcessorResult<ReplaceStats>>`               |
+| `getWordCount`                   | Document Statistics   | Get word count                    | `Promise<ProcessorResult<{ wordCount: number }>>`      |
+| `getCharacterCount`              | Document Statistics   | Get character count               | `Promise<ProcessorResult<{ characterCount: number }>>` |
+| `estimateSize`                   | Document Statistics   | Estimate document size            | `Promise<ProcessorResult<SizeEstimate>>`               |
+| `getSizeStats`                   | Document Statistics   | Get detailed statistics           | `Promise<ProcessorResult<SizeStats>>`                  |
+| `createNewDocument`              | Utilities             | Create blank document             | `Document`                                             |
+| `inchesToTwips`                  | Utilities             | Convert inches to twips           | `number`                                               |
+| `pointsToTwips`                  | Utilities             | Convert points to twips           | `number`                                               |
+| `twipsToPoints`                  | Utilities             | Convert twips to points           | `number`                                               |
 
 ---
 
@@ -716,7 +772,7 @@ console.log(`Space before: ${points}pt`);
 Always call `dispose()` on documents when finished to prevent memory leaks:
 
 ```typescript
-const loadResult = await processor.loadFromFile('document.docx');
+const loadResult = await processor.loadFromFile("document.docx");
 if (loadResult.success) {
   const doc = loadResult.data;
   // Work with document...
@@ -729,9 +785,9 @@ if (loadResult.success) {
 All methods return `ProcessorResult<T>` objects with success/error information:
 
 ```typescript
-const result = await processor.loadFromFile('file.docx');
+const result = await processor.loadFromFile("file.docx");
 if (!result.success) {
-  console.error('Error:', result.error);
+  console.error("Error:", result.error);
   return;
 }
 const doc = result.data;

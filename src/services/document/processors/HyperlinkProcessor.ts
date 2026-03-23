@@ -9,11 +9,7 @@
  * - URL update batch processing
  */
 
-import {
-  Document,
-  Hyperlink,
-  Revision,
-} from "docxmlater";
+import { ComplexField, Document, Hyperlink, Revision, buildHyperlinkInstruction } from "docxmlater";
 import type { DetailedHyperlinkInfo, HyperlinkType } from "@/types/hyperlink";
 import type { DocumentChange } from "@/types/session";
 import { logger } from "@/utils/logger";
@@ -107,16 +103,21 @@ export class HyperlinkProcessor {
       const hyperlinks = await this.docXMLater.extractHyperlinks(doc);
       log.debug(`Found ${hyperlinks.length} hyperlinks to standardize`);
 
-      for (const { hyperlink, url, text } of hyperlinks) {
+      for (const { hyperlink, isComplexField, url, text } of hyperlinks) {
         try {
-          hyperlink.setFormatting({
+          const formatting = {
             font: "Verdana",
             size: 12,
             color: "0000FF",
-            underline: "single",
+            underline: "single" as const,
             bold: false,
             italic: false,
-          });
+          };
+          if (isComplexField) {
+            (hyperlink as ComplexField).setResultFormatting(formatting);
+          } else {
+            (hyperlink as Hyperlink).setFormatting(formatting);
+          }
           standardizedCount++;
           log.debug(`Standardized hyperlink: "${text}" (${url})`);
         } catch (error) {
@@ -190,13 +191,42 @@ export class HyperlinkProcessor {
 
               updatedCount++;
             } catch (error) {
-              log.error(`Failed to update URL at paragraph ${paraIndex}: ${oldUrl} -> ${newUrl}`, error);
+              log.error(
+                `Failed to update URL at paragraph ${paraIndex}: ${oldUrl} -> ${newUrl}`,
+                error
+              );
               failedUrls.push({
                 oldUrl,
                 newUrl,
                 error,
                 paragraphIndex: paraIndex,
               });
+            }
+          }
+        } else if (item instanceof ComplexField && item.isHyperlinkField()) {
+          const parsed = item.getParsedHyperlink();
+          const fieldUrl = parsed?.fullUrl || parsed?.url;
+          if (fieldUrl && urlMap.has(fieldUrl)) {
+            const newUrl = urlMap.get(fieldUrl)!;
+            if (fieldUrl !== newUrl) {
+              try {
+                item.setInstruction(
+                  buildHyperlinkInstruction(newUrl, parsed?.anchor, parsed?.tooltip)
+                );
+                updatedCount++;
+                log.debug(`Updated ComplexField URL: ${fieldUrl} -> ${newUrl}`);
+              } catch (error) {
+                log.error(
+                  `Failed to update ComplexField URL at paragraph ${paraIndex}: ${fieldUrl} -> ${newUrl}`,
+                  error
+                );
+                failedUrls.push({
+                  oldUrl: fieldUrl,
+                  newUrl,
+                  error,
+                  paragraphIndex: paraIndex,
+                });
+              }
             }
           }
         }
@@ -223,12 +253,20 @@ export class HyperlinkProcessor {
     let updatedUrls = 0;
     let updatedTexts = 0;
 
-    for (const { hyperlink, url, text } of hyperlinks) {
+    for (const { hyperlink, isComplexField, url, text } of hyperlinks) {
       for (const rule of replacements) {
         if (rule.applyTo === "url" || rule.applyTo === "both") {
           if (url && this.matchesPattern(url, rule.find, rule.matchType)) {
             const newUrl = url.replace(rule.find, rule.replace);
-            hyperlink.setUrl(newUrl);
+            if (isComplexField) {
+              const field = hyperlink as ComplexField;
+              const parsed = field.getParsedHyperlink();
+              field.setInstruction(
+                buildHyperlinkInstruction(newUrl, parsed?.anchor, parsed?.tooltip)
+              );
+            } else {
+              (hyperlink as Hyperlink).setUrl(newUrl);
+            }
             updatedUrls++;
           }
         }
@@ -236,7 +274,11 @@ export class HyperlinkProcessor {
         if (rule.applyTo === "text" || rule.applyTo === "both") {
           if (this.matchesPattern(text, rule.find, rule.matchType)) {
             const newText = text.replace(rule.find, rule.replace);
-            hyperlink.setText(newText);
+            if (isComplexField) {
+              (hyperlink as ComplexField).setResult(newText);
+            } else {
+              (hyperlink as Hyperlink).setText(newText);
+            }
             updatedTexts++;
           }
         }
@@ -253,8 +295,10 @@ export class HyperlinkProcessor {
     const hyperlinks = await this.docXMLater.extractHyperlinks(doc);
     let fixedCount = 0;
 
-    for (const { hyperlink, text } of hyperlinks) {
-      const anchor = hyperlink.getAnchor();
+    for (const { hyperlink, isComplexField, text } of hyperlinks) {
+      // ComplexField hyperlinks don't have getAnchor() — skip for internal link repair
+      if (isComplexField) continue;
+      const anchor = (hyperlink as Hyperlink).getAnchor();
       if (!anchor) continue;
 
       const bookmarkExists = doc.hasBookmark(anchor);
@@ -351,11 +395,7 @@ export class HyperlinkProcessor {
   /**
    * Create bookmark for heading
    */
-  private createBookmarkForHeading(
-    doc: Document,
-    heading: unknown,
-    bookmarkName: string
-  ): boolean {
+  private createBookmarkForHeading(doc: Document, heading: unknown, bookmarkName: string): boolean {
     try {
       // Implementation depends on docxmlater API
       // This is a placeholder for the actual implementation

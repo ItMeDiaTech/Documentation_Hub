@@ -9,7 +9,7 @@
  * - During hot module replacement (HMR) cycles
  */
 
-import type { ElectronAPI } from '@/global.d';
+import type { ElectronAPI } from "@/global.d";
 
 /**
  * Check if the code is running in an Electron environment.
@@ -17,7 +17,7 @@ import type { ElectronAPI } from '@/global.d';
  * @returns true if window.electronAPI is available
  */
 export function isElectronEnvironment(): boolean {
-  return typeof window !== 'undefined' && typeof window.electronAPI !== 'undefined';
+  return typeof window !== "undefined" && typeof window.electronAPI !== "undefined";
 }
 
 /**
@@ -29,7 +29,7 @@ export function isElectronEnvironment(): boolean {
 export function getElectronAPI(): ElectronAPI {
   if (!isElectronEnvironment()) {
     throw new Error(
-      'Electron API not available. This feature requires running in the Electron desktop application.'
+      "Electron API not available. This feature requires running in the Electron desktop application."
     );
   }
   return window.electronAPI;
@@ -58,5 +58,5 @@ export function requireElectronAPI(feature: string): ElectronAPI {
  * @returns true if the method exists and is callable
  */
 export function hasElectronMethod(method: keyof ElectronAPI): boolean {
-  return isElectronEnvironment() && typeof window.electronAPI[method] === 'function';
+  return isElectronEnvironment() && typeof window.electronAPI[method] === "function";
 }

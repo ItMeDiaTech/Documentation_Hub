@@ -1098,15 +1098,15 @@ Understanding how your UI settings flow to the document processing pipeline help
 
 The paragraph styles you configure in the **Styles Editor** tab directly control how your documents are formatted:
 
-| Style Setting | Affects |
-|---------------|---------|
-| **Normal** style | Body text, table cell content, non-heading paragraphs |
-| **Heading 1-6** styles | Heading paragraphs matching each level |
-| Font family/size | Applied to matching paragraphs and table cells |
-| Bold/Italic/Underline | Applied to runs within matching paragraphs |
-| Alignment | Paragraph alignment (left, center, right, justify) |
-| Spacing Before/After | Space above and below paragraphs |
-| Line Spacing | Space between lines within paragraphs |
+| Style Setting          | Affects                                               |
+| ---------------------- | ----------------------------------------------------- |
+| **Normal** style       | Body text, table cell content, non-heading paragraphs |
+| **Heading 1-6** styles | Heading paragraphs matching each level                |
+| Font family/size       | Applied to matching paragraphs and table cells        |
+| Bold/Italic/Underline  | Applied to runs within matching paragraphs            |
+| Alignment              | Paragraph alignment (left, center, right, justify)    |
+| Spacing Before/After   | Space above and below paragraphs                      |
+| Line Spacing           | Space between lines within paragraphs                 |
 
 **Preserve Options**: The "Lock Bold", "Lock Italic", "Lock Underline", and "Lock Center" buttons in the Styles Editor prevent the processor from overriding existing formatting in your documents. For example, if "Lock Center" is enabled for Normal style, centered text stays centered instead of being changed to the Normal style's alignment.
 
@@ -1114,13 +1114,14 @@ The paragraph styles you configure in the **Styles Editor** tab directly control
 
 The **Table & Image Settings** section controls how tables are formatted:
 
-| Setting | Effect |
-|---------|--------|
+| Setting                   | Effect                                                        |
+| ------------------------- | ------------------------------------------------------------- |
 | **Header2 Shading Color** | Background color for cells in tables under Heading 2 sections |
-| **Other Shading Color** | Background color for shaded cells in other tables |
-| **Image Border Width** | Border thickness (in points) applied around large images |
+| **Other Shading Color**   | Background color for shaded cells in other tables             |
+| **Image Border Width**    | Border thickness (in points) applied around large images      |
 
 **Important Table Behavior**:
+
 - Tables larger than 1x1: Shaded cells are always bold and centered, regardless of style settings
 - Table cell text formatting: Inherits font family/size from the **Normal** paragraph style
 - Table cell spacing: Uses spacing settings from the **Normal** paragraph style
@@ -1130,11 +1131,11 @@ The **Table & Image Settings** section controls how tables are formatted:
 
 The **List Bullets** section controls numbered and bulleted list formatting:
 
-| Setting | Effect |
-|---------|--------|
-| **Enable List Formatting** | Master toggle for list processing |
+| Setting                      | Effect                                                     |
+| ---------------------------- | ---------------------------------------------------------- |
+| **Enable List Formatting**   | Master toggle for list processing                          |
 | **Indentation Levels (1-5)** | Symbol indent, text indent, and bullet character per level |
-| **Spacing Between Items** | Vertical space between list items |
+| **Spacing Between Items**    | Vertical space between list items                          |
 
 ### Processing Options Flow
 

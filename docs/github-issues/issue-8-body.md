@@ -168,11 +168,11 @@ async function validateDocumentIntegrity(zipFile: JSZip): Promise<ValidationResu
   const warnings: string[] = [];
 
   // Load main document and relationships
-  const documentXml = await zipFile.file('word/document.xml')?.async('text');
-  const relsXml = await zipFile.file('word/_rels/document.xml.rels')?.async('text');
+  const documentXml = await zipFile.file("word/document.xml")?.async("text");
+  const relsXml = await zipFile.file("word/_rels/document.xml.rels")?.async("text");
 
   if (!documentXml || !relsXml) {
-    errors.push('Missing required files: document.xml or document.xml.rels');
+    errors.push("Missing required files: document.xml or document.xml.rels");
     return { valid: false, errors, warnings };
   }
 
@@ -192,8 +192,8 @@ async function validateDocumentIntegrity(zipFile: JSZip): Promise<ValidationResu
 
   // Check 2: Validate XML namespace declarations
   const requiredNamespaces = [
-    'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-    'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
   ];
 
   for (const ns of requiredNamespaces) {
@@ -236,7 +236,7 @@ async function processDocumentSafely(filePath: string, operations: Operation[]):
     if (!validation.valid) {
       // Restore from backup
       await fs.copyFile(backupPath, filePath);
-      throw new Error(`Document corruption detected: ${validation.errors.join(', ')}`);
+      throw new Error(`Document corruption detected: ${validation.errors.join(", ")}`);
     }
 
     // Success - remove backup
@@ -261,7 +261,7 @@ Based on OOXML documentation, these are the most frequent causes:
 
 ```typescript
 // Modifies document.xml hyperlink
-hyperlink.setAttribute('r:id', `${originalId}_content`);
+hyperlink.setAttribute("r:id", `${originalId}_content`);
 // But doesn't create new relationship in document.xml.rels!
 ```
 
@@ -270,13 +270,13 @@ hyperlink.setAttribute('r:id', `${originalId}_content`);
 ```typescript
 // 1. Create new relationship
 const newRelId = await addRelationship(relsXml, {
-  type: 'hyperlink',
-  target: originalTarget + '#_content',
-  targetMode: 'External',
+  type: "hyperlink",
+  target: originalTarget + "#_content",
+  targetMode: "External",
 });
 
 // 2. Update hyperlink reference
-hyperlink.setAttribute('r:id', newRelId);
+hyperlink.setAttribute("r:id", newRelId);
 ```
 
 ### Scenario 2: Text Replacement Breaking Structure
@@ -293,10 +293,10 @@ textNode.textContent = newText; // Loses formatting
 
 ```typescript
 // Preserve run structure
-const run = textNode.closest('w:r');
+const run = textNode.closest("w:r");
 const newRun = createRun(newText, {
-  bold: run.querySelector('w:b') !== null,
-  italic: run.querySelector('w:i') !== null,
+  bold: run.querySelector("w:b") !== null,
+  italic: run.querySelector("w:i") !== null,
   // ... copy all formatting
 });
 run.replaceWith(newRun);
@@ -309,7 +309,7 @@ run.replaceWith(newRun);
 **Bad Code:**
 
 ```typescript
-const xml2js = require('xml2js');
+const xml2js = require("xml2js");
 const parser = new xml2js.Parser(); // Default settings strip namespaces!
 ```
 
@@ -341,18 +341,18 @@ const parser = new xml2js.Parser({
 **1. Corruption Detection Tests**
 
 ```typescript
-describe('Document Integrity', () => {
-  it('should detect orphaned hyperlink IDs', async () => {
+describe("Document Integrity", () => {
+  it("should detect orphaned hyperlink IDs", async () => {
     const doc = createDocumentWithOrphanedHyperlink();
     const validation = await validateDocumentIntegrity(doc);
     expect(validation.valid).toBe(false);
-    expect(validation.errors).toContain('Orphaned hyperlink');
+    expect(validation.errors).toContain("Orphaned hyperlink");
   });
 
-  it('should detect missing namespaces', async () => {
+  it("should detect missing namespaces", async () => {
     const doc = createDocumentWithoutNamespaces();
     const validation = await validateDocumentIntegrity(doc);
-    expect(validation.warnings).toContain('Missing namespace declaration');
+    expect(validation.warnings).toContain("Missing namespace declaration");
   });
 });
 ```
@@ -360,10 +360,10 @@ describe('Document Integrity', () => {
 **2. Round-Trip Tests**
 
 ```typescript
-it('should maintain document integrity after processing', async () => {
-  const original = await loadDocument('test.docx');
+it("should maintain document integrity after processing", async () => {
+  const original = await loadDocument("test.docx");
   await processDocument(original, operations);
-  const processed = await loadDocument('test.docx');
+  const processed = await loadDocument("test.docx");
 
   // Document should still open in Word
   const validation = await validateDocumentIntegrity(processed);

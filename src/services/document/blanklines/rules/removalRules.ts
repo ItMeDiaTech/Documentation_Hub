@@ -7,8 +7,16 @@
 
 import { Paragraph, Table } from "docxmlater";
 import type { BlankLineRule, RuleContext } from "./ruleTypes";
-import { isParagraphBlank, getEffectiveLeftIndent, hasNavigationHyperlink } from "../helpers/paragraphChecks";
-import { isSmallImageParagraph, getImageRunFromParagraph, isImageSmall } from "../helpers/imageChecks";
+import {
+  isParagraphBlank,
+  getEffectiveLeftIndent,
+  hasNavigationHyperlink,
+} from "../helpers/paragraphChecks";
+import {
+  isSmallImageParagraph,
+  getImageRunFromParagraph,
+  isImageSmall,
+} from "../helpers/imageChecks";
 import { tableHasNestedContent } from "../helpers/tableGuards";
 
 /**
@@ -95,10 +103,8 @@ export const betweenListItemsRule: BlankLineRule = {
     if (!(ctx.currentElement instanceof Paragraph)) return false;
     if (!isParagraphBlank(ctx.currentElement)) return false;
 
-    const prevIsListItem =
-      ctx.prevElement instanceof Paragraph && !!ctx.prevElement.getNumbering();
-    const nextIsListItem =
-      ctx.nextElement instanceof Paragraph && !!ctx.nextElement.getNumbering();
+    const prevIsListItem = ctx.prevElement instanceof Paragraph && !!ctx.prevElement.getNumbering();
+    const nextIsListItem = ctx.nextElement instanceof Paragraph && !!ctx.nextElement.getNumbering();
 
     return prevIsListItem && nextIsListItem;
   },
@@ -118,8 +124,7 @@ export const listItemToIndentedContentRule: BlankLineRule = {
     if (!(ctx.currentElement instanceof Paragraph)) return false;
     if (!isParagraphBlank(ctx.currentElement)) return false;
 
-    const prevIsListItem =
-      ctx.prevElement instanceof Paragraph && !!ctx.prevElement.getNumbering();
+    const prevIsListItem = ctx.prevElement instanceof Paragraph && !!ctx.prevElement.getNumbering();
     if (!prevIsListItem) return false;
 
     if (ctx.nextElement instanceof Paragraph) {
@@ -252,8 +257,7 @@ export const lastLineInCellRule: BlankLineRule = {
     if (!isParagraphBlank(ctx.currentElement)) return false;
 
     const paraIndex = ctx.cellParaIndex ?? -1;
-    const isLastBlankBeforeEnd =
-      paraIndex >= 0 && paraIndex === ctx.cellParagraphs.length - 1;
+    const isLastBlankBeforeEnd = paraIndex >= 0 && paraIndex === ctx.cellParagraphs.length - 1;
 
     // If this blank is the last paragraph, remove it (unless preceded by nested table)
     if (isLastBlankBeforeEnd && ctx.cellParagraphs.length > 1) {
@@ -345,9 +349,32 @@ export const centeredTextToImageRule: BlankLineRule = {
 };
 
 /**
+ * Remove consecutive blank lines — never allow two or more blanks in a row.
+ * If the previous element is also a blank paragraph, remove this one.
+ */
+export const consecutiveBlanksRule: BlankLineRule = {
+  id: "remove-consecutive-blanks",
+  action: "remove",
+  scope: "both",
+  matches(ctx: RuleContext): boolean {
+    if (!(ctx.currentElement instanceof Paragraph)) return false;
+    if (!isParagraphBlank(ctx.currentElement)) return false;
+
+    // If previous element is also blank, remove this one
+    if (ctx.prevElement instanceof Paragraph && isParagraphBlank(ctx.prevElement)) {
+      return true;
+    }
+
+    return false;
+  },
+};
+
+/**
  * All removal rules in priority order.
+ * consecutiveBlanksRule runs FIRST to collapse doubles before other rules evaluate.
  */
 export const removalRules: BlankLineRule[] = [
+  consecutiveBlanksRule,
   aboveHeading1Rule,
   firstLineOfMultiRowCellRule,
   aboveLargeTableRule,

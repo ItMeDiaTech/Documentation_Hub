@@ -35,24 +35,29 @@ Result: User has a broken session with no documents
 ### Detailed Failure Modes
 
 #### Issue 1: Session Visibility Race Condition (PARTIALLY FIXED)
+
 **Status:** Fix implemented in commit `e9b676d` but user still experiencing issues
 
 **What happens:**
+
 - User creates session via "New Session" button
 - Session is created in database (IndexedDB)
 - Session does NOT appear in left sidebar under "Dashboard"
 - Must navigate away and back to see it
 
 **Expected:**
+
 - Session appears in left sidebar immediately after creation
 - Listed under "Dashboard" section as an active session
 
 **Root Cause (Identified):**
+
 - React state batching vs navigation timing race condition
 - Navigation happens before `activeSessions` state propagates to Sidebar component
 - Fixed with `flushSync()` in commit `e9b676d`, but user reports issue persists
 
 **Possible Reasons Fix Didn't Work:**
+
 1. Build wasn't refreshed after fix
 2. Multiple session creation paths (Dashboard vs Sessions page)
 3. Browser/Electron cache not cleared
@@ -61,9 +66,11 @@ Result: User has a broken session with no documents
 ---
 
 #### Issue 2: Session Loading Failure
+
 **Status:** NEW BUG - Not previously identified
 
 **What happens:**
+
 - Session shows up correctly in "Load Session" dialog
 - User selects session and clicks "Load Session"
 - Loading process "fails" (error unknown - needs console logs)
@@ -71,16 +78,19 @@ Result: User has a broken session with no documents
 - User ends up on session page but session may not be properly loaded into context
 
 **Expected:**
+
 - Select session → Load successfully → Navigate to session page
 - Session fully loaded with all data in context
 - No errors during loading process
 
 **Root Cause (Hypothesis):**
+
 1. `loadSession()` function throwing error but navigation still happens
 2. Error silently caught and navigation proceeds anyway
 3. Session data not properly hydrated from IndexedDB
 
 **Affected Code:**
+
 ```typescript
 // src/contexts/SessionContext.tsx:296-313
 const loadSession = (id: string) => {
@@ -90,10 +100,12 @@ const loadSession = (id: string) => {
     if (activeSessions.find((s) => s.id === id)) {
       // Session is already active, just switch to it
       setCurrentSession(session);
-    } else if (session.status === 'closed') {
+    } else if (session.status === "closed") {
       // CRITICAL FIX: Don't auto-reopen closed sessions
       // User must explicitly reopen via reopenSession() or the Sessions page
-      log.warn(`[loadSession] Attempted to load closed session: ${id}. Use reopenSession() instead.`);
+      log.warn(
+        `[loadSession] Attempted to load closed session: ${id}. Use reopenSession() instead.`
+      );
       return; // EXIT without reopening
     } else {
       // Session exists but not in active list (shouldn't happen, but handle gracefully)
@@ -105,6 +117,7 @@ const loadSession = (id: string) => {
 ```
 
 **Investigation Needed:**
+
 - Console error messages when loading session
 - Check if session status is 'closed' (triggering line 307 exit)
 - Verify `activeSessions` contains newly created session
@@ -112,9 +125,11 @@ const loadSession = (id: string) => {
 ---
 
 #### Issue 3: Document Addition Complete Failure
+
 **Status:** PARTIALLY FIXED - File object issue resolved in commit `4b84d3f`
 
 **What happens:**
+
 - User clicks "Load Files" button
 - Selects .docx file from file system
 - Error occurs (needs console logs)
@@ -122,6 +137,7 @@ const loadSession = (id: string) => {
 - Toast notification: "Some Files Could Not Be Added" or "No Files Added"
 
 **Expected:**
+
 - Select file → File appears in document list as "pending"
 - No errors
 - File path validated and stored
@@ -129,9 +145,11 @@ const loadSession = (id: string) => {
 **Root Causes Identified:**
 
 1. **File Object Immutability (FIXED in `4b84d3f`):**
+
    ```
    TypeError: Cannot set property size of #<Blob> which has only a getter
    ```
+
    - Fixed by creating plain object instead of modifying native File object
 
 2. **Path Security False Positives (FIXED in `050c4a1`):**
@@ -139,6 +157,7 @@ const loadSession = (id: string) => {
    - Fixed by improving pattern matching to only catch actual traversal attempts
 
 **Current Status:**
+
 - Both known causes have been fixed
 - User still reports document addition failing
 - Suggests either:
@@ -147,6 +166,7 @@ const loadSession = (id: string) => {
   c) Different error occurring now
 
 **Investigation Needed:**
+
 - Specific error in console when adding document
 - Check if path security validation is passing
 - Verify File object construction works
@@ -157,6 +177,7 @@ const loadSession = (id: string) => {
 ## Reproduction Steps
 
 ### Prerequisites
+
 - Windows OS
 - Electron app version 1.0.40
 - No existing sessions (fresh state recommended)
@@ -164,6 +185,7 @@ const loadSession = (id: string) => {
 ### Step-by-Step Reproduction
 
 **Test 1: Session Creation & Visibility**
+
 ```
 1. Open application
 2. Click "New Session" button (Dashboard or Sessions page)
@@ -178,6 +200,7 @@ const loadSession = (id: string) => {
 ---
 
 **Test 2: Session Loading**
+
 ```
 1. Create session (as above)
 2. Navigate away (go to Settings or Dashboard)
@@ -193,6 +216,7 @@ const loadSession = (id: string) => {
 ---
 
 **Test 3: Document Addition**
+
 ```
 1. Create session (or load existing)
 2. Navigate to session page (/session/:id)
@@ -212,6 +236,7 @@ const loadSession = (id: string) => {
 ### Known Errors (From Previous Session)
 
 **Error 1: File Object Immutability** (SHOULD BE FIXED)
+
 ```
 [error] [File Select] Failed to access file at
 "c:\Users\DiaTech\Documents\Test\TestDocument_V3 - Copy (30) - Copy.docx":
@@ -221,6 +246,7 @@ TypeError: Cannot set property size of #<Blob> which has only a getter
 ```
 
 **Error 2: Logger Not Initialized** (UNRELATED - Electron main process)
+
 ```
 [error] electron-log: logger isn't initialized in the main process
 ```
@@ -228,6 +254,7 @@ TypeError: Cannot set property size of #<Blob> which has only a getter
 ### Errors Needed
 
 **Please provide from latest build:**
+
 1. Console output when creating session
 2. Console output when loading session
 3. Console output when adding document
@@ -240,15 +267,16 @@ TypeError: Cannot set property size of #<Blob> which has only a getter
 
 ### Recent Fixes Applied
 
-| Commit | Issue Fixed | Status |
-|--------|-------------|--------|
+| Commit    | Issue Fixed                                   | Status         |
+| --------- | --------------------------------------------- | -------------- |
 | `e9b676d` | Session visibility race condition (flushSync) | ✅ Implemented |
-| `4b84d3f` | File object immutability error | ✅ Implemented |
-| `6b44a06` | Session persistence debounce (beforeunload) | ✅ Implemented |
-| `050c4a1` | Path security false positives | ✅ Implemented |
-| `f64c4bb` | GlobalStats connection pool + SplashScreen | ✅ Implemented |
+| `4b84d3f` | File object immutability error                | ✅ Implemented |
+| `6b44a06` | Session persistence debounce (beforeunload)   | ✅ Implemented |
+| `050c4a1` | Path security false positives                 | ✅ Implemented |
+| `f64c4bb` | GlobalStats connection pool + SplashScreen    | ✅ Implemented |
 
 **All fixes compiled and built successfully:**
+
 - TypeScript: ✅ PASSING
 - Build: ✅ SUCCESSFUL
 - No compilation errors
@@ -256,6 +284,7 @@ TypeError: Cannot set property size of #<Blob> which has only a getter
 ### Architecture Overview
 
 **Session Creation Flow:**
+
 ```
 SessionManager.tsx
   ↓ flushSync wrapper
@@ -268,6 +297,7 @@ Displays session in nav
 ```
 
 **Document Addition Flow:**
+
 ```
 CurrentSession.tsx:handleFileSelect()
   ↓ Electron file dialog
@@ -283,6 +313,7 @@ UI updates with new document
 ### Affected Components
 
 **Session Management:**
+
 - `src/components/sessions/SessionManager.tsx` (creation)
 - `src/contexts/SessionContext.tsx` (core logic)
 - `src/components/layout/Sidebar.tsx` (display)
@@ -290,12 +321,14 @@ UI updates with new document
 - `src/pages/Dashboard.tsx` (dashboard view)
 
 **Document Management:**
+
 - `src/pages/CurrentSession.tsx` (file selection)
 - `src/contexts/SessionContext.tsx` (addDocuments)
 - `src/utils/pathSecurity.ts` (validation)
 - `src/utils/indexedDB.ts` (persistence)
 
 **Persistence:**
+
 - `src/utils/indexedDB.ts` (connection pool, save/load)
 - IndexedDB database: `DocHub_Sessions`
 - localStorage: `activeSessions` key
@@ -305,11 +338,14 @@ UI updates with new document
 ## Hypothesis: Why Fixes Aren't Working
 
 ### Theory 1: Build Not Applied
+
 **Symptoms Match:**
+
 - User still seeing fixed bugs (File object error, path security)
 - Suggests running old build without recent fixes
 
 **Verification:**
+
 ```bash
 # Check current build hash
 npm run build
@@ -323,20 +359,25 @@ ls -l dist/
 ---
 
 ### Theory 2: Multiple Code Paths
+
 **Symptoms Match:**
+
 - Some session creation works, some doesn't
 - Suggests multiple entry points with inconsistent fixes
 
 **Known Paths:**
+
 1. Dashboard → "New Session" button
 2. Sessions page → "New Session" button
 3. Sidebar → "Load Session" option
 
 **Verification:**
+
 - Check if `flushSync` applied to ALL session creation paths
 - Verify both Dashboard and Sessions page use same SessionManager
 
 **Code Review Needed:**
+
 ```typescript
 // Dashboard.tsx - uses SessionManager ✓
 <SessionManager
@@ -356,25 +397,30 @@ ls -l dist/
 ---
 
 ### Theory 3: State Synchronization Issue
+
 **Symptoms Match:**
+
 - Session exists in DB but not in UI
 - Loading "fails" but navigation works
 - Suggests state not synchronized with IndexedDB
 
 **Potential Causes:**
+
 1. `sessions` state not updated after IndexedDB save
 2. `activeSessions` not including newly created session
 3. Re-render not triggered after state update
 
 **Verification Needed:**
+
 ```typescript
 // Add debug logging to SessionContext
-console.log('[createSession] sessions:', sessions.length);
-console.log('[createSession] activeSessions:', activeSessions.length);
-console.log('[createSession] new session:', newSession);
+console.log("[createSession] sessions:", sessions.length);
+console.log("[createSession] activeSessions:", activeSessions.length);
+console.log("[createSession] new session:", newSession);
 ```
 
 **Investigation:**
+
 - Check if `sessions` state includes new session
 - Check if `activeSessions` state includes new session
 - Verify IndexedDB has the session record
@@ -382,17 +428,21 @@ console.log('[createSession] new session:', newSession);
 ---
 
 ### Theory 4: IndexedDB Race Condition
+
 **Symptoms Match:**
+
 - Immediate persistence but state not synced
 - Some operations work, others don't
 - Intermittent behavior
 
 **Known Issues:**
+
 - `beforeunload` handler tries to save (commit `6b44a06`)
 - `flushSync` forces immediate state update (commit `e9b676d`)
 - Debounced persistence (3 second timer)
 
 **Possible Race:**
+
 ```
 T+0ms:   createSession() + immediate save
 T+0ms:   flushSync state update
@@ -402,6 +452,7 @@ T+3000ms: Debounced save fires (might overwrite?)
 ```
 
 **Investigation:**
+
 - Check if immediate save conflicts with debounced save
 - Verify session appears after 3 seconds
 - Check IndexedDB directly (DevTools)
@@ -427,6 +478,7 @@ npm run electron:dev
 ### Priority 2: Gather Diagnostic Information
 
 **Console Logs Needed:**
+
 1. Open DevTools (F12)
 2. Clear console
 3. Create session → Copy ALL console output
@@ -435,12 +487,14 @@ npm run electron:dev
 6. Screenshot any error toasts
 
 **IndexedDB Inspection:**
+
 1. DevTools → Application → IndexedDB
 2. Expand `DocHub_Sessions`
 3. Check `sessions` object store
 4. Screenshot session records
 
 **localStorage Inspection:**
+
 1. DevTools → Application → localStorage
 2. Check `activeSessions` key
 3. Copy value
@@ -448,6 +502,7 @@ npm run electron:dev
 ### Priority 3: Code Verification
 
 **Files to Check:**
+
 ```typescript
 // Verify flushSync is present
 src/components/sessions/SessionManager.tsx:2
@@ -470,6 +525,7 @@ src/utils/pathSecurity.ts:28-63
 ## Acceptance Criteria
 
 ### Session Creation
+
 - [ ] Click "New Session" → Enter name → Click OK
 - [ ] Session appears in left sidebar under "Dashboard" **immediately**
 - [ ] Session shows in Sessions page list
@@ -477,6 +533,7 @@ src/utils/pathSecurity.ts:28-63
 - [ ] Session saved to IndexedDB
 
 ### Session Loading
+
 - [ ] Click "Load Session" → Select session → Click "Load Session"
 - [ ] Session loads successfully without errors
 - [ ] Navigation to session page occurs
@@ -484,6 +541,7 @@ src/utils/pathSecurity.ts:28-63
 - [ ] Session marked as active in `activeSessions`
 
 ### Document Addition
+
 - [ ] In session page → Click "Load Files" → Select .docx → Click Open
 - [ ] Document appears in document list with status "pending"
 - [ ] File path stored correctly
@@ -498,6 +556,7 @@ src/utils/pathSecurity.ts:28-63
 ### Manual Test Suite
 
 **Test Case 1: Fresh Session Creation**
+
 ```
 1. Clear all data (IndexedDB, localStorage)
 2. Restart app
@@ -511,6 +570,7 @@ PASS/FAIL: ___
 ```
 
 **Test Case 2: Document Addition**
+
 ```
 1. In session page (from Test Case 1)
 2. Click "Load Files"
@@ -523,6 +583,7 @@ PASS/FAIL: ___
 ```
 
 **Test Case 3: Session Loading**
+
 ```
 1. Navigate to Dashboard
 2. Click "Load Session"
@@ -535,6 +596,7 @@ PASS/FAIL: ___
 ```
 
 **Test Case 4: Multiple Sessions**
+
 ```
 1. Create 3 sessions: "Alpha", "Beta", "Gamma"
 2. Verify all 3 appear in sidebar
@@ -549,20 +611,20 @@ PASS/FAIL: ___
 ### Automated Test Scenarios (Future)
 
 ```typescript
-describe('Session Lifecycle', () => {
-  it('should create session and show in sidebar immediately', async () => {
+describe("Session Lifecycle", () => {
+  it("should create session and show in sidebar immediately", async () => {
     // Test implementation
   });
 
-  it('should load session without errors', async () => {
+  it("should load session without errors", async () => {
     // Test implementation
   });
 
-  it('should add documents to session successfully', async () => {
+  it("should add documents to session successfully", async () => {
     // Test implementation
   });
 
-  it('should persist sessions across app restarts', async () => {
+  it("should persist sessions across app restarts", async () => {
     // Test implementation
   });
 });
@@ -573,6 +635,7 @@ describe('Session Lifecycle', () => {
 ## Related Issues
 
 ### Potentially Connected
+
 - **Issue #2:** Context Provider cascade blocking (3-5s init delay)
   - May cause timing issues with session availability
   - SplashScreen implemented but context loading still sequential
@@ -586,6 +649,7 @@ describe('Session Lifecycle', () => {
   - May conflict with immediate session creation saves
 
 ### Dependencies
+
 - All fixes require build refresh to take effect
 - Browser/Electron cache may need clearing
 - IndexedDB may have stale data from old builds
@@ -597,12 +661,14 @@ describe('Session Lifecycle', () => {
 ### Solution 1: Verification & Rebuild (1-2 hours)
 
 **Immediate:**
+
 1. Verify all fixes are in codebase (git log)
 2. Full rebuild: `npm run build`
 3. Clear Electron cache and IndexedDB
 4. Test with fresh data
 
 **If Still Failing:**
+
 - Gather new console logs
 - Inspect IndexedDB directly
 - Add extensive debug logging
@@ -616,51 +682,53 @@ describe('Session Lifecycle', () => {
 ```typescript
 // SessionManager.tsx
 const handleCreateSession = () => {
-  console.log('[SessionManager] Creating session:', sessionName);
+  console.log("[SessionManager] Creating session:", sessionName);
 
   let newSession!: ReturnType<typeof createSession>;
   flushSync(() => {
-    console.log('[SessionManager] Inside flushSync');
+    console.log("[SessionManager] Inside flushSync");
     newSession = createSession(sessionName.trim());
-    console.log('[SessionManager] Session created:', newSession);
+    console.log("[SessionManager] Session created:", newSession);
   });
 
-  console.log('[SessionManager] About to navigate to:', newSession.id);
+  console.log("[SessionManager] About to navigate to:", newSession.id);
   onSessionCreated(newSession.id);
-  console.log('[SessionManager] Navigation triggered');
+  console.log("[SessionManager] Navigation triggered");
   onClose();
-  console.log('[SessionManager] Dialog closed');
+  console.log("[SessionManager] Dialog closed");
 };
 
 // SessionContext.tsx
 const createSession = (name: string): Session => {
-  console.log('[SessionContext] createSession called with name:', name);
+  console.log("[SessionContext] createSession called with name:", name);
 
-  const newSession: Session = { /* ... */ };
-  console.log('[SessionContext] New session object:', newSession);
+  const newSession: Session = {
+    /* ... */
+  };
+  console.log("[SessionContext] New session object:", newSession);
 
-  console.log('[SessionContext] Current sessions:', sessions.length);
-  console.log('[SessionContext] Current activeSessions:', activeSessions.length);
+  console.log("[SessionContext] Current sessions:", sessions.length);
+  console.log("[SessionContext] Current activeSessions:", activeSessions.length);
 
   setSessions((prev) => {
-    console.log('[SessionContext] setSessions - prev length:', prev.length);
+    console.log("[SessionContext] setSessions - prev length:", prev.length);
     return [...prev, newSession];
   });
 
   setActiveSessions((prev) => {
-    console.log('[SessionContext] setActiveSessions - prev length:', prev.length);
+    console.log("[SessionContext] setActiveSessions - prev length:", prev.length);
     return [...prev, newSession];
   });
 
   setCurrentSession(newSession);
-  console.log('[SessionContext] currentSession set');
+  console.log("[SessionContext] currentSession set");
 
   // Immediate save
   saveSessionToDB(serializedSession).catch((error) => {
-    console.error('[SessionContext] Immediate save failed:', error);
+    console.error("[SessionContext] Immediate save failed:", error);
   });
 
-  console.log('[SessionContext] createSession complete');
+  console.log("[SessionContext] createSession complete");
   return newSession;
 };
 ```
@@ -685,13 +753,13 @@ const handleCreateSession = async () => {
     });
 
     // Wait for state to propagate
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     onSessionCreated(newSession.id);
     onClose();
   } catch (error) {
-    console.error('Session creation failed:', error);
-    toast.error('Failed to create session');
+    console.error("Session creation failed:", error);
+    toast.error("Failed to create session");
   } finally {
     setIsCreating(false);
   }
@@ -699,6 +767,7 @@ const handleCreateSession = async () => {
 ```
 
 **Add Visual Feedback:**
+
 - Spinner while creating
 - Toast notification on success
 - Error toast on failure
@@ -713,9 +782,9 @@ const handleCreateSession = async () => {
 ```typescript
 // Add useEffect to monitor state changes
 useEffect(() => {
-  console.log('[Sidebar] activeSessions changed:', activeSessions.length);
-  activeSessions.forEach(s => {
-    console.log('  -', s.id, s.name);
+  console.log("[Sidebar] activeSessions changed:", activeSessions.length);
+  activeSessions.forEach((s) => {
+    console.log("  -", s.id, s.name);
   });
 }, [activeSessions]);
 
@@ -727,11 +796,11 @@ const handleCreateSession = () => {
   });
 
   // Verify session in state
-  const sessionExists = activeSessions.some(s => s.id === newSession.id);
-  console.log('[Verify] Session exists in activeSessions:', sessionExists);
+  const sessionExists = activeSessions.some((s) => s.id === newSession.id);
+  console.log("[Verify] Session exists in activeSessions:", sessionExists);
 
   if (!sessionExists) {
-    console.error('[ERROR] Session not in activeSessions after flushSync!');
+    console.error("[ERROR] Session not in activeSessions after flushSync!");
     // Force manual addition as fallback
   }
 
@@ -745,22 +814,26 @@ const handleCreateSession = () => {
 ## Estimated Effort
 
 **Investigation:** 2-4 hours
+
 - Reproduce with diagnostics
 - Gather console logs
 - Inspect IndexedDB
 - Verify build state
 
 **Implementation:** 1-2 hours
+
 - Apply any additional fixes needed
 - Add enhanced logging
 - Implement fallback UI
 
 **Testing:** 1-2 hours
+
 - Manual test all scenarios
 - Verify persistence
 - Test edge cases
 
 **Documentation:** 30 minutes
+
 - Update GitHub issue
 - Document solution
 - Create test plan
@@ -772,6 +845,7 @@ const handleCreateSession = () => {
 ## Priority Justification
 
 **P0 - Blocking** because:
+
 1. **Core Functionality Broken:** Cannot create usable sessions
 2. **Complete Workflow Failure:** Creation → Loading → Documents all fail
 3. **No Workaround:** User cannot accomplish primary task
@@ -779,12 +853,14 @@ const handleCreateSession = () => {
 5. **User Impact:** 100% of session creation attempts fail
 
 **This blocks:**
+
 - All document processing workflows
 - Application primary use case
 - User productivity
 - Further testing of other features
 
 **Recommendation:**
+
 - Fix immediately (drop everything else)
 - Gather diagnostics ASAP
 - Deploy hotfix within 24 hours

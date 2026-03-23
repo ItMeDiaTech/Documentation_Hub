@@ -1,5 +1,5 @@
-import { cn } from '@/utils/cn';
-import { motion } from 'framer-motion';
+import { cn } from "@/utils/cn";
+import { motion } from "framer-motion";
 import {
   Activity,
   AlertCircle,
@@ -9,14 +9,14 @@ import {
   FileText,
   Link,
   Shield,
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface ProcessingStep {
   id: string;
   name: string;
   description: string;
-  status: 'pending' | 'processing' | 'completed' | 'error' | 'skipped';
+  status: "pending" | "processing" | "completed" | "error" | "skipped";
   progress?: number;
   duration?: number;
   error?: string;
@@ -43,38 +43,38 @@ interface ProcessingProgressProps {
 
 const defaultSteps: ProcessingStep[] = [
   {
-    id: 'backup',
-    name: 'Creating Backup',
-    description: 'Saving original document',
-    status: 'pending',
+    id: "backup",
+    name: "Creating Backup",
+    description: "Saving original document",
+    status: "pending",
     icon: <Database className="w-4 h-4" />,
   },
   {
-    id: 'validation',
-    name: 'Validating Document',
-    description: 'Checking document structure',
-    status: 'pending',
+    id: "validation",
+    name: "Validating Document",
+    description: "Checking document structure",
+    status: "pending",
     icon: <Shield className="w-4 h-4" />,
   },
   {
-    id: 'scanning',
-    name: 'Scanning Hyperlinks',
-    description: 'Finding all hyperlinks',
-    status: 'pending',
+    id: "scanning",
+    name: "Scanning Hyperlinks",
+    description: "Finding all hyperlinks",
+    status: "pending",
     icon: <Activity className="w-4 h-4" />,
   },
   {
-    id: 'processing',
-    name: 'Processing Hyperlinks',
-    description: 'Applying modifications',
-    status: 'pending',
+    id: "processing",
+    name: "Processing Hyperlinks",
+    description: "Applying modifications",
+    status: "pending",
     icon: <Link className="w-4 h-4" />,
   },
   {
-    id: 'saving',
-    name: 'Saving Document',
-    description: 'Writing changes to file',
-    status: 'pending',
+    id: "saving",
+    name: "Saving Document",
+    description: "Writing changes to file",
+    status: "pending",
     icon: <FileText className="w-4 h-4" />,
   },
 ];
@@ -112,28 +112,28 @@ export function ProcessingProgress({
   };
 
   const getStepStatus = (step: ProcessingStep) => {
-    if (currentStep === step.id) return 'processing';
+    if (currentStep === step.id) return "processing";
     const currentIndex = steps.findIndex((s) => s.id === currentStep);
     const stepIndex = steps.findIndex((s) => s.id === step.id);
-    if (currentIndex > stepIndex) return 'completed';
+    if (currentIndex > stepIndex) return "completed";
     return step.status;
   };
 
-  const getStepIcon = (status: ProcessingStep['status']) => {
+  const getStepIcon = (status: ProcessingStep["status"]) => {
     switch (status) {
-      case 'completed':
+      case "completed":
         return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'error':
+      case "error":
         return <AlertCircle className="w-5 h-5 text-red-500" />;
-      case 'processing':
+      case "processing":
         return (
           <motion.div
             animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
             className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full"
           />
         );
-      case 'skipped':
+      case "skipped":
         return <div className="w-5 h-5 rounded-full bg-muted" />;
       default:
         return <Clock className="w-5 h-5 text-muted-foreground" />;
@@ -141,7 +141,7 @@ export function ProcessingProgress({
   };
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn("space-y-6", className)}>
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -169,15 +169,15 @@ export function ProcessingProgress({
         <div className="relative h-3 bg-muted rounded-full overflow-hidden">
           <motion.div
             className="absolute inset-y-0 left-0 bg-linear-to-r from-primary via-primary to-primary/80"
-            initial={{ width: '0%' }}
+            initial={{ width: "0%" }}
             animate={{ width: `${animatedProgress}%` }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
           >
             {/* Shimmer effect */}
             <motion.div
               className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent"
-              animate={{ x: ['0%', '200%'] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+              animate={{ x: ["0%", "200%"] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
             />
           </motion.div>
         </div>
@@ -196,10 +196,10 @@ export function ProcessingProgress({
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.1 }}
               className={cn(
-                'flex items-start gap-3 p-3 rounded-lg transition-all',
-                isActive && 'bg-primary/5 border border-primary/20',
-                status === 'completed' && 'opacity-70',
-                status === 'error' && 'bg-destructive/5 border border-destructive/20'
+                "flex items-start gap-3 p-3 rounded-lg transition-all",
+                isActive && "bg-primary/5 border border-primary/20",
+                status === "completed" && "opacity-70",
+                status === "error" && "bg-destructive/5 border border-destructive/20"
               )}
             >
               <div className="mt-0.5">{getStepIcon(status)}</div>
@@ -225,7 +225,7 @@ export function ProcessingProgress({
                     <div className="h-1 bg-muted rounded-full overflow-hidden">
                       <motion.div
                         className="h-full bg-primary"
-                        initial={{ width: '0%' }}
+                        initial={{ width: "0%" }}
                         animate={{ width: `${step.progress}%` }}
                         transition={{ duration: 0.3 }}
                       />
@@ -236,7 +236,7 @@ export function ProcessingProgress({
 
               <div className="flex items-center gap-2 text-muted-foreground">
                 {step.icon}
-                {status === 'completed' && step.duration && (
+                {status === "completed" && step.duration && (
                   <span className="text-xs">{formatTime(step.duration)}</span>
                 )}
               </div>
@@ -277,7 +277,7 @@ export function ProcessingProgress({
         </div>
         {statistics?.warnings !== undefined && statistics.warnings > 0 && (
           <span className="text-yellow-500">
-            {statistics.warnings} warning{statistics.warnings !== 1 ? 's' : ''}
+            {statistics.warnings} warning{statistics.warnings !== 1 ? "s" : ""}
           </span>
         )}
       </div>
@@ -292,7 +292,7 @@ export function ProcessingProgress({
           transition={{
             duration: 20,
             repeat: Infinity,
-            ease: 'linear',
+            ease: "linear",
           }}
         >
           <div className="w-full h-full bg-linear-to-r from-primary to-transparent" />

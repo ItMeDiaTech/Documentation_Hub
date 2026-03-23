@@ -55,9 +55,9 @@ Here's a production-ready implementation that handles your Zscaler/corporate net
 
 ```typescript
 // updater.ts
-import { NsisUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
-import { app, session, BrowserWindow } from 'electron';
-import log from 'electron-log';
+import { NsisUpdater, UpdateInfo, ProgressInfo } from "electron-updater";
+import { app, session, BrowserWindow } from "electron";
+import log from "electron-log";
 
 export class AutoUpdateManager {
   private autoUpdater: NsisUpdater;
@@ -65,12 +65,12 @@ export class AutoUpdateManager {
 
   constructor(mainWindow?: BrowserWindow) {
     this.mainWindow = mainWindow || null;
-    
+
     // Use NsisUpdater directly for custom configuration
     this.autoUpdater = new NsisUpdater({
-      provider: 'github',
-      owner: 'your-username',
-      repo: 'your-repo'
+      provider: "github",
+      owner: "your-username",
+      repo: "your-repo",
     });
 
     this.configureUpdater();
@@ -81,13 +81,13 @@ export class AutoUpdateManager {
   private configureUpdater(): void {
     // Attach logger for debugging
     this.autoUpdater.logger = log;
-    log.transports.file.level = 'debug';
+    log.transports.file.level = "debug";
 
     // Core configuration
-    this.autoUpdater.autoDownload = true;           // Auto-download when found
-    this.autoUpdater.autoInstallOnAppQuit = true;   // Install on quit as fallback
+    this.autoUpdater.autoDownload = true; // Auto-download when found
+    this.autoUpdater.autoInstallOnAppQuit = true; // Install on quit as fallback
     this.autoUpdater.autoRunAppAfterInstall = true; // Restart after install
-    
+
     // Keep differential downloads enabled (default)
     this.autoUpdater.disableDifferentialDownload = false;
   }
@@ -96,71 +96,71 @@ export class AutoUpdateManager {
     // Handle Zscaler/corporate proxy certificate interception
     session.defaultSession.setCertificateVerifyProc((request, callback) => {
       const { hostname, certificate, verificationResult } = request;
-      
-      log.debug('Certificate verification:', {
+
+      log.debug("Certificate verification:", {
         hostname,
         issuer: certificate.issuerName,
-        result: verificationResult
+        result: verificationResult,
       });
 
       // Accept known corporate CA certificates (Zscaler, etc.)
-      const trustedIssuers = ['Zscaler', 'YourCorpCA'];
-      const isTrustedCorporate = trustedIssuers.some(
-        issuer => certificate.issuerName.includes(issuer)
+      const trustedIssuers = ["Zscaler", "YourCorpCA"];
+      const isTrustedCorporate = trustedIssuers.some((issuer) =>
+        certificate.issuerName.includes(issuer)
       );
 
-      if (verificationResult === 'net::OK' || isTrustedCorporate) {
+      if (verificationResult === "net::OK" || isTrustedCorporate) {
         callback(0); // Accept
       } else {
-        log.warn('Rejecting untrusted certificate:', certificate.issuerName);
+        log.warn("Rejecting untrusted certificate:", certificate.issuerName);
         callback(-2); // Reject
       }
     });
   }
 
   private setupEventHandlers(): void {
-    this.autoUpdater.on('checking-for-update', () => {
-      log.info('Checking for update...');
-      this.sendStatusToRenderer('checking');
+    this.autoUpdater.on("checking-for-update", () => {
+      log.info("Checking for update...");
+      this.sendStatusToRenderer("checking");
     });
 
-    this.autoUpdater.on('update-available', (info: UpdateInfo) => {
+    this.autoUpdater.on("update-available", (info: UpdateInfo) => {
       log.info(`Update available: ${info.version}`);
-      this.sendStatusToRenderer('available', info);
+      this.sendStatusToRenderer("available", info);
     });
 
-    this.autoUpdater.on('update-not-available', (info: UpdateInfo) => {
-      log.info('Application is up to date');
-      this.sendStatusToRenderer('not-available', info);
+    this.autoUpdater.on("update-not-available", (info: UpdateInfo) => {
+      log.info("Application is up to date");
+      this.sendStatusToRenderer("not-available", info);
     });
 
-    this.autoUpdater.on('download-progress', (progress: ProgressInfo) => {
+    this.autoUpdater.on("download-progress", (progress: ProgressInfo) => {
       const message = `Downloaded ${progress.percent.toFixed(1)}% (${this.formatBytes(progress.transferred)}/${this.formatBytes(progress.total)})`;
       log.info(message);
-      this.sendStatusToRenderer('downloading', progress);
+      this.sendStatusToRenderer("downloading", progress);
     });
 
-    this.autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
+    this.autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
       log.info(`Update downloaded: ${info.version}`);
-      this.sendStatusToRenderer('downloaded', info);
-      
+      this.sendStatusToRenderer("downloaded", info);
+
       // Trigger silent automatic restart
       this.installAndRestart();
     });
 
-    this.autoUpdater.on('error', (error: Error) => {
-      log.error('Auto-updater error:', error);
-      this.sendStatusToRenderer('error', { message: error.message });
+    this.autoUpdater.on("error", (error: Error) => {
+      log.error("Auto-updater error:", error);
+      this.sendStatusToRenderer("error", { message: error.message });
     });
   }
 
   private installAndRestart(): void {
-    log.info('Installing update and restarting...');
-    
+    log.info("Installing update and restarting...");
+
     setImmediate(() => {
       // Remove listeners that might prevent quit
-      app.removeAllListeners('window-all-closed');
-      
+      app.removeAllListeners("window-all-closed");
+
       // quitAndInstall(isSilent, isForceRunAfter)
       // isSilent=true: No installer UI shown
       // isForceRunAfter=true: App restarts after silent install
@@ -170,7 +170,7 @@ export class AutoUpdateManager {
 
   private sendStatusToRenderer(status: string, data?: any): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('update-status', { status, data });
+      this.mainWindow.webContents.send("update-status", { status, data });
     }
   }
 
@@ -181,15 +181,15 @@ export class AutoUpdateManager {
 
   public async checkForUpdates(): Promise<void> {
     // Skip check on first run (Squirrel issue)
-    if (process.argv.includes('--squirrel-firstrun')) {
-      log.info('Skipping update check on first run');
+    if (process.argv.includes("--squirrel-firstrun")) {
+      log.info("Skipping update check on first run");
       return;
     }
 
     try {
       await this.autoUpdater.checkForUpdates();
     } catch (error) {
-      log.error('Update check failed:', error);
+      log.error("Update check failed:", error);
     }
   }
 
@@ -204,8 +204,8 @@ export class AutoUpdateManager {
 
 ```typescript
 // main.ts
-import { app, BrowserWindow } from 'electron';
-import { AutoUpdateManager } from './updater';
+import { app, BrowserWindow } from "electron";
+import { AutoUpdateManager } from "./updater";
 
 let mainWindow: BrowserWindow | null = null;
 let updateManager: AutoUpdateManager;
@@ -217,13 +217,13 @@ app.whenReady().then(() => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
-    }
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
 
   // Initialize updater after window is ready
   updateManager = new AutoUpdateManager(mainWindow);
-  
+
   // Delay initial check to avoid startup conflicts
   setTimeout(() => {
     updateManager.checkForUpdates();
@@ -248,31 +248,35 @@ Set up a simple local update server:
 
 ```javascript
 // local-server.js
-const express = require('express');
-const path = require('path');
+const express = require("express");
+const path = require("path");
 const app = express();
 
 // Enable range requests for differential downloads
-app.use('/updates', express.static(path.join(__dirname, 'dist'), {
-  acceptRanges: true
-}));
+app.use(
+  "/updates",
+  express.static(path.join(__dirname, "dist"), {
+    acceptRanges: true,
+  })
+);
 
-app.listen(8080, () => console.log('Update server: http://localhost:8080'));
+app.listen(8080, () => console.log("Update server: http://localhost:8080"));
 ```
 
 Modify your updater to use the dev config during development:
 
 ```typescript
-import path from 'path';
+import path from "path";
 
 // In your updater constructor, add:
-if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+if (process.env.NODE_ENV === "development" || !app.isPackaged) {
   this.autoUpdater.forceDevUpdateConfig = true;
-  this.autoUpdater.updateConfigPath = path.join(__dirname, '../dev-app-update.yml');
+  this.autoUpdater.updateConfigPath = path.join(__dirname, "../dev-app-update.yml");
 }
 ```
 
 **Testing workflow:**
+
 1. Build version 1.0.0: `npm run build`
 2. Copy dist files to your server directory
 3. Install and run version 1.0.0
@@ -291,6 +295,7 @@ Enable debug logging and look for these key log entries that confirm delta updat
 ```
 
 If you see **"Cannot download differentially, fallback to full download"**, check that:
+
 - Both `.blockmap` files are accessible (current and new version)
 - Your server supports HTTP Range requests
 - The SHA512 checksums in `latest.yml` match the actual files

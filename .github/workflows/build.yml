@@ -3,13 +3,13 @@ name: Build & Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run (skip publish)'
+        description: "Dry run (skip publish)"
         required: false
-        default: 'false'
+        default: "false"
         type: boolean
 
 jobs:

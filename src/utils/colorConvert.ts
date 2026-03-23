@@ -1,21 +1,21 @@
-import logger from './logger';
+import logger from "./logger";
 
 // Convert hex color to HSL format for CSS variables
 export function hexToHSL(hex: string): string {
   try {
     // Validate input
-    if (!hex || typeof hex !== 'string') {
-      logger.error('[ColorConvert] Invalid hex color input:', hex);
-      return '0 0% 50%'; // Default to medium gray
+    if (!hex || typeof hex !== "string") {
+      logger.error("[ColorConvert] Invalid hex color input:", hex);
+      return "0 0% 50%"; // Default to medium gray
     }
 
     // Remove the hash if present
-    hex = hex.replace(/^#/, '');
+    hex = hex.replace(/^#/, "");
 
     // Validate hex format (must be 6 characters of 0-9, A-F)
     if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
-      logger.error('[ColorConvert] Invalid hex format:', hex);
-      return '0 0% 50%'; // Default to medium gray
+      logger.error("[ColorConvert] Invalid hex format:", hex);
+      return "0 0% 50%"; // Default to medium gray
     }
 
     // Parse the hex values
@@ -25,8 +25,8 @@ export function hexToHSL(hex: string): string {
 
     // Validate parsed values
     if (isNaN(r) || isNaN(g) || isNaN(b)) {
-      logger.error('[ColorConvert] Failed to parse hex values:', hex);
-      return '0 0% 50%';
+      logger.error("[ColorConvert] Failed to parse hex values:", hex);
+      return "0 0% 50%";
     }
 
     const max = Math.max(r, g, b);
@@ -59,21 +59,21 @@ export function hexToHSL(hex: string): string {
 
     // Validate final values
     if (isNaN(hDegrees) || isNaN(sPercent) || isNaN(lPercent)) {
-      logger.error('[ColorConvert] Invalid HSL values calculated from:', hex);
-      return '0 0% 50%';
+      logger.error("[ColorConvert] Invalid HSL values calculated from:", hex);
+      return "0 0% 50%";
     }
 
     // Return in Tailwind CSS variable format
     return `${hDegrees} ${sPercent}% ${lPercent}%`;
   } catch (error) {
-    logger.error('[ColorConvert] Unexpected error in hexToHSL:', error, 'Input:', hex);
-    return '0 0% 50%'; // Safe fallback
+    logger.error("[ColorConvert] Unexpected error in hexToHSL:", error, "Input:", hex);
+    return "0 0% 50%"; // Safe fallback
   }
 }
 
 // Convert hex to RGB format
 export function hexToRGB(hex: string): string {
-  hex = hex.replace(/^#/, '');
+  hex = hex.replace(/^#/, "");
 
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
@@ -90,17 +90,17 @@ export function hexToRGB(hex: string): string {
 export function calculateLuminance(hex: string): number {
   try {
     // Validate input
-    if (!hex || typeof hex !== 'string') {
-      logger.error('[ColorConvert] Invalid hex input for luminance:', hex);
+    if (!hex || typeof hex !== "string") {
+      logger.error("[ColorConvert] Invalid hex input for luminance:", hex);
       return 0.5; // Default to medium luminance
     }
 
     // Remove hash if present
-    hex = hex.replace(/^#/, '');
+    hex = hex.replace(/^#/, "");
 
     // Validate hex format
     if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
-      logger.error('[ColorConvert] Invalid hex format for luminance:', hex);
+      logger.error("[ColorConvert] Invalid hex format for luminance:", hex);
       return 0.5;
     }
 
@@ -111,7 +111,7 @@ export function calculateLuminance(hex: string): number {
 
     // Validate parsed values
     if (isNaN(r) || isNaN(g) || isNaN(b)) {
-      logger.error('[ColorConvert] Failed to parse RGB for luminance:', hex);
+      logger.error("[ColorConvert] Failed to parse RGB for luminance:", hex);
       return 0.5;
     }
 
@@ -131,13 +131,13 @@ export function calculateLuminance(hex: string): number {
 
     // Validate result
     if (isNaN(luminance)) {
-      logger.error('[ColorConvert] Invalid luminance calculated from:', hex);
+      logger.error("[ColorConvert] Invalid luminance calculated from:", hex);
       return 0.5;
     }
 
     return luminance;
   } catch (error) {
-    logger.error('[ColorConvert] Unexpected error in calculateLuminance:', error, 'Input:', hex);
+    logger.error("[ColorConvert] Unexpected error in calculateLuminance:", error, "Input:", hex);
     return 0.5; // Safe fallback
   }
 }
@@ -151,24 +151,24 @@ export function calculateLuminance(hex: string): number {
 export function getContrastTextColor(backgroundColor: string): string {
   try {
     // Validate input
-    if (!backgroundColor || typeof backgroundColor !== 'string') {
-      logger.error('[ColorConvert] Invalid background color for contrast:', backgroundColor);
-      return '#000000'; // Default to black text
+    if (!backgroundColor || typeof backgroundColor !== "string") {
+      logger.error("[ColorConvert] Invalid background color for contrast:", backgroundColor);
+      return "#000000"; // Default to black text
     }
 
     const luminance = calculateLuminance(backgroundColor);
 
     // WCAG threshold: luminance > 0.5 suggests light background (use black text)
     // luminance <= 0.5 suggests dark background (use white text)
-    return luminance > 0.5 ? '#000000' : '#FFFFFF';
+    return luminance > 0.5 ? "#000000" : "#FFFFFF";
   } catch (error) {
     logger.error(
-      '[ColorConvert] Unexpected error in getContrastTextColor:',
+      "[ColorConvert] Unexpected error in getContrastTextColor:",
       error,
-      'Input:',
+      "Input:",
       backgroundColor
     );
-    return '#000000'; // Safe fallback
+    return "#000000"; // Safe fallback
   }
 }
 
@@ -181,29 +181,29 @@ export function getContrastTextColor(backgroundColor: string): string {
 export function getSecondaryTextColor(primaryTextColor: string): string {
   try {
     // Validate input
-    if (!primaryTextColor || typeof primaryTextColor !== 'string') {
-      logger.error('[ColorConvert] Invalid primary text color for secondary:', primaryTextColor);
-      return '#4D4D4D'; // Default to gray
+    if (!primaryTextColor || typeof primaryTextColor !== "string") {
+      logger.error("[ColorConvert] Invalid primary text color for secondary:", primaryTextColor);
+      return "#4D4D4D"; // Default to gray
     }
 
     const isWhite =
-      primaryTextColor.toUpperCase() === '#FFFFFF' || primaryTextColor.toUpperCase() === 'FFFFFF';
+      primaryTextColor.toUpperCase() === "#FFFFFF" || primaryTextColor.toUpperCase() === "FFFFFF";
 
     if (isWhite) {
       // White text -> slightly darker (85% opacity equivalent = #D9D9D9)
-      return '#D9D9D9';
+      return "#D9D9D9";
     } else {
       // Black text -> slightly lighter (70% opacity equivalent = #4D4D4D)
-      return '#4D4D4D';
+      return "#4D4D4D";
     }
   } catch (error) {
     logger.error(
-      '[ColorConvert] Unexpected error in getSecondaryTextColor:',
+      "[ColorConvert] Unexpected error in getSecondaryTextColor:",
       error,
-      'Input:',
+      "Input:",
       primaryTextColor
     );
-    return '#4D4D4D'; // Safe fallback
+    return "#4D4D4D"; // Safe fallback
   }
 }
 
@@ -213,7 +213,7 @@ export function getSecondaryTextColor(primaryTextColor: string): string {
  * @returns Object with r, g, b values (0-255)
  */
 function parseHex(hex: string): { r: number; g: number; b: number } {
-  hex = hex.replace(/^#/, '');
+  hex = hex.replace(/^#/, "");
   return {
     r: parseInt(hex.substring(0, 2), 16),
     g: parseInt(hex.substring(2, 4), 16),
@@ -226,7 +226,7 @@ function parseHex(hex: string): { r: number; g: number; b: number } {
  */
 function toHex(r: number, g: number, b: number): string {
   const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
-  return `#${clamp(r).toString(16).padStart(2, '0')}${clamp(g).toString(16).padStart(2, '0')}${clamp(b).toString(16).padStart(2, '0')}`;
+  return `#${clamp(r).toString(16).padStart(2, "0")}${clamp(g).toString(16).padStart(2, "0")}${clamp(b).toString(16).padStart(2, "0")}`;
 }
 
 /**
@@ -236,14 +236,10 @@ function toHex(r: number, g: number, b: number): string {
  * @param direction 'darken' or 'lighten'
  * @returns Adjusted hex color
  */
-function adjustLightness(hex: string, factor: number, direction: 'darken' | 'lighten'): string {
+function adjustLightness(hex: string, factor: number, direction: "darken" | "lighten"): string {
   const { r, g, b } = parseHex(hex);
-  const target = direction === 'darken' ? 0 : 255;
-  return toHex(
-    r + (target - r) * factor,
-    g + (target - g) * factor,
-    b + (target - b) * factor
-  );
+  const target = direction === "darken" ? 0 : 255;
+  return toHex(r + (target - r) * factor, g + (target - g) * factor, b + (target - b) * factor);
 }
 
 /**
@@ -273,8 +269,11 @@ export function getContrastRatio(hex1: string, hex2: string): number {
 export function ensureReadablePrimary(primaryHex: string, backgroundHex: string): string {
   try {
     if (!primaryHex || !backgroundHex) {
-      logger.error('[ColorConvert] Invalid inputs for ensureReadablePrimary:', { primaryHex, backgroundHex });
-      return primaryHex || '#3B82F6'; // Fallback to default blue
+      logger.error("[ColorConvert] Invalid inputs for ensureReadablePrimary:", {
+        primaryHex,
+        backgroundHex,
+      });
+      return primaryHex || "#3B82F6"; // Fallback to default blue
     }
 
     const contrastRatio = getContrastRatio(primaryHex, backgroundHex);
@@ -286,7 +285,7 @@ export function ensureReadablePrimary(primaryHex: string, backgroundHex: string)
 
     // Determine direction: darken primary on light backgrounds, lighten on dark
     const bgLum = calculateLuminance(backgroundHex);
-    const direction: 'darken' | 'lighten' = bgLum > 0.5 ? 'darken' : 'lighten';
+    const direction: "darken" | "lighten" = bgLum > 0.5 ? "darken" : "lighten";
 
     // Progressively adjust until we hit 3:1 contrast (step in 5% increments)
     for (let step = 0.05; step <= 1.0; step += 0.05) {
@@ -298,9 +297,9 @@ export function ensureReadablePrimary(primaryHex: string, backgroundHex: string)
     }
 
     // If we couldn't reach 3:1 even at maximum adjustment, use black or white
-    return bgLum > 0.5 ? '#000000' : '#FFFFFF';
+    return bgLum > 0.5 ? "#000000" : "#FFFFFF";
   } catch (error) {
-    logger.error('[ColorConvert] Error in ensureReadablePrimary:', error);
-    return primaryHex || '#3B82F6';
+    logger.error("[ColorConvert] Error in ensureReadablePrimary:", error);
+    return primaryHex || "#3B82F6";
   }
 }

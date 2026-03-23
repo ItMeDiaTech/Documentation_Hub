@@ -58,21 +58,14 @@ export function isWithinListContext(doc: Document, index: number): boolean {
   }
 
   // Within list context only if both prev and next are same list
-  return (
-    prevNumId !== undefined &&
-    nextNumId !== undefined &&
-    prevNumId === nextNumId
-  );
+  return prevNumId !== undefined && nextNumId !== undefined && prevNumId === nextNumId;
 }
 
 /**
  * Checks if a paragraph is within a list context inside a table cell.
  * Ported from Document.ts:8359-8389
  */
-export function isWithinListContextInCell(
-  cell: TableCell,
-  paraIndex: number
-): boolean {
+export function isWithinListContextInCell(cell: TableCell, paraIndex: number): boolean {
   const cellParas = cell.getParagraphs();
   const current = cellParas[paraIndex];
   if (!current) return false;
@@ -109,9 +102,5 @@ export function isWithinListContextInCell(
     }
   }
 
-  return (
-    prevNumId !== undefined &&
-    nextNumId !== undefined &&
-    prevNumId === nextNumId
-  );
+  return prevNumId !== undefined && nextNumId !== undefined && prevNumId === nextNumId;
 }

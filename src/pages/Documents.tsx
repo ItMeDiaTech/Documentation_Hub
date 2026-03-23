@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
-import { useSession } from '@/contexts/SessionContext';
-import { motion } from 'framer-motion';
+import { useState, useMemo } from "react";
+import { useSession } from "@/contexts/SessionContext";
+import { motion } from "framer-motion";
 import {
   FileText,
   FolderOpen,
@@ -9,13 +9,13 @@ import {
   Clock,
   Search,
   Filter,
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
-import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
-import { cn } from '@/utils/cn';
-import logger from '@/utils/logger';
-import type { Document } from '@/types/session';
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/common/Card";
+import { Input } from "@/components/common/Input";
+import { Button } from "@/components/common/Button";
+import { cn } from "@/utils/cn";
+import logger from "@/utils/logger";
+import type { Document } from "@/types/session";
 
 interface DocumentWithSession extends Document {
   sessionName: string;
@@ -24,9 +24,9 @@ interface DocumentWithSession extends Document {
 
 export function Documents() {
   const { sessions } = useSession();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending' | 'error'>(
-    'all'
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "pending" | "error">(
+    "all"
   );
 
   // Collect all documents from all sessions
@@ -49,12 +49,12 @@ export function Documents() {
     return allDocuments.filter((doc) => {
       // Filter by search query
       const matchesSearch =
-        searchQuery === '' ||
+        searchQuery === "" ||
         doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         doc.sessionName.toLowerCase().includes(searchQuery.toLowerCase());
 
       // Filter by status
-      const matchesStatus = statusFilter === 'all' || doc.status === statusFilter;
+      const matchesStatus = statusFilter === "all" || doc.status === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
@@ -62,61 +62,61 @@ export function Documents() {
 
   const handleOpenLocation = async (path?: string) => {
     if (!path) {
-      logger.warn('No path available for document');
+      logger.warn("No path available for document");
       return;
     }
 
     try {
       await window.electronAPI.showInFolder(path);
     } catch (err) {
-      logger.error('Failed to open file location:', err);
+      logger.error("Failed to open file location:", err);
     }
   };
 
   const handleOpenDocument = async (path?: string) => {
     if (!path) {
-      logger.warn('No path available for document');
+      logger.warn("No path available for document");
       return;
     }
 
     try {
       await window.electronAPI.openDocument(path);
-      logger.info('Document opened successfully');
+      logger.info("Document opened successfully");
     } catch (err) {
-      logger.error('Failed to open document:', err);
+      logger.error("Failed to open document:", err);
     }
   };
 
-  const getStatusIcon = (status: Document['status']) => {
+  const getStatusIcon = (status: Document["status"]) => {
     switch (status) {
-      case 'completed':
+      case "completed":
         return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'error':
+      case "error":
         return <AlertCircle className="w-4 h-4 text-red-500" />;
-      case 'pending':
+      case "pending":
         return <Clock className="w-4 h-4 text-muted-foreground" />;
       default:
         return <FileText className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
-  const getStatusBadge = (status: Document['status']) => {
+  const getStatusBadge = (status: Document["status"]) => {
     const styles = {
-      completed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-      error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-      pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-      processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      completed: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+      error: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+      pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+      processing: "bg-primary/15 text-primary",
     };
 
     return (
-      <span className={cn('px-2 py-1 text-xs rounded-full font-medium', styles[status])}>
+      <span className={cn("px-2 py-1 text-xs rounded-full font-medium", styles[status])}>
         {status.charAt(0).toUpperCase() + status.slice(1)}
       </span>
     );
   };
 
   const formatDate = (date?: Date) => {
-    if (!date) return 'N/A';
+    if (!date) return "N/A";
     return new Date(date).toLocaleString();
   };
 
@@ -151,7 +151,7 @@ export function Documents() {
               <div>
                 <p className="text-sm text-foreground">Completed</p>
                 <p className="text-2xl font-bold">
-                  {allDocuments.filter((d) => d.status === 'completed').length}
+                  {allDocuments.filter((d) => d.status === "completed").length}
                 </p>
               </div>
             </div>
@@ -165,7 +165,7 @@ export function Documents() {
               <div>
                 <p className="text-sm text-foreground">Pending</p>
                 <p className="text-2xl font-bold">
-                  {allDocuments.filter((d) => d.status === 'pending').length}
+                  {allDocuments.filter((d) => d.status === "pending").length}
                 </p>
               </div>
             </div>
@@ -179,7 +179,7 @@ export function Documents() {
               <div>
                 <p className="text-sm text-foreground">Errors</p>
                 <p className="text-2xl font-bold">
-                  {allDocuments.filter((d) => d.status === 'error').length}
+                  {allDocuments.filter((d) => d.status === "error").length}
                 </p>
               </div>
             </div>
@@ -205,30 +205,30 @@ export function Documents() {
             </div>
             <div className="flex gap-2">
               <Button
-                variant={statusFilter === 'all' ? 'default' : 'outline'}
+                variant={statusFilter === "all" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setStatusFilter('all')}
+                onClick={() => setStatusFilter("all")}
               >
                 All
               </Button>
               <Button
-                variant={statusFilter === 'completed' ? 'default' : 'outline'}
+                variant={statusFilter === "completed" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setStatusFilter('completed')}
+                onClick={() => setStatusFilter("completed")}
               >
                 Completed
               </Button>
               <Button
-                variant={statusFilter === 'pending' ? 'default' : 'outline'}
+                variant={statusFilter === "pending" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setStatusFilter('pending')}
+                onClick={() => setStatusFilter("pending")}
               >
                 Pending
               </Button>
               <Button
-                variant={statusFilter === 'error' ? 'default' : 'outline'}
+                variant={statusFilter === "error" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setStatusFilter('error')}
+                onClick={() => setStatusFilter("error")}
               >
                 Errors
               </Button>
@@ -241,7 +241,7 @@ export function Documents() {
       <Card>
         <CardHeader>
           <CardTitle>
-            {filteredDocuments.length} Document{filteredDocuments.length !== 1 ? 's' : ''}
+            {filteredDocuments.length} Document{filteredDocuments.length !== 1 ? "s" : ""}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -250,9 +250,9 @@ export function Documents() {
               <FileText className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No documents found</h3>
               <p className="text-muted-foreground">
-                {searchQuery || statusFilter !== 'all'
-                  ? 'Try adjusting your filters'
-                  : 'Start by creating a session and adding documents'}
+                {searchQuery || statusFilter !== "all"
+                  ? "Try adjusting your filters"
+                  : "Start by creating a session and adding documents"}
               </p>
             </div>
           ) : (
@@ -282,7 +282,7 @@ export function Documents() {
 
                   <div className="flex items-center gap-3">
                     {getStatusBadge(doc.status)}
-                    {doc.status === 'completed' && doc.path && (
+                    {doc.status === "completed" && doc.path && (
                       <Button
                         variant="ghost"
                         size="xs"

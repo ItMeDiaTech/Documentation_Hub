@@ -21,6 +21,7 @@ Final Result:             User sees XML tags in interface
 ### Why This Happens
 
 The docxmlater framework uses two different approaches:
+
 - `Run()` constructor: Auto-cleans XML from text (cleanXmlFromText: true by default)
 - `Hyperlink.getText()`: **Does NOT** apply the same auto-cleaning logic
 
@@ -36,12 +37,13 @@ Provides defensive text cleanup functions:
 
 ```typescript
 export function sanitizeHyperlinkText(text: string): string {
-  if (!text) return '';
-  return text.replace(/<[^>]+>/g, '');
+  if (!text) return "";
+  return text.replace(/<[^>]+>/g, "");
 }
 ```
 
 **Key Functions**:
+
 - `sanitizeHyperlinkText()` - Remove XML tags from a single text string
 - `sanitizeHyperlinkTextWithFallback()` - With optional fallback for empty results
 - `isTextCorrupted()` - Diagnostic check for XML corruption
@@ -52,29 +54,33 @@ export function sanitizeHyperlinkText(text: string): string {
 Applied sanitization at all hyperlink text extraction points:
 
 #### DocXMLaterProcessor.ts
+
 ```typescript
 // Before
-text: item.getText()
+text: item.getText();
 
 // After
-text: sanitizeHyperlinkText(item.getText())
+text: sanitizeHyperlinkText(item.getText());
 ```
 
 **Locations Updated**:
+
 1. `extractHyperlinks()` (line 650) - Core extraction method
 2. `modifyHyperlinks()` (line 687) - URL transformation
 3. `replaceHyperlinkText()` (line 811) - Text replacement
 
 #### WordDocumentProcessor.ts
+
 ```typescript
 // Before
-displayText: h.text
+displayText: h.text;
 
 // After
-displayText: sanitizeHyperlinkText(h.text)  // h.text already sanitized from extractHyperlinks()
+displayText: sanitizeHyperlinkText(h.text); // h.text already sanitized from extractHyperlinks()
 ```
 
 **Locations Updated**:
+
 1. `processDocument()` API conversion (line 248) - PowerAutomate integration
 2. `processContentIdAppending()` (line 688) - Processed links display
 3. `standardizeHyperlinkColors()` (line 1350) - Color standardization
@@ -117,20 +123,20 @@ Output: Clean text throughout the system
 
 ```typescript
 // test for textSanitizer.ts
-describe('sanitizeHyperlinkText', () => {
-  it('removes XML tags', () => {
+describe("sanitizeHyperlinkText", () => {
+  it("removes XML tags", () => {
     const input = "Text<w:t>value</w:t>";
     const output = sanitizeHyperlinkText(input);
     expect(output).toBe("Textvalue");
   });
 
-  it('handles empty tags', () => {
-    const input = "<w:t xml:space=\"preserve\">";
+  it("handles empty tags", () => {
+    const input = '<w:t xml:space="preserve">';
     const output = sanitizeHyperlinkText(input);
     expect(output).toBe("");
   });
 
-  it('preserves normal text', () => {
+  it("preserves normal text", () => {
     const input = "Normal hyperlink text";
     const output = sanitizeHyperlinkText(input);
     expect(output).toBe("Normal hyperlink text");
@@ -148,6 +154,7 @@ describe('sanitizeHyperlinkText', () => {
 ### Real-World Test Case
 
 Process a document known to have corruption:
+
 ```bash
 npm test -- WordDocumentProcessor.test.ts
 ```
@@ -155,11 +162,13 @@ npm test -- WordDocumentProcessor.test.ts
 ## Migration Path
 
 ### No Breaking Changes
+
 - Existing API contracts unchanged
 - All return values same format
 - Consumer code requires no changes
 
 ### Gradual Rollout
+
 1. ✅ Implement sanitization utility (Done)
 2. ✅ Apply to extraction points (Done)
 3. ✅ Test with real documents (Recommended)
@@ -182,15 +191,15 @@ getText(): string {
 
 ## Edge Cases Handled
 
-| Scenario | Input | Output |
-|----------|-------|--------|
-| Clean text | "Click here" | "Click here" |
-| Single tag | "Text<w:t>1</w:t>" | "Text1" |
-| Nested tags | "A<w:t><w:t>B</w:t></w:t>C" | "ABC" |
-| Attributes | "Text<w:t xml:space=\"preserve\">1" | "Text1" |
-| Multiple tags | "<w:t>A</w:t><w:t>B</w:t>" | "AB" |
-| Empty string | "" | "" |
-| Null/undefined | Handled gracefully | "" |
+| Scenario       | Input                               | Output       |
+| -------------- | ----------------------------------- | ------------ |
+| Clean text     | "Click here"                        | "Click here" |
+| Single tag     | "Text<w:t>1</w:t>"                  | "Text1"      |
+| Nested tags    | "A<w:t><w:t>B</w:t></w:t>C"         | "ABC"        |
+| Attributes     | "Text<w:t xml:space=\"preserve\">1" | "Text1"      |
+| Multiple tags  | "<w:t>A</w:t><w:t>B</w:t>"          | "AB"         |
+| Empty string   | ""                                  | ""           |
+| Null/undefined | Handled gracefully                  | ""           |
 
 ## Performance Impact
 
@@ -204,6 +213,7 @@ getText(): string {
 ### When to Update Sanitization
 
 Update `textSanitizer.ts` if:
+
 - New XML tag formats discovered in documents
 - Framework adds new corruption patterns
 - Performance issues arise

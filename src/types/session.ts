@@ -1,18 +1,18 @@
 // Revision handling mode type
-export type RevisionHandlingMode = 'accept_all' | 'preserve' | 'preserve_and_wrap';
+export type RevisionHandlingMode = "accept_all" | "preserve" | "preserve_and_wrap";
 
 // Change category type
 export type ChangeCategory =
-  | 'content'
-  | 'formatting'
-  | 'structural'
-  | 'table'
-  | 'hyperlink'
-  | 'image'
-  | 'field'
-  | 'comment'
-  | 'bookmark'
-  | 'contentControl';
+  | "content"
+  | "formatting"
+  | "structural"
+  | "table"
+  | "hyperlink"
+  | "image"
+  | "field"
+  | "comment"
+  | "bookmark"
+  | "contentControl";
 
 /**
  * Change entry from Word tracked changes (compatible with docxmlater ChangeEntry)
@@ -41,7 +41,7 @@ export interface ChangeEntry {
       textBefore?: string;
       textAfter?: string;
       /** Status of the hyperlink source (for theSource links) */
-      status?: 'updated' | 'not_found' | 'expired';
+      status?: "updated" | "not_found" | "expired";
       /** Content ID for theSource documents */
       contentId?: string;
     };
@@ -69,7 +69,7 @@ export interface ChangelogSummary {
  */
 export interface UnifiedChange {
   id: string;
-  source: 'word' | 'processing';
+  source: "word" | "processing";
   category: ChangeCategory; // 'content' | 'formatting' | 'structural' | 'table' | 'hyperlink'
   description: string;
   author?: string;
@@ -88,7 +88,7 @@ export interface UnifiedChange {
     textBefore?: string;
     textAfter?: string;
     /** Status of the hyperlink source (for theSource links) */
-    status?: 'updated' | 'not_found' | 'expired';
+    status?: "updated" | "not_found" | "expired";
     /** Content ID for theSource documents */
     contentId?: string;
   };
@@ -147,10 +147,10 @@ export interface Document {
   path?: string;
   size: number;
   type?: string;
-  status: 'pending' | 'processing' | 'completed' | 'error';
+  status: "pending" | "processing" | "completed" | "error";
   processedAt?: Date;
   errors?: string[];
-  errorType?: 'file_locked' | 'api_timeout' | 'word_compatibility' | 'general';
+  errorType?: "file_locked" | "api_timeout" | "word_compatibility" | "general";
   fileData?: ArrayBuffer; // Store file data for processing
   /** Pre-existing tracked changes that were in the document BEFORE DocHub processing */
   previousRevisions?: PreviousRevisionState;
@@ -171,7 +171,7 @@ export interface Document {
 
 export interface DocumentChange {
   id?: string; // Unique identifier for the change (for reversion)
-  type: 'hyperlink' | 'text' | 'style' | 'structure' | 'table' | 'deletion';
+  type: "hyperlink" | "text" | "style" | "structure" | "table" | "deletion";
   description: string;
   before?: string;
   after?: string;
@@ -187,13 +187,19 @@ export interface DocumentChange {
   sectionContext?: string; // Additional section info
 
   // NEW: Grouping and categorization
-  category?: 'blank_lines' | 'hyperlink_update' | 'hyperlink_failed' | 'list_fix' |
-             'style_application' | 'structure' | 'other';
+  category?:
+    | "blank_lines"
+    | "hyperlink_update"
+    | "hyperlink_failed"
+    | "list_fix"
+    | "style_application"
+    | "structure"
+    | "other";
   affectedItems?: string[]; // For grouped changes (e.g., list of URLs updated)
 
   // NEW: Hyperlink-specific metadata
   contentId?: string; // Content ID if applicable
-  hyperlinkStatus?: 'updated' | 'expired' | 'not_found' | 'valid';
+  hyperlinkStatus?: "updated" | "expired" | "not_found" | "valid";
 
   // NEW: URL change tracking for hyperlinks
   urlBefore?: string; // Original URL (before change)
@@ -215,7 +221,7 @@ export interface Session {
   closedAt?: Date;
   documents: Document[];
   stats: SessionStats;
-  status: 'active' | 'closed';
+  status: "active" | "closed";
   // Processing configuration
   processingOptions?: {
     appendContentId?: boolean; // DEPRECATED: #content should never be appended
@@ -255,7 +261,7 @@ export interface SessionStyle {
   preserveItalic?: boolean; // Optional: true = preserve existing italic (ignore italic property)
   preserveUnderline?: boolean; // Optional: true = preserve existing underline (ignore underline property)
   preserveCenterAlignment?: boolean; // Optional: true = preserve center alignment if paragraph is already centered
-  alignment: 'left' | 'center' | 'right' | 'justify';
+  alignment: "left" | "center" | "right" | "justify";
   color: string;
   spaceBefore: number;
   spaceAfter: number;
@@ -283,17 +289,17 @@ export interface ListBulletSettings {
 
 export interface TableUniformitySettings {
   enabled: boolean;
-  borderStyle: 'none' | 'single' | 'double' | 'dashed';
+  borderStyle: "none" | "single" | "double" | "dashed";
   borderWidth: number; // in points
   headerRowBold: boolean;
   headerRowShaded: boolean;
   headerRowShadingColor: string; // color hex for header row shading
   alternatingRowColors: boolean;
   cellPadding: number; // in points
-  autoFit: 'content' | 'window';
+  autoFit: "content" | "window";
   // Header 2 in 1x1 table cell settings
   header2In1x1CellShading: string; // color hex
-  header2In1x1Alignment: 'left' | 'center' | 'right' | 'justify';
+  header2In1x1Alignment: "left" | "center" | "right" | "justify";
   // Large table (>1x1) settings
   largeTableSettings: {
     font: string;
@@ -301,7 +307,7 @@ export interface TableUniformitySettings {
     bold: boolean;
     italic: boolean;
     underline: boolean;
-    alignment: 'left' | 'center' | 'right' | 'justify';
+    alignment: "left" | "center" | "right" | "justify";
     cellPadding: number;
   };
   applyToIfThenPattern: boolean; // Apply to cells with "If...Then" pattern
@@ -340,7 +346,7 @@ export interface TableShadingSettings {
 export interface ReplacementRule {
   id: string;
   enabled: boolean;
-  type: 'hyperlink' | 'text';
+  type: "hyperlink" | "text";
   pattern: string;
   replacement: string;
   caseSensitive?: boolean;
@@ -353,7 +359,7 @@ export interface ReplacementRule {
 export interface CustomSessionDefaults {
   styles?: SessionStyle[];
   listBulletSettings?: ListBulletSettings;
-  processingOptions?: Session['processingOptions'];
+  processingOptions?: Session["processingOptions"];
   tableShadingSettings?: TableShadingSettings;
 }
 
@@ -385,7 +391,7 @@ export interface SessionContextType {
   updateSessionName: (sessionId: string, name: string) => void;
   updateSessionOptions: (
     sessionId: string,
-    processingOptions: Session['processingOptions']
+    processingOptions: Session["processingOptions"]
   ) => void;
   updateSessionReplacements: (sessionId: string, replacements: ReplacementRule[]) => void;
   updateSessionStyles: (sessionId: string, styles: SessionStyle[]) => void;
@@ -423,5 +429,5 @@ export interface QueueItem {
   documentId: string;
   sessionId: string;
   addedAt: Date;
-  status: 'queued' | 'processing' | 'completed' | 'error';
+  status: "queued" | "processing" | "completed" | "error";
 }

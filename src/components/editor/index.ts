@@ -9,10 +9,10 @@
  * - TableEditor: Full table editing component with cell selection
  */
 
-export { DocumentEditorModal } from './DocumentEditorModal';
-export { EditorToolbar } from './EditorToolbar';
-export { EditorQuickActions } from './EditorQuickActions';
-export { DocumentEditor } from './DocumentEditor';
-export type { DocumentEditorRef, DocumentEditorProps } from './DocumentEditor';
-export { TableEditor } from './TableEditor';
-export type { TableEditorRef, TableEditorProps } from './TableEditor';
+export { DocumentEditorModal } from "./DocumentEditorModal";
+export { EditorToolbar } from "./EditorToolbar";
+export { EditorQuickActions } from "./EditorQuickActions";
+export { DocumentEditor } from "./DocumentEditor";
+export type { DocumentEditorRef, DocumentEditorProps } from "./DocumentEditor";
+export { TableEditor } from "./TableEditor";
+export type { TableEditorRef, TableEditorProps } from "./TableEditor";

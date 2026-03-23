@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { cn } from '@/utils/cn';
+import { useState, useEffect, useRef } from "react";
+import { motion } from "framer-motion";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/utils/cn";
 
 interface Tab {
   id: string;
@@ -18,7 +18,14 @@ interface TabContainerProps {
   onTabChange?: (tabId: string) => void; // Callback when tab changes
 }
 
-export function TabContainer({ tabs, defaultTab, className, headerActions, activeTabId, onTabChange }: TabContainerProps) {
+export function TabContainer({
+  tabs,
+  defaultTab,
+  className,
+  headerActions,
+  activeTabId,
+  onTabChange,
+}: TabContainerProps) {
   const [internalActiveTab, setInternalActiveTab] = useState(defaultTab || tabs[0]?.id);
 
   // Use controlled activeTabId if provided, otherwise use internal state
@@ -47,25 +54,25 @@ export function TabContainer({ tabs, defaultTab, className, headerActions, activ
     };
 
     checkScroll();
-    container.addEventListener('scroll', checkScroll);
-    window.addEventListener('resize', checkScroll);
+    container.addEventListener("scroll", checkScroll);
+    window.addEventListener("resize", checkScroll);
 
     return () => {
-      container.removeEventListener('scroll', checkScroll);
-      window.removeEventListener('resize', checkScroll);
+      container.removeEventListener("scroll", checkScroll);
+      window.removeEventListener("resize", checkScroll);
     };
   }, [tabs]);
 
   const scrollLeft = () => {
-    tabsRef.current?.scrollBy({ left: -200, behavior: 'smooth' });
+    tabsRef.current?.scrollBy({ left: -200, behavior: "smooth" });
   };
 
   const scrollRight = () => {
-    tabsRef.current?.scrollBy({ left: 200, behavior: 'smooth' });
+    tabsRef.current?.scrollBy({ left: 200, behavior: "smooth" });
   };
 
   return (
-    <div className={cn('w-full', className)}>
+    <div className={cn("w-full", className)}>
       {/* Tab Navigation - Sticky */}
       <div className="sticky top-0 bg-background z-20 flex items-center border-b border-border">
         {/* Left Scroll Button */}
@@ -84,8 +91,8 @@ export function TabContainer({ tabs, defaultTab, className, headerActions, activ
           ref={tabsRef}
           className="flex gap-1 px-4 overflow-x-auto flex-1"
           style={{
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
           }}
         >
           {tabs.map((tab) => (
@@ -93,9 +100,9 @@ export function TabContainer({ tabs, defaultTab, className, headerActions, activ
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
               className={cn(
-                'relative px-4 py-2.5 text-sm font-medium transition-all whitespace-nowrap',
-                'hover:text-foreground',
-                activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground'
+                "relative px-4 py-2.5 text-sm font-medium transition-all whitespace-nowrap",
+                "hover:text-foreground",
+                activeTab === tab.id ? "text-foreground" : "text-muted-foreground"
               )}
             >
               {tab.label}
@@ -105,7 +112,7 @@ export function TabContainer({ tabs, defaultTab, className, headerActions, activ
                   className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
                   initial={false}
                   transition={{
-                    type: 'spring',
+                    type: "spring",
                     stiffness: 500,
                     damping: 30,
                   }}

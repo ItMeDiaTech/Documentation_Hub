@@ -23,9 +23,9 @@ Replace ~180 lines of custom XML manipulation code with framework's built-in `st
 
 ```typescript
 doc.standardizeBulletSymbols({
-  font: 'Verdana',
+  font: "Verdana",
   fontSize: 12,
-  color: '000000',
+  color: "000000",
   bold: true,
 });
 ```
@@ -37,9 +37,9 @@ doc.standardizeBulletSymbols({
 
 ```typescript
 doc.standardizeNumberedListPrefixes({
-  font: 'Verdana',
+  font: "Verdana",
   fontSize: 12,
-  color: '000000',
+  color: "000000",
   bold: true,
 });
 ```
@@ -79,7 +79,7 @@ doc.standardizeNumberedListPrefixes({
 ```typescript
 const injectionSuccess = await this.injectCompleteRunPropertiesToNumbering(doc, numId);
 if (injectionSuccess) {
-  this.log.debug('Applied 12pt bold black formatting to bullet list symbols');
+  this.log.debug("Applied 12pt bold black formatting to bullet list symbols");
 }
 ```
 
@@ -87,9 +87,9 @@ if (injectionSuccess) {
 
 ```typescript
 const result = doc.standardizeBulletSymbols({
-  font: 'Verdana',
+  font: "Verdana",
   fontSize: 12,
-  color: '000000',
+  color: "000000",
   bold: true,
 });
 this.log.debug(`Standardized ${result.listsUpdated} bullet lists, ${result.levelsModified} levels`);
@@ -107,9 +107,9 @@ const injectionSuccess = await this.injectCompleteRunPropertiesToNumbering(doc, 
 
 ```typescript
 const result = doc.standardizeNumberedListPrefixes({
-  font: 'Verdana',
+  font: "Verdana",
   fontSize: 12,
-  color: '000000',
+  color: "000000",
   bold: true,
 });
 this.log.debug(

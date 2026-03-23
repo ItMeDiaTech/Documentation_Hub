@@ -10,21 +10,21 @@
  * - Integration with docxmlater for document manipulation
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { createPortal } from 'react-dom';
+import { useState, useCallback, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { createPortal } from "react-dom";
 import type {
   QuickActionId,
   EditorState,
   CellSelection,
   EditorSelection,
   EditorAction,
-} from '@/types/editor';
-import { EditorToolbar } from './EditorToolbar';
-import { EditorQuickActions } from './EditorQuickActions';
-import { DocumentEditor, DocumentEditorRef } from './DocumentEditor';
-import { Loader2, AlertTriangle } from 'lucide-react';
-import { Document, Paragraph, Table } from 'docxmlater';
+} from "@/types/editor";
+import { EditorToolbar } from "./EditorToolbar";
+import { EditorQuickActions } from "./EditorQuickActions";
+import { DocumentEditor, DocumentEditorRef } from "./DocumentEditor";
+import { Loader2, AlertTriangle } from "lucide-react";
+import { Document, Paragraph, Table } from "docxmlater";
 
 // Use 'any' for internal document element types to avoid type conflicts
 // DocumentEditor has its own type definitions that we pass through
@@ -33,10 +33,7 @@ import { Document, Paragraph, Table } from 'docxmlater';
  * Sync editor bodyElements changes back to docxmlater Document
  * Maps the editor's internal format back to docxmlater API calls
  */
-async function syncBodyElementsToDocument(
-  doc: Document,
-  bodyElements: any[]
-): Promise<void> {
+async function syncBodyElementsToDocument(doc: Document, bodyElements: any[]): Promise<void> {
   const docElements = doc.getBodyElements();
 
   // Track which paragraphs/tables have been modified
@@ -44,7 +41,7 @@ async function syncBodyElementsToDocument(
   let tableIndex = 0;
 
   for (const element of bodyElements) {
-    if (element.type === 'paragraph') {
+    if (element.type === "paragraph") {
       // Find corresponding paragraph in document
       let docParagraphIndex = 0;
       for (const docElement of docElements) {
@@ -71,9 +68,9 @@ async function syncBodyElementsToDocument(
                 if (editorRun.bold !== undefined) docRun.setBold(editorRun.bold);
                 if (editorRun.italic !== undefined) docRun.setItalic(editorRun.italic);
                 if (editorRun.underline !== undefined) {
-                  docRun.setUnderline(editorRun.underline ? 'single' : false);
+                  docRun.setUnderline(editorRun.underline ? "single" : false);
                 }
-                if (editorRun.color) docRun.setColor(editorRun.color.replace('#', ''));
+                if (editorRun.color) docRun.setColor(editorRun.color.replace("#", ""));
                 if (editorRun.font) docRun.setFont(editorRun.font);
                 if (editorRun.size) docRun.setSize(editorRun.size);
               }
@@ -90,7 +87,7 @@ async function syncBodyElementsToDocument(
         }
       }
       paragraphIndex++;
-    } else if (element.type === 'table') {
+    } else if (element.type === "table") {
       // Find corresponding table in document
       let docTableIndex = 0;
       for (const docElement of docElements) {
@@ -101,29 +98,45 @@ async function syncBodyElementsToDocument(
             const docRows = docTable.getRows();
 
             // Sync each row/cell
-            for (let rowIdx = 0; rowIdx < Math.min(docRows.length, editorTable.rows.length); rowIdx++) {
+            for (
+              let rowIdx = 0;
+              rowIdx < Math.min(docRows.length, editorTable.rows.length);
+              rowIdx++
+            ) {
               const editorRow = editorTable.rows[rowIdx];
               const docRow = docRows[rowIdx];
               const docCells = docRow.getCells();
 
-              for (let cellIdx = 0; cellIdx < Math.min(docCells.length, editorRow.cells.length); cellIdx++) {
+              for (
+                let cellIdx = 0;
+                cellIdx < Math.min(docCells.length, editorRow.cells.length);
+                cellIdx++
+              ) {
                 const editorCell = editorRow.cells[cellIdx];
                 const docCell = docCells[cellIdx];
                 const docCellParas = docCell.getParagraphs();
 
                 // Sync cell shading
                 if (editorCell.shading) {
-                  docCell.setShading(editorCell.shading.replace('#', ''));
+                  docCell.setShading(editorCell.shading.replace("#", ""));
                 }
 
                 // Sync cell paragraphs
-                for (let paraIdx = 0; paraIdx < Math.min(docCellParas.length, editorCell.paragraphs.length); paraIdx++) {
+                for (
+                  let paraIdx = 0;
+                  paraIdx < Math.min(docCellParas.length, editorCell.paragraphs.length);
+                  paraIdx++
+                ) {
                   const editorCellPara = editorCell.paragraphs[paraIdx];
                   const docCellPara = docCellParas[paraIdx];
                   const docCellRuns = docCellPara.getRuns();
 
                   // Sync runs
-                  for (let runIdx = 0; runIdx < Math.min(docCellRuns.length, (editorCellPara.runs || []).length); runIdx++) {
+                  for (
+                    let runIdx = 0;
+                    runIdx < Math.min(docCellRuns.length, (editorCellPara.runs || []).length);
+                    runIdx++
+                  ) {
                     const editorRun = editorCellPara.runs[runIdx];
                     const docRun = docCellRuns[runIdx];
 
@@ -168,7 +181,7 @@ function documentToBodyElements(doc: Document): any[] {
       for (const run of para.getRuns() || []) {
         const runFormatting = run.getFormatting();
         runs.push({
-          text: run.getText() || '',
+          text: run.getText() || "",
           bold: runFormatting.bold,
           italic: runFormatting.italic,
           underline: runFormatting.underline,
@@ -183,13 +196,13 @@ function documentToBodyElements(doc: Document): any[] {
       const styleId = para.getStyle();
       const paraFormatting = para.getFormatting();
       elements.push({
-        type: 'paragraph',
+        type: "paragraph",
         paragraph: {
-          text: para.getText() || '',
+          text: para.getText() || "",
           runs,
           alignment: paraFormatting.alignment,
           style: styleId,
-          isHeading: styleId?.includes('Heading'),
+          isHeading: styleId?.includes("Heading"),
           headingLevel: styleId?.match(/Heading(\d)/)?.[1]
             ? parseInt(styleId.match(/Heading(\d)/)![1])
             : undefined,
@@ -211,7 +224,7 @@ function documentToBodyElements(doc: Document): any[] {
             for (const run of cellPara.getRuns() || []) {
               const runFormatting = run.getFormatting();
               cellRuns.push({
-                text: run.getText() || '',
+                text: run.getText() || "",
                 bold: runFormatting.bold,
                 italic: runFormatting.italic,
                 underline: runFormatting.underline,
@@ -221,7 +234,7 @@ function documentToBodyElements(doc: Document): any[] {
 
             const cellParaFormatting = cellPara.getFormatting();
             paragraphs.push({
-              text: cellPara.getText() || '',
+              text: cellPara.getText() || "",
               runs: cellRuns,
               alignment: cellParaFormatting.alignment,
             });
@@ -229,8 +242,7 @@ function documentToBodyElements(doc: Document): any[] {
 
           const cellFormatting = cell.getFormatting();
           cells.push({
-            paragraphs:
-              paragraphs.length > 0 ? paragraphs : [{ text: '', runs: [] }],
+            paragraphs: paragraphs.length > 0 ? paragraphs : [{ text: "", runs: [] }],
             shading: cellFormatting.shading?.fill,
             verticalMerge: cellFormatting.vMerge,
             columnSpan: cellFormatting.columnSpan,
@@ -241,7 +253,7 @@ function documentToBodyElements(doc: Document): any[] {
       }
 
       elements.push({
-        type: 'table',
+        type: "table",
         table: { rows },
       });
     }
@@ -329,11 +341,11 @@ export function DocumentEditorModal({
 
         setEditorState((prev) => ({ ...prev, isLoading: false }));
       } catch (error) {
-        console.error('Failed to load document:', error);
+        console.error("Failed to load document:", error);
         setEditorState((prev) => ({
           ...prev,
           isLoading: false,
-          error: error instanceof Error ? error.message : 'Failed to load document',
+          error: error instanceof Error ? error.message : "Failed to load document",
         }));
       }
     };
@@ -353,7 +365,7 @@ export function DocumentEditorModal({
     setEditorState((prev) => ({
       ...prev,
       selection,
-      selectedElementType: selection ? 'paragraph' : prev.selectedElementType,
+      selectedElementType: selection ? "paragraph" : prev.selectedElementType,
       selectedParagraphIndex: selection?.paragraphIndex ?? prev.selectedParagraphIndex,
     }));
   }, []);
@@ -364,7 +376,7 @@ export function DocumentEditorModal({
       setEditorState((prev) => ({
         ...prev,
         tableSelection: selection,
-        selectedElementType: selection ? 'table' : prev.selectedElementType,
+        selectedElementType: selection ? "table" : prev.selectedElementType,
         selectedTableIndex: tableIndex,
       }));
     },
@@ -372,20 +384,17 @@ export function DocumentEditorModal({
   );
 
   // Handle body elements change from editor
-  const handleBodyElementsChange = useCallback(
-    (newElements: any[], action: EditorAction) => {
-      setBodyElements(newElements);
+  const handleBodyElementsChange = useCallback((newElements: any[], action: EditorAction) => {
+    setBodyElements(newElements);
 
-      // Add to undo stack
-      setEditorState((prev) => ({
-        ...prev,
-        isDirty: true,
-        undoStack: [...prev.undoStack, action],
-        redoStack: [], // Clear redo stack on new change
-      }));
-    },
-    []
-  );
+    // Add to undo stack
+    setEditorState((prev) => ({
+      ...prev,
+      isDirty: true,
+      undoStack: [...prev.undoStack, action],
+      redoStack: [], // Clear redo stack on new change
+    }));
+  }, []);
 
   // Handle save - sync changes to document and save
   const handleSave = useCallback(async () => {
@@ -406,10 +415,10 @@ export function DocumentEditorModal({
       await onSave(arrayBuffer);
       setEditorState((prev) => ({ ...prev, isDirty: false }));
     } catch (error) {
-      console.error('Failed to save document:', error);
+      console.error("Failed to save document:", error);
       setEditorState((prev) => ({
         ...prev,
-        error: error instanceof Error ? error.message : 'Failed to save document',
+        error: error instanceof Error ? error.message : "Failed to save document",
       }));
     } finally {
       setIsSaving(false);
@@ -450,7 +459,7 @@ export function DocumentEditorModal({
 
   // Handle quick action
   const handleQuickAction = useCallback((actionId: QuickActionId) => {
-    console.log('Quick action triggered:', actionId);
+    console.log("Quick action triggered:", actionId);
 
     // Mark as dirty for any action
     setEditorState((prev) => ({
@@ -473,7 +482,7 @@ export function DocumentEditorModal({
   const handleClose = useCallback(() => {
     if (editorState.isDirty) {
       const confirmed = window.confirm(
-        'You have unsaved changes. Are you sure you want to close without saving?'
+        "You have unsaved changes. Are you sure you want to close without saving?"
       );
       if (!confirmed) return;
     }
@@ -486,70 +495,67 @@ export function DocumentEditorModal({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Escape to close
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         handleClose();
         return;
       }
 
       // Ctrl/Cmd+S to save
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         handleSave();
         return;
       }
 
       // Ctrl/Cmd+Z to undo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         handleUndo();
         return;
       }
 
       // Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z to redo
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.key === 'y' || (e.key === 'z' && e.shiftKey))
-      ) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
         e.preventDefault();
         handleRedo();
         return;
       }
 
       // Ctrl/Cmd+B for bold
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
         e.preventDefault();
-        handleQuickAction('bold');
+        handleQuickAction("bold");
         return;
       }
 
       // Ctrl/Cmd+I for italic
-      if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+      if ((e.ctrlKey || e.metaKey) && e.key === "i") {
         e.preventDefault();
-        handleQuickAction('italic');
+        handleQuickAction("italic");
         return;
       }
 
       // Ctrl/Cmd+U for underline
-      if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
+      if ((e.ctrlKey || e.metaKey) && e.key === "u") {
         e.preventDefault();
-        handleQuickAction('underline');
+        handleQuickAction("underline");
         return;
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleClose, handleSave, handleUndo, handleRedo, handleQuickAction]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     }
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, [isOpen]);
 

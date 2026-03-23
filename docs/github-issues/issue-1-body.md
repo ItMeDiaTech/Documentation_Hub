@@ -62,26 +62,26 @@ Consolidate into single, sequential initialization flow:
 
 ```typescript
 app.whenReady().then(async () => {
-  log.info('Starting DocumentHub initialization...');
+  log.info("Starting DocumentHub initialization...");
 
   try {
     // STEP 1: Configure network infrastructure (BLOCKING)
-    log.info('[1/4] Configuring proxy and network...');
+    log.info("[1/4] Configuring proxy and network...");
     await proxyConfig.configureSessionProxy();
 
     // STEP 2: Validate certificates (BLOCKING if critical)
-    log.info('[2/4] Validating certificates...');
+    log.info("[2/4] Validating certificates...");
     await performPreflightCertificateCheck();
 
     // STEP 3: Create main window (BLOCKING)
-    log.info('[3/4] Creating main window...');
+    log.info("[3/4] Creating main window...");
     await createWindow();
 
     // STEP 4: Initialize background services (NON-BLOCKING)
-    log.info('[4/4] Starting background services...');
+    log.info("[4/4] Starting background services...");
     setImmediate(() => {
       if (!mainWindow) {
-        log.error('Main window is null during updater initialization!');
+        log.error("Main window is null during updater initialization!");
         return;
       }
 
@@ -90,10 +90,10 @@ app.whenReady().then(async () => {
         updaterHandler.checkOnStartup();
       }
 
-      log.info('DocumentHub initialization complete');
+      log.info("DocumentHub initialization complete");
     });
   } catch (error) {
-    log.error('Failed to initialize DocumentHub:', error);
+    log.error("Failed to initialize DocumentHub:", error);
     app.quit();
   }
 });

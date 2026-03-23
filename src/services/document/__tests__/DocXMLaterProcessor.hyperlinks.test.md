@@ -8,14 +8,14 @@
 ### 1. Hyperlinks in Tables
 
 ```typescript
-describe('DocXMLaterProcessor - Table Hyperlinks', () => {
-  it('should extract hyperlinks from table cells', async () => {
+describe("DocXMLaterProcessor - Table Hyperlinks", () => {
+  it("should extract hyperlinks from table cells", async () => {
     // Create document with table containing hyperlinks
     const doc = Document.create();
     const table = doc.createTable(2, 2);
     const cell = table.getCell(0, 0);
     const para = cell?.createParagraph();
-    para?.addHyperlink(Hyperlink.createExternal('https://example.com', 'Link'));
+    para?.addHyperlink(Hyperlink.createExternal("https://example.com", "Link"));
 
     // Extract
     const processor = new DocXMLaterProcessor();
@@ -23,21 +23,21 @@ describe('DocXMLaterProcessor - Table Hyperlinks', () => {
 
     // Verify
     expect(hyperlinks).toHaveLength(1);
-    expect(hyperlinks[0].url).toBe('https://example.com');
-    expect(hyperlinks[0].text).toBe('Link');
+    expect(hyperlinks[0].url).toBe("https://example.com");
+    expect(hyperlinks[0].text).toBe("Link");
   });
 
-  it('should update URLs in table cells', async () => {
+  it("should update URLs in table cells", async () => {
     // Create document with table hyperlinks
     const doc = Document.create();
     const table = doc.createTable(1, 1);
     const cell = table.getCell(0, 0);
     const para = cell?.createParagraph();
-    para?.addHyperlink(Hyperlink.createExternal('https://old.com', 'Link'));
+    para?.addHyperlink(Hyperlink.createExternal("https://old.com", "Link"));
 
     // Update
     const processor = new DocXMLaterProcessor();
-    const result = await processor.modifyHyperlinks(doc, (url) => url.replace('old', 'new'));
+    const result = await processor.modifyHyperlinks(doc, (url) => url.replace("old", "new"));
 
     // Verify
     expect(result.success).toBe(true);
@@ -45,7 +45,7 @@ describe('DocXMLaterProcessor - Table Hyperlinks', () => {
 
     // Extract and verify URL changed
     const hyperlinks = await processor.extractHyperlinks(doc);
-    expect(hyperlinks[0].url).toBe('https://new.com');
+    expect(hyperlinks[0].url).toBe("https://new.com");
   });
 });
 ```
@@ -53,13 +53,13 @@ describe('DocXMLaterProcessor - Table Hyperlinks', () => {
 ### 2. Hyperlinks in Headers
 
 ```typescript
-describe('DocXMLaterProcessor - Header Hyperlinks', () => {
-  it('should extract hyperlinks from headers', async () => {
+describe("DocXMLaterProcessor - Header Hyperlinks", () => {
+  it("should extract hyperlinks from headers", async () => {
     // Create document with header containing hyperlinks
     const doc = Document.create();
     const header = Header.create();
     const para = header.addParagraph();
-    para.addHyperlink(Hyperlink.createExternal('https://header.com', 'Header Link'));
+    para.addHyperlink(Hyperlink.createExternal("https://header.com", "Header Link"));
     doc.setHeader(header);
 
     // Extract
@@ -68,21 +68,21 @@ describe('DocXMLaterProcessor - Header Hyperlinks', () => {
 
     // Verify
     expect(hyperlinks).toHaveLength(1);
-    expect(hyperlinks[0].url).toBe('https://header.com');
-    expect(hyperlinks[0].text).toBe('Header Link');
+    expect(hyperlinks[0].url).toBe("https://header.com");
+    expect(hyperlinks[0].text).toBe("Header Link");
   });
 
-  it('should update URLs in headers', async () => {
+  it("should update URLs in headers", async () => {
     // Create document with header hyperlinks
     const doc = Document.create();
     const header = Header.create();
     const para = header.addParagraph();
-    para.addHyperlink(Hyperlink.createExternal('https://old-header.com', 'Link'));
+    para.addHyperlink(Hyperlink.createExternal("https://old-header.com", "Link"));
     doc.setHeader(header);
 
     // Update
     const processor = new DocXMLaterProcessor();
-    const result = await processor.modifyHyperlinks(doc, (url) => url.replace('old', 'new'));
+    const result = await processor.modifyHyperlinks(doc, (url) => url.replace("old", "new"));
 
     // Verify
     expect(result.success).toBe(true);
@@ -94,13 +94,13 @@ describe('DocXMLaterProcessor - Header Hyperlinks', () => {
 ### 3. Hyperlinks in Footers
 
 ```typescript
-describe('DocXMLaterProcessor - Footer Hyperlinks', () => {
-  it('should extract hyperlinks from footers', async () => {
+describe("DocXMLaterProcessor - Footer Hyperlinks", () => {
+  it("should extract hyperlinks from footers", async () => {
     // Create document with footer containing hyperlinks
     const doc = Document.create();
     const footer = Footer.create();
     const para = footer.addParagraph();
-    para.addHyperlink(Hyperlink.createExternal('https://footer.com', 'Footer Link'));
+    para.addHyperlink(Hyperlink.createExternal("https://footer.com", "Footer Link"));
     doc.setFooter(footer);
 
     // Extract
@@ -109,20 +109,20 @@ describe('DocXMLaterProcessor - Footer Hyperlinks', () => {
 
     // Verify
     expect(hyperlinks).toHaveLength(1);
-    expect(hyperlinks[0].url).toBe('https://footer.com');
+    expect(hyperlinks[0].url).toBe("https://footer.com");
   });
 
-  it('should update URLs in footers', async () => {
+  it("should update URLs in footers", async () => {
     // Create document with footer hyperlinks
     const doc = Document.create();
     const footer = Footer.create();
     const para = footer.addParagraph();
-    para.addHyperlink(Hyperlink.createExternal('https://old-footer.com', 'Link'));
+    para.addHyperlink(Hyperlink.createExternal("https://old-footer.com", "Link"));
     doc.setFooter(footer);
 
     // Update
     const processor = new DocXMLaterProcessor();
-    const result = await processor.modifyHyperlinks(doc, (url) => url.replace('old', 'new'));
+    const result = await processor.modifyHyperlinks(doc, (url) => url.replace("old", "new"));
 
     // Verify
     expect(result.success).toBe(true);
@@ -134,27 +134,27 @@ describe('DocXMLaterProcessor - Footer Hyperlinks', () => {
 ### 4. Comprehensive Coverage
 
 ```typescript
-describe('DocXMLaterProcessor - Comprehensive Hyperlink Coverage', () => {
-  it('should extract hyperlinks from all document parts', async () => {
+describe("DocXMLaterProcessor - Comprehensive Hyperlink Coverage", () => {
+  it("should extract hyperlinks from all document parts", async () => {
     // Create document with hyperlinks in multiple locations
     const doc = Document.create();
 
     // Body hyperlink
-    doc.createParagraph().addHyperlink(Hyperlink.createExternal('https://body.com', 'Body'));
+    doc.createParagraph().addHyperlink(Hyperlink.createExternal("https://body.com", "Body"));
 
     // Table hyperlink
     const table = doc.createTable(1, 1);
     const cell = table.getCell(0, 0);
-    cell?.createParagraph().addHyperlink(Hyperlink.createExternal('https://table.com', 'Table'));
+    cell?.createParagraph().addHyperlink(Hyperlink.createExternal("https://table.com", "Table"));
 
     // Header hyperlink
     const header = Header.create();
-    header.addParagraph().addHyperlink(Hyperlink.createExternal('https://header.com', 'Header'));
+    header.addParagraph().addHyperlink(Hyperlink.createExternal("https://header.com", "Header"));
     doc.setHeader(header);
 
     // Footer hyperlink
     const footer = Footer.create();
-    footer.addParagraph().addHyperlink(Hyperlink.createExternal('https://footer.com', 'Footer'));
+    footer.addParagraph().addHyperlink(Hyperlink.createExternal("https://footer.com", "Footer"));
     doc.setFooter(footer);
 
     // Extract
@@ -164,26 +164,26 @@ describe('DocXMLaterProcessor - Comprehensive Hyperlink Coverage', () => {
     // Verify all 4 hyperlinks found
     expect(hyperlinks).toHaveLength(4);
     expect(hyperlinks.map((h) => h.url).sort()).toEqual([
-      'https://body.com',
-      'https://footer.com',
-      'https://header.com',
-      'https://table.com',
+      "https://body.com",
+      "https://footer.com",
+      "https://header.com",
+      "https://table.com",
     ]);
   });
 
-  it('should update URLs across all document parts in one operation', async () => {
+  it("should update URLs across all document parts in one operation", async () => {
     // Create document with hyperlinks in multiple locations
     const doc = Document.create();
-    doc.createParagraph().addHyperlink(Hyperlink.createExternal('https://old1.com', 'Link 1'));
-    doc.createParagraph().addHyperlink(Hyperlink.createExternal('https://old2.com', 'Link 2'));
+    doc.createParagraph().addHyperlink(Hyperlink.createExternal("https://old1.com", "Link 1"));
+    doc.createParagraph().addHyperlink(Hyperlink.createExternal("https://old2.com", "Link 2"));
 
     const table = doc.createTable(1, 1);
     const cell = table.getCell(0, 0);
-    cell?.createParagraph().addHyperlink(Hyperlink.createExternal('https://old3.com', 'Link 3'));
+    cell?.createParagraph().addHyperlink(Hyperlink.createExternal("https://old3.com", "Link 3"));
 
     // Update all at once
     const processor = new DocXMLaterProcessor();
-    const result = await processor.modifyHyperlinks(doc, (url) => url.replace('old', 'new'));
+    const result = await processor.modifyHyperlinks(doc, (url) => url.replace("old", "new"));
 
     // Verify all updated
     expect(result.success).toBe(true);
@@ -191,8 +191,8 @@ describe('DocXMLaterProcessor - Comprehensive Hyperlink Coverage', () => {
 
     // Extract and verify all URLs changed
     const hyperlinks = await processor.extractHyperlinks(doc);
-    expect(hyperlinks.every((h) => h.url?.includes('new'))).toBe(true);
-    expect(hyperlinks.every((h) => !h.url?.includes('old'))).toBe(true);
+    expect(hyperlinks.every((h) => h.url?.includes("new"))).toBe(true);
+    expect(hyperlinks.every((h) => !h.url?.includes("old"))).toBe(true);
   });
 });
 ```
@@ -200,8 +200,8 @@ describe('DocXMLaterProcessor - Comprehensive Hyperlink Coverage', () => {
 ### 5. Performance Benchmarks
 
 ```typescript
-describe('DocXMLaterProcessor - Performance', () => {
-  it('should be faster than manual extraction for large documents', async () => {
+describe("DocXMLaterProcessor - Performance", () => {
+  it("should be faster than manual extraction for large documents", async () => {
     // Create document with 500 hyperlinks
     const doc = Document.create();
     for (let i = 0; i < 500; i++) {
@@ -222,7 +222,7 @@ describe('DocXMLaterProcessor - Performance', () => {
     expect(duration).toBeLessThan(200); // Should be faster than 200ms
   });
 
-  it('should be faster than manual updates for large documents', async () => {
+  it("should be faster than manual updates for large documents", async () => {
     // Create document with 500 hyperlinks
     const doc = Document.create();
     for (let i = 0; i < 500; i++) {
@@ -235,7 +235,7 @@ describe('DocXMLaterProcessor - Performance', () => {
 
     // Measure update time
     const start = performance.now();
-    const result = await processor.modifyHyperlinks(doc, (url) => url.replace('old', 'new'));
+    const result = await processor.modifyHyperlinks(doc, (url) => url.replace("old", "new"));
     const duration = performance.now() - start;
 
     // Verify
@@ -249,35 +249,35 @@ describe('DocXMLaterProcessor - Performance', () => {
 ### 6. Error Handling
 
 ```typescript
-describe('DocXMLaterProcessor - Error Handling', () => {
-  it('should handle transform errors gracefully', async () => {
+describe("DocXMLaterProcessor - Error Handling", () => {
+  it("should handle transform errors gracefully", async () => {
     const doc = Document.create();
-    doc.createParagraph().addHyperlink(Hyperlink.createExternal('https://valid.com', 'Link'));
+    doc.createParagraph().addHyperlink(Hyperlink.createExternal("https://valid.com", "Link"));
 
     const processor = new DocXMLaterProcessor();
     const result = await processor.modifyHyperlinks(doc, (url) => {
-      throw new Error('Transform failed');
+      throw new Error("Transform failed");
     });
 
     // Verify error handled
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Failed to modify hyperlinks');
+    expect(result.error).toContain("Failed to modify hyperlinks");
   });
 
-  it('should preserve document if URL update fails', async () => {
+  it("should preserve document if URL update fails", async () => {
     const doc = Document.create();
-    doc.createParagraph().addHyperlink(Hyperlink.createExternal('https://original.com', 'Link'));
+    doc.createParagraph().addHyperlink(Hyperlink.createExternal("https://original.com", "Link"));
 
     const processor = new DocXMLaterProcessor();
 
     // Try to update with failing transform
     await processor.modifyHyperlinks(doc, (url) => {
-      throw new Error('Transform failed');
+      throw new Error("Transform failed");
     });
 
     // Verify original URL preserved
     const hyperlinks = await processor.extractHyperlinks(doc);
-    expect(hyperlinks[0].url).toBe('https://original.com');
+    expect(hyperlinks[0].url).toBe("https://original.com");
   });
 });
 ```

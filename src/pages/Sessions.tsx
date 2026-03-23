@@ -1,13 +1,13 @@
-import { Button } from '@/components/common/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
-import { Input } from '@/components/common/Input';
-import { SessionManager } from '@/components/sessions/SessionManager';
-import { useSession } from '@/contexts/SessionContext';
-import { cn } from '@/utils/cn';
-import { motion } from 'framer-motion';
-import { Calendar, Clock, FileText, FolderOpen, Grid, List, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Button } from "@/components/common/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/common/Card";
+import { Input } from "@/components/common/Input";
+import { SessionManager } from "@/components/sessions/SessionManager";
+import { useSession } from "@/contexts/SessionContext";
+import { cn } from "@/utils/cn";
+import { motion } from "framer-motion";
+import { Calendar, Clock, FileText, FolderOpen, Grid, List, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -33,8 +33,8 @@ const itemVariants = {
 export function Sessions() {
   const navigate = useNavigate();
   const { sessions, loadSession, deleteSession } = useSession();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [showSessionManager, setShowSessionManager] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
@@ -58,10 +58,10 @@ export function Sessions() {
   };
 
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     }).format(date);
   };
 
@@ -89,27 +89,27 @@ export function Sessions() {
           placeholder="Search sessions..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          onClear={() => setSearchQuery('')}
+          onClear={() => setSearchQuery("")}
           className="max-w-md"
         />
 
         <div className="flex gap-2">
           <div className="flex rounded-md border border-border">
             <button
-              onClick={() => setViewMode('grid')}
+              onClick={() => setViewMode("grid")}
               className={cn(
-                'p-2 rounded-l-md transition-colors',
-                viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                "p-2 rounded-l-md transition-colors",
+                viewMode === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
               )}
               aria-label="Grid view"
             >
               <Grid className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setViewMode('list')}
+              onClick={() => setViewMode("list")}
               className={cn(
-                'p-2 rounded-r-md transition-colors',
-                viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                "p-2 rounded-r-md transition-colors",
+                viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
               )}
               aria-label="List view"
             >
@@ -124,8 +124,8 @@ export function Sessions() {
 
       <motion.div
         className={cn(
-          'grid gap-4',
-          viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'
+          "grid gap-4",
+          viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"
         )}
         variants={containerVariants}
       >
@@ -147,10 +147,10 @@ export function Sessions() {
                       <CardTitle className="text-xl font-semibold">{session.name}</CardTitle>
                       <span
                         className={cn(
-                          'text-xs px-2 py-1 rounded-full mt-1 inline-block',
-                          session.status === 'active'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+                          "text-xs px-2 py-1 rounded-full mt-1 inline-block",
+                          session.status === "active"
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : "bg-muted text-muted-foreground"
                         )}
                       >
                         {session.status}
@@ -192,7 +192,7 @@ export function Sessions() {
                     </div>
                   </div>
 
-                  {viewMode === 'list' && (
+                  {viewMode === "list" && (
                     <div className="pt-2 grid grid-cols-4 gap-2 text-sm">
                       <div>
                         <p className="text-muted-foreground">Processed</p>
@@ -257,12 +257,12 @@ export function Sessions() {
         <motion.div variants={itemVariants} className="text-center py-12">
           <FolderOpen className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium mb-2">
-            {searchQuery ? 'No sessions found' : 'No sessions yet'}
+            {searchQuery ? "No sessions found" : "No sessions yet"}
           </h3>
           <p className="text-muted-foreground mb-4">
             {searchQuery
-              ? 'Try adjusting your search query'
-              : 'Create your first session to start processing documents'}
+              ? "Try adjusting your search query"
+              : "Create your first session to start processing documents"}
           </p>
           {!searchQuery && (
             <Button onClick={handleNewSession} icon={<Plus className="w-4 h-4" />}>

@@ -7,8 +7,8 @@
  * - Comparison view: Side-by-side pre vs post processing diff
  */
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText,
   List,
@@ -23,13 +23,13 @@ import {
   ChevronsUpDown,
   ChevronsDownUp,
   Keyboard,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
-import type { TrackedChangesViewMode, TrackedChangesPanelProps } from '@/types/editor';
-import type { ChangeEntry, UnifiedChange } from '@/types/session';
-import { DocumentSnapshotService } from '@/services/document/DocumentSnapshotService';
-import { InlineChangesView } from './InlineChangesView';
-import { SideBySideDiff } from '../comparison/SideBySideDiff';
+} from "lucide-react";
+import { cn } from "@/utils/cn";
+import type { TrackedChangesViewMode, TrackedChangesPanelProps } from "@/types/editor";
+import type { ChangeEntry, UnifiedChange } from "@/types/session";
+import { DocumentSnapshotService } from "@/services/document/DocumentSnapshotService";
+import { InlineChangesView } from "./InlineChangesView";
+import { SideBySideDiff } from "../comparison/SideBySideDiff";
 
 interface TrackedChangesPanelFullProps extends TrackedChangesPanelProps {
   /** Changes from docxmlater tracked changes */
@@ -64,10 +64,10 @@ function TabButton({
     <button
       onClick={onClick}
       className={cn(
-        'flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors',
+        "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors",
         active
-          ? 'bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground"
       )}
     >
       <Icon className="w-4 h-4" />
@@ -75,10 +75,10 @@ function TabButton({
       {count !== undefined && count > 0 && (
         <span
           className={cn(
-            'px-1.5 py-0.5 text-xs rounded-full',
+            "px-1.5 py-0.5 text-xs rounded-full",
             active
-              ? 'bg-primary-foreground/20 text-primary-foreground'
-              : 'bg-muted-foreground/20 text-muted-foreground'
+              ? "bg-primary-foreground/20 text-primary-foreground"
+              : "bg-muted-foreground/20 text-muted-foreground"
           )}
         >
           {count}
@@ -88,7 +88,6 @@ function TabButton({
   );
 }
 
-
 /**
  * Simple list view placeholder (existing ChangeViewer logic)
  */
@@ -96,7 +95,7 @@ function ListViewContent({ changes }: { changes: ChangeEntry[] }) {
   const grouped = useMemo(() => {
     const groups: Record<string, ChangeEntry[]> = {};
     for (const change of changes) {
-      const category = change.category || 'other';
+      const category = change.category || "other";
       if (!groups[category]) {
         groups[category] = [];
       }
@@ -106,21 +105,21 @@ function ListViewContent({ changes }: { changes: ChangeEntry[] }) {
   }, [changes]);
 
   const categoryLabels: Record<string, string> = {
-    content: 'Content Changes',
-    formatting: 'Formatting Changes',
-    structural: 'Structural Changes',
-    table: 'Table Changes',
-    hyperlink: 'Hyperlink Changes',
-    other: 'Other Changes',
+    content: "Content Changes",
+    formatting: "Formatting Changes",
+    structural: "Structural Changes",
+    table: "Table Changes",
+    hyperlink: "Hyperlink Changes",
+    other: "Other Changes",
   };
 
   const categoryColors: Record<string, string> = {
-    content: 'border-l-blue-500',
-    formatting: 'border-l-purple-500',
-    structural: 'border-l-orange-500',
-    table: 'border-l-cyan-500',
-    hyperlink: 'border-l-green-500',
-    other: 'border-l-gray-500',
+    content: "border-l-blue-500",
+    formatting: "border-l-purple-500",
+    structural: "border-l-orange-500",
+    table: "border-l-cyan-500",
+    hyperlink: "border-l-green-500",
+    other: "border-l-gray-500",
   };
 
   if (changes.length === 0) {
@@ -139,8 +138,8 @@ function ListViewContent({ changes }: { changes: ChangeEntry[] }) {
           <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
             <span
               className={cn(
-                'w-2 h-2 rounded-full',
-                categoryColors[category]?.replace('border-l-', 'bg-') || 'bg-gray-500'
+                "w-2 h-2 rounded-full",
+                categoryColors[category]?.replace("border-l-", "bg-") || "bg-gray-500"
               )}
             />
             {categoryLabels[category] || category} ({categoryChanges.length})
@@ -150,8 +149,8 @@ function ListViewContent({ changes }: { changes: ChangeEntry[] }) {
               <div
                 key={`${category}-${index}`}
                 className={cn(
-                  'p-3 bg-muted/50 rounded-lg border-l-2',
-                  categoryColors[category] || 'border-l-gray-500'
+                  "p-3 bg-muted/50 rounded-lg border-l-2",
+                  categoryColors[category] || "border-l-gray-500"
                 )}
               >
                 <p className="text-sm">{change.description}</p>
@@ -160,22 +159,20 @@ function ListViewContent({ changes }: { changes: ChangeEntry[] }) {
                     <div className="bg-red-50 dark:bg-red-900/20 p-2 rounded">
                       <span className="text-red-700 dark:text-red-300 line-through">
                         {change.content.before.slice(0, 100)}
-                        {change.content.before.length > 100 && '...'}
+                        {change.content.before.length > 100 && "..."}
                       </span>
                     </div>
                     <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded">
                       <span className="text-green-700 dark:text-green-300">
                         {change.content.after.slice(0, 100)}
-                        {change.content.after.length > 100 && '...'}
+                        {change.content.after.length > 100 && "..."}
                       </span>
                     </div>
                   </div>
                 )}
                 <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
                   {change.author && <span>By: {change.author}</span>}
-                  {change.date && (
-                    <span>{new Date(change.date).toLocaleDateString()}</span>
-                  )}
+                  {change.date && <span>{new Date(change.date).toLocaleDateString()}</span>}
                 </div>
               </div>
             ))}
@@ -203,7 +200,7 @@ export function TrackedChangesPanel({
   defaultExpanded = true,
   onOpenEditor,
 }: TrackedChangesPanelFullProps) {
-  const [activeTab, setActiveTab] = useState<TrackedChangesViewMode>('list');
+  const [activeTab, setActiveTab] = useState<TrackedChangesViewMode>("list");
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [originalText, setOriginalText] = useState<string[]>([]);
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
@@ -221,7 +218,7 @@ export function TrackedChangesPanel({
 
   // Load snapshot for comparison view
   useEffect(() => {
-    if (activeTab === 'comparison' && originalText.length === 0) {
+    if (activeTab === "comparison" && originalText.length === 0) {
       setIsLoadingSnapshot(true);
       DocumentSnapshotService.getSnapshot(sessionId, documentId)
         .then((snapshot) => {
@@ -230,7 +227,7 @@ export function TrackedChangesPanel({
           }
         })
         .catch((error) => {
-          console.error('Failed to load snapshot:', error);
+          console.error("Failed to load snapshot:", error);
         })
         .finally(() => {
           setIsLoadingSnapshot(false);
@@ -256,7 +253,10 @@ export function TrackedChangesPanel({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle if panel is focused or contains focus
-      if (!panelRef.current?.contains(document.activeElement) && document.activeElement !== panelRef.current) {
+      if (
+        !panelRef.current?.contains(document.activeElement) &&
+        document.activeElement !== panelRef.current
+      ) {
         return;
       }
 
@@ -266,56 +266,56 @@ export function TrackedChangesPanel({
       }
 
       switch (e.key) {
-        case 'j':
-        case 'ArrowDown':
+        case "j":
+        case "ArrowDown":
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             handleNextChange();
           }
           break;
-        case 'k':
-        case 'ArrowUp':
+        case "k":
+        case "ArrowUp":
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             handlePreviousChange();
           }
           break;
-        case 'e':
+        case "e":
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             toggleAllParagraphs();
           }
           break;
-        case '1':
+        case "1":
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
-            setActiveTab('inline');
+            setActiveTab("inline");
           }
           break;
-        case '2':
+        case "2":
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
-            setActiveTab('list');
+            setActiveTab("list");
           }
           break;
-        case '3':
+        case "3":
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
-            setActiveTab('comparison');
+            setActiveTab("comparison");
           }
           break;
-        case '?':
+        case "?":
           e.preventDefault();
           setShowKeyboardHint((prev) => !prev);
           break;
-        case 'Escape':
+        case "Escape":
           setShowKeyboardHint(false);
           break;
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleNextChange, handlePreviousChange, toggleAllParagraphs]);
 
   return (
@@ -366,7 +366,8 @@ export function TrackedChangesPanel({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-4">
-                Press <kbd className="px-1 bg-muted rounded">?</kbd> or <kbd className="px-1 bg-muted rounded">Esc</kbd> to close
+                Press <kbd className="px-1 bg-muted rounded">?</kbd> or{" "}
+                <kbd className="px-1 bg-muted rounded">Esc</kbd> to close
               </p>
             </div>
           </motion.div>
@@ -422,7 +423,7 @@ export function TrackedChangesPanel({
         {isExpanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
@@ -430,36 +431,40 @@ export function TrackedChangesPanel({
             <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/10">
               <div className="flex items-center gap-1">
                 <TabButton
-                  active={activeTab === 'inline'}
-                  onClick={() => setActiveTab('inline')}
+                  active={activeTab === "inline"}
+                  onClick={() => setActiveTab("inline")}
                   icon={FileText}
                   label="Inline"
                   count={allChanges.length}
                 />
                 <TabButton
-                  active={activeTab === 'list'}
-                  onClick={() => setActiveTab('list')}
+                  active={activeTab === "list"}
+                  onClick={() => setActiveTab("list")}
                   icon={List}
                   label="List"
                   count={allChanges.length}
                 />
                 <TabButton
-                  active={activeTab === 'comparison'}
-                  onClick={() => setActiveTab('comparison')}
+                  active={activeTab === "comparison"}
+                  onClick={() => setActiveTab("comparison")}
                   icon={Columns}
                   label="Before/After"
                 />
               </div>
 
               {/* Controls */}
-              {allChanges.length > 0 && activeTab !== 'comparison' && (
+              {allChanges.length > 0 && activeTab !== "comparison" && (
                 <div className="flex items-center gap-2">
                   {/* Expand/Collapse All button (for inline view) */}
-                  {activeTab === 'inline' && (
+                  {activeTab === "inline" && (
                     <button
                       onClick={toggleAllParagraphs}
                       className="p-1.5 rounded hover:bg-muted transition-colors flex items-center gap-1 text-xs text-muted-foreground"
-                      title={allParagraphsExpanded ? 'Collapse all paragraphs (e)' : 'Expand all paragraphs (e)'}
+                      title={
+                        allParagraphsExpanded
+                          ? "Collapse all paragraphs (e)"
+                          : "Expand all paragraphs (e)"
+                      }
                     >
                       {allParagraphsExpanded ? (
                         <ChevronsDownUp className="w-4 h-4" />
@@ -467,15 +472,13 @@ export function TrackedChangesPanel({
                         <ChevronsUpDown className="w-4 h-4" />
                       )}
                       <span className="hidden sm:inline">
-                        {allParagraphsExpanded ? 'Collapse' : 'Expand'}
+                        {allParagraphsExpanded ? "Collapse" : "Expand"}
                       </span>
                     </button>
                   )}
 
                   {/* Separator */}
-                  {activeTab === 'inline' && (
-                    <div className="w-px h-4 bg-border" />
-                  )}
+                  {activeTab === "inline" && <div className="w-px h-4 bg-border" />}
 
                   {/* Navigation controls */}
                   <div className="flex items-center gap-1">
@@ -505,7 +508,7 @@ export function TrackedChangesPanel({
 
             {/* Tab Content */}
             <div className="max-h-[500px] overflow-y-auto">
-              {activeTab === 'inline' && (
+              {activeTab === "inline" && (
                 <InlineChangesView
                   changes={allChanges}
                   highlightedChangeIndex={currentChangeIndex}
@@ -514,9 +517,9 @@ export function TrackedChangesPanel({
                 />
               )}
 
-              {activeTab === 'list' && <ListViewContent changes={allChanges} />}
+              {activeTab === "list" && <ListViewContent changes={allChanges} />}
 
-              {activeTab === 'comparison' && (
+              {activeTab === "comparison" && (
                 <>
                   {isLoadingSnapshot ? (
                     <div className="p-8 text-center text-muted-foreground">

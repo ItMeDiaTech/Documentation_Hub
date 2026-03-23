@@ -1,19 +1,19 @@
-import { Button } from '@/components/common/Button';
-import { ColorPickerDialog } from '@/components/common/ColorPickerDialog';
-import { ConfirmDialog } from '@/components/common/ConfirmDialog';
-import { Input } from '@/components/common/Input';
-import { SegmentedControl } from '@/components/settings/SegmentedControl';
-import { SettingRow } from '@/components/settings/SettingRow';
-import * as Switch from '@radix-ui/react-switch';
-import { useGlobalStats } from '@/contexts/GlobalStatsContext';
-import { useSession } from '@/contexts/SessionContext';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useUserSettings } from '@/contexts/UserSettingsContext';
-import { cn } from '@/utils/cn';
-import { getContrastTextColor } from '@/utils/colorConvert';
-import logger from '@/utils/logger';
-import { hasEncodingIssues, sanitizeUrl, validatePowerAutomateUrl } from '@/utils/urlHelpers';
-import { motion } from 'framer-motion';
+import { Button } from "@/components/common/Button";
+import { ColorPickerDialog } from "@/components/common/ColorPickerDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { Input } from "@/components/common/Input";
+import { SegmentedControl } from "@/components/settings/SegmentedControl";
+import { SettingRow } from "@/components/settings/SettingRow";
+import * as Switch from "@radix-ui/react-switch";
+import { useGlobalStats } from "@/contexts/GlobalStatsContext";
+import { useSession } from "@/contexts/SessionContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import { useUserSettings } from "@/contexts/UserSettingsContext";
+import { cn } from "@/utils/cn";
+import { getContrastTextColor } from "@/utils/colorConvert";
+import logger from "@/utils/logger";
+import { hasEncodingIssues, sanitizeUrl, validatePowerAutomateUrl } from "@/utils/urlHelpers";
+import { motion } from "framer-motion";
 import {
   Accessibility,
   AlertCircle,
@@ -42,76 +42,79 @@ import {
   Type,
   User,
   Wifi,
-  Zap
-} from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+  Zap,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 const settingsSections = [
   {
-    group: 'Account',
+    group: "Account",
+    items: [{ id: "profile", label: "Profile", icon: User, description: "Personal information" }],
+  },
+  {
+    group: "Customization",
     items: [
-      { id: 'profile', label: 'Profile', icon: User, description: 'Personal information' },
+      { id: "appearance", label: "Appearance", icon: Palette, description: "Theme & colors" },
+      { id: "typography", label: "Typography", icon: Type, description: "Fonts & text styling" },
+      { id: "display", label: "Display", icon: Monitor, description: "Monitor settings" },
     ],
   },
   {
-    group: 'Customization',
+    group: "System",
     items: [
-      { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme & colors' },
-      { id: 'typography', label: 'Typography', icon: Type, description: 'Fonts & text styling' },
-      { id: 'display', label: 'Display', icon: Monitor, description: 'Monitor settings' },
-    ],
-  },
-  {
-    group: 'System',
-    items: [
-      { id: 'language', label: 'Language', icon: Globe, description: 'Region & locale' },
-      { id: 'updates', label: 'Updates', icon: Download, description: 'App updates & versioning' },
+      { id: "language", label: "Language", icon: Globe, description: "Region & locale" },
+      { id: "updates", label: "Updates", icon: Download, description: "App updates & versioning" },
       {
-        id: 'api-connections',
-        label: 'API Connections',
+        id: "api-connections",
+        label: "API Connections",
         icon: Link2,
-        description: 'External services',
+        description: "External services",
       },
       {
-        id: 'local-dictionary',
-        label: 'Local Dictionary',
+        id: "local-dictionary",
+        label: "Local Dictionary",
         icon: HardDrive,
-        description: 'Offline hyperlink lookups',
+        description: "Offline hyperlink lookups",
       },
       {
-        id: 'backup-settings',
-        label: 'Backups',
+        id: "backup-settings",
+        label: "Backups",
         icon: Archive,
-        description: 'Document backup options',
+        description: "Document backup options",
       },
       {
-        id: 'submit-idea',
-        label: 'Submit Idea for New Implementation',
+        id: "submit-idea",
+        label: "Submit Idea for New Implementation",
         icon: Lightbulb,
-        description: 'Share your ideas',
+        description: "Share your ideas",
       },
     ],
   },
 ];
 
 export function Settings() {
-  const [activeSection, setActiveSection] = useState('profile');
-  const [ideaTitle, setIdeaTitle] = useState('');
-  const [ideaBenefit, setIdeaBenefit] = useState('');
+  const [activeSection, setActiveSection] = useState("profile");
+  const [ideaTitle, setIdeaTitle] = useState("");
+  const [ideaBenefit, setIdeaBenefit] = useState("");
   const [ideaSubmitted, setIdeaSubmitted] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [checkingForUpdates, setCheckingForUpdates] = useState(false);
-  const [updateStatus, setUpdateStatus] = useState('');
-  const [currentVersion, setCurrentVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState("");
+  const [currentVersion, setCurrentVersion] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [updateVersion, setUpdateVersion] = useState('');
+  const [updateVersion, setUpdateVersion] = useState("");
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
   // SharePoint update source states
-  const [sharePointLoginStatus, setSharePointLoginStatus] = useState<'logged-out' | 'logging-in' | 'logged-in'>('logged-out');
+  const [sharePointLoginStatus, setSharePointLoginStatus] = useState<
+    "logged-out" | "logging-in" | "logged-in"
+  >("logged-out");
   const [testingSharePointConnection, setTestingSharePointConnection] = useState(false);
-  const [sharePointConnectionResult, setSharePointConnectionResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [sharePointConnectionResult, setSharePointConnectionResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
 
   const {
     settings,
@@ -141,13 +144,15 @@ export function Settings() {
   const [displaySettingsForm, setDisplaySettingsForm] = useState(settings.displaySettings);
 
   // Display settings states
-  const [availableDisplays, setAvailableDisplays] = useState<Array<{
-    id: number;
-    label: string;
-    bounds: { x: number; y: number; width: number; height: number };
-    workArea: { x: number; y: number; width: number; height: number };
-    isPrimary: boolean;
-  }>>([]);
+  const [availableDisplays, setAvailableDisplays] = useState<
+    Array<{
+      id: number;
+      label: string;
+      bounds: { x: number; y: number; width: number; height: number };
+      workArea: { x: number; y: number; width: number; height: number };
+      isPrimary: boolean;
+    }>
+  >([]);
   const [identifyingMonitors, setIdentifyingMonitors] = useState(false);
 
   // Dictionary sync states
@@ -162,7 +167,7 @@ export function Settings() {
     nextScheduledSync: string | null;
   } | null>(null);
   const [syncingDictionary, setSyncingDictionary] = useState(false);
-  const [clientSecretInput, setClientSecretInput] = useState('');
+  const [clientSecretInput, setClientSecretInput] = useState("");
   const [showClientSecretDialog, setShowClientSecretDialog] = useState(false);
   const [credentialsSaved, setCredentialsSaved] = useState(false);
   const [showResetStatsDialog, setShowResetStatsDialog] = useState(false);
@@ -178,14 +183,14 @@ export function Settings() {
     const getVersion = async () => {
       try {
         if (!window.electronAPI?.getCurrentVersion) {
-          console.warn('Settings: electronAPI.getCurrentVersion not available');
+          console.warn("Settings: electronAPI.getCurrentVersion not available");
           return;
         }
         const version = await window.electronAPI.getCurrentVersion();
         setCurrentVersion(version);
-    } catch (_error) {
-      // Silently handle version retrieval errors
-    }
+      } catch (_error) {
+        // Silently handle version retrieval errors
+      }
     };
     getVersion();
   }, []);
@@ -193,8 +198,8 @@ export function Settings() {
   // Update event listeners
   useEffect(() => {
     // Safely check if electronAPI is available
-    if (typeof window.electronAPI === 'undefined') {
-      console.warn('Settings: electronAPI not available (running in browser mode?)');
+    if (typeof window.electronAPI === "undefined") {
+      console.warn("Settings: electronAPI not available (running in browser mode?)");
       return;
     }
 
@@ -230,7 +235,7 @@ export function Settings() {
     const unsubNotAvailable = window.electronAPI.onUpdateNotAvailable(
       (_info: { version: string }) => {
         setUpdateAvailable(false);
-        setUpdateStatus('You are up to date');
+        setUpdateStatus("You are up to date");
         setCheckingForUpdates(false);
       }
     );
@@ -266,7 +271,7 @@ export function Settings() {
   // Fetch available displays when display section is active
   useEffect(() => {
     const fetchDisplays = async () => {
-      if (typeof window.electronAPI === 'undefined' || !window.electronAPI.display) return;
+      if (typeof window.electronAPI === "undefined" || !window.electronAPI.display) return;
       try {
         const displays = await window.electronAPI.display.getAllDisplays();
         setAvailableDisplays(displays);
@@ -275,7 +280,7 @@ export function Settings() {
       }
     };
 
-    if (activeSection === 'display') {
+    if (activeSection === "display") {
       fetchDisplays();
     }
   }, [activeSection]);
@@ -283,7 +288,7 @@ export function Settings() {
   // Dictionary status polling
   useEffect(() => {
     const fetchDictionaryStatus = async () => {
-      if (typeof window.electronAPI === 'undefined') return;
+      if (typeof window.electronAPI === "undefined") return;
       try {
         const result = await window.electronAPI.dictionary.getStatus();
         if (result.success && result.status) {
@@ -295,7 +300,7 @@ export function Settings() {
     };
 
     // Fetch on mount and when dictionary section is active
-    if (activeSection === 'local-dictionary') {
+    if (activeSection === "local-dictionary") {
       fetchDictionaryStatus();
       const interval = setInterval(fetchDictionaryStatus, 5000);
       return () => clearInterval(interval);
@@ -304,7 +309,7 @@ export function Settings() {
 
   // Dictionary sync progress listener
   useEffect(() => {
-    if (typeof window.electronAPI === 'undefined') return;
+    if (typeof window.electronAPI === "undefined") return;
 
     const unsubProgress = window.electronAPI.dictionary.onSyncProgress((progress) => {
       setDictionaryStatus((prev) =>
@@ -378,7 +383,7 @@ export function Settings() {
       await resetAllStats();
       setShowResetStatsDialog(false);
     } catch (error) {
-      logger.error('Failed to reset stats:', error);
+      logger.error("Failed to reset stats:", error);
     } finally {
       setIsResettingStats(false);
     }
@@ -403,14 +408,14 @@ export function Settings() {
     });
 
     // Configure update provider based on SharePoint settings
-    if (typeof window.electronAPI !== 'undefined') {
+    if (typeof window.electronAPI !== "undefined") {
       if (updateSettingsForm.useSharePointSource && updateSettingsForm.sharePointFolderUrl) {
         await window.electronAPI.setUpdateProvider({
-          type: 'sharepoint',
+          type: "sharepoint",
           sharePointUrl: updateSettingsForm.sharePointFolderUrl,
         });
       } else {
-        await window.electronAPI.setUpdateProvider({ type: 'github' });
+        await window.electronAPI.setUpdateProvider({ type: "github" });
       }
     }
 
@@ -430,7 +435,7 @@ export function Settings() {
 
   const handleCheckForUpdates = async () => {
     setCheckingForUpdates(true);
-    setUpdateStatus('Checking for updates...');
+    setUpdateStatus("Checking for updates...");
     setUpdateAvailable(false);
     setUpdateDownloaded(false);
     setDownloadProgress(0);
@@ -439,18 +444,18 @@ export function Settings() {
       await window.electronAPI?.checkForUpdates();
       // Status will be updated by event listeners
     } catch (_error) {
-      setUpdateStatus('Error checking for updates');
+      setUpdateStatus("Error checking for updates");
       setCheckingForUpdates(false);
     }
   };
 
   const handleDownloadUpdate = async () => {
-    setUpdateStatus('Starting download...');
+    setUpdateStatus("Starting download...");
     try {
       await window.electronAPI?.downloadUpdate();
       // Progress will be updated by event listeners
     } catch (_error) {
-      setUpdateStatus('Download failed');
+      setUpdateStatus("Download failed");
     }
   };
 
@@ -461,22 +466,22 @@ export function Settings() {
 
   // SharePoint update source handlers
   const handleSharePointLogin = async () => {
-    setSharePointLoginStatus('logging-in');
+    setSharePointLoginStatus("logging-in");
     try {
       const result = await window.electronAPI?.sharePointLogin();
-      setSharePointLoginStatus(result?.success ? 'logged-in' : 'logged-out');
+      setSharePointLoginStatus(result?.success ? "logged-in" : "logged-out");
       if (!result?.success && result?.error) {
         setSharePointConnectionResult({ success: false, message: result.error });
       }
     } catch {
-      setSharePointLoginStatus('logged-out');
-      setSharePointConnectionResult({ success: false, message: 'Login failed' });
+      setSharePointLoginStatus("logged-out");
+      setSharePointConnectionResult({ success: false, message: "Login failed" });
     }
   };
 
   const handleSharePointLogout = async () => {
     await window.electronAPI?.sharePointLogout();
-    setSharePointLoginStatus('logged-out');
+    setSharePointLoginStatus("logged-out");
     setSharePointConnectionResult(null);
   };
 
@@ -485,10 +490,12 @@ export function Settings() {
     setTestingSharePointConnection(true);
     setSharePointConnectionResult(null);
     try {
-      const result = await window.electronAPI?.testSharePointConnection(updateSettingsForm.sharePointFolderUrl);
-      setSharePointConnectionResult(result || { success: false, message: 'Test failed' });
+      const result = await window.electronAPI?.testSharePointConnection(
+        updateSettingsForm.sharePointFolderUrl
+      );
+      setSharePointConnectionResult(result || { success: false, message: "Test failed" });
     } catch {
-      setSharePointConnectionResult({ success: false, message: 'Connection test failed' });
+      setSharePointConnectionResult({ success: false, message: "Connection test failed" });
     } finally {
       setTestingSharePointConnection(false);
     }
@@ -498,7 +505,7 @@ export function Settings() {
     if (!url) return false;
     try {
       const parsed = new URL(url);
-      return parsed.protocol === 'https:' && parsed.hostname.endsWith('.sharepoint.com');
+      return parsed.protocol === "https:" && parsed.hostname.endsWith(".sharepoint.com");
     } catch {
       return false;
     }
@@ -521,11 +528,13 @@ export function Settings() {
 
   // Interactive dictionary retrieval from SharePoint using browser login
   const handleRetrieveDictionary = async () => {
-    if (typeof window.electronAPI === 'undefined') return;
+    if (typeof window.electronAPI === "undefined") return;
     if (!localDictionaryForm.sharePointFileUrl.trim()) return;
 
     setSyncingDictionary(true);
-    setDictionaryStatus((prev) => prev ? { ...prev, syncError: null, syncInProgress: true } : null);
+    setDictionaryStatus((prev) =>
+      prev ? { ...prev, syncError: null, syncInProgress: true } : null
+    );
 
     try {
       // Initialize database first if needed
@@ -553,27 +562,31 @@ export function Settings() {
           totalEntries: result.entriesImported || 0,
         });
         setDictionaryStatus((prev) =>
-          prev ? {
-            ...prev,
-            lastSyncTime: now,
-            lastSyncSuccess: true,
-            totalEntries: result.entriesImported || 0,
-            syncInProgress: false,
-            syncError: null,
-          } : null
+          prev
+            ? {
+                ...prev,
+                lastSyncTime: now,
+                lastSyncSuccess: true,
+                totalEntries: result.entriesImported || 0,
+                syncInProgress: false,
+                syncError: null,
+              }
+            : null
         );
       } else {
         setDictionaryStatus((prev) =>
-          prev ? {
-            ...prev,
-            syncError: result.error || 'Retrieval failed',
-            syncInProgress: false,
-            lastSyncSuccess: false,
-          } : null
+          prev
+            ? {
+                ...prev,
+                syncError: result.error || "Retrieval failed",
+                syncInProgress: false,
+                lastSyncSuccess: false,
+              }
+            : null
         );
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Retrieval failed';
+      const message = error instanceof Error ? error.message : "Retrieval failed";
       setDictionaryStatus((prev) =>
         prev ? { ...prev, syncError: message, syncInProgress: false } : null
       );
@@ -597,7 +610,7 @@ export function Settings() {
   const handleExport = async () => {
     try {
       if (!window.electronAPI?.exportSettings) {
-        console.warn('Settings: electronAPI.exportSettings not available');
+        console.warn("Settings: electronAPI.exportSettings not available");
         return;
       }
 
@@ -610,7 +623,7 @@ export function Settings() {
 
       // Prepare export data
       const exportData = {
-        version: '1.0',
+        version: "1.0",
         exportDate: new Date().toISOString(),
         data: {
           userSettings: settings,
@@ -638,17 +651,17 @@ export function Settings() {
           saveSuccessTimeoutRef.current = null;
         }, 2000);
       } else {
-        logger.error('Failed to save export data:', saveResult.error);
+        logger.error("Failed to save export data:", saveResult.error);
       }
     } catch (_error) {
-      logger.error('Export failed:', _error);
+      logger.error("Export failed:", _error);
     }
   };
 
   const handleImport = async () => {
     try {
       if (!window.electronAPI?.importSettings) {
-        console.warn('Settings: electronAPI.importSettings not available');
+        console.warn("Settings: electronAPI.importSettings not available");
         return;
       }
 
@@ -661,7 +674,7 @@ export function Settings() {
 
       // Validate import data
       if (!result.data?.version || !result.data?.data) {
-        logger.error('Invalid import file format');
+        logger.error("Invalid import file format");
         return;
       }
 
@@ -684,7 +697,7 @@ export function Settings() {
         window.location.reload();
       }, 2000);
     } catch (_error) {
-      logger.error('Import failed:', _error);
+      logger.error("Import failed:", _error);
     }
   };
 
@@ -730,7 +743,7 @@ export function Settings() {
   } = useTheme();
 
   const [activeColorPicker, setActiveColorPicker] = useState<string | null>(null);
-  const [tempColor, setTempColor] = useState('#000000');
+  const [tempColor, setTempColor] = useState("#000000");
 
   // URL validation states
   const [urlValidation, setUrlValidation] = useState<{
@@ -792,18 +805,18 @@ export function Settings() {
                           key={item.id}
                           onClick={() => setActiveSection(item.id)}
                           className={cn(
-                            'w-full flex items-start gap-3 px-3 py-2.5 rounded-lg transition-all group',
+                            "w-full flex items-start gap-3 px-3 py-2.5 rounded-lg transition-all group",
                             activeSection === item.id
-                              ? 'bg-primary/10 text-primary'
-                              : 'hover:bg-muted text-foreground'
+                              ? "bg-primary/10 text-primary"
+                              : "hover:bg-muted text-foreground"
                           )}
                         >
                           <Icon
                             className={cn(
-                              'w-4 h-4 mt-0.5 transition-colors',
+                              "w-4 h-4 mt-0.5 transition-colors",
                               activeSection === item.id
-                                ? 'text-primary'
-                                : 'text-muted-foreground group-hover:text-foreground'
+                                ? "text-primary"
+                                : "text-muted-foreground group-hover:text-foreground"
                             )}
                           />
                           <div className="text-left">
@@ -826,7 +839,7 @@ export function Settings() {
         </motion.aside>
 
         <motion.main className="flex-1 max-w-4xl" variants={itemVariants}>
-          {activeSection === 'profile' && (
+          {activeSection === "profile" && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold">Profile</h2>
@@ -863,7 +876,7 @@ export function Settings() {
                   </Button>
                   <Button
                     variant="outline"
-                    icon={<Download className="w-4 h-4" style={{ transform: 'rotate(180deg)' }} />}
+                    icon={<Download className="w-4 h-4" style={{ transform: "rotate(180deg)" }} />}
                     onClick={handleImport}
                   >
                     Import Settings
@@ -884,7 +897,8 @@ export function Settings() {
                   <div>
                     <h3 className="font-semibold text-destructive">Reset Analytics Statistics</h3>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Permanently delete all historical analytics data. This action cannot be undone.
+                      Permanently delete all historical analytics data. This action cannot be
+                      undone.
                     </p>
                   </div>
                   <Button
@@ -899,7 +913,7 @@ export function Settings() {
             </div>
           )}
 
-          {activeSection === 'appearance' && (
+          {activeSection === "appearance" && (
             <div className="space-y-6">
               {/* Header */}
               <div>
@@ -917,7 +931,9 @@ export function Settings() {
                   </div>
                   <div>
                     <h3 className="font-semibold">Theme & Display</h3>
-                    <p className="text-sm text-muted-foreground">Choose your preferred theme and interface density</p>
+                    <p className="text-sm text-muted-foreground">
+                      Choose your preferred theme and interface density
+                    </p>
                   </div>
                 </div>
 
@@ -934,9 +950,9 @@ export function Settings() {
                       value={theme}
                       onValueChange={setTheme}
                       options={[
-                        { value: 'light' as const, label: 'Light', icon: Sun },
-                        { value: 'dark' as const, label: 'Dark', icon: Moon },
-                        { value: 'system' as const, label: 'System', icon: Laptop },
+                        { value: "light" as const, label: "Light", icon: Sun },
+                        { value: "dark" as const, label: "Dark", icon: Moon },
+                        { value: "system" as const, label: "System", icon: Laptop },
                       ]}
                       size="sm"
                     />
@@ -956,9 +972,9 @@ export function Settings() {
                       value={density}
                       onValueChange={setDensity}
                       options={[
-                        { value: 'comfortable' as const, label: 'Comfortable' },
-                        { value: 'compact' as const, label: 'Compact' },
-                        { value: 'minimal' as const, label: 'Minimal' },
+                        { value: "comfortable" as const, label: "Comfortable" },
+                        { value: "compact" as const, label: "Compact" },
+                        { value: "minimal" as const, label: "Minimal" },
                       ]}
                       size="sm"
                     />
@@ -974,7 +990,9 @@ export function Settings() {
                   </div>
                   <div>
                     <h3 className="font-semibold">Colors</h3>
-                    <p className="text-sm text-muted-foreground">Customize your accent color and theme</p>
+                    <p className="text-sm text-muted-foreground">
+                      Customize your accent color and theme
+                    </p>
                   </div>
                 </div>
 
@@ -983,13 +1001,13 @@ export function Settings() {
                   <label className="text-sm font-medium mb-3 block">Accent Color</label>
                   <div className="flex flex-wrap gap-3">
                     {[
-                      { name: 'blue' as const, label: 'Blue', color: '#3b82f6' },
-                      { name: 'purple' as const, label: 'Purple', color: '#8b5cf6' },
-                      { name: 'green' as const, label: 'Green', color: '#22c55e' },
-                      { name: 'orange' as const, label: 'Orange', color: '#f97316' },
-                      { name: 'pink' as const, label: 'Pink', color: '#ec4899' },
-                      { name: 'cyan' as const, label: 'Cyan', color: '#06b6d4' },
-                      { name: 'indigo' as const, label: 'Indigo', color: '#6366f1' },
+                      { name: "blue" as const, label: "Blue", color: "#3b82f6" },
+                      { name: "purple" as const, label: "Purple", color: "#8b5cf6" },
+                      { name: "green" as const, label: "Green", color: "#22c55e" },
+                      { name: "orange" as const, label: "Orange", color: "#f97316" },
+                      { name: "pink" as const, label: "Pink", color: "#ec4899" },
+                      { name: "cyan" as const, label: "Cyan", color: "#06b6d4" },
+                      { name: "indigo" as const, label: "Indigo", color: "#6366f1" },
                     ].map((colorOption) => (
                       <motion.button
                         key={colorOption.name}
@@ -997,10 +1015,10 @@ export function Settings() {
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         className={cn(
-                          'group relative flex items-center gap-2 px-3 py-2 rounded-full border-2 transition-all',
+                          "group relative flex items-center gap-2 px-3 py-2 rounded-full border-2 transition-all",
                           accentColor === colorOption.name
-                            ? 'border-primary bg-primary/10 shadow-sm'
-                            : 'border-border hover:border-muted-foreground bg-background'
+                            ? "border-primary bg-primary/10 shadow-sm"
+                            : "border-border hover:border-muted-foreground bg-background"
                         )}
                         aria-label={`Select ${colorOption.label} accent`}
                       >
@@ -1016,32 +1034,31 @@ export function Settings() {
                     ))}
                     <motion.button
                       onClick={() => {
-                        setAccentColor('custom');
+                        setAccentColor("custom");
                         setTempColor(customAccentColor);
-                        setActiveColorPicker('accent');
+                        setActiveColorPicker("accent");
                       }}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       className={cn(
-                        'group relative flex items-center gap-2 px-3 py-2 rounded-full border-2 transition-all',
-                        accentColor === 'custom'
-                          ? 'border-primary bg-primary/10 shadow-sm'
-                          : 'border-border hover:border-muted-foreground bg-background'
+                        "group relative flex items-center gap-2 px-3 py-2 rounded-full border-2 transition-all",
+                        accentColor === "custom"
+                          ? "border-primary bg-primary/10 shadow-sm"
+                          : "border-border hover:border-muted-foreground bg-background"
                       )}
                       aria-label="Select custom accent color"
                     >
                       <div
                         className="w-4 h-4 rounded-full"
                         style={{
-                          background: accentColor === 'custom'
-                            ? customAccentColor
-                            : 'conic-gradient(from 180deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #8b5cf6, #ec4899, #ef4444)',
+                          background:
+                            accentColor === "custom"
+                              ? customAccentColor
+                              : "conic-gradient(from 180deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #8b5cf6, #ec4899, #ef4444)",
                         }}
                       />
                       <span className="text-xs font-medium">Custom</span>
-                      {accentColor === 'custom' && (
-                        <Check className="w-3 h-3 text-primary" />
-                      )}
+                      {accentColor === "custom" && <Check className="w-3 h-3 text-primary" />}
                     </motion.button>
                   </div>
                 </div>
@@ -1053,7 +1070,7 @@ export function Settings() {
                     tabIndex={0}
                     onClick={() => setUseCustomColors(!useCustomColors)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
+                      if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         setUseCustomColors(!useCustomColors);
                       }
@@ -1071,22 +1088,22 @@ export function Settings() {
                         checked={useCustomColors}
                         onCheckedChange={setUseCustomColors}
                         className={cn(
-                          'relative w-10 h-5 rounded-full transition-colors',
-                          useCustomColors ? 'bg-primary' : 'bg-input border border-border'
+                          "relative w-10 h-5 rounded-full transition-colors",
+                          useCustomColors ? "bg-primary" : "bg-input border border-border"
                         )}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Switch.Thumb
                           className={cn(
-                            'block w-4 h-4 bg-background rounded-full shadow-sm transition-transform',
-                            useCustomColors ? 'translate-x-5' : 'translate-x-0.5'
+                            "block w-4 h-4 bg-background rounded-full shadow-sm transition-transform",
+                            useCustomColors ? "translate-x-5" : "translate-x-0.5"
                           )}
                         />
                       </Switch.Root>
                       <ChevronDown
                         className={cn(
-                          'w-4 h-4 text-muted-foreground transition-transform',
-                          useCustomColors && 'rotate-180'
+                          "w-4 h-4 text-muted-foreground transition-transform",
+                          useCustomColors && "rotate-180"
                         )}
                       />
                     </div>
@@ -1095,21 +1112,52 @@ export function Settings() {
                   {useCustomColors && (
                     <motion.div
                       initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
+                      animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
                       className="mt-4"
                     >
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                         {[
-                          { key: 'primary', label: 'Primary', color: customPrimaryColor, setter: setCustomPrimaryColor, showTextHint: true },
-                          { key: 'background', label: 'Background', color: customBackgroundColor, setter: setCustomBackgroundColor, showTextHint: true },
-                          { key: 'header', label: 'Header', color: customHeaderColor, setter: setCustomHeaderColor, showTextHint: true },
-                          { key: 'sidebar', label: 'Sidebar', color: customSidebarColor, setter: setCustomSidebarColor, showTextHint: true },
-                          { key: 'border', label: 'Borders', color: customBorderColor, setter: setCustomBorderColor },
+                          {
+                            key: "primary",
+                            label: "Primary",
+                            color: customPrimaryColor,
+                            setter: setCustomPrimaryColor,
+                            showTextHint: true,
+                          },
+                          {
+                            key: "background",
+                            label: "Background",
+                            color: customBackgroundColor,
+                            setter: setCustomBackgroundColor,
+                            showTextHint: true,
+                          },
+                          {
+                            key: "header",
+                            label: "Header",
+                            color: customHeaderColor,
+                            setter: setCustomHeaderColor,
+                            showTextHint: true,
+                          },
+                          {
+                            key: "sidebar",
+                            label: "Sidebar",
+                            color: customSidebarColor,
+                            setter: setCustomSidebarColor,
+                            showTextHint: true,
+                          },
+                          {
+                            key: "border",
+                            label: "Borders",
+                            color: customBorderColor,
+                            setter: setCustomBorderColor,
+                          },
                         ].map((item) => (
                           <div key={item.key}>
-                            <label className="text-xs text-muted-foreground mb-1.5 block">{item.label}</label>
+                            <label className="text-xs text-muted-foreground mb-1.5 block">
+                              {item.label}
+                            </label>
                             <button
                               aria-label={`Select ${item.label.toLowerCase()} color`}
                               onClick={() => {
@@ -1125,7 +1173,8 @@ export function Settings() {
                             </button>
                             {item.showTextHint && (
                               <p className="text-[10px] text-muted-foreground mt-1 text-center">
-                                Text: {getContrastTextColor(item.color) === '#FFFFFF' ? 'White' : 'Black'}
+                                Text:{" "}
+                                {getContrastTextColor(item.color) === "#FFFFFF" ? "White" : "Black"}
                               </p>
                             )}
                           </div>
@@ -1144,7 +1193,9 @@ export function Settings() {
                   </div>
                   <div>
                     <h3 className="font-semibold">Visual Effects</h3>
-                    <p className="text-sm text-muted-foreground">Control animations and visual enhancements</p>
+                    <p className="text-sm text-muted-foreground">
+                      Control animations and visual enhancements
+                    </p>
                   </div>
                 </div>
 
@@ -1158,14 +1209,14 @@ export function Settings() {
                       checked={blur}
                       onCheckedChange={setBlur}
                       className={cn(
-                        'relative w-10 h-5 rounded-full transition-colors',
-                        blur ? 'bg-primary' : 'bg-input border border-border'
+                        "relative w-10 h-5 rounded-full transition-colors",
+                        blur ? "bg-primary" : "bg-input border border-border"
                       )}
                     >
                       <Switch.Thumb
                         className={cn(
-                          'block w-4 h-4 bg-background rounded-full shadow-sm transition-transform',
-                          blur ? 'translate-x-5' : 'translate-x-0.5'
+                          "block w-4 h-4 bg-background rounded-full shadow-sm transition-transform",
+                          blur ? "translate-x-5" : "translate-x-0.5"
                         )}
                       />
                     </Switch.Root>
@@ -1180,14 +1231,14 @@ export function Settings() {
                       checked={animations}
                       onCheckedChange={setAnimations}
                       className={cn(
-                        'relative w-10 h-5 rounded-full transition-colors',
-                        animations ? 'bg-primary' : 'bg-input border border-border'
+                        "relative w-10 h-5 rounded-full transition-colors",
+                        animations ? "bg-primary" : "bg-input border border-border"
                       )}
                     >
                       <Switch.Thumb
                         className={cn(
-                          'block w-4 h-4 bg-background rounded-full shadow-sm transition-transform',
-                          animations ? 'translate-x-5' : 'translate-x-0.5'
+                          "block w-4 h-4 bg-background rounded-full shadow-sm transition-transform",
+                          animations ? "translate-x-5" : "translate-x-0.5"
                         )}
                       />
                     </Switch.Root>
@@ -1202,14 +1253,14 @@ export function Settings() {
                       checked={reduceMotion}
                       onCheckedChange={setReduceMotion}
                       className={cn(
-                        'relative w-10 h-5 rounded-full transition-colors',
-                        reduceMotion ? 'bg-primary' : 'bg-input border border-border'
+                        "relative w-10 h-5 rounded-full transition-colors",
+                        reduceMotion ? "bg-primary" : "bg-input border border-border"
                       )}
                     >
                       <Switch.Thumb
                         className={cn(
-                          'block w-4 h-4 bg-background rounded-full shadow-sm transition-transform',
-                          reduceMotion ? 'translate-x-5' : 'translate-x-0.5'
+                          "block w-4 h-4 bg-background rounded-full shadow-sm transition-transform",
+                          reduceMotion ? "translate-x-5" : "translate-x-0.5"
                         )}
                       />
                     </Switch.Root>
@@ -1223,7 +1274,7 @@ export function Settings() {
             </div>
           )}
 
-          {activeSection === 'typography' && (
+          {activeSection === "typography" && (
             <div className="space-y-6">
               {/* Header */}
               <div>
@@ -1290,7 +1341,7 @@ export function Settings() {
                     onClick={() => {
                       setFontSize(16);
                       setFontFamily("'Inter', sans-serif");
-                      setFontWeight('400');
+                      setFontWeight("400");
                       setLetterSpacing(0.02);
                       setLineHeight(1.7);
                     }}
@@ -1302,8 +1353,8 @@ export function Settings() {
                   <button
                     onClick={() => {
                       setFontSize(14);
-                      setFontFamily('system-ui');
-                      setFontWeight('400');
+                      setFontFamily("system-ui");
+                      setFontWeight("400");
                       setLetterSpacing(0);
                       setLineHeight(1.4);
                     }}
@@ -1316,7 +1367,7 @@ export function Settings() {
                     onClick={() => {
                       setFontSize(18);
                       setFontFamily("'Poppins', sans-serif");
-                      setFontWeight('500');
+                      setFontWeight("500");
                       setLetterSpacing(0.01);
                       setLineHeight(1.6);
                     }}
@@ -1328,9 +1379,9 @@ export function Settings() {
                   <button
                     onClick={() => {
                       setFontSize(15);
-                      setFontFamily('system-ui');
-                      setFontWeight('400');
-                      setFontStyle('normal');
+                      setFontFamily("system-ui");
+                      setFontWeight("400");
+                      setFontStyle("normal");
                       setLetterSpacing(0);
                       setLineHeight(1.5);
                     }}
@@ -1397,21 +1448,21 @@ export function Settings() {
                     <label className="text-sm text-foreground mb-2 block">Weight</label>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { value: '300', label: 'Light' },
-                        { value: '400', label: 'Regular' },
-                        { value: '500', label: 'Medium' },
-                        { value: '600', label: 'Semibold' },
-                        { value: '700', label: 'Bold' },
+                        { value: "300", label: "Light" },
+                        { value: "400", label: "Regular" },
+                        { value: "500", label: "Medium" },
+                        { value: "600", label: "Semibold" },
+                        { value: "700", label: "Bold" },
                       ].map((option) => (
                         <button
                           key={option.value}
                           onClick={() => setFontWeight(option.value)}
                           aria-label={`Set font weight to ${option.label}`}
                           className={cn(
-                            'px-2 py-1.5 text-sm rounded transition-colors',
+                            "px-2 py-1.5 text-sm rounded transition-colors",
                             fontWeight === option.value
-                              ? 'bg-primary text-primary-foreground'
-                              : 'hover:bg-muted'
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-muted"
                           )}
                         >
                           {option.label}
@@ -1424,25 +1475,25 @@ export function Settings() {
                     <label className="text-sm text-foreground mb-2 block">Style</label>
                     <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={() => setFontStyle('normal')}
+                        onClick={() => setFontStyle("normal")}
                         aria-label="Set font style to normal"
                         className={cn(
-                          'px-3 py-2 rounded-lg border transition-all text-sm',
-                          fontStyle === 'normal'
-                            ? 'border-primary bg-primary/10'
-                            : 'border-border hover:bg-muted'
+                          "px-3 py-2 rounded-lg border transition-all text-sm",
+                          fontStyle === "normal"
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:bg-muted"
                         )}
                       >
                         Normal
                       </button>
                       <button
-                        onClick={() => setFontStyle('italic')}
+                        onClick={() => setFontStyle("italic")}
                         aria-label="Set font style to italic"
                         className={cn(
-                          'px-3 py-2 rounded-lg border transition-all text-sm italic',
-                          fontStyle === 'italic'
-                            ? 'border-primary bg-primary/10'
-                            : 'border-border hover:bg-muted'
+                          "px-3 py-2 rounded-lg border transition-all text-sm italic",
+                          fontStyle === "italic"
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:bg-muted"
                         )}
                       >
                         Italic
@@ -1501,7 +1552,7 @@ export function Settings() {
             </div>
           )}
 
-          {activeSection === 'display' && (
+          {activeSection === "display" && (
             <div className="space-y-6">
               {/* Header */}
               <div>
@@ -1521,16 +1572,21 @@ export function Settings() {
 
                   <div className="flex flex-col sm:flex-row gap-4 items-start">
                     <div className="flex-1">
-                      <label htmlFor="comparison-monitor" className="block text-sm font-medium mb-2">
+                      <label
+                        htmlFor="comparison-monitor"
+                        className="block text-sm font-medium mb-2"
+                      >
                         Select Monitor
                       </label>
                       <select
                         id="comparison-monitor"
                         value={displaySettingsForm?.comparisonMonitorId ?? 0}
-                        onChange={(e) => setDisplaySettingsForm((prev) => ({
-                          ...prev,
-                          comparisonMonitorId: parseInt(e.target.value, 10),
-                        }))}
+                        onChange={(e) =>
+                          setDisplaySettingsForm((prev) => ({
+                            ...prev,
+                            comparisonMonitorId: parseInt(e.target.value, 10),
+                          }))
+                        }
                         className="w-full px-3 py-2 rounded-md border border-input bg-background"
                       >
                         {availableDisplays.length > 0 ? (
@@ -1549,7 +1605,11 @@ export function Settings() {
                       <Button
                         variant="outline"
                         onClick={async () => {
-                          if (typeof window.electronAPI === 'undefined' || !window.electronAPI.display) return;
+                          if (
+                            typeof window.electronAPI === "undefined" ||
+                            !window.electronAPI.display
+                          )
+                            return;
                           setIdentifyingMonitors(true);
                           try {
                             await window.electronAPI.display.identifyMonitors();
@@ -1576,7 +1636,8 @@ export function Settings() {
                   </div>
 
                   <p className="text-xs text-muted-foreground mt-2">
-                    Click "Identify Monitors" to display a number on each connected monitor for 3 seconds
+                    Click "Identify Monitors" to display a number on each connected monitor for 3
+                    seconds
                   </p>
                 </div>
 
@@ -1603,7 +1664,7 @@ export function Settings() {
             </div>
           )}
 
-          {activeSection === 'language' && (
+          {activeSection === "language" && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold">Language & Region</h2>
@@ -1689,7 +1750,7 @@ export function Settings() {
             </div>
           )}
 
-          {activeSection === 'updates' && (
+          {activeSection === "updates" && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold">Updates</h2>
@@ -1704,7 +1765,7 @@ export function Settings() {
                     <div>
                       <h3 className="font-medium">Current Version</h3>
                       <p className="text-sm text-muted-foreground">
-                        {currentVersion || 'Loading...'}
+                        {currentVersion || "Loading..."}
                       </p>
                     </div>
                     <Button
@@ -1712,11 +1773,11 @@ export function Settings() {
                       disabled={checkingForUpdates}
                       icon={
                         <RefreshCw
-                          className={cn('w-4 h-4', checkingForUpdates && 'animate-spin')}
+                          className={cn("w-4 h-4", checkingForUpdates && "animate-spin")}
                         />
                       }
                     >
-                      {checkingForUpdates ? 'Checking...' : 'Check for Updates'}
+                      {checkingForUpdates ? "Checking..." : "Check for Updates"}
                     </Button>
                   </div>
                   {updateStatus && <p className="text-sm text-muted-foreground">{updateStatus}</p>}
@@ -1772,16 +1833,16 @@ export function Settings() {
                         })
                       }
                       className={cn(
-                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2",
                         updateSettingsForm.autoUpdateOnLaunch
-                          ? 'bg-primary border-primary toggle-checked'
-                          : 'bg-input border-border'
+                          ? "bg-primary border-primary toggle-checked"
+                          : "bg-input border-border"
                       )}
                     >
                       <span
                         className={cn(
-                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                          updateSettingsForm.autoUpdateOnLaunch ? 'translate-x-6' : 'translate-x-1'
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          updateSettingsForm.autoUpdateOnLaunch ? "translate-x-6" : "translate-x-1"
                         )}
                       />
                     </button>
@@ -1807,16 +1868,16 @@ export function Settings() {
                         })
                       }
                       className={cn(
-                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2",
                         updateSettingsForm.checkForPreReleases
-                          ? 'bg-primary border-primary toggle-checked'
-                          : 'bg-input border-border'
+                          ? "bg-primary border-primary toggle-checked"
+                          : "bg-input border-border"
                       )}
                     >
                       <span
                         className={cn(
-                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                          updateSettingsForm.checkForPreReleases ? 'translate-x-6' : 'translate-x-1'
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          updateSettingsForm.checkForPreReleases ? "translate-x-6" : "translate-x-1"
                         )}
                       />
                     </button>
@@ -1827,7 +1888,10 @@ export function Settings() {
                 <div className="border border-border rounded-lg p-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <label htmlFor="use-sharepoint" className="text-sm font-medium flex items-center gap-2">
+                      <label
+                        htmlFor="use-sharepoint"
+                        className="text-sm font-medium flex items-center gap-2"
+                      >
                         <Cloud className="w-4 h-4" />
                         Use SharePoint for Updates
                       </label>
@@ -1846,16 +1910,16 @@ export function Settings() {
                         })
                       }
                       className={cn(
-                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2",
                         updateSettingsForm.useSharePointSource
-                          ? 'bg-primary border-primary toggle-checked'
-                          : 'bg-input border-border'
+                          ? "bg-primary border-primary toggle-checked"
+                          : "bg-input border-border"
                       )}
                     >
                       <span
                         className={cn(
-                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                          updateSettingsForm.useSharePointSource ? 'translate-x-6' : 'translate-x-1'
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          updateSettingsForm.useSharePointSource ? "translate-x-6" : "translate-x-1"
                         )}
                       />
                     </button>
@@ -1871,7 +1935,7 @@ export function Settings() {
                         <input
                           id="sp-url"
                           type="url"
-                          value={updateSettingsForm.sharePointFolderUrl || ''}
+                          value={updateSettingsForm.sharePointFolderUrl || ""}
                           onChange={(e) =>
                             setUpdateSettingsForm({
                               ...updateSettingsForm,
@@ -1880,17 +1944,19 @@ export function Settings() {
                           }
                           placeholder="https://company.sharepoint.com/sites/IT/Shared Documents/Updates"
                           className={cn(
-                            'w-full px-3 py-2 rounded-md border bg-background focus:outline-none focus:ring-1',
-                            updateSettingsForm.sharePointFolderUrl && !validateSharePointUrl(updateSettingsForm.sharePointFolderUrl)
-                              ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
-                              : 'border-input focus:border-primary focus:ring-primary/20'
+                            "w-full px-3 py-2 rounded-md border bg-background focus:outline-none focus:ring-1",
+                            updateSettingsForm.sharePointFolderUrl &&
+                              !validateSharePointUrl(updateSettingsForm.sharePointFolderUrl)
+                              ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
+                              : "border-input focus:border-primary focus:ring-primary/20"
                           )}
                         />
-                        {updateSettingsForm.sharePointFolderUrl && !validateSharePointUrl(updateSettingsForm.sharePointFolderUrl) && (
-                          <p className="text-xs text-red-500 mt-1">
-                            Invalid URL. Must be https://*.sharepoint.com/sites/...
-                          </p>
-                        )}
+                        {updateSettingsForm.sharePointFolderUrl &&
+                          !validateSharePointUrl(updateSettingsForm.sharePointFolderUrl) && (
+                            <p className="text-xs text-red-500 mt-1">
+                              Invalid URL. Must be https://*.sharepoint.com/sites/...
+                            </p>
+                          )}
                         <p className="text-xs text-muted-foreground mt-1">
                           Folder must contain: latest.yml and the MSI installer file
                         </p>
@@ -1898,14 +1964,16 @@ export function Settings() {
 
                       {/* Microsoft Login */}
                       <div className="flex items-center gap-3">
-                        {sharePointLoginStatus !== 'logged-in' ? (
+                        {sharePointLoginStatus !== "logged-in" ? (
                           <Button
                             variant="outline"
                             onClick={handleSharePointLogin}
-                            disabled={sharePointLoginStatus === 'logging-in'}
+                            disabled={sharePointLoginStatus === "logging-in"}
                             icon={<User className="w-4 h-4" />}
                           >
-                            {sharePointLoginStatus === 'logging-in' ? 'Signing In...' : 'Sign In to Microsoft'}
+                            {sharePointLoginStatus === "logging-in"
+                              ? "Signing In..."
+                              : "Sign In to Microsoft"}
                           </Button>
                         ) : (
                           <Button
@@ -1917,7 +1985,7 @@ export function Settings() {
                           </Button>
                         )}
 
-                        {sharePointLoginStatus === 'logged-in' && (
+                        {sharePointLoginStatus === "logged-in" && (
                           <span className="text-xs text-green-500 flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" /> Authenticated
                           </span>
@@ -1932,18 +2000,18 @@ export function Settings() {
                           disabled={
                             testingSharePointConnection ||
                             !updateSettingsForm.sharePointFolderUrl ||
-                            sharePointLoginStatus !== 'logged-in'
+                            sharePointLoginStatus !== "logged-in"
                           }
                           icon={<Wifi className="w-4 h-4" />}
                         >
-                          {testingSharePointConnection ? 'Testing...' : 'Test Connection'}
+                          {testingSharePointConnection ? "Testing..." : "Test Connection"}
                         </Button>
 
                         {sharePointConnectionResult && (
                           <span
                             className={cn(
-                              'text-xs flex items-center gap-1',
-                              sharePointConnectionResult.success ? 'text-green-500' : 'text-red-500'
+                              "text-xs flex items-center gap-1",
+                              sharePointConnectionResult.success ? "text-green-500" : "text-red-500"
                             )}
                           >
                             {sharePointConnectionResult.success ? (
@@ -1958,8 +2026,9 @@ export function Settings() {
 
                       {/* Info */}
                       <p className="text-xs text-muted-foreground bg-muted/20 p-2 rounded">
-                        GitHub remains the default update source. SharePoint is only used when enabled with a valid URL
-                        and you&apos;re signed in. If SharePoint fails, the app will automatically fall back to GitHub.
+                        GitHub remains the default update source. SharePoint is only used when
+                        enabled with a valid URL and you&apos;re signed in. If SharePoint fails, the
+                        app will automatically fall back to GitHub.
                       </p>
                     </div>
                   )}
@@ -1978,7 +2047,7 @@ export function Settings() {
             </div>
           )}
 
-          {activeSection === 'api-connections' && (
+          {activeSection === "api-connections" && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold">API Connections</h2>
@@ -2016,12 +2085,12 @@ export function Settings() {
                           }}
                           placeholder="https://prod-11.westus.logic.azure.com/workflows/..."
                           className={cn(
-                            'w-full px-3 py-2 pr-10 rounded-md border bg-background focus:outline-none focus:ring-1',
+                            "w-full px-3 py-2 pr-10 rounded-md border bg-background focus:outline-none focus:ring-1",
                             urlValidation?.valid === false
-                              ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                              ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
                               : urlValidation?.warnings.length
-                                ? 'border-yellow-500 focus:border-yellow-500 focus:ring-yellow-500/20'
-                                : 'border-input focus:border-primary focus:ring-primary/20'
+                                ? "border-yellow-500 focus:border-yellow-500 focus:ring-yellow-500/20"
+                                : "border-input focus:border-primary focus:ring-primary/20"
                           )}
                         />
                         {urlValidation && (
@@ -2070,10 +2139,10 @@ export function Settings() {
                       )}
 
                       {showUrlWarning && (
-                        <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                        <div className="mt-2 p-2 bg-primary/10 border border-primary/30 rounded-md">
                           <div className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-                            <p className="text-xs text-blue-700 dark:text-blue-300">
+                            <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                            <p className="text-xs text-primary">
                               URL automatically sanitized! Encoded characters have been fixed.
                             </p>
                           </div>
@@ -2169,7 +2238,7 @@ export function Settings() {
             </div>
           )}
 
-          {activeSection === 'submit-idea' && (
+          {activeSection === "submit-idea" && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold">Submit Idea for New Implementation</h2>
@@ -2209,7 +2278,7 @@ export function Settings() {
                       if (!ideaTitle || !ideaBenefit) return;
 
                       const idea = {
-                        Type: 'Feedback',
+                        Type: "Feedback",
                         Email: settings.profile.email,
                         Title: ideaTitle,
                         Description: ideaBenefit,
@@ -2218,7 +2287,7 @@ export function Settings() {
                       const apiUrl = settings.apiConnections.submitIdeaUrl;
 
                       // Check if using default URL - if so, fallback to mailto
-                      if (apiUrl === 'https://www.example.com' || !apiUrl) {
+                      if (apiUrl === "https://www.example.com" || !apiUrl) {
                         const subject = encodeURIComponent(`Feature Idea: ${ideaTitle}`);
                         const body = encodeURIComponent(`
 Feature Idea
@@ -2235,8 +2304,8 @@ Submitted: ${new Date().toLocaleString()}
                         window.location.href = `mailto:support@example.com?subject=${subject}&body=${body}`;
 
                         // Clear fields after mailto (assuming success)
-                        setIdeaTitle('');
-                        setIdeaBenefit('');
+                        setIdeaTitle("");
+                        setIdeaBenefit("");
                         setIdeaSubmitted(true);
                         if (ideaSubmittedTimeoutRef.current) {
                           clearTimeout(ideaSubmittedTimeoutRef.current);
@@ -2247,24 +2316,24 @@ Submitted: ${new Date().toLocaleString()}
                         }, 2000);
 
                         // Show success notification
-                        alert('Your idea has been sent to the Documentation Hub Admin');
+                        alert("Your idea has been sent to the Documentation Hub Admin");
                         return;
                       }
 
                       // Use API if configured
                       try {
                         const response = await fetch(apiUrl, {
-                          method: 'POST',
+                          method: "POST",
                           headers: {
-                            'Content-Type': 'application/json',
+                            "Content-Type": "application/json",
                           },
                           body: JSON.stringify(idea),
                         });
 
                         if (response.ok) {
                           // Only clear fields on success
-                          setIdeaTitle('');
-                          setIdeaBenefit('');
+                          setIdeaTitle("");
+                          setIdeaBenefit("");
                           setIdeaSubmitted(true);
                           if (ideaSubmittedTimeoutRef.current) {
                             clearTimeout(ideaSubmittedTimeoutRef.current);
@@ -2275,13 +2344,13 @@ Submitted: ${new Date().toLocaleString()}
                           }, 2000);
 
                           // Show success notification
-                          alert('Your idea has been sent to the Documentation Hub Admin');
+                          alert("Your idea has been sent to the Documentation Hub Admin");
                         } else {
-                          alert('Failed to submit idea. Please try again.');
+                          alert("Failed to submit idea. Please try again.");
                         }
                       } catch (_error) {
-                        logger.error('Error submitting idea:', _error);
-                        alert('Failed to submit idea. Please check your API configuration.');
+                        logger.error("Error submitting idea:", _error);
+                        alert("Failed to submit idea. Please check your API configuration.");
                       }
                     }}
                     icon={<Send className="w-4 h-4" />}
@@ -2303,7 +2372,7 @@ Submitted: ${new Date().toLocaleString()}
             </div>
           )}
 
-          {activeSection === 'local-dictionary' && (
+          {activeSection === "local-dictionary" && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold">Local Dictionary</h2>
@@ -2321,7 +2390,8 @@ Submitted: ${new Date().toLocaleString()}
                         Enable Local Dictionary
                       </label>
                       <p className="text-xs text-muted-foreground">
-                        When enabled, hyperlink lookups will use the local database first, falling back to the API if not found
+                        When enabled, hyperlink lookups will use the local database first, falling
+                        back to the API if not found
                       </p>
                     </div>
                     <button
@@ -2335,16 +2405,16 @@ Submitted: ${new Date().toLocaleString()}
                         })
                       }
                       className={cn(
-                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2",
                         localDictionaryForm.enabled
-                          ? 'bg-primary border-primary toggle-checked'
-                          : 'bg-input border-border'
+                          ? "bg-primary border-primary toggle-checked"
+                          : "bg-input border-border"
                       )}
                     >
                       <span
                         className={cn(
-                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                          localDictionaryForm.enabled ? 'translate-x-6' : 'translate-x-1'
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          localDictionaryForm.enabled ? "translate-x-6" : "translate-x-1"
                         )}
                       />
                     </button>
@@ -2373,7 +2443,8 @@ Submitted: ${new Date().toLocaleString()}
                       className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Direct URL to the .xlsx dictionary file on SharePoint (Daily_Inventory sheet, Dictionary_Table table)
+                      Direct URL to the .xlsx dictionary file on SharePoint (Daily_Inventory sheet,
+                      Dictionary_Table table)
                     </p>
                   </div>
                 </div>
@@ -2386,7 +2457,9 @@ Submitted: ${new Date().toLocaleString()}
                     <div>
                       <span className="text-muted-foreground">Total Entries:</span>
                       <span className="ml-2 font-medium">
-                        {localDictionaryForm.totalEntries?.toLocaleString() || dictionaryStatus?.totalEntries?.toLocaleString() || '0'}
+                        {localDictionaryForm.totalEntries?.toLocaleString() ||
+                          dictionaryStatus?.totalEntries?.toLocaleString() ||
+                          "0"}
                       </span>
                     </div>
                     <div>
@@ -2396,22 +2469,26 @@ Submitted: ${new Date().toLocaleString()}
                           ? new Date(localDictionaryForm.lastRetrievalTime).toLocaleString()
                           : dictionaryStatus?.lastSyncTime
                             ? new Date(dictionaryStatus.lastSyncTime).toLocaleString()
-                            : 'Never'}
+                            : "Never"}
                       </span>
                     </div>
                     <div className="col-span-2">
                       <span className="text-muted-foreground">Status:</span>
                       <span
                         className={cn(
-                          'ml-2 font-medium',
-                          (localDictionaryForm.lastRetrievalSuccess || dictionaryStatus?.lastSyncSuccess) ? 'text-green-600' : 'text-muted-foreground'
+                          "ml-2 font-medium",
+                          localDictionaryForm.lastRetrievalSuccess ||
+                            dictionaryStatus?.lastSyncSuccess
+                            ? "text-green-600"
+                            : "text-muted-foreground"
                         )}
                       >
                         {dictionaryStatus?.syncInProgress
-                          ? 'Retrieving...'
-                          : (localDictionaryForm.lastRetrievalSuccess || dictionaryStatus?.lastSyncSuccess)
-                            ? 'Ready'
-                            : 'Not retrieved'}
+                          ? "Retrieving..."
+                          : localDictionaryForm.lastRetrievalSuccess ||
+                              dictionaryStatus?.lastSyncSuccess
+                            ? "Ready"
+                            : "Not retrieved"}
                       </span>
                     </div>
                   </div>
@@ -2448,10 +2525,12 @@ Submitted: ${new Date().toLocaleString()}
                     variant="outline"
                     onClick={handleRetrieveDictionary}
                     disabled={syncingDictionary || !localDictionaryForm.sharePointFileUrl?.trim()}
-                    icon={<RefreshCw className={cn('w-4 h-4', syncingDictionary && 'animate-spin')} />}
+                    icon={
+                      <RefreshCw className={cn("w-4 h-4", syncingDictionary && "animate-spin")} />
+                    }
                     className="w-full"
                   >
-                    {syncingDictionary ? 'Retrieving...' : 'Retrieve Dictionary'}
+                    {syncingDictionary ? "Retrieving..." : "Retrieve Dictionary"}
                   </Button>
                   <p className="text-xs text-muted-foreground text-center">
                     Opens browser for Microsoft sign-in, then downloads and imports the dictionary
@@ -2469,8 +2548,8 @@ Submitted: ${new Date().toLocaleString()}
                       <p className="text-sm text-muted-foreground">
                         The local dictionary downloads your SharePoint dictionary file and stores it
                         in a high-performance SQLite database for instant lookups. When enabled,
-                        hyperlink lookups check the local database first. If an ID is not found locally,
-                        the system automatically falls back to the API for that lookup.
+                        hyperlink lookups check the local database first. If an ID is not found
+                        locally, the system automatically falls back to the API for that lookup.
                       </p>
                     </div>
                   </div>
@@ -2489,7 +2568,7 @@ Submitted: ${new Date().toLocaleString()}
             </div>
           )}
 
-          {activeSection === 'backup-settings' && (
+          {activeSection === "backup-settings" && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold">Backups</h2>
@@ -2521,16 +2600,16 @@ Submitted: ${new Date().toLocaleString()}
                         })
                       }
                       className={cn(
-                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2',
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2",
                         backupSettingsForm.enabled
-                          ? 'bg-primary border-primary toggle-checked'
-                          : 'bg-input border-border'
+                          ? "bg-primary border-primary toggle-checked"
+                          : "bg-input border-border"
                       )}
                     >
                       <span
                         className={cn(
-                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                          backupSettingsForm.enabled ? 'translate-x-6' : 'translate-x-1'
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          backupSettingsForm.enabled ? "translate-x-6" : "translate-x-1"
                         )}
                       />
                     </button>
@@ -2547,8 +2626,9 @@ Submitted: ${new Date().toLocaleString()}
                       <div>
                         <p className="font-medium text-sm">Backup Location</p>
                         <p className="text-xs text-muted-foreground">
-                          Backups are stored in a <code className="bg-muted px-1 rounded">DocHub_Backups</code> folder
-                          in the same directory as the original document.
+                          Backups are stored in a{" "}
+                          <code className="bg-muted px-1 rounded">DocHub_Backups</code> folder in
+                          the same directory as the original document.
                         </p>
                       </div>
                     </div>
@@ -2577,10 +2657,10 @@ Submitted: ${new Date().toLocaleString()}
                     <div className="flex-1">
                       <h4 className="font-medium mb-1">About Backups</h4>
                       <p className="text-sm text-muted-foreground">
-                        Automatic backups protect your documents by creating a copy before any processing
-                        changes are applied. Each backup is numbered incrementally, allowing you to restore
-                        from any previous version if needed. Disable this feature only if you have your own
-                        backup solution in place.
+                        Automatic backups protect your documents by creating a copy before any
+                        processing changes are applied. Each backup is numbered incrementally,
+                        allowing you to restore from any previous version if needed. Disable this
+                        feature only if you have your own backup solution in place.
                       </p>
                     </div>
                   </div>
@@ -2607,42 +2687,42 @@ Submitted: ${new Date().toLocaleString()}
         color={tempColor}
         onColorChange={(color) => {
           switch (activeColorPicker) {
-            case 'accent':
+            case "accent":
               setCustomAccentColor(color);
-              setAccentColor('custom');
+              setAccentColor("custom");
               break;
-            case 'primary':
+            case "primary":
               setCustomPrimaryColor(color);
               break;
-            case 'background':
+            case "background":
               setCustomBackgroundColor(color);
               break;
-            case 'header':
+            case "header":
               setCustomHeaderColor(color);
               break;
-            case 'sidebar':
+            case "sidebar":
               setCustomSidebarColor(color);
               break;
-            case 'border':
+            case "border":
               setCustomBorderColor(color);
               break;
           }
           setActiveColorPicker(null);
         }}
         title={
-          activeColorPicker === 'accent'
-            ? 'Custom Accent Color'
-            : activeColorPicker === 'primary'
-              ? 'Custom Primary Color'
-              : activeColorPicker === 'background'
-                ? 'Custom Background Color'
-                : activeColorPicker === 'header'
-                  ? 'Custom Header Color'
-                  : activeColorPicker === 'sidebar'
-                    ? 'Custom Sidebar Color'
-                    : activeColorPicker === 'border'
-                      ? 'Custom Border Color'
-                      : 'Pick a Color'
+          activeColorPicker === "accent"
+            ? "Custom Accent Color"
+            : activeColorPicker === "primary"
+              ? "Custom Primary Color"
+              : activeColorPicker === "background"
+                ? "Custom Background Color"
+                : activeColorPicker === "header"
+                  ? "Custom Header Color"
+                  : activeColorPicker === "sidebar"
+                    ? "Custom Sidebar Color"
+                    : activeColorPicker === "border"
+                      ? "Custom Border Color"
+                      : "Pick a Color"
         }
       />
 

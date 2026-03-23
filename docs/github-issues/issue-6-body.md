@@ -22,16 +22,16 @@ async function createWindow() {
     minWidth: 800,
     minHeight: 600,
     frame: false,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0a0a0a', // Dark gray
+    titleBarStyle: "hiddenInset",
+    backgroundColor: "#0a0a0a", // Dark gray
     webPreferences: REQUIRED_SECURITY_SETTINGS,
     // ❌ NO show: false option!
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173'); // Shows immediately!
+    mainWindow.loadURL("http://localhost:5173"); // Shows immediately!
   } else {
-    mainWindow.loadFile(join(__dirname, '../index.html'));
+    mainWindow.loadFile(join(__dirname, "../index.html"));
   }
 
   // ❌ NO ready-to-show event handler!
@@ -46,13 +46,13 @@ Located at `electron/main.ts:657-693`:
 const comparisonWindow = new BrowserWindow({
   // ...
   show: false, // Hidden initially!
-  backgroundColor: '#ffffff',
+  backgroundColor: "#ffffff",
 });
 
 comparisonWindow.loadURL(/*...*/);
 
 // Show only when ready!
-comparisonWindow.once('ready-to-show', () => {
+comparisonWindow.once("ready-to-show", () => {
   comparisonWindow.show();
 });
 ```
@@ -92,20 +92,20 @@ async function createWindow() {
     minWidth: 800,
     minHeight: 600,
     frame: false,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0a0a0a',
+    titleBarStyle: "hiddenInset",
+    backgroundColor: "#0a0a0a",
     show: false, // Hide initially
     webPreferences: REQUIRED_SECURITY_SETTINGS,
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL("http://localhost:5173");
   } else {
-    mainWindow.loadFile(join(__dirname, '../index.html'));
+    mainWindow.loadFile(join(__dirname, "../index.html"));
   }
 
   // Show when content is ready
-  mainWindow.once('ready-to-show', () => {
+  mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
 
     // Optional: Fade in effect

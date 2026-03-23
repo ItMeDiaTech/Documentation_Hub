@@ -7,12 +7,7 @@
  */
 
 import type { Paragraph } from "docxmlater";
-import type {
-  ListCategory,
-  ListDetectionResult,
-  NumberFormat,
-  BulletFormat,
-} from "./list-types";
+import type { ListCategory, ListDetectionResult, NumberFormat, BulletFormat } from "./list-types";
 
 // =============================================================================
 // CONSTANTS
@@ -48,20 +43,22 @@ export const PATTERN_TO_CATEGORY: Record<string, ListCategory> = {
 
 /**
  * Map typed prefix format to Word numbering level.
- * Word's default multilevel list uses:
+ * Follows the UI default hierarchy:
  *   Level 0: 1., 2., 3. (decimal)
  *   Level 1: a., b., c. (lowerLetter)
  *   Level 2: i., ii., iii. (lowerRoman)
+ *   Level 3: A., B., C. (upperLetter)
+ *   Level 4: I., II., III. (upperRoman)
  */
 export const FORMAT_TO_LEVEL: Record<string, number> = {
-  decimal: 0,      // 1., 2., 3.
-  lowerLetter: 1,  // a., b., c.
-  upperLetter: 0,  // A., B., C. — top-level alternative to decimal in business docs
-  lowerRoman: 2,   // i., ii., iii.
-  upperRoman: 2,   // I., II., III.
-  bullet: 0,       // Top-level bullet (filled circle)
-  dash: 0,         // Top-level dash marker
-  arrow: 0,        // Top-level arrow marker
+  decimal: 0, // 1., 2., 3.
+  lowerLetter: 1, // a., b., c.
+  upperLetter: 3, // A., B., C.
+  lowerRoman: 2, // i., ii., iii.
+  upperRoman: 4, // I., II., III.
+  bullet: 0, // Top-level bullet (filled circle)
+  dash: 0, // Top-level dash marker
+  arrow: 0, // Top-level arrow marker
 };
 
 /**
@@ -236,11 +233,7 @@ export function validateListSequence(
     // Check letter sequence
     if (/^[a-z]$/i.test(marker)) {
       const letter = marker.toLowerCase();
-      if (
-        lastLetter &&
-        letter.charCodeAt(0) !== lastLetter.charCodeAt(0) + 1 &&
-        letter !== "a"
-      ) {
+      if (lastLetter && letter.charCodeAt(0) !== lastLetter.charCodeAt(0) + 1 && letter !== "a") {
         warnings.push(`Unexpected letter sequence: ${lastLetter} → ${letter}`);
       }
       lastLetter = letter;
@@ -254,20 +247,14 @@ export function validateListSequence(
  * Determine the list category for a given numId by checking the abstractNum.
  * This requires access to the NumberingManager.
  */
-export function getListCategoryFromFormat(
-  format: string | undefined
-): ListCategory {
+export function getListCategoryFromFormat(format: string | undefined): ListCategory {
   if (!format) return "none";
 
   if (["bullet", "dash", "arrow"].includes(format)) {
     return "bullet";
   }
 
-  if (
-    ["decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"].includes(
-      format
-    )
-  ) {
+  if (["decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"].includes(format)) {
     return "numbered";
   }
 

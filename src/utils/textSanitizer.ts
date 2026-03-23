@@ -46,7 +46,7 @@
  * ```
  */
 export function sanitizeHyperlinkText(text: string): string {
-  if (!text) return '';
+  if (!text) return "";
 
   // Remove all XML tags: <...> patterns
   // This matches:
@@ -54,7 +54,7 @@ export function sanitizeHyperlinkText(text: string): string {
   // - Tags with attributes: <w:t xml:space="preserve">
   // - Self-closing tags: <br/>
   // - Any other XML markup
-  const cleaned = text.replace(/<[^>]+>/g, '');
+  const cleaned = text.replace(/<[^>]+>/g, "");
 
   return cleaned;
 }
@@ -160,10 +160,10 @@ export function sanitizeHyperlinkTexts(texts: string[]): string[] {
  * ```
  */
 export function removeEmEnVariants(text: string): string {
-  if (!text) return '';
+  if (!text) return "";
   // Replace em/en dashes with hyphens
-  let result = text.replace(/[\u2013\u2014]/g, '-');
+  let result = text.replace(/[\u2013\u2014]/g, "-");
   // Replace NBSP, em-space, en-space with regular spaces
-  result = result.replace(/[\u00A0\u2002\u2003]/g, ' ');
+  result = result.replace(/[\u00A0\u2002\u2003]/g, " ");
   return result;
 }

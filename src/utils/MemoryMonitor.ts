@@ -5,8 +5,8 @@
  * like document processing.
  */
 
-import logger from './logger';
-import v8 from 'v8';
+import logger from "./logger";
+import v8 from "v8";
 
 export interface MemoryStats {
   heapUsed: number;
@@ -20,7 +20,7 @@ export interface MemoryStats {
 }
 
 export interface MemoryWarning {
-  level: 'info' | 'warning' | 'critical';
+  level: "info" | "warning" | "critical";
   message: string;
   stats: MemoryStats;
 }
@@ -57,9 +57,9 @@ export class MemoryMonitor {
    * Format memory size in human-readable format
    */
   static formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return "0 B";
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
   }
@@ -88,15 +88,15 @@ export class MemoryMonitor {
 
     // Log with appropriate level
     if (warning) {
-      if (warning.level === 'critical') {
-        logger.error('🚨', logParts.join(' '), '- CRITICAL MEMORY USAGE!');
-      } else if (warning.level === 'warning') {
-        logger.warn('⚠️', logParts.join(' '), '- High memory usage');
+      if (warning.level === "critical") {
+        logger.error("🚨", logParts.join(" "), "- CRITICAL MEMORY USAGE!");
+      } else if (warning.level === "warning") {
+        logger.warn("⚠️", logParts.join(" "), "- High memory usage");
       } else {
-        logger.info('ℹ️', logParts.join(' '));
+        logger.info("ℹ️", logParts.join(" "));
       }
     } else {
-      logger.debug('✓', logParts.join(' '));
+      logger.debug("✓", logParts.join(" "));
     }
 
     return stats;
@@ -110,7 +110,7 @@ export class MemoryMonitor {
 
     if (percentUsed >= this.CRITICAL_THRESHOLD) {
       return {
-        level: 'critical',
+        level: "critical",
         message: `Memory usage critical (${stats.percentUsed.toFixed(1)}% of ${this.formatBytes(stats.heapLimit)} limit). Consider:
 - Reducing document size
 - Optimizing/compressing images
@@ -120,7 +120,7 @@ export class MemoryMonitor {
       };
     } else if (percentUsed >= this.WARNING_THRESHOLD) {
       return {
-        level: 'warning',
+        level: "warning",
         message: `Memory usage high (${stats.percentUsed.toFixed(1)}% of ${this.formatBytes(stats.heapLimit)} limit)`,
         stats,
       };
@@ -145,7 +145,7 @@ export class MemoryMonitor {
 
     const delta = end.heapUsed - start.heapUsed;
     const deltaFormatted = this.formatBytes(Math.abs(delta));
-    const sign = delta >= 0 ? '+' : '-';
+    const sign = delta >= 0 ? "+" : "-";
     const duration = end.timestamp - start.timestamp;
 
     logger.debug(
@@ -158,7 +158,7 @@ export class MemoryMonitor {
    */
   static forceGC(): boolean {
     if (global.gc) {
-      logger.debug('[Memory] Forcing garbage collection...');
+      logger.debug("[Memory] Forcing garbage collection...");
       const before = this.getMemoryStats();
       global.gc();
       const after = this.getMemoryStats();
@@ -166,7 +166,7 @@ export class MemoryMonitor {
       logger.info(`[Memory] GC freed ${this.formatBytes(freed)}`);
       return true;
     } else {
-      logger.warn('[Memory] Garbage collection not available (run with --expose-gc)');
+      logger.warn("[Memory] Garbage collection not available (run with --expose-gc)");
       return false;
     }
   }
@@ -177,12 +177,12 @@ export class MemoryMonitor {
   static getSummary(): string {
     const stats = this.getMemoryStats();
     return [
-      'Memory Usage Summary:',
+      "Memory Usage Summary:",
       `  Heap Used: ${this.formatBytes(stats.heapUsed)} (${stats.percentUsed.toFixed(1)}%)`,
       `  Heap Total: ${this.formatBytes(stats.heapTotal)}`,
       `  External: ${this.formatBytes(stats.external)}`,
       `  Array Buffers: ${this.formatBytes(stats.arrayBuffers)}`,
-    ].join('\n');
+    ].join("\n");
   }
 
   /**
@@ -193,9 +193,9 @@ export class MemoryMonitor {
     const warning = this.checkThreshold(stats);
 
     // Critical level - don't proceed
-    if (warning && warning.level === 'critical') {
+    if (warning && warning.level === "critical") {
       logger.error(
-        '🚨 [Memory] Cannot process document safely. Memory usage critical:',
+        "🚨 [Memory] Cannot process document safely. Memory usage critical:",
         warning.message
       );
       return false;
@@ -224,15 +224,15 @@ export class MemoryMonitor {
     const startLabel = `${operationName}-start`;
     const endLabel = `${operationName}-end`;
 
-    this.logMemoryUsage(startLabel, 'Starting operation');
+    this.logMemoryUsage(startLabel, "Starting operation");
 
     try {
       const result = await operation();
-      this.logMemoryUsage(endLabel, 'Operation completed');
+      this.logMemoryUsage(endLabel, "Operation completed");
       this.compareCheckpoints(startLabel, endLabel);
       return result;
     } catch (error) {
-      this.logMemoryUsage(`${operationName}-error`, 'Operation failed');
+      this.logMemoryUsage(`${operationName}-error`, "Operation failed");
       throw error;
     }
   }

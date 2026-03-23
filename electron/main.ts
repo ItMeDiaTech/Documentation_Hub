@@ -68,7 +68,9 @@ function validateIpcPath(
   if (options.allowedExtensions && options.allowedExtensions.length > 0) {
     const ext = path.extname(normalizedPath).toLowerCase();
     if (!options.allowedExtensions.includes(ext)) {
-      throw new Error(`Unsupported file type: ${ext}. Allowed: ${options.allowedExtensions.join(", ")}`);
+      throw new Error(
+        `Unsupported file type: ${ext}. Allowed: ${options.allowedExtensions.join(", ")}`
+      );
     }
   }
 
@@ -130,7 +132,7 @@ function validateApiUrl(url: string): URL {
   if (!isAllowed) {
     throw new Error(
       `API URL domain "${hostname}" is not in the allowed list. ` +
-      `Only Power Automate / Azure Logic Apps endpoints are permitted.`
+        `Only Power Automate / Azure Logic Apps endpoints are permitted.`
     );
   }
 
@@ -190,7 +192,6 @@ async function configureSession(): Promise<void> {
     throw error;
   }
 }
-
 
 // ============================================================================
 // CRITICAL SECURITY CONFIGURATION - DO NOT MODIFY
@@ -398,9 +399,7 @@ app.on("certificate-error", (event, webContents, url, error, certificate, callba
 
   // Only consider overriding for specific, known corporate proxy certificate errors
   // "net::ERR_CERT_AUTHORITY_INVALID" is the typical Zscaler/corporate proxy error
-  const proxyRelatedErrors = [
-    "net::ERR_CERT_AUTHORITY_INVALID",
-  ];
+  const proxyRelatedErrors = ["net::ERR_CERT_AUTHORITY_INVALID"];
 
   if (!proxyRelatedErrors.includes(String(error))) {
     // For all other certificate errors (expired, wrong host, revoked, etc.),
@@ -429,7 +428,7 @@ app.on("certificate-error", (event, webContents, url, error, certificate, callba
   event.preventDefault();
   const urlHost = new URL(url).hostname.toLowerCase();
 
-  if (trustedHosts.some((host) => urlHost === host || urlHost.endsWith('.' + host))) {
+  if (trustedHosts.some((host) => urlHost === host || urlHost.endsWith("." + host))) {
     log.info(`[Certificate Error] Allowing proxy CA override for known host: ${urlHost}`);
     callback(true);
   } else {
@@ -474,7 +473,7 @@ app.whenReady().then(async () => {
 
     // Initialize updater (mainWindow is guaranteed to exist now)
     // FORCE_DEV_UPDATE_CONFIG=true allows testing updates in dev mode
-    const forceDevUpdates = process.env.FORCE_DEV_UPDATE_CONFIG === 'true';
+    const forceDevUpdates = process.env.FORCE_DEV_UPDATE_CONFIG === "true";
     if (!isDev || forceDevUpdates) {
       updaterHandler = new AutoUpdaterHandler();
       updaterHandler.checkOnStartup();
@@ -545,8 +544,8 @@ ipcMain.handle("window-is-fullscreen", () => {
 });
 
 ipcMain.handle("window-set-always-on-top", (_event, flag: boolean) => {
-  mainWindow?.setAlwaysOnTop(flag, 'floating');
-  mainWindow?.webContents.send('window-always-on-top-changed', flag);
+  mainWindow?.setAlwaysOnTop(flag, "floating");
+  mainWindow?.webContents.send("window-always-on-top-changed", flag);
   return flag;
 });
 
@@ -638,7 +637,7 @@ class HyperlinkIPCHandler {
         const result = await this.processWithTimeout(
           this.processor.processDocument(safePath, request.options),
           controller.signal,
-          60000 // 60 second timeout
+          480000 // 8 minute timeout
         );
 
         this.processingQueue.delete(safePath);
@@ -751,7 +750,9 @@ class HyperlinkIPCHandler {
           netRequest.on("response", (response) => {
             clearTimeout(timeout);
             const responseTime = performance.now() - startTime;
-            const isValid = (response.statusCode >= 200 && response.statusCode < 400) || response.statusCode === 405;
+            const isValid =
+              (response.statusCode >= 200 && response.statusCode < 400) ||
+              response.statusCode === 405;
             resolve({
               isValid,
               message: isValid
@@ -781,248 +782,268 @@ class HyperlinkIPCHandler {
 
     // Call PowerAutomate API using Electron net.request (IPC-based approach)
     // Uses Chromium's network stack which respects system proxy and certificates
-    ipcMain.handle("hyperlink:call-api", async (_event, request: {
-      apiUrl: string;
-      payload: {
-        Lookup_ID: string[];
-        Hyperlinks_Checked: number;
-        Total_Hyperlinks: number;
-        First_Name: string;
-        Last_Name: string;
-        Email: string;
-      };
-      timeout?: number;
-    }) => {
-      // SECURITY: Validate URL against domain allowlist to prevent SSRF
-      validateApiUrl(request.apiUrl);
+    ipcMain.handle(
+      "hyperlink:call-api",
+      async (
+        _event,
+        request: {
+          apiUrl: string;
+          payload: {
+            Lookup_ID: string[];
+            Hyperlinks_Checked: number;
+            Total_Hyperlinks: number;
+            First_Name: string;
+            Last_Name: string;
+            Email: string;
+          };
+          timeout?: number;
+        }
+      ) => {
+        // SECURITY: Validate URL against domain allowlist to prevent SSRF
+        validateApiUrl(request.apiUrl);
 
-      const timeoutMs = request.timeout || 30000;
-      const jsonPayload = JSON.stringify(request.payload);
-      const startTime = Date.now();
+        const timeoutMs = request.timeout || 30000;
+        const jsonPayload = JSON.stringify(request.payload);
+        const startTime = Date.now();
 
-      // =========================================================================
-      // COMPREHENSIVE LOGGING - REQUEST DETAILS
-      // =========================================================================
-      log.info("═══════════════════════════════════════════════════════════════════");
-      log.info("[API Call] Starting Power Automate HTTP Request");
-      log.info("═══════════════════════════════════════════════════════════════════");
-      log.info(`[API Call] Timestamp: ${new Date().toISOString()}`);
-      log.info(`[API Call] URL: ${request.apiUrl}`);
-      log.info(`[API Call] Method: POST`);
-      log.info(`[API Call] Timeout: ${timeoutMs}ms`);
-      log.info(`[API Call] Headers:`);
-      log.info(`[API Call]   Content-Type: application/json; charset=utf-8`);
-      log.info(`[API Call]   User-Agent: DocHub/1.0`);
-      log.info(`[API Call]   Accept: application/json`);
-      log.info(`[API Call] Payload:`);
-      // Log payload with PII fields redacted
-      const redactedPayload = {
-        ...request.payload,
-        First_Name: "[REDACTED]",
-        Last_Name: "[REDACTED]",
-        Email: "[REDACTED]",
-      };
-      const payloadFormatted = JSON.stringify(redactedPayload, null, 2);
-      payloadFormatted.split('\n').forEach(line => {
-        log.info(`[API Call]   ${line}`);
-      });
-      log.info(`[API Call] Payload size: ${Buffer.byteLength(jsonPayload)} bytes`);
-      log.info("───────────────────────────────────────────────────────────────────");
+        // =========================================================================
+        // COMPREHENSIVE LOGGING - REQUEST DETAILS
+        // =========================================================================
+        log.info("═══════════════════════════════════════════════════════════════════");
+        log.info("[API Call] Starting Power Automate HTTP Request");
+        log.info("═══════════════════════════════════════════════════════════════════");
+        log.info(`[API Call] Timestamp: ${new Date().toISOString()}`);
+        log.info(`[API Call] URL: ${request.apiUrl}`);
+        log.info(`[API Call] Method: POST`);
+        log.info(`[API Call] Timeout: ${timeoutMs}ms`);
+        log.info(`[API Call] Headers:`);
+        log.info(`[API Call]   Content-Type: application/json; charset=utf-8`);
+        log.info(`[API Call]   User-Agent: DocHub/1.0`);
+        log.info(`[API Call]   Accept: application/json`);
+        log.info(`[API Call] Payload:`);
+        // Log payload with PII fields redacted
+        const redactedPayload = {
+          ...request.payload,
+          First_Name: "[REDACTED]",
+          Last_Name: "[REDACTED]",
+          Email: "[REDACTED]",
+        };
+        const payloadFormatted = JSON.stringify(redactedPayload, null, 2);
+        payloadFormatted.split("\n").forEach((line) => {
+          log.info(`[API Call]   ${line}`);
+        });
+        log.info(`[API Call] Payload size: ${Buffer.byteLength(jsonPayload)} bytes`);
+        log.info("───────────────────────────────────────────────────────────────────");
 
-      return new Promise((resolve) => {
-        log.info("[API Call] Sending request via Electron net.request...");
+        return new Promise((resolve) => {
+          log.info("[API Call] Sending request via Electron net.request...");
 
-        const timeoutHandle = setTimeout(() => {
-          const duration = Date.now() - startTime;
-          log.error("═══════════════════════════════════════════════════════════════════");
-          log.error("[API Call] REQUEST TIMEOUT");
-          log.error("═══════════════════════════════════════════════════════════════════");
-          log.error(`[API Call] Timeout after ${timeoutMs}ms`);
-          log.error(`[API Call] Duration: ${duration}ms`);
-          log.error("═══════════════════════════════════════════════════════════════════");
-          resolve({
-            success: false,
-            error: `Request timeout after ${timeoutMs}ms`,
-            duration,
-          });
-        }, timeoutMs);
+          const timeoutHandle = setTimeout(() => {
+            const duration = Date.now() - startTime;
+            log.error("═══════════════════════════════════════════════════════════════════");
+            log.error("[API Call] REQUEST TIMEOUT");
+            log.error("═══════════════════════════════════════════════════════════════════");
+            log.error(`[API Call] Timeout after ${timeoutMs}ms`);
+            log.error(`[API Call] Duration: ${duration}ms`);
+            log.error("═══════════════════════════════════════════════════════════════════");
+            resolve({
+              success: false,
+              error: `Request timeout after ${timeoutMs}ms`,
+              duration,
+            });
+          }, timeoutMs);
 
-        try {
-          const netRequest = net.request({
-            method: "POST",
-            url: request.apiUrl,
-            session: session.defaultSession,
-          });
-
-          // Set headers
-          netRequest.setHeader("Content-Type", "application/json; charset=utf-8");
-          netRequest.setHeader("User-Agent", "DocHub/1.0");
-          netRequest.setHeader("Accept", "application/json");
-
-          let responseData = "";
-          let responseHeaders: Record<string, string | string[]> = {};
-
-          netRequest.on("response", (response) => {
-            log.info("[API Call] Response received, reading data...");
-            log.info(`[API Call] Status: ${response.statusCode} ${response.statusMessage}`);
-
-            // Capture response headers
-            responseHeaders = response.headers;
-            log.info(`[API Call] Response Headers:`);
-            Object.entries(response.headers).forEach(([key, value]) => {
-              log.info(`[API Call]   ${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
+          try {
+            const netRequest = net.request({
+              method: "POST",
+              url: request.apiUrl,
+              session: session.defaultSession,
             });
 
-            response.on("data", (chunk) => {
-              responseData += chunk.toString();
-            });
+            // Set headers
+            netRequest.setHeader("Content-Type", "application/json; charset=utf-8");
+            netRequest.setHeader("User-Agent", "DocHub/1.0");
+            netRequest.setHeader("Accept", "application/json");
 
-            response.on("end", () => {
-              clearTimeout(timeoutHandle);
-              const duration = Date.now() - startTime;
+            let responseData = "";
+            let responseHeaders: Record<string, string | string[]> = {};
 
-              log.info("───────────────────────────────────────────────────────────────────");
-              log.info(`[API Call] Response Body (raw, ${responseData.length} chars):`);
-              // Log response body with proper formatting
-              if (responseData.length > 0) {
-                try {
-                  const parsedResponse = JSON.parse(responseData);
-                  const responseFormatted = JSON.stringify(parsedResponse, null, 2);
-                  responseFormatted.split('\n').forEach(line => {
-                    log.info(`[API Call]   ${line}`);
-                  });
-                } catch {
-                  // If not JSON, log as-is (truncated if too long)
-                  const truncated = responseData.length > 1000 ? responseData.substring(0, 1000) + '...' : responseData;
-                  log.info(`[API Call]   ${truncated}`);
-                }
-              } else {
-                log.info(`[API Call]   (empty response body)`);
-              }
+            netRequest.on("response", (response) => {
+              log.info("[API Call] Response received, reading data...");
+              log.info(`[API Call] Status: ${response.statusCode} ${response.statusMessage}`);
 
-              if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
-                try {
-                  const data = JSON.parse(responseData);
-                  log.info("═══════════════════════════════════════════════════════════════════");
-                  log.info("[API Call] SUCCESS");
-                  log.info("═══════════════════════════════════════════════════════════════════");
-                  log.info(`[API Call] Status Code: ${response.statusCode}`);
-                  log.info(`[API Call] Duration: ${duration}ms`);
-                  if (data.Results) {
-                    log.info(`[API Call] Results count: ${data.Results.length}`);
+              // Capture response headers
+              responseHeaders = response.headers;
+              log.info(`[API Call] Response Headers:`);
+              Object.entries(response.headers).forEach(([key, value]) => {
+                log.info(`[API Call]   ${key}: ${Array.isArray(value) ? value.join(", ") : value}`);
+              });
+
+              response.on("data", (chunk) => {
+                responseData += chunk.toString();
+              });
+
+              response.on("end", () => {
+                clearTimeout(timeoutHandle);
+                const duration = Date.now() - startTime;
+
+                log.info("───────────────────────────────────────────────────────────────────");
+                log.info(`[API Call] Response Body (raw, ${responseData.length} chars):`);
+                // Log response body with proper formatting
+                if (responseData.length > 0) {
+                  try {
+                    const parsedResponse = JSON.parse(responseData);
+                    const responseFormatted = JSON.stringify(parsedResponse, null, 2);
+                    responseFormatted.split("\n").forEach((line) => {
+                      log.info(`[API Call]   ${line}`);
+                    });
+                  } catch {
+                    // If not JSON, log as-is (truncated if too long)
+                    const truncated =
+                      responseData.length > 1000
+                        ? responseData.substring(0, 1000) + "..."
+                        : responseData;
+                    log.info(`[API Call]   ${truncated}`);
                   }
-                  log.info("═══════════════════════════════════════════════════════════════════");
+                } else {
+                  log.info(`[API Call]   (empty response body)`);
+                }
 
-                  resolve({
-                    success: true,
-                    statusCode: response.statusCode,
-                    data,
-                    duration,
-                    method: "net.request",
-                  });
-                } catch (parseError) {
+                if (
+                  response.statusCode &&
+                  response.statusCode >= 200 &&
+                  response.statusCode < 300
+                ) {
+                  try {
+                    const data = JSON.parse(responseData);
+                    log.info("═══════════════════════════════════════════════════════════════════");
+                    log.info("[API Call] SUCCESS");
+                    log.info("═══════════════════════════════════════════════════════════════════");
+                    log.info(`[API Call] Status Code: ${response.statusCode}`);
+                    log.info(`[API Call] Duration: ${duration}ms`);
+                    if (data.Results) {
+                      log.info(`[API Call] Results count: ${data.Results.length}`);
+                    }
+                    log.info("═══════════════════════════════════════════════════════════════════");
+
+                    resolve({
+                      success: true,
+                      statusCode: response.statusCode,
+                      data,
+                      duration,
+                      method: "net.request",
+                    });
+                  } catch (parseError) {
+                    log.error(
+                      "═══════════════════════════════════════════════════════════════════"
+                    );
+                    log.error("[API Call] JSON PARSE ERROR");
+                    log.error(
+                      "═══════════════════════════════════════════════════════════════════"
+                    );
+                    log.error(`[API Call] Failed to parse response as JSON`);
+                    log.error(
+                      `[API Call] Parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`
+                    );
+                    log.error(`[API Call] Raw response: ${responseData.substring(0, 500)}`);
+                    log.error(`[API Call] Duration: ${duration}ms`);
+                    log.error(
+                      "═══════════════════════════════════════════════════════════════════"
+                    );
+
+                    resolve({
+                      success: false,
+                      error: "Failed to parse response JSON",
+                      rawResponse: responseData.substring(0, 500),
+                      duration,
+                    });
+                  }
+                } else {
                   log.error("═══════════════════════════════════════════════════════════════════");
-                  log.error("[API Call] JSON PARSE ERROR");
+                  log.error("[API Call] HTTP ERROR");
                   log.error("═══════════════════════════════════════════════════════════════════");
-                  log.error(`[API Call] Failed to parse response as JSON`);
-                  log.error(`[API Call] Parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
-                  log.error(`[API Call] Raw response: ${responseData.substring(0, 500)}`);
+                  log.error(`[API Call] Status Code: ${response.statusCode}`);
+                  log.error(`[API Call] Status Message: ${response.statusMessage}`);
+                  log.error(`[API Call] Response Body: ${responseData.substring(0, 500)}`);
                   log.error(`[API Call] Duration: ${duration}ms`);
                   log.error("═══════════════════════════════════════════════════════════════════");
 
                   resolve({
                     success: false,
-                    error: "Failed to parse response JSON",
+                    error: `HTTP ${response.statusCode}: ${response.statusMessage}`,
+                    statusCode: response.statusCode,
                     rawResponse: responseData.substring(0, 500),
                     duration,
                   });
                 }
-              } else {
-                log.error("═══════════════════════════════════════════════════════════════════");
-                log.error("[API Call] HTTP ERROR");
-                log.error("═══════════════════════════════════════════════════════════════════");
-                log.error(`[API Call] Status Code: ${response.statusCode}`);
-                log.error(`[API Call] Status Message: ${response.statusMessage}`);
-                log.error(`[API Call] Response Body: ${responseData.substring(0, 500)}`);
-                log.error(`[API Call] Duration: ${duration}ms`);
-                log.error("═══════════════════════════════════════════════════════════════════");
+              });
+            });
 
-                resolve({
-                  success: false,
-                  error: `HTTP ${response.statusCode}: ${response.statusMessage}`,
-                  statusCode: response.statusCode,
-                  rawResponse: responseData.substring(0, 500),
-                  duration,
+            netRequest.on("error", (error) => {
+              clearTimeout(timeoutHandle);
+              const duration = Date.now() - startTime;
+
+              log.error("═══════════════════════════════════════════════════════════════════");
+              log.error("[API Call] NETWORK ERROR");
+              log.error("═══════════════════════════════════════════════════════════════════");
+              log.error(`[API Call] Error Type: ${error.name || "Unknown"}`);
+              log.error(`[API Call] Error Message: ${error.message}`);
+              if (error.stack) {
+                log.error(`[API Call] Stack Trace:`);
+                error.stack.split("\n").forEach((line) => {
+                  log.error(`[API Call]   ${line}`);
                 });
               }
-            });
-          });
+              log.error(`[API Call] Duration: ${duration}ms`);
+              log.error("[API Call] Possible causes:");
+              log.error("[API Call]   - Network connectivity issues");
+              log.error("[API Call]   - Corporate proxy blocking the request");
+              log.error("[API Call]   - SSL/TLS certificate issues");
+              log.error("[API Call]   - DNS resolution failure");
+              log.error("[API Call]   - Firewall blocking outbound connections");
+              log.error("═══════════════════════════════════════════════════════════════════");
 
-          netRequest.on("error", (error) => {
+              resolve({
+                success: false,
+                error: error.message,
+                errorType: error.name,
+                duration,
+              });
+            });
+
+            // Write payload and send request
+            log.info("[API Call] Writing payload and sending request...");
+            netRequest.write(jsonPayload);
+            netRequest.end();
+            log.info("[API Call] Request sent, waiting for response...");
+          } catch (error) {
             clearTimeout(timeoutHandle);
             const duration = Date.now() - startTime;
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorStack = error instanceof Error ? error.stack : undefined;
 
             log.error("═══════════════════════════════════════════════════════════════════");
-            log.error("[API Call] NETWORK ERROR");
+            log.error("[API Call] EXCEPTION DURING REQUEST");
             log.error("═══════════════════════════════════════════════════════════════════");
-            log.error(`[API Call] Error Type: ${error.name || 'Unknown'}`);
-            log.error(`[API Call] Error Message: ${error.message}`);
-            if (error.stack) {
+            log.error(`[API Call] Error: ${errorMessage}`);
+            if (errorStack) {
               log.error(`[API Call] Stack Trace:`);
-              error.stack.split('\n').forEach(line => {
+              errorStack.split("\n").forEach((line) => {
                 log.error(`[API Call]   ${line}`);
               });
             }
             log.error(`[API Call] Duration: ${duration}ms`);
-            log.error("[API Call] Possible causes:");
-            log.error("[API Call]   - Network connectivity issues");
-            log.error("[API Call]   - Corporate proxy blocking the request");
-            log.error("[API Call]   - SSL/TLS certificate issues");
-            log.error("[API Call]   - DNS resolution failure");
-            log.error("[API Call]   - Firewall blocking outbound connections");
             log.error("═══════════════════════════════════════════════════════════════════");
 
             resolve({
               success: false,
-              error: error.message,
-              errorType: error.name,
+              error: errorMessage,
               duration,
             });
-          });
-
-          // Write payload and send request
-          log.info("[API Call] Writing payload and sending request...");
-          netRequest.write(jsonPayload);
-          netRequest.end();
-          log.info("[API Call] Request sent, waiting for response...");
-
-        } catch (error) {
-          clearTimeout(timeoutHandle);
-          const duration = Date.now() - startTime;
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          const errorStack = error instanceof Error ? error.stack : undefined;
-
-          log.error("═══════════════════════════════════════════════════════════════════");
-          log.error("[API Call] EXCEPTION DURING REQUEST");
-          log.error("═══════════════════════════════════════════════════════════════════");
-          log.error(`[API Call] Error: ${errorMessage}`);
-          if (errorStack) {
-            log.error(`[API Call] Stack Trace:`);
-            errorStack.split('\n').forEach(line => {
-              log.error(`[API Call]   ${line}`);
-            });
           }
-          log.error(`[API Call] Duration: ${duration}ms`);
-          log.error("═══════════════════════════════════════════════════════════════════");
-
-          resolve({
-            success: false,
-            error: errorMessage,
-            duration,
-          });
-        }
-      });
-    });
+        });
+      }
+    );
 
     // Cancel ongoing operation
     ipcMain.handle("hyperlink:cancel-operation", async (event, request) => {
@@ -1204,7 +1225,9 @@ ipcMain.handle("open-external", async (...[, url]: [Electron.IpcMainInvokeEvent,
 
   const allowedProtocols = ["https:", "mailto:"];
   if (!allowedProtocols.includes(parsed.protocol)) {
-    throw new Error(`Blocked protocol: ${parsed.protocol}. Only HTTPS and mailto links are allowed.`);
+    throw new Error(
+      `Blocked protocol: ${parsed.protocol}. Only HTTPS and mailto links are allowed.`
+    );
   }
 
   await shell.openExternal(url);
@@ -1745,7 +1768,6 @@ ipcMain.handle("dictionary:get-status", async () => {
   }
 });
 
-
 // ==============================================================================
 // Auto-Updater Configuration
 // ==============================================================================
@@ -1813,9 +1835,12 @@ class AutoUpdaterHandler {
     });
 
     // SharePoint Update Source IPC Handlers
-    ipcMain.handle("update:set-provider", async (_event, config: { type: 'github' | 'sharepoint'; sharePointUrl?: string }) => {
-      return await this.customUpdater.setProvider(config);
-    });
+    ipcMain.handle(
+      "update:set-provider",
+      async (_event, config: { type: "github" | "sharepoint"; sharePointUrl?: string }) => {
+        return await this.customUpdater.setProvider(config);
+      }
+    );
 
     ipcMain.handle("update:test-sharepoint-connection", async (_event, url: string) => {
       return await this.customUpdater.testSharePointConnection(url);
@@ -1881,8 +1906,7 @@ class AutoUpdaterHandler {
           };
         } catch (error) {
           log.error("[Dictionary] Interactive retrieval failed:", error);
-          const message =
-            error instanceof Error ? error.message : "Failed to retrieve dictionary";
+          const message = error instanceof Error ? error.message : "Failed to retrieve dictionary";
           return { success: false, error: message, entriesImported: 0 };
         }
       }
@@ -2038,7 +2062,17 @@ ipcMain.handle(
   "display:open-comparison",
   async (
     _event,
-    { backupPath, processedPath, monitorIndex }: { backupPath: string; processedPath: string; monitorIndex: number }
+    {
+      backupPath,
+      processedPath,
+      workArea,
+      scaleFactor,
+    }: {
+      backupPath: string;
+      processedPath: string;
+      workArea: { x: number; y: number; width: number; height: number };
+      scaleFactor: number;
+    }
   ) => {
     try {
       // Validate files exist
@@ -2049,21 +2083,16 @@ ipcMain.handle(
         return { success: false, error: `Processed file not found: ${processedPath}` };
       }
 
-      // Get the target display
-      const displays = screen.getAllDisplays();
-      const targetDisplay = displays[monitorIndex] || displays[0];
-      const { x, y, width, height } = targetDisplay.workArea;
+      const { x, y, width, height } = workArea;
 
       log.info("[Display] Opening comparison", {
         backupPath,
         processedPath,
-        monitor: monitorIndex,
         workArea: { x, y, width, height },
-        scaleFactor: targetDisplay.scaleFactor,
+        scaleFactor,
       });
 
       // Open both documents - they will open in Word
-      // On Windows, we can use PowerShell to position the windows after opening
       const backupError = await shell.openPath(backupPath);
       if (backupError) {
         log.error("[Display] Failed to open backup:", backupError);
@@ -2084,25 +2113,30 @@ ipcMain.handle(
         // Brief delay before launching positioning script (retry loop handles Word startup)
         await new Promise((resolve) => setTimeout(resolve, 500));
 
-        // PowerShell script to position Word windows
         const { exec } = await import("child_process");
         const util = await import("util");
         const execPromise = util.promisify(exec);
 
-        // Extract filenames to match against window titles
-        // Word titles include filename: "MyDoc.docx - Word"
+        // Extract filenames and base names (without extension) for window title matching
+        // Word 2016+/365 may show "Report - Word" instead of "Report.docx - Word"
         const backupFilename = path.basename(backupPath);
         const processedFilename = path.basename(processedPath);
+        const backupBaseName = path.basename(backupPath, path.extname(backupPath));
+        const processedBaseName = path.basename(processedPath, path.extname(processedPath));
 
         log.info("[Display] Looking for Word windows with filenames:", {
           backup: backupFilename,
+          backupBase: backupBaseName,
           processed: processedFilename,
+          processedBase: processedBaseName,
         });
 
         // PowerShell script to find and position Word windows BY FILENAME
-        // Uses native .NET monitor enumeration to get coordinates in the same
-        // coordinate system as SetWindowPos — eliminates DIP-to-physical conversion
-        // issues on multi-monitor setups with different scale factors
+        // Fixes applied:
+        //  - SW_RESTORE before SetWindowPos (maximized windows ignore positioning)
+        //  - baseName fallback for Word title bar without extension
+        //  - workArea coordinates from Electron (avoids .NET monitor order mismatch)
+        //  - SWP_FRAMECHANGED flag for proper DWM frame recalculation
         const psScript = `
 Add-Type @"
 using System;
@@ -2114,10 +2148,8 @@ public class DpiHelper {
   static extern int SetDpiAwarenessCtx(IntPtr value);
   public static void SetBestDpiAwareness() {
     try {
-      // Per-Monitor DPI Aware V2 (Windows 10 1703+)
       SetDpiAwarenessCtx(new IntPtr(-4));
     } catch {
-      // Fallback to system-level DPI awareness on older Windows
       SetProcessDPIAware();
     }
   }
@@ -2129,22 +2161,18 @@ Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class Win32 {
-  [StructLayout(LayoutKind.Sequential)]
-  public struct POINT { public int X; public int Y; }
   [DllImport("user32.dll")]
   public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+  [DllImport("user32.dll")]
+  public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")]
   public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
   [DllImport("user32.dll")]
   public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
   [DllImport("user32.dll")]
   public static extern bool IsWindowVisible(IntPtr hWnd);
-  [DllImport("user32.dll")]
-  public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
-  [DllImport("shcore.dll")]
-  public static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-  public static IntPtr FindWindowByTitle(string filename) {
+  public static IntPtr FindWindowByTitle(string filename, string baseName) {
     IntPtr found = IntPtr.Zero;
     EnumWindows(delegate(IntPtr hWnd, IntPtr lParam) {
       if (!IsWindowVisible(hWnd)) return true;
@@ -2152,7 +2180,8 @@ public class Win32 {
       GetWindowText(hWnd, sb, 512);
       string title = sb.ToString();
       if (title.IndexOf("Word", StringComparison.OrdinalIgnoreCase) >= 0 &&
-          title.IndexOf(filename, StringComparison.OrdinalIgnoreCase) >= 0) {
+          (title.IndexOf(filename, StringComparison.OrdinalIgnoreCase) >= 0 ||
+           title.IndexOf(baseName, StringComparison.OrdinalIgnoreCase) >= 0)) {
         found = hWnd;
         return false;
       }
@@ -2163,29 +2192,12 @@ public class Win32 {
 }
 "@
 
-Add-Type -AssemblyName System.Windows.Forms
-
-# Get target monitor natively — coordinates match SetWindowPos coordinate system
-$monitorIndex = [int]$env:DOCHUB_MONITOR_INDEX
-$screens = [System.Windows.Forms.Screen]::AllScreens
-if ($monitorIndex -lt 0 -or $monitorIndex -ge $screens.Length) { $monitorIndex = 0 }
-$targetScreen = $screens[$monitorIndex]
-$wa = $targetScreen.WorkingArea
-
-$x = $wa.X
-$y = $wa.Y
-$width = $wa.Width
-$height = $wa.Height
-
-# Get the target monitor's DPI to scale sizing constants from logical to physical
-$pt = New-Object Win32+POINT
-$pt.X = $wa.X + 1
-$pt.Y = $wa.Y + 1
-$hMonitor = [Win32]::MonitorFromPoint($pt, 2)
-$dpiX = [uint32]0
-$dpiY = [uint32]0
-[Win32]::GetDpiForMonitor($hMonitor, 0, [ref]$dpiX, [ref]$dpiY) | Out-Null
-$scaleFactor = if ($dpiX -gt 0) { $dpiX / 96.0 } else { 1.0 }
+# Read work area coordinates passed from Electron (physical pixels, correct monitor)
+$x = [int]$env:DOCHUB_WA_X
+$y = [int]$env:DOCHUB_WA_Y
+$width = [int]$env:DOCHUB_WA_WIDTH
+$height = [int]$env:DOCHUB_WA_HEIGHT
+$scaleFactor = [double]$env:DOCHUB_SCALE_FACTOR
 
 # Scale sizing constants from logical (96 DPI) values to physical pixels
 $halfWidth = [Math]::Floor($width / 2)
@@ -2209,16 +2221,18 @@ $rightX = $startX + $windowWidth
 
 $backupFilename = $env:DOCHUB_BACKUP_FILENAME
 $processedFilename = $env:DOCHUB_PROCESSED_FILENAME
+$backupBaseName = $env:DOCHUB_BACKUP_BASENAME
+$processedBaseName = $env:DOCHUB_PROCESSED_BASENAME
 
 $backupHwnd = [IntPtr]::Zero
 $processedHwnd = [IntPtr]::Zero
 
 for ($i = 0; $i -lt 8; $i++) {
   if ($backupHwnd -eq [IntPtr]::Zero) {
-    $backupHwnd = [Win32]::FindWindowByTitle($backupFilename)
+    $backupHwnd = [Win32]::FindWindowByTitle($backupFilename, $backupBaseName)
   }
   if ($processedHwnd -eq [IntPtr]::Zero) {
-    $processedHwnd = [Win32]::FindWindowByTitle($processedFilename)
+    $processedHwnd = [Win32]::FindWindowByTitle($processedFilename, $processedBaseName)
   }
   if ($backupHwnd -ne [IntPtr]::Zero -and $processedHwnd -ne [IntPtr]::Zero) {
     break
@@ -2226,27 +2240,36 @@ for ($i = 0; $i -lt 8; $i++) {
   Start-Sleep -Milliseconds 750
 }
 
+# SW_RESTORE (9) unmaximizes windows so SetWindowPos can reposition them
+# SWP_SHOWWINDOW | SWP_FRAMECHANGED (0x0060) ensures proper DWM frame recalculation
 if ($backupHwnd -ne [IntPtr]::Zero) {
-  [Win32]::SetWindowPos($backupHwnd, [IntPtr]::Zero, $leftX, $y, $windowWidth, $height, 0x0040) | Out-Null
+  [Win32]::ShowWindow($backupHwnd, 9) | Out-Null
+  [Win32]::SetWindowPos($backupHwnd, [IntPtr]::Zero, $leftX, $y, $windowWidth, $height, 0x0060) | Out-Null
 }
 
 if ($processedHwnd -ne [IntPtr]::Zero) {
-  [Win32]::SetWindowPos($processedHwnd, [IntPtr]::Zero, $rightX, $y, $windowWidth, $height, 0x0040) | Out-Null
+  [Win32]::ShowWindow($processedHwnd, 9) | Out-Null
+  [Win32]::SetWindowPos($processedHwnd, [IntPtr]::Zero, $rightX, $y, $windowWidth, $height, 0x0060) | Out-Null
 }
 `;
 
+        const scriptPath = path.join(app.getPath("temp"), `dochub-position-${Date.now()}.ps1`);
         try {
-          // Encode script as Base64 (UTF-16LE) for PowerShell -EncodedCommand
-          const scriptBuffer = Buffer.from(psScript, "utf16le");
-          const encodedScript = scriptBuffer.toString("base64");
+          fs.writeFileSync(scriptPath, psScript, "utf-8");
 
-          const psResult = await execPromise(`powershell -EncodedCommand ${encodedScript}`, {
+          const psResult = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`, {
             windowsHide: true,
             env: {
               ...process.env,
-              DOCHUB_MONITOR_INDEX: monitorIndex.toString(),
+              DOCHUB_WA_X: x.toString(),
+              DOCHUB_WA_Y: y.toString(),
+              DOCHUB_WA_WIDTH: width.toString(),
+              DOCHUB_WA_HEIGHT: height.toString(),
+              DOCHUB_SCALE_FACTOR: scaleFactor.toString(),
               DOCHUB_BACKUP_FILENAME: backupFilename,
               DOCHUB_PROCESSED_FILENAME: processedFilename,
+              DOCHUB_BACKUP_BASENAME: backupBaseName,
+              DOCHUB_PROCESSED_BASENAME: processedBaseName,
             },
           });
           if (psResult.stderr) {
@@ -2256,6 +2279,8 @@ if ($processedHwnd -ne [IntPtr]::Zero) {
         } catch (psError) {
           // Non-fatal - windows opened but positioning may have failed
           log.warn("[Display] Could not auto-position Word windows:", psError);
+        } finally {
+          try { fs.unlinkSync(scriptPath); } catch { /* ignore cleanup errors */ }
         }
       }
 
@@ -2290,7 +2315,7 @@ ipcMain.handle(
   async (
     ...[, request]: [
       Electron.IpcMainInvokeEvent,
-      { filePaths: string[]; destinationFolder: string }
+      { filePaths: string[]; destinationFolder: string },
     ]
   ) => {
     const { filePaths, destinationFolder } = request;
@@ -2300,7 +2325,10 @@ ipcMain.handle(
     const validatedDest = validateIpcPath(destinationFolder);
     for (const sourcePath of filePaths) {
       try {
-        const validatedSource = validateIpcPath(sourcePath, { requireExists: true, mustBeFile: true });
+        const validatedSource = validateIpcPath(sourcePath, {
+          requireExists: true,
+          mustBeFile: true,
+        });
         const fileName = path.basename(validatedSource);
         const destPath = path.join(validatedDest, fileName);
         await fsPromises.copyFile(validatedSource, destPath);
@@ -2335,10 +2363,7 @@ ipcMain.handle(
 ipcMain.handle(
   "copy-file-to-folder",
   async (
-    ...[, request]: [
-      Electron.IpcMainInvokeEvent,
-      { sourcePath: string; destFolder: string }
-    ]
+    ...[, request]: [Electron.IpcMainInvokeEvent, { sourcePath: string; destFolder: string }]
   ) => {
     const { sourcePath, destFolder } = request;
     const validatedSource = validateIpcPath(sourcePath, { requireExists: true, mustBeFile: true });
@@ -2354,10 +2379,7 @@ ipcMain.handle(
 ipcMain.handle(
   "create-report-zip",
   async (
-    ...[, request]: [
-      Electron.IpcMainInvokeEvent,
-      { folderPath: string; zipName: string }
-    ]
+    ...[, request]: [Electron.IpcMainInvokeEvent, { folderPath: string; zipName: string }]
   ) => {
     const { folderPath, zipName } = request;
     const validatedFolder = validateIpcPath(folderPath);
@@ -2377,10 +2399,7 @@ ipcMain.handle(
 ipcMain.handle(
   "open-outlook-email",
   async (
-    ...[, request]: [
-      Electron.IpcMainInvokeEvent,
-      { subject: string; attachmentPath: string }
-    ]
+    ...[, request]: [Electron.IpcMainInvokeEvent, { subject: string; attachmentPath: string }]
   ) => {
     const { subject, attachmentPath } = request;
 

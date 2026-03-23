@@ -31,7 +31,7 @@ export interface DictionaryLookupResult {
   found: boolean;
   entry?: DictionaryEntry;
   lookupId: string;
-  lookupType: 'Document_ID' | 'Content_ID';
+  lookupType: "Document_ID" | "Content_ID";
 }
 
 /**
@@ -73,7 +73,7 @@ export interface SharePointConfig {
  * Progress update during sync operation
  */
 export interface SyncProgressUpdate {
-  phase: 'authenticating' | 'downloading' | 'parsing' | 'importing' | 'complete' | 'error';
+  phase: "authenticating" | "downloading" | "parsing" | "importing" | "complete" | "error";
   progress: number;
   message: string;
   entriesProcessed?: number;
@@ -111,15 +111,15 @@ export interface DictionaryCredentialsResponse {
  * IPC channel names for dictionary operations
  */
 export const DICTIONARY_IPC_CHANNELS = {
-  INITIALIZE: 'dictionary:initialize',
-  CONFIGURE_SYNC: 'dictionary:configure-sync',
-  SYNC: 'dictionary:sync',
-  START_SCHEDULER: 'dictionary:start-scheduler',
-  STOP_SCHEDULER: 'dictionary:stop-scheduler',
-  LOOKUP: 'dictionary:lookup',
-  BATCH_LOOKUP: 'dictionary:batch-lookup',
-  GET_STATUS: 'dictionary:get-status',
-  SET_CREDENTIALS: 'dictionary:set-credentials',
-  SYNC_PROGRESS: 'dictionary:sync-progress',
-  SYNC_COMPLETE: 'dictionary:sync-complete',
+  INITIALIZE: "dictionary:initialize",
+  CONFIGURE_SYNC: "dictionary:configure-sync",
+  SYNC: "dictionary:sync",
+  START_SCHEDULER: "dictionary:start-scheduler",
+  STOP_SCHEDULER: "dictionary:stop-scheduler",
+  LOOKUP: "dictionary:lookup",
+  BATCH_LOOKUP: "dictionary:batch-lookup",
+  GET_STATUS: "dictionary:get-status",
+  SET_CREDENTIALS: "dictionary:set-credentials",
+  SYNC_PROGRESS: "dictionary:sync-progress",
+  SYNC_COMPLETE: "dictionary:sync-complete",
 } as const;

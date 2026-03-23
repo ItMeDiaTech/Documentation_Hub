@@ -154,8 +154,7 @@ export function captureBlankLineSnapshot(doc: Document): BlankLineSnapshot {
     if (!isParagraphBlank(element)) continue;
 
     const prev = i > 0 ? doc.getBodyElementAt(i - 1) : undefined;
-    const next =
-      i < bodyCount - 1 ? doc.getBodyElementAt(i + 1) : undefined;
+    const next = i < bodyCount - 1 ? doc.getBodyElementAt(i + 1) : undefined;
 
     bodyBlanks.push({
       beforeHash: hashElement(prev),
@@ -218,10 +217,7 @@ export function wasOriginallyBlankAtBody(
   const prev = index > 0 ? doc.getBodyElementAt(index - 1) : undefined;
   // The blank would be inserted AT index, so the element that follows
   // the blank is the one currently at index (not index + 1)
-  const next =
-    index < doc.getBodyElementCount()
-      ? doc.getBodyElementAt(index)
-      : undefined;
+  const next = index < doc.getBodyElementCount() ? doc.getBodyElementAt(index) : undefined;
 
   const prevHash = hashElement(prev);
   const nextHash = hashElement(next);

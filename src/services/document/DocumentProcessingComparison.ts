@@ -12,23 +12,23 @@
  * - PowerAutomate API updates
  */
 
-import { Document, Paragraph, Hyperlink } from 'docxmlater';
-import { diffWords, Change } from 'diff';
-import { sanitizeHyperlinkText, isTextCorrupted } from '../../utils/textSanitizer';
-import { logger } from '../../utils/logger';
+import { Document, Paragraph, Hyperlink } from "docxmlater";
+import { diffWords, Change } from "diff";
+import { sanitizeHyperlinkText, isTextCorrupted } from "../../utils/textSanitizer";
+import { logger } from "../../utils/logger";
 
 // Create namespaced logger for this module
-const log = logger.namespace('DocumentProcessingComparison');
+const log = logger.namespace("DocumentProcessingComparison");
 
 export interface ProcessingChange {
   id: string;
   type:
-    | 'hyperlink_url'
-    | 'hyperlink_text'
-    | 'style'
-    | 'content_added'
-    | 'content_removed'
-    | 'formatting';
+    | "hyperlink_url"
+    | "hyperlink_text"
+    | "style"
+    | "content_added"
+    | "content_removed"
+    | "formatting";
   location: string; // e.g., "Paragraph 5, Hyperlink 2"
   before: any;
   after: any;
@@ -68,7 +68,7 @@ export interface HyperlinkChange {
   modifiedText: string;
   changeReason: string; // e.g., "Content ID appended", "URL updated by API"
   /** Status of the hyperlink source - 'not_found' for theSource links that couldn't be resolved */
-  status?: 'updated' | 'not_found' | 'expired';
+  status?: "updated" | "not_found" | "expired";
   /** Content ID associated with this hyperlink change (for theSource links) */
   contentId?: string;
 }
@@ -82,7 +82,7 @@ export interface StyleChange {
 
 export interface ContentChange {
   paragraphIndex: number;
-  type: 'added' | 'removed' | 'modified';
+  type: "added" | "removed" | "modified";
   originalContent?: string;
   modifiedContent?: string;
   diff?: Change[];
@@ -160,7 +160,7 @@ export class DocumentProcessingComparison {
           this.originalHyperlinks.set(key, {
             paragraphIndex: paraIndex,
             hyperlinkIndex,
-            url: item.getUrl() || '',
+            url: item.getUrl() || "",
             text: sanitizeHyperlinkText(rawText),
           });
           hyperlinkIndex++;
@@ -200,7 +200,7 @@ export class DocumentProcessingComparison {
     // Add to general changes
     this.comparison.changes.push({
       id: changeId,
-      type: 'hyperlink_url',
+      type: "hyperlink_url",
       location,
       before: originalUrl,
       after: newUrl,
@@ -226,8 +226,8 @@ export class DocumentProcessingComparison {
         hyperlinkIndex,
         originalUrl: original?.url || originalUrl,
         modifiedUrl: newUrl,
-        originalText: original?.text || '',
-        modifiedText: original?.text || '',
+        originalText: original?.text || "",
+        modifiedText: original?.text || "",
         changeReason: reason,
       });
     }
@@ -236,7 +236,7 @@ export class DocumentProcessingComparison {
     this.comparison.statistics.urlsChanged++;
     this.comparison.statistics.hyperlinksModified++;
 
-    if (reason.includes('Content ID')) {
+    if (reason.includes("Content ID")) {
       this.comparison.statistics.contentIdsAppended++;
     }
   }
@@ -252,7 +252,7 @@ export class DocumentProcessingComparison {
     originalText: string,
     newText: string,
     reason: string,
-    status?: 'updated' | 'not_found' | 'expired',
+    status?: "updated" | "not_found" | "expired",
     contentId?: string
   ): void {
     if (!this.comparison) return;
@@ -263,7 +263,7 @@ export class DocumentProcessingComparison {
     // Add to general changes
     this.comparison.changes.push({
       id: changeId,
-      type: 'hyperlink_text',
+      type: "hyperlink_text",
       location,
       before: originalText,
       after: newText,
@@ -288,8 +288,8 @@ export class DocumentProcessingComparison {
       this.comparison.hyperlinkChanges.push({
         paragraphIndex,
         hyperlinkIndex,
-        originalUrl: original?.url || '',
-        modifiedUrl: original?.url || '',
+        originalUrl: original?.url || "",
+        modifiedUrl: original?.url || "",
         originalText: original?.text || originalText,
         modifiedText: newText,
         changeReason: reason,
@@ -322,7 +322,7 @@ export class DocumentProcessingComparison {
     // Add to general changes
     this.comparison.changes.push({
       id: changeId,
-      type: 'style',
+      type: "style",
       location,
       before: this.originalStyles.get(paragraphIndex) || {},
       after: { styleId, ...properties },
@@ -383,7 +383,7 @@ export class DocumentProcessingComparison {
           const original = this.originalHyperlinks.get(key);
 
           if (original) {
-            const currentUrl = item.getUrl() || '';
+            const currentUrl = item.getUrl() || "";
             const rawCurrentText = item.getText();
 
             // Log if XML corruption detected
@@ -411,7 +411,7 @@ export class DocumentProcessingComparison {
                   modifiedUrl: currentUrl,
                   originalText: original.text,
                   modifiedText: currentText,
-                  changeReason: 'Automatic change detected',
+                  changeReason: "Automatic change detected",
                 });
 
                 if (currentUrl !== original.url) {
@@ -601,7 +601,7 @@ export class DocumentProcessingComparison {
             <div class="meta-info">
               <div>📁 <strong>File:</strong> ${comparison.documentPath}</div>
               <div>🕐 <strong>Start:</strong> ${comparison.processingStartTime.toLocaleString()}</div>
-              <div>🕑 <strong>End:</strong> ${comparison.processingEndTime?.toLocaleString() || 'In Progress'}</div>
+              <div>🕑 <strong>End:</strong> ${comparison.processingEndTime?.toLocaleString() || "In Progress"}</div>
               <div>⚡ <strong>Duration:</strong> ${comparison.statistics.processingDurationMs}ms</div>
             </div>
           </div>
@@ -677,7 +677,7 @@ export class DocumentProcessingComparison {
             <div class="before">🔴 ${this.escapeHtml(change.originalUrl)}</div>
             <div class="after">🟢 ${this.escapeHtml(change.modifiedUrl)}</div>
           `
-              : ''
+              : ""
           }
           ${
             change.originalText !== change.modifiedText
@@ -686,14 +686,14 @@ export class DocumentProcessingComparison {
             <div class="before">🔴 ${this.escapeHtml(change.originalText)}</div>
             <div class="after">🟢 ${this.escapeHtml(change.modifiedText)}</div>
           `
-              : ''
+              : ""
           }
         </div>
         <div class="change-reason">💡 ${change.changeReason}</div>
       </div>
     `
       )
-      .join('');
+      .join("");
 
     return `
       <div class="changes-section">
@@ -725,12 +725,12 @@ export class DocumentProcessingComparison {
           <div><strong>Applied Style:</strong> ${change.styleName} (${change.styleId})</div>
           ${Object.entries(change.properties)
             .map(([key, value]) => `<div style="margin-left: 20px;">• ${key}: ${value}</div>`)
-            .join('')}
+            .join("")}
         </div>
       </div>
     `
       )
-      .join('');
+      .join("");
 
     return `
       <div class="changes-section">
@@ -760,25 +760,25 @@ export class DocumentProcessingComparison {
         <div class="change-location">📍 Paragraph ${change.paragraphIndex + 1}</div>
         <div class="change-content">
           ${
-            change.type === 'added'
+            change.type === "added"
               ? `
-            <div class="after">🟢 Added: ${this.escapeHtml(change.modifiedContent || '')}</div>
+            <div class="after">🟢 Added: ${this.escapeHtml(change.modifiedContent || "")}</div>
           `
-              : ''
+              : ""
           }
           ${
-            change.type === 'removed'
+            change.type === "removed"
               ? `
-            <div class="before">🔴 Removed: ${this.escapeHtml(change.originalContent || '')}</div>
+            <div class="before">🔴 Removed: ${this.escapeHtml(change.originalContent || "")}</div>
           `
-              : ''
+              : ""
           }
-          ${change.type === 'modified' && change.diff ? this.renderDiff(change.diff) : ''}
+          ${change.type === "modified" && change.diff ? this.renderDiff(change.diff) : ""}
         </div>
       </div>
     `
       )
-      .join('');
+      .join("");
 
     return `
       <div class="changes-section">
@@ -804,7 +804,7 @@ export class DocumentProcessingComparison {
       }
     }
 
-    html += '</div>';
+    html += "</div>";
     return html;
   }
 
@@ -812,18 +812,18 @@ export class DocumentProcessingComparison {
    * Escape HTML for safe rendering
    */
   private escapeHtml(text: string): string {
-    const div = document?.createElement ? document.createElement('div') : null;
+    const div = document?.createElement ? document.createElement("div") : null;
     if (div) {
       div.textContent = text;
       return div.innerHTML;
     }
     // Fallback for Node.js environment
     return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   /**

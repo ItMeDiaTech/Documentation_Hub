@@ -25,13 +25,13 @@ Updated all Processing Options labels to be more user-friendly and reorganized o
 
 ## Text Formatting Fixes (Group: 'text')
 
-| Old Label                         | New Label                     | Option ID                  | Notes                           |
-| --------------------------------- | ----------------------------- | -------------------------- | ------------------------------- |
-| Remove Italics                    | **Remove All Italics**        | `remove-italics`           | Clarified scope                 |
+| Old Label                         | New Label                     | Option ID                  | Notes                                 |
+| --------------------------------- | ----------------------------- | -------------------------- | ------------------------------------- |
+| Remove Italics                    | **Remove All Italics**        | `remove-italics`           | Clarified scope                       |
 | -                                 | **Standardize Dashes**        | `normalize-dashes`         | New: converts en/em-dashes to hyphens |
-| Smart Spacing Normalization (New) | **Standardize Spacing**       | `normalize-spacing`        | Simplified name                 |
-| -                                 | **Outdated Titles**           | `replace-outdated-titles`  | ✨ MOVED from Hyperlinks        |
-| -                                 | **Apply User Defined Styles** | `validate-document-styles` | ✨ MOVED from Content Structure |
+| Smart Spacing Normalization (New) | **Standardize Spacing**       | `normalize-spacing`        | Simplified name                       |
+| -                                 | **Outdated Titles**           | `replace-outdated-titles`  | ✨ MOVED from Hyperlinks              |
+| -                                 | **Apply User Defined Styles** | `validate-document-styles` | ✨ MOVED from Content Structure       |
 
 ---
 

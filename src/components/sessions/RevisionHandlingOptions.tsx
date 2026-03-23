@@ -5,8 +5,8 @@
  * This component provides the option to auto-accept revisions for clean output.
  */
 
-import { cn } from '@/utils/cn';
-import { Check, FileText, GitBranch } from 'lucide-react';
+import { cn } from "@/utils/cn";
+import { Check, FileText, GitBranch } from "lucide-react";
 
 interface RevisionHandlingOptionsProps {
   autoAccept: boolean;
@@ -32,8 +32,9 @@ export function RevisionHandlingOptions({
           <div>
             <p className="text-sm font-medium">All changes are tracked</p>
             <p className="text-xs text-muted-foreground mt-1">
-              When enabled, DocHub records all document modifications as Word tracked changes (revisions).
-              These changes appear in the Document Changes tab and are visible when opening the file in Microsoft Word.
+              When enabled, DocHub records all document modifications as Word tracked changes
+              (revisions). These changes appear in the Document Changes tab and are visible when
+              opening the file in Microsoft Word.
             </p>
           </div>
         </div>
@@ -41,11 +42,11 @@ export function RevisionHandlingOptions({
 
       <label
         className={cn(
-          'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+          "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
           autoAccept
-            ? 'border-primary bg-primary/5'
-            : 'border-border hover:border-primary/50 hover:bg-muted/50',
-          disabled && 'opacity-50 cursor-not-allowed'
+            ? "border-primary bg-primary/5"
+            : "border-border hover:border-primary/50 hover:bg-muted/50",
+          disabled && "opacity-50 cursor-not-allowed"
         )}
       >
         <div className="relative mt-0.5">
@@ -58,10 +59,8 @@ export function RevisionHandlingOptions({
           />
           <div
             className={cn(
-              'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-              autoAccept
-                ? 'bg-primary border-primary'
-                : 'border-muted-foreground/50'
+              "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+              autoAccept ? "bg-primary border-primary" : "border-muted-foreground/50"
             )}
           >
             {autoAccept && <Check className="w-3 h-3 text-primary-foreground" />}
@@ -71,8 +70,8 @@ export function RevisionHandlingOptions({
         <div className="flex-1 min-w-0">
           <span className="font-medium text-sm">Auto-Accept Tracked Changes</span>
           <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            Creates a clean document without visible tracked changes.
-            Changes are still recorded in DocHub for review.
+            Creates a clean document without visible tracked changes. Changes are still recorded in
+            DocHub for review.
           </p>
         </div>
       </label>

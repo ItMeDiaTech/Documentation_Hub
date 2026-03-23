@@ -10,7 +10,7 @@
  * - Collapse unchanged sections
  */
 
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo } from "react";
 import {
   Columns,
   ChevronUp,
@@ -20,10 +20,10 @@ import {
   Minimize2,
   Eye,
   EyeOff,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
-import { generateDocumentDiff, filterChangedParagraphs } from '@/utils/diffUtils';
-import type { ParagraphDiff, DiffSegment } from '@/types/editor';
+} from "lucide-react";
+import { cn } from "@/utils/cn";
+import { generateDocumentDiff, filterChangedParagraphs } from "@/utils/diffUtils";
+import type { ParagraphDiff, DiffSegment } from "@/types/editor";
 
 interface SideBySideDiffProps {
   /** Original content (pre-processing paragraphs) */
@@ -45,27 +45,18 @@ interface SideBySideDiffProps {
 /**
  * Render diff segments with appropriate styling
  */
-function DiffSegments({
-  segments,
-  side,
-}: {
-  segments: DiffSegment[];
-  side: 'left' | 'right';
-}) {
+function DiffSegments({ segments, side }: { segments: DiffSegment[]; side: "left" | "right" }) {
   return (
     <>
       {segments.map((segment, idx) => {
-        let className = '';
+        let className = "";
 
-        if (segment.type === 'added') {
-          className =
-            'bg-green-200 dark:bg-green-900/50 text-green-800 dark:text-green-200';
-        } else if (segment.type === 'removed') {
-          className =
-            'bg-red-200 dark:bg-red-900/50 text-red-800 dark:text-red-200 line-through';
-        } else if (segment.type === 'modified') {
-          className =
-            'bg-yellow-200 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-200';
+        if (segment.type === "added") {
+          className = "bg-green-200 dark:bg-green-900/50 text-green-800 dark:text-green-200";
+        } else if (segment.type === "removed") {
+          className = "bg-red-200 dark:bg-red-900/50 text-red-800 dark:text-red-200 line-through";
+        } else if (segment.type === "modified") {
+          className = "bg-yellow-200 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-200";
         }
 
         return (
@@ -90,32 +81,32 @@ function DiffLine({
 }: {
   paragraphDiff: ParagraphDiff;
   showLineNumbers: boolean;
-  side: 'left' | 'right';
+  side: "left" | "right";
   isHighlighted: boolean;
   onClick?: () => void;
 }) {
-  const text = side === 'left' ? paragraphDiff.original : paragraphDiff.modified;
+  const text = side === "left" ? paragraphDiff.original : paragraphDiff.modified;
   const segments =
-    side === 'left' ? paragraphDiff.originalSegments : paragraphDiff.modifiedSegments;
+    side === "left" ? paragraphDiff.originalSegments : paragraphDiff.modifiedSegments;
 
   // Determine line type
-  let lineType: 'added' | 'removed' | 'modified' | 'unchanged' = 'unchanged';
+  let lineType: "added" | "removed" | "modified" | "unchanged" = "unchanged";
   if (paragraphDiff.hasChanges) {
-    if (paragraphDiff.original === '' && paragraphDiff.modified !== '') {
-      lineType = side === 'right' ? 'added' : 'removed';
-    } else if (paragraphDiff.original !== '' && paragraphDiff.modified === '') {
-      lineType = side === 'left' ? 'removed' : 'added';
+    if (paragraphDiff.original === "" && paragraphDiff.modified !== "") {
+      lineType = side === "right" ? "added" : "removed";
+    } else if (paragraphDiff.original !== "" && paragraphDiff.modified === "") {
+      lineType = side === "left" ? "removed" : "added";
     } else {
-      lineType = 'modified';
+      lineType = "modified";
     }
   }
 
   // Background colors
   const bgColors = {
-    added: 'bg-green-50 dark:bg-green-950/30',
-    removed: 'bg-red-50 dark:bg-red-950/30',
-    modified: 'bg-yellow-50 dark:bg-yellow-950/30',
-    unchanged: 'bg-transparent',
+    added: "bg-green-50 dark:bg-green-950/30",
+    removed: "bg-red-50 dark:bg-red-950/30",
+    modified: "bg-yellow-50 dark:bg-yellow-950/30",
+    unchanged: "bg-transparent",
   };
 
   // Gutter indicator
@@ -127,16 +118,13 @@ function DiffLine({
   };
 
   // Skip empty lines for the opposite side of added/removed
-  if (
-    (lineType === 'added' && side === 'left') ||
-    (lineType === 'removed' && side === 'right')
-  ) {
+  if ((lineType === "added" && side === "left") || (lineType === "removed" && side === "right")) {
     return (
       <div
         className={cn(
-          'flex items-stretch min-h-[28px] border-b border-border/30',
+          "flex items-stretch min-h-[28px] border-b border-border/30",
           bgColors[lineType],
-          isHighlighted && 'ring-2 ring-primary ring-inset'
+          isHighlighted && "ring-2 ring-primary ring-inset"
         )}
         onClick={onClick}
       >
@@ -158,9 +146,9 @@ function DiffLine({
   return (
     <div
       className={cn(
-        'flex items-stretch min-h-[28px] border-b border-border/30 cursor-pointer hover:bg-muted/50 transition-colors',
+        "flex items-stretch min-h-[28px] border-b border-border/30 cursor-pointer hover:bg-muted/50 transition-colors",
         bgColors[lineType],
-        isHighlighted && 'ring-2 ring-primary ring-inset'
+        isHighlighted && "ring-2 ring-primary ring-inset"
       )}
       data-paragraph-index={paragraphDiff.index}
       data-side={side}
@@ -183,9 +171,7 @@ function DiffLine({
         {segments.length > 0 ? (
           <DiffSegments segments={segments} side={side} />
         ) : (
-          <span className={lineType !== 'unchanged' ? 'opacity-50' : ''}>
-            {text || '\u00A0'}
-          </span>
+          <span className={lineType !== "unchanged" ? "opacity-50" : ""}>{text || "\u00A0"}</span>
         )}
       </div>
     </div>
@@ -195,13 +181,7 @@ function DiffLine({
 /**
  * Collapsed section indicator
  */
-function CollapsedSection({
-  count,
-  onClick,
-}: {
-  count: number;
-  onClick: () => void;
-}) {
+function CollapsedSection({ count, onClick }: { count: number; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -224,7 +204,7 @@ export function SideBySideDiff({
   showLineNumbers = true,
   contextLines = 3,
   collapseUnchanged = true,
-  height = '400px',
+  height = "400px",
 }: SideBySideDiffProps) {
   const [isSyncScrollEnabled, setIsSyncScrollEnabled] = useState(syncScroll);
   const [isCollapsed, setIsCollapsed] = useState(collapseUnchanged);
@@ -243,9 +223,7 @@ export function SideBySideDiff({
 
   // Get changed paragraph indices for navigation
   const changedIndices = useMemo(() => {
-    return diff.paragraphDiffs
-      .map((p, i) => (p.hasChanges ? i : -1))
-      .filter((i) => i !== -1);
+    return diff.paragraphDiffs.map((p, i) => (p.hasChanges ? i : -1)).filter((i) => i !== -1);
   }, [diff.paragraphDiffs]);
 
   // Filter paragraphs based on collapse setting
@@ -258,12 +236,12 @@ export function SideBySideDiff({
 
   // Sync scroll handler
   const handleScroll = useCallback(
-    (source: 'left' | 'right') => {
+    (source: "left" | "right") => {
       if (!isSyncScrollEnabled || isScrolling.current) return;
 
       isScrolling.current = true;
-      const sourceRef = source === 'left' ? leftScrollRef : rightScrollRef;
-      const targetRef = source === 'left' ? rightScrollRef : leftScrollRef;
+      const sourceRef = source === "left" ? leftScrollRef : rightScrollRef;
+      const targetRef = source === "left" ? rightScrollRef : leftScrollRef;
 
       if (sourceRef.current && targetRef.current) {
         targetRef.current.scrollTop = sourceRef.current.scrollTop;
@@ -284,14 +262,18 @@ export function SideBySideDiff({
     if (!leftPanel || !rightPanel) return;
 
     // Try to find the actual DOM element using data attribute
-    const leftElement = leftPanel.querySelector(`[data-paragraph-index="${paragraphIndex}"][data-side="left"]`);
-    const rightElement = rightPanel.querySelector(`[data-paragraph-index="${paragraphIndex}"][data-side="right"]`);
+    const leftElement = leftPanel.querySelector(
+      `[data-paragraph-index="${paragraphIndex}"][data-side="left"]`
+    );
+    const rightElement = rightPanel.querySelector(
+      `[data-paragraph-index="${paragraphIndex}"][data-side="right"]`
+    );
 
     if (leftElement && rightElement) {
       // Use scrollIntoView for precise positioning
       leftElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
+        behavior: "smooth",
+        block: "center",
       });
       // The sync scroll handler will sync the right panel
     } else {
@@ -301,21 +283,21 @@ export function SideBySideDiff({
 
       leftPanel.scrollTo({
         top: scrollPosition,
-        behavior: 'smooth',
+        behavior: "smooth",
       });
 
       rightPanel.scrollTo({
         top: scrollPosition,
-        behavior: 'smooth',
+        behavior: "smooth",
       });
     }
   }, []);
 
   // Navigate to change
   const navigateToChange = useCallback(
-    (direction: 'prev' | 'next') => {
+    (direction: "prev" | "next") => {
       const newIndex =
-        direction === 'next'
+        direction === "next"
           ? Math.min(changedIndices.length - 1, currentChangeIndex + 1)
           : Math.max(0, currentChangeIndex - 1);
 
@@ -336,7 +318,7 @@ export function SideBySideDiff({
     if (stats.changedParagraphs > 0) parts.push(`${stats.changedParagraphs} modified`);
     if (stats.addedParagraphs > 0) parts.push(`${stats.addedParagraphs} added`);
     if (stats.removedParagraphs > 0) parts.push(`${stats.removedParagraphs} removed`);
-    return parts.length > 0 ? parts.join(', ') : 'No changes';
+    return parts.length > 0 ? parts.join(", ") : "No changes";
   }, [diff]);
 
   // Handle empty content
@@ -345,9 +327,7 @@ export function SideBySideDiff({
       <div className="p-8 text-center text-muted-foreground">
         <Columns className="w-12 h-12 mx-auto mb-2 opacity-50" />
         <p className="text-sm">No content to compare</p>
-        <p className="text-xs mt-1">
-          Process a document to see before/after comparison
-        </p>
+        <p className="text-xs mt-1">Process a document to see before/after comparison</p>
       </div>
     );
   }
@@ -358,7 +338,7 @@ export function SideBySideDiff({
       <div className="flex items-center justify-between px-4 py-2 bg-muted/30 border-b border-border">
         {/* Stats */}
         <div className="text-xs text-muted-foreground">
-          <span className="font-medium">{diff.stats.totalParagraphs}</span> paragraphs |{' '}
+          <span className="font-medium">{diff.stats.totalParagraphs}</span> paragraphs |{" "}
           <span>{statsText}</span>
         </div>
 
@@ -367,7 +347,7 @@ export function SideBySideDiff({
           {/* Navigation */}
           <div className="flex items-center gap-1 mr-2">
             <button
-              onClick={() => navigateToChange('prev')}
+              onClick={() => navigateToChange("prev")}
               disabled={currentChangeIndex === 0 || changedIndices.length === 0}
               className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               title="Previous change"
@@ -377,13 +357,12 @@ export function SideBySideDiff({
             <span className="text-xs text-muted-foreground min-w-[40px] text-center">
               {changedIndices.length > 0
                 ? `${currentChangeIndex + 1}/${changedIndices.length}`
-                : '0/0'}
+                : "0/0"}
             </span>
             <button
-              onClick={() => navigateToChange('next')}
+              onClick={() => navigateToChange("next")}
               disabled={
-                currentChangeIndex === changedIndices.length - 1 ||
-                changedIndices.length === 0
+                currentChangeIndex === changedIndices.length - 1 || changedIndices.length === 0
               }
               className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               title="Next change"
@@ -396,43 +375,30 @@ export function SideBySideDiff({
           <button
             onClick={() => setIsSyncScrollEnabled(!isSyncScrollEnabled)}
             className={cn(
-              'p-1.5 rounded transition-colors',
-              isSyncScrollEnabled
-                ? 'bg-primary text-primary-foreground'
-                : 'hover:bg-muted'
+              "p-1.5 rounded transition-colors",
+              isSyncScrollEnabled ? "bg-primary text-primary-foreground" : "hover:bg-muted"
             )}
-            title={isSyncScrollEnabled ? 'Disable sync scroll' : 'Enable sync scroll'}
+            title={isSyncScrollEnabled ? "Disable sync scroll" : "Enable sync scroll"}
           >
-            {isSyncScrollEnabled ? (
-              <Link className="w-4 h-4" />
-            ) : (
-              <Unlink className="w-4 h-4" />
-            )}
+            {isSyncScrollEnabled ? <Link className="w-4 h-4" /> : <Unlink className="w-4 h-4" />}
           </button>
 
           {/* Collapse toggle */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className={cn(
-              'p-1.5 rounded transition-colors',
-              isCollapsed ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+              "p-1.5 rounded transition-colors",
+              isCollapsed ? "bg-primary text-primary-foreground" : "hover:bg-muted"
             )}
-            title={isCollapsed ? 'Show all' : 'Collapse unchanged'}
+            title={isCollapsed ? "Show all" : "Collapse unchanged"}
           >
-            {isCollapsed ? (
-              <Eye className="w-4 h-4" />
-            ) : (
-              <EyeOff className="w-4 h-4" />
-            )}
+            {isCollapsed ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
       {/* Diff panels */}
-      <div
-        className="flex"
-        style={{ height: typeof height === 'number' ? `${height}px` : height }}
-      >
+      <div className="flex" style={{ height: typeof height === "number" ? `${height}px` : height }}>
         {/* Left panel (Original) */}
         <div className="flex-1 flex flex-col border-r border-border">
           <div className="px-4 py-2 bg-red-50 dark:bg-red-950/30 border-b border-border text-sm font-medium text-red-700 dark:text-red-300">
@@ -441,7 +407,7 @@ export function SideBySideDiff({
           <div
             ref={leftScrollRef}
             className="flex-1 overflow-auto"
-            onScroll={() => handleScroll('left')}
+            onScroll={() => handleScroll("left")}
           >
             {visibleParagraphs.map((paragraphDiff, idx) => (
               <DiffLine
@@ -464,7 +430,7 @@ export function SideBySideDiff({
           <div
             ref={rightScrollRef}
             className="flex-1 overflow-auto"
-            onScroll={() => handleScroll('right')}
+            onScroll={() => handleScroll("right")}
           >
             {visibleParagraphs.map((paragraphDiff, idx) => (
               <DiffLine

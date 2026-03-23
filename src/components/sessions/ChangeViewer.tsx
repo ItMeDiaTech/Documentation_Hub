@@ -5,17 +5,17 @@
  * in a unified, filterable interface with export capabilities.
  */
 
-import { Button } from '@/components/common/Button';
-import { useSession } from '@/contexts/SessionContext';
+import { Button } from "@/components/common/Button";
+import { useSession } from "@/contexts/SessionContext";
 import type {
   ChangeCategory,
   ChangeEntry,
   Document,
   PreviousRevisionState,
   UnifiedChange,
-} from '@/types/session';
-import { cn } from '@/utils/cn';
-import { AnimatePresence, motion } from 'framer-motion';
+} from "@/types/session";
+import { cn } from "@/utils/cn";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Bookmark,
   Box,
@@ -37,9 +37,9 @@ import {
   Table,
   User,
   X,
-} from 'lucide-react';
-import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { ChangeItem } from './ChangeItem';
+} from "lucide-react";
+import { useCallback, useMemo, useState, useRef, useEffect } from "react";
+import { ChangeItem } from "./ChangeItem";
 // DEFERRED: Side-by-side document comparison feature for future implementation
 // import { DocumentComparisonModal } from './DocumentComparisonModal';
 
@@ -49,8 +49,8 @@ interface ChangeViewerProps {
   onExpandHandled?: () => void;
 }
 
-type SourceFilter = 'all' | 'word' | 'processing';
-type CategoryFilter = 'all' | ChangeCategory;
+type SourceFilter = "all" | "word" | "processing";
+type CategoryFilter = "all" | ChangeCategory;
 
 /**
  * Converts Word revision entries to unified format
@@ -69,9 +69,10 @@ function getUnifiedChanges(document: Document): UnifiedChange[] {
   const rawChanges = document.wordRevisions.entries.map((entry: ChangeEntry) => ({
     id: entry.id,
     // Distinguish source by comparing to the actual processing author, not a hardcoded string
-    source: processingAuthor && entry.author === processingAuthor
-      ? ('processing' as const)
-      : ('word' as const),
+    source:
+      processingAuthor && entry.author === processingAuthor
+        ? ("processing" as const)
+        : ("word" as const),
     category: entry.category,
     description: entry.description,
     author: entry.author,
@@ -111,7 +112,7 @@ function getPreviousChanges(document: Document): UnifiedChange[] {
   const rawChanges = document.previousRevisions.entries.map((entry: ChangeEntry) => ({
     id: `previous-${entry.id}`,
     // All previous changes are marked as 'word' source since they came from Word before DocHub
-    source: 'word' as const,
+    source: "word" as const,
     category: entry.category,
     description: entry.description,
     author: entry.author,
@@ -154,9 +155,9 @@ function isHelpfulChange(change: UnifiedChange): boolean {
   }
 
   // Check if content is meaningful
-  const beforeTrimmed = change.before?.trim() || '';
-  const afterTrimmed = change.after?.trim() || '';
-  const affectedTrimmed = change.affectedText?.trim() || '';
+  const beforeTrimmed = change.before?.trim() || "";
+  const afterTrimmed = change.after?.trim() || "";
+  const affectedTrimmed = change.affectedText?.trim() || "";
 
   // Skip if all content fields are empty/whitespace
   if (!beforeTrimmed && !afterTrimmed && !affectedTrimmed) {
@@ -169,9 +170,13 @@ function isHelpfulChange(change: UnifiedChange): boolean {
     (afterTrimmed.length === 0 && beforeTrimmed.length <= 1)
   ) {
     // Allow if it's part of a larger description that's meaningful
-    const desc = change.description?.toLowerCase() || '';
-    if (desc.includes('inserted " "') || desc.includes('deleted " "') ||
-        desc.includes("inserted ' '") || desc.includes("deleted ' '")) {
+    const desc = change.description?.toLowerCase() || "";
+    if (
+      desc.includes('inserted " "') ||
+      desc.includes('deleted " "') ||
+      desc.includes("inserted ' '") ||
+      desc.includes("deleted ' '")
+    ) {
       return false;
     }
   }
@@ -193,7 +198,7 @@ function combineDeleteInsertPairs(changes: UnifiedChange[]): UnifiedChange[] {
 
   for (const change of changes) {
     // Only consider content changes for pairing
-    if (change.category === 'content') {
+    if (change.category === "content") {
       const isDeletion = change.before && !change.after;
       const isInsertion = change.after && !change.before;
 
@@ -248,8 +253,8 @@ function combineDeleteInsertPairs(changes: UnifiedChange[]): UnifiedChange[] {
       }
 
       // Strategy 3: Same or similar text content (very strong signal)
-      const delText = deletion.before?.trim().toLowerCase() || '';
-      const insText = insertion.after?.trim().toLowerCase() || '';
+      const delText = deletion.before?.trim().toLowerCase() || "";
+      const insText = insertion.after?.trim().toLowerCase() || "";
       if (delText && insText) {
         if (delText === insText) {
           // Exact same text deleted and inserted - definitely a pair
@@ -273,15 +278,15 @@ function combineDeleteInsertPairs(changes: UnifiedChange[]): UnifiedChange[] {
       processed.add(matchingInsertion.id);
 
       // Create context from before/after content
-      const beforeText = deletion.before || '';
-      const afterText = matchingInsertion.after || '';
+      const beforeText = deletion.before || "";
+      const afterText = matchingInsertion.after || "";
       const contextWords = getContextSnippet(beforeText, afterText);
 
       result.push({
         id: `updated-${deletion.id}`,
         source: deletion.source,
-        category: 'content',
-        description: `Updated${contextWords ? `: "${contextWords}"` : ''}`,
+        category: "content",
+        description: `Updated${contextWords ? `: "${contextWords}"` : ""}`,
         author: deletion.author,
         date: deletion.date || matchingInsertion.date,
         location: deletion.location,
@@ -311,23 +316,23 @@ function combineDeleteInsertPairs(changes: UnifiedChange[]): UnifiedChange[] {
  * Extracts a context snippet (5-8 words) from text for display
  */
 function getContextSnippet(before: string, after: string): string {
-  const text = after || before || '';
-  if (!text) return '';
+  const text = after || before || "";
+  if (!text) return "";
 
   // Clean up the text
-  const cleaned = text.replace(/\s+/g, ' ').trim();
-  if (!cleaned) return '';
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
 
   // Split into words and take up to 8 words
-  const words = cleaned.split(' ').filter(w => w.length > 0);
-  if (words.length === 0) return '';
+  const words = cleaned.split(" ").filter((w) => w.length > 0);
+  if (words.length === 0) return "";
 
   if (words.length <= 8) {
     return cleaned;
   }
 
   // Take first 5-8 words and add ellipsis
-  return words.slice(0, 6).join(' ') + '...';
+  return words.slice(0, 6).join(" ") + "...";
 }
 
 /**
@@ -345,14 +350,14 @@ function groupPropertyChanges(changes: UnifiedChange[]): UnifiedChange[] {
   for (const change of changes) {
     // Group formatting changes with propertyChange and affectedText
     if (
-      change.category === 'formatting' &&
+      change.category === "formatting" &&
       change.propertyChange?.property &&
       change.affectedText
     ) {
       // Create a grouping key based on text, source, author, AND location
       // This ensures changes at different paragraphs are NOT incorrectly consolidated
-      const locationKey = change.location?.paragraphIndex ?? 'unknown';
-      const key = `${change.affectedText}|${change.source}|${change.author || ''}|${locationKey}`;
+      const locationKey = change.location?.paragraphIndex ?? "unknown";
+      const key = `${change.affectedText}|${change.source}|${change.author || ""}|${locationKey}`;
 
       if (!formattingByKey.has(key)) {
         formattingByKey.set(key, []);
@@ -361,8 +366,8 @@ function groupPropertyChanges(changes: UnifiedChange[]): UnifiedChange[] {
     }
     // Also consolidate duplicate entries (same description, author, affected text, AND location)
     else if (change.affectedText && change.description) {
-      const locationKey = change.location?.paragraphIndex ?? 'unknown';
-      const key = `${change.description}|${change.affectedText}|${change.source}|${change.author || ''}|${locationKey}`;
+      const locationKey = change.location?.paragraphIndex ?? "unknown";
+      const key = `${change.description}|${change.affectedText}|${change.source}|${change.author || ""}|${locationKey}`;
 
       if (!duplicatesByKey.has(key)) {
         duplicatesByKey.set(key, []);
@@ -424,30 +429,28 @@ function groupPropertyChanges(changes: UnifiedChange[]): UnifiedChange[] {
 /**
  * Category display configuration
  */
-const categoryConfig: Record<
-  ChangeCategory,
-  { label: string; icon: typeof Plus; color: string }
-> = {
-  content: { label: 'Content', icon: FileText, color: 'text-blue-500' },
-  formatting: { label: 'Formatting', icon: Paintbrush, color: 'text-purple-500' },
-  structural: { label: 'Structural', icon: Settings, color: 'text-orange-500' },
-  table: { label: 'Table', icon: Table, color: 'text-green-500' },
-  hyperlink: { label: 'Hyperlinks', icon: Link, color: 'text-cyan-500' },
-  image: { label: 'Images', icon: Image, color: 'text-pink-500' },
-  field: { label: 'Fields', icon: Hash, color: 'text-yellow-500' },
-  comment: { label: 'Comments', icon: MessageCircle, color: 'text-indigo-500' },
-  bookmark: { label: 'Bookmarks', icon: Bookmark, color: 'text-red-500' },
-  contentControl: { label: 'Content Controls', icon: Box, color: 'text-teal-500' },
-};
+const categoryConfig: Record<ChangeCategory, { label: string; icon: typeof Plus; color: string }> =
+  {
+    content: { label: "Content", icon: FileText, color: "text-blue-500" },
+    formatting: { label: "Formatting", icon: Paintbrush, color: "text-purple-500" },
+    structural: { label: "Structural", icon: Settings, color: "text-orange-500" },
+    table: { label: "Table", icon: Table, color: "text-green-500" },
+    hyperlink: { label: "Hyperlinks", icon: Link, color: "text-cyan-500" },
+    image: { label: "Images", icon: Image, color: "text-pink-500" },
+    field: { label: "Fields", icon: Hash, color: "text-yellow-500" },
+    comment: { label: "Comments", icon: MessageCircle, color: "text-indigo-500" },
+    bookmark: { label: "Bookmarks", icon: Bookmark, color: "text-red-500" },
+    contentControl: { label: "Content Controls", icon: Box, color: "text-teal-500" },
+  };
 
 export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: ChangeViewerProps) {
   const { sessions } = useSession();
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
-  const [authorFilter, setAuthorFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [authorFilter, setAuthorFilter] = useState<string>("all");
   const [showAuthorDropdown, setShowAuthorDropdown] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
   const authorDropdownRef = useRef<HTMLDivElement>(null);
   // DEFERRED: Compare Documents modal state
@@ -470,7 +473,7 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
     if (!session) return [];
 
     return session.documents
-      .filter((doc) => doc.status === 'completed')
+      .filter((doc) => doc.status === "completed")
       .map((doc) => ({
         document: doc,
         changes: getUnifiedChanges(doc),
@@ -483,7 +486,7 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
     if (!session) return [];
 
     return session.documents
-      .filter((doc) => doc.status === 'completed')
+      .filter((doc) => doc.status === "completed")
       .map((doc) => ({
         document: doc,
         changes: getPreviousChanges(doc),
@@ -500,18 +503,14 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
     const allChanges = documentChanges.flatMap((d) => d.changes);
     return {
       total: allChanges.length,
-      insertions: allChanges.filter(
-        (c) => c.category === 'content' && c.after && !c.before
-      ).length,
-      deletions: allChanges.filter(
-        (c) => c.category === 'content' && c.before && !c.after
-      ).length,
-      formatting: allChanges.filter((c) => c.category === 'formatting').length,
-      structural: allChanges.filter((c) => c.category === 'structural').length,
-      table: allChanges.filter((c) => c.category === 'table').length,
-      hyperlink: allChanges.filter((c) => c.category === 'hyperlink').length,
-      wordRevisions: allChanges.filter((c) => c.source === 'word').length,
-      processingChanges: allChanges.filter((c) => c.source === 'processing').length,
+      insertions: allChanges.filter((c) => c.category === "content" && c.after && !c.before).length,
+      deletions: allChanges.filter((c) => c.category === "content" && c.before && !c.after).length,
+      formatting: allChanges.filter((c) => c.category === "formatting").length,
+      structural: allChanges.filter((c) => c.category === "structural").length,
+      table: allChanges.filter((c) => c.category === "table").length,
+      hyperlink: allChanges.filter((c) => c.category === "hyperlink").length,
+      wordRevisions: allChanges.filter((c) => c.source === "word").length,
+      processingChanges: allChanges.filter((c) => c.source === "processing").length,
     };
   }, [documentChanges]);
 
@@ -535,32 +534,34 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   // Filter changes based on current filters
   const filteredDocumentChanges = useMemo(() => {
-    return documentChanges.map((item) => ({
-      ...item,
-      changes: item.changes.filter((change) => {
-        // Source filter
-        if (sourceFilter !== 'all' && change.source !== sourceFilter) return false;
-        // Category filter
-        if (categoryFilter !== 'all' && change.category !== categoryFilter) return false;
-        // Author filter
-        if (authorFilter !== 'all' && change.author !== authorFilter) return false;
-        // Search filter
-        if (searchQuery) {
-          const query = searchQuery.toLowerCase();
-          const matchesDescription = change.description?.toLowerCase().includes(query);
-          const matchesBefore = change.before?.toLowerCase().includes(query);
-          const matchesAfter = change.after?.toLowerCase().includes(query);
-          if (!matchesDescription && !matchesBefore && !matchesAfter) return false;
-        }
-        return true;
-      }),
-    })).filter((item) => item.changes.length > 0);
+    return documentChanges
+      .map((item) => ({
+        ...item,
+        changes: item.changes.filter((change) => {
+          // Source filter
+          if (sourceFilter !== "all" && change.source !== sourceFilter) return false;
+          // Category filter
+          if (categoryFilter !== "all" && change.category !== categoryFilter) return false;
+          // Author filter
+          if (authorFilter !== "all" && change.author !== authorFilter) return false;
+          // Search filter
+          if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            const matchesDescription = change.description?.toLowerCase().includes(query);
+            const matchesBefore = change.before?.toLowerCase().includes(query);
+            const matchesAfter = change.after?.toLowerCase().includes(query);
+            if (!matchesDescription && !matchesBefore && !matchesAfter) return false;
+          }
+          return true;
+        }),
+      }))
+      .filter((item) => item.changes.length > 0);
   }, [documentChanges, sourceFilter, categoryFilter, authorFilter, searchQuery]);
 
   // Group changes by category within each document
@@ -604,7 +605,7 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
 
   // Export changes as markdown
   const exportAsMarkdown = useCallback(() => {
-    let markdown = '# Document Changes\n\n';
+    let markdown = "# Document Changes\n\n";
 
     filteredDocumentChanges.forEach((item) => {
       markdown += `## ${item.document.name}\n\n`;
@@ -633,7 +634,7 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
         markdown += `### ${categoryConfig[category].label} Changes\n\n`;
         changes.forEach((change) => {
           markdown += `- ${change.description}`;
-          if (change.source === 'word' && change.author) {
+          if (change.source === "word" && change.author) {
             markdown += ` (by ${change.author})`;
           }
           // Include the affected text for context
@@ -643,9 +644,9 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
           if (change.before && change.after) {
             markdown += `\n  - Before: \`${change.before}\`\n  - After: \`${change.after}\``;
           }
-          markdown += '\n';
+          markdown += "\n";
         });
-        markdown += '\n';
+        markdown += "\n";
       });
     });
 
@@ -663,8 +664,8 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
         <FileText className="w-12 h-12 text-muted-foreground mb-4" />
         <h3 className="text-lg font-medium mb-2">No Changes to Display</h3>
         <p className="text-sm text-muted-foreground max-w-md">
-          Process documents to see tracked changes here. Both Word tracked changes
-          and DocHub processing changes will be displayed.
+          Process documents to see tracked changes here. Both Word tracked changes and DocHub
+          processing changes will be displayed.
         </p>
       </div>
     );
@@ -697,14 +698,9 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
                 Compare Documents
               </Button>
               */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportAsMarkdown}
-                className="gap-2"
-              >
+              <Button variant="outline" size="sm" onClick={exportAsMarkdown} className="gap-2">
                 <ClipboardCopy className="w-4 h-4" />
-                {copiedToClipboard ? 'Copied!' : 'Copy Markdown'}
+                {copiedToClipboard ? "Copied!" : "Copy Markdown"}
               </Button>
             </div>
           </div>
@@ -753,224 +749,211 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
 
       {/* Filter Controls - only show if there are DocHub changes */}
       {documentChanges.length > 0 && (
-      <div className="flex flex-wrap items-center gap-3 p-3 bg-muted/50 rounded-lg">
-        <Filter className="w-4 h-4 text-muted-foreground" />
+        <div className="flex flex-wrap items-center gap-3 p-3 bg-muted/50 rounded-lg">
+          <Filter className="w-4 h-4 text-muted-foreground" />
 
-        {/* Source Filter */}
-        <div className="flex items-center gap-1">
-          <span className="text-sm text-muted-foreground mr-1">Source:</span>
-          <FilterButton
-            active={sourceFilter === 'all'}
-            onClick={() => setSourceFilter('all')}
-          >
-            All
-          </FilterButton>
-          <FilterButton
-            active={sourceFilter === 'word'}
-            onClick={() => setSourceFilter('word')}
-          >
-            Word
-          </FilterButton>
-          <FilterButton
-            active={sourceFilter === 'processing'}
-            onClick={() => setSourceFilter('processing')}
-          >
-            DocHub
-          </FilterButton>
-        </div>
-
-        <div className="w-px h-6 bg-border" />
-
-        {/* Category Filter */}
-        <div className="flex items-center gap-1">
-          <span className="text-sm text-muted-foreground mr-1">Category:</span>
-          <FilterButton
-            active={categoryFilter === 'all'}
-            onClick={() => setCategoryFilter('all')}
-          >
-            All
-          </FilterButton>
-          {(Object.keys(categoryConfig) as ChangeCategory[]).map((category) => (
-            <FilterButton
-              key={category}
-              active={categoryFilter === category}
-              onClick={() => setCategoryFilter(category)}
-            >
-              {categoryConfig[category].label}
+          {/* Source Filter */}
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-muted-foreground mr-1">Source:</span>
+            <FilterButton active={sourceFilter === "all"} onClick={() => setSourceFilter("all")}>
+              All
             </FilterButton>
-          ))}
-        </div>
+            <FilterButton active={sourceFilter === "word"} onClick={() => setSourceFilter("word")}>
+              Word
+            </FilterButton>
+            <FilterButton
+              active={sourceFilter === "processing"}
+              onClick={() => setSourceFilter("processing")}
+            >
+              DocHub
+            </FilterButton>
+          </div>
 
-        <div className="w-px h-6 bg-border" />
+          <div className="w-px h-6 bg-border" />
 
-        {/* Author Filter Dropdown */}
-        {uniqueAuthors.length > 0 && (
-          <>
-            <div className="relative" ref={authorDropdownRef}>
-              <button
-                onClick={() => setShowAuthorDropdown(!showAuthorDropdown)}
-                className={cn(
-                  'flex items-center gap-2 px-2 py-1 text-xs rounded-md transition-colors',
-                  authorFilter !== 'all'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-background hover:bg-muted border border-border'
-                )}
+          {/* Category Filter */}
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-muted-foreground mr-1">Category:</span>
+            <FilterButton
+              active={categoryFilter === "all"}
+              onClick={() => setCategoryFilter("all")}
+            >
+              All
+            </FilterButton>
+            {(Object.keys(categoryConfig) as ChangeCategory[]).map((category) => (
+              <FilterButton
+                key={category}
+                active={categoryFilter === category}
+                onClick={() => setCategoryFilter(category)}
               >
-                <User className="w-3 h-3" />
-                <span>{authorFilter === 'all' ? 'All Authors' : authorFilter}</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
+                {categoryConfig[category].label}
+              </FilterButton>
+            ))}
+          </div>
 
-              {/* Dropdown menu */}
-              {showAuthorDropdown && (
-                <div className="absolute top-full left-0 mt-1 z-50 min-w-[180px] bg-popover border border-border rounded-md shadow-lg py-1">
-                  <button
-                    onClick={() => {
-                      setAuthorFilter('all');
-                      setShowAuthorDropdown(false);
-                    }}
-                    className={cn(
-                      'w-full px-3 py-1.5 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2',
-                      authorFilter === 'all' && 'bg-muted'
-                    )}
-                  >
-                    <span className="w-4" />
-                    All Authors
-                  </button>
-                  <div className="h-px bg-border my-1" />
-                  {uniqueAuthors.map((author) => (
+          <div className="w-px h-6 bg-border" />
+
+          {/* Author Filter Dropdown */}
+          {uniqueAuthors.length > 0 && (
+            <>
+              <div className="relative" ref={authorDropdownRef}>
+                <button
+                  onClick={() => setShowAuthorDropdown(!showAuthorDropdown)}
+                  className={cn(
+                    "flex items-center gap-2 px-2 py-1 text-xs rounded-md transition-colors",
+                    authorFilter !== "all"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background hover:bg-muted border border-border"
+                  )}
+                >
+                  <User className="w-3 h-3" />
+                  <span>{authorFilter === "all" ? "All Authors" : authorFilter}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+
+                {/* Dropdown menu */}
+                {showAuthorDropdown && (
+                  <div className="absolute top-full left-0 mt-1 z-50 min-w-[180px] bg-popover border border-border rounded-md shadow-lg py-1">
                     <button
-                      key={author}
                       onClick={() => {
-                        setAuthorFilter(author);
+                        setAuthorFilter("all");
                         setShowAuthorDropdown(false);
                       }}
                       className={cn(
-                        'w-full px-3 py-1.5 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2',
-                        authorFilter === author && 'bg-muted'
+                        "w-full px-3 py-1.5 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2",
+                        authorFilter === "all" && "bg-muted"
                       )}
                     >
-                      <User className="w-3 h-3 text-muted-foreground" />
-                      {author}
+                      <span className="w-4" />
+                      All Authors
                     </button>
-                  ))}
-                </div>
+                    <div className="h-px bg-border my-1" />
+                    {uniqueAuthors.map((author) => (
+                      <button
+                        key={author}
+                        onClick={() => {
+                          setAuthorFilter(author);
+                          setShowAuthorDropdown(false);
+                        }}
+                        className={cn(
+                          "w-full px-3 py-1.5 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2",
+                          authorFilter === author && "bg-muted"
+                        )}
+                      >
+                        <User className="w-3 h-3 text-muted-foreground" />
+                        {author}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Clear author filter button */}
+              {authorFilter !== "all" && (
+                <button
+                  onClick={() => setAuthorFilter("all")}
+                  className="p-1 rounded hover:bg-muted transition-colors"
+                  title="Clear author filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               )}
-            </div>
 
-            {/* Clear author filter button */}
-            {authorFilter !== 'all' && (
-              <button
-                onClick={() => setAuthorFilter('all')}
-                className="p-1 rounded hover:bg-muted transition-colors"
-                title="Clear author filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
+              <div className="w-px h-6 bg-border" />
+            </>
+          )}
 
-            <div className="w-px h-6 bg-border" />
-          </>
-        )}
-
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search changes..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="px-3 py-1 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50"
-        />
-      </div>
+          {/* Search */}
+          <input
+            type="text"
+            placeholder="Search changes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="px-3 py-1 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50"
+          />
+        </div>
       )}
 
       {/* Document List - only show if there are DocHub changes */}
       {documentChanges.length > 0 && (
-      <div className="space-y-3">
-        {groupedDocumentChanges.map((item) => (
-          <div
-            key={item.document.id}
-            className="border border-border rounded-lg overflow-hidden"
-          >
-            {/* Document Header */}
-            <button
-              onClick={() => toggleDocument(item.document.id)}
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                {expandedDocs.has(item.document.id) ? (
-                  <ChevronDown className="w-4 h-4" />
-                ) : (
-                  <ChevronRight className="w-4 h-4" />
+        <div className="space-y-3">
+          {groupedDocumentChanges.map((item) => (
+            <div key={item.document.id} className="border border-border rounded-lg overflow-hidden">
+              {/* Document Header */}
+              <button
+                onClick={() => toggleDocument(item.document.id)}
+                className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  {expandedDocs.has(item.document.id) ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                  <FileText className="w-4 h-4 text-muted-foreground" />
+                  <span className="font-medium">{item.document.name}</span>
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  {item.total} change{item.total !== 1 ? "s" : ""}
+                </span>
+              </button>
+
+              {/* Document Changes */}
+              <AnimatePresence>
+                {expandedDocs.has(item.document.id) && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-4 pb-4 space-y-4">
+                      {(Object.keys(categoryConfig) as ChangeCategory[]).map((category) => {
+                        const changes = item.grouped[category];
+                        if (changes.length === 0) return null;
+
+                        const config = categoryConfig[category];
+                        const Icon = config.icon;
+
+                        return (
+                          <div key={category} className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              <Icon className={cn("w-4 h-4", config.color)} />
+                              <span>{config.label}</span>
+                              <span className="text-muted-foreground">({changes.length})</span>
+                            </div>
+                            <div className="pl-6 space-y-2">
+                              {changes.map((change) => (
+                                <ChangeItem key={change.id} change={change} />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
                 )}
-                <FileText className="w-4 h-4 text-muted-foreground" />
-                <span className="font-medium">{item.document.name}</span>
-              </div>
-              <span className="text-sm text-muted-foreground">
-                {item.total} change{item.total !== 1 ? 's' : ''}
-              </span>
-            </button>
-
-            {/* Document Changes */}
-            <AnimatePresence>
-              {expandedDocs.has(item.document.id) && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-4 pb-4 space-y-4">
-                    {(Object.keys(categoryConfig) as ChangeCategory[]).map((category) => {
-                      const changes = item.grouped[category];
-                      if (changes.length === 0) return null;
-
-                      const config = categoryConfig[category];
-                      const Icon = config.icon;
-
-                      return (
-                        <div key={category} className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-medium">
-                            <Icon className={cn('w-4 h-4', config.color)} />
-                            <span>{config.label}</span>
-                            <span className="text-muted-foreground">
-                              ({changes.length})
-                            </span>
-                          </div>
-                          <div className="pl-6 space-y-2">
-                            {changes.map((change) => (
-                              <ChangeItem key={change.id} change={change} />
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        ))}
-      </div>
+              </AnimatePresence>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Empty filtered state */}
       {filteredDocumentChanges.length === 0 && documentChanges.length > 0 && (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Filter className="w-8 h-8 text-muted-foreground mb-3" />
-          <p className="text-sm text-muted-foreground">
-            No changes match the current filters
-          </p>
+          <p className="text-sm text-muted-foreground">No changes match the current filters</p>
           <Button
             variant="ghost"
             size="sm"
             className="mt-2"
             onClick={() => {
-              setSourceFilter('all');
-              setCategoryFilter('all');
-              setAuthorFilter('all');
-              setSearchQuery('');
+              setSourceFilter("all");
+              setCategoryFilter("all");
+              setAuthorFilter("all");
+              setSearchQuery("");
             }}
           >
             Clear Filters
@@ -986,7 +969,8 @@ export function ChangeViewer({ sessionId, expandDocumentId, onExpandHandled }: C
             <div>
               <h3 className="text-lg font-semibold">Previous Tracked Changes</h3>
               <p className="text-sm text-muted-foreground">
-                {totalPreviousChanges} change{totalPreviousChanges !== 1 ? 's' : ''} that existed in the document before DocHub processing
+                {totalPreviousChanges} change{totalPreviousChanges !== 1 ? "s" : ""} that existed in
+                the document before DocHub processing
               </p>
             </div>
           </div>
@@ -1027,7 +1011,7 @@ interface StatBadgeProps {
 function StatBadge({ icon: Icon, label, count, color }: StatBadgeProps) {
   return (
     <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-md">
-      <Icon className={cn('w-4 h-4', color)} />
+      <Icon className={cn("w-4 h-4", color)} />
       <div className="flex flex-col">
         <span className="text-xs text-muted-foreground">{label}</span>
         <span className="text-sm font-medium">{count}</span>
@@ -1047,10 +1031,10 @@ function FilterButton({ active, onClick, children }: FilterButtonProps) {
     <button
       onClick={onClick}
       className={cn(
-        'px-2 py-1 text-xs rounded-md transition-colors',
+        "px-2 py-1 text-xs rounded-md transition-colors",
         active
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-background hover:bg-muted border border-border'
+          ? "bg-primary text-primary-foreground"
+          : "bg-background hover:bg-muted border border-border"
       )}
     >
       {children}
@@ -1107,7 +1091,7 @@ function PreviousChangesSection({ document, changes }: PreviousChangesSectionPro
           <span className="font-medium">{document.name}</span>
         </div>
         <span className="text-sm text-amber-700 dark:text-amber-400">
-          {changes.length} previous change{changes.length !== 1 ? 's' : ''}
+          {changes.length} previous change{changes.length !== 1 ? "s" : ""}
         </span>
       </button>
 
@@ -1116,7 +1100,7 @@ function PreviousChangesSection({ document, changes }: PreviousChangesSectionPro
         {isExpanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
@@ -1132,11 +1116,9 @@ function PreviousChangesSection({ document, changes }: PreviousChangesSectionPro
                 return (
                   <div key={category} className="space-y-2">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <Icon className={cn('w-4 h-4', config.color)} />
+                      <Icon className={cn("w-4 h-4", config.color)} />
                       <span>{config.label}</span>
-                      <span className="text-muted-foreground">
-                        ({categoryChanges.length})
-                      </span>
+                      <span className="text-muted-foreground">({categoryChanges.length})</span>
                     </div>
                     <div className="pl-6 space-y-2">
                       {categoryChanges.map((change) => (

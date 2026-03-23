@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Download,
   X,
@@ -8,8 +8,8 @@ import {
   ExternalLink,
   AlertTriangle,
   AlertCircle,
-} from 'lucide-react';
-import { Button } from './Button';
+} from "lucide-react";
+import { Button } from "./Button";
 
 export function UpdateNotification() {
   const [isVisible, setIsVisible] = useState(false);
@@ -21,14 +21,14 @@ export function UpdateNotification() {
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [isFallbackMode, setIsFallbackMode] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string>('');
+  const [statusMessage, setStatusMessage] = useState<string>("");
   const [downloadError, setDownloadError] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
 
   useEffect(() => {
     // Safely check if electronAPI is available (may not be in browser-only mode)
-    if (typeof window.electronAPI === 'undefined') {
-      console.warn('UpdateNotification: electronAPI not available (running in browser mode?)');
+    if (typeof window.electronAPI === "undefined") {
+      console.warn("UpdateNotification: electronAPI not available (running in browser mode?)");
       return;
     }
 
@@ -60,7 +60,7 @@ export function UpdateNotification() {
         setIsDownloaded(true);
         setUpdateInfo({ ...info, fallbackUsed: info.fallbackUsed });
         if (info.fallbackUsed) {
-          setStatusMessage('Update ready to install (downloaded as compressed archive)');
+          setStatusMessage("Update ready to install (downloaded as compressed archive)");
         }
       }
     );
@@ -73,43 +73,43 @@ export function UpdateNotification() {
 
       // Check for specific error types
       const isCertError =
-        error.message?.toLowerCase().includes('certificate') ||
-        error.message?.toLowerCase().includes('issuer') ||
-        error.message?.toLowerCase().includes('unable to verify');
+        error.message?.toLowerCase().includes("certificate") ||
+        error.message?.toLowerCase().includes("issuer") ||
+        error.message?.toLowerCase().includes("unable to verify");
 
       const isMutualTLS =
-        error.message?.toLowerCase().includes('econnreset') ||
-        error.message?.toLowerCase().includes('connection reset') ||
-        error.message?.toLowerCase().includes('mutual');
+        error.message?.toLowerCase().includes("econnreset") ||
+        error.message?.toLowerCase().includes("connection reset") ||
+        error.message?.toLowerCase().includes("mutual");
 
       const isProxyError =
-        error.message?.toLowerCase().includes('proxy') ||
-        error.message?.toLowerCase().includes('firewall') ||
-        error.message?.toLowerCase().includes('localhost:8005');
+        error.message?.toLowerCase().includes("proxy") ||
+        error.message?.toLowerCase().includes("firewall") ||
+        error.message?.toLowerCase().includes("localhost:8005");
 
       // Show error state after multiple failures or if fallback also failed
-      if (error.message?.includes('Fallback download failed') || errorCount >= 2) {
+      if (error.message?.includes("Fallback download failed") || errorCount >= 2) {
         setDownloadError(true);
 
         if (isMutualTLS) {
           setStatusMessage(
-            'Enterprise network detected (Mutual TLS required). Your network requires special certificates. Please use manual download or contact IT.'
+            "Enterprise network detected (Mutual TLS required). Your network requires special certificates. Please use manual download or contact IT."
           );
         } else if (isCertError) {
           setStatusMessage(
-            'Certificate validation failed. Your organization may use custom certificates. Please download manually.'
+            "Certificate validation failed. Your organization may use custom certificates. Please download manually."
           );
         } else if (isProxyError) {
           setStatusMessage(
-            'Corporate proxy/firewall blocking download. Please use manual download or check with IT.'
+            "Corporate proxy/firewall blocking download. Please use manual download or check with IT."
           );
         } else {
-          setStatusMessage('Unable to download automatically. Please try manual download.');
+          setStatusMessage("Unable to download automatically. Please try manual download.");
         }
       } else if (isMutualTLS) {
-        setStatusMessage('Enterprise network detected. Trying PowerShell download method...');
+        setStatusMessage("Enterprise network detected. Trying PowerShell download method...");
       } else if (isCertError) {
-        setStatusMessage('Certificate issue detected. Attempting alternative download method...');
+        setStatusMessage("Certificate issue detected. Attempting alternative download method...");
       } else {
         setStatusMessage(`Connection issue: Trying alternative method...`);
       }
@@ -118,18 +118,18 @@ export function UpdateNotification() {
     // Listen for fallback mode activation
     const unsubFallback = window.electronAPI.onUpdateFallbackMode?.((data: { message: string }) => {
       setIsFallbackMode(true);
-      setStatusMessage(data.message || 'Using alternative download method...');
+      setStatusMessage(data.message || "Using alternative download method...");
     });
 
     // Listen for extraction status
     const unsubExtracting = window.electronAPI.onUpdateExtracting?.((data: { message: string }) => {
       setIsExtracting(true);
-      setStatusMessage(data.message || 'Extracting update...');
+      setStatusMessage(data.message || "Extracting update...");
     });
 
     // Listen for general status updates
     const unsubStatus = window.electronAPI.onUpdateStatus?.((data: { message: string }) => {
-      setStatusMessage(data.message || '');
+      setStatusMessage(data.message || "");
     });
 
     return () => {
@@ -170,8 +170,8 @@ export function UpdateNotification() {
       // Fallback to direct window.open if IPC fails
       const releaseUrl = updateInfo?.version
         ? `https://github.com/ItMeDiaTech/Documentation_Hub/releases/tag/v${updateInfo.version}`
-        : 'https://github.com/ItMeDiaTech/Documentation_Hub/releases/latest';
-      window.open(releaseUrl, '_blank');
+        : "https://github.com/ItMeDiaTech/Documentation_Hub/releases/latest";
+      window.open(releaseUrl, "_blank");
     }
   };
 
@@ -237,10 +237,10 @@ export function UpdateNotification() {
                 <div className="flex items-center justify-between text-sm">
                   <span>
                     {isExtracting
-                      ? 'Extracting...'
+                      ? "Extracting..."
                       : isFallbackMode
-                        ? 'Downloading compressed update...'
-                        : 'Downloading...'}
+                        ? "Downloading compressed update..."
+                        : "Downloading..."}
                   </span>
                   {!isExtracting && (
                     <span className="text-muted-foreground">{Math.round(downloadProgress)}%</span>
@@ -248,8 +248,8 @@ export function UpdateNotification() {
                 </div>
                 <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
                   <div
-                    className={`h-full ${isExtracting ? 'bg-blue-500' : 'bg-primary'} transition-all duration-300`}
-                    style={{ width: isExtracting ? '100%' : `${downloadProgress}%` }}
+                    className={`h-full ${isExtracting ? "bg-blue-500" : "bg-primary"} transition-all duration-300`}
+                    style={{ width: isExtracting ? "100%" : `${downloadProgress}%` }}
                   />
                 </div>
                 {isFallbackMode && !isExtracting && (

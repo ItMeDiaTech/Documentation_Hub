@@ -75,7 +75,7 @@ export class ListProcessor {
         if (indentSetting.symbolIndent >= indentSetting.textIndent) {
           log.warn(
             `Invalid indentation for level ${level}: symbolIndent (${indentSetting.symbolIndent}) ` +
-            `must be less than textIndent (${indentSetting.textIndent}). Skipping.`
+              `must be less than textIndent (${indentSetting.textIndent}). Skipping.`
           );
           continue;
         }
@@ -122,7 +122,14 @@ export class ListProcessor {
       log.debug(`Found ${abstractNums.length} abstract numberings to process`);
 
       // Special bullet fonts that should be preserved (used for special characters like open/closed circles)
-      const specialBulletFonts = ["Webdings", "Wingdings", "Symbol", "Wingdings 2", "Wingdings 3", "Courier New"];
+      const specialBulletFonts = [
+        "Webdings",
+        "Wingdings",
+        "Symbol",
+        "Wingdings 2",
+        "Wingdings 3",
+        "Courier New",
+      ];
 
       for (const abstractNum of abstractNums) {
         for (let levelIndex = 0; levelIndex <= 8; levelIndex++) {
@@ -143,7 +150,9 @@ export class ListProcessor {
           standardizedCount++;
 
           if (preserveFont) {
-            log.debug(`Standardized list level ${levelIndex}: preserved ${currentFont} font, 12pt black`);
+            log.debug(
+              `Standardized list level ${levelIndex}: preserved ${currentFont} font, 12pt black`
+            );
           } else {
             log.debug(`Standardized list level ${levelIndex}: Verdana 12pt black`);
           }
@@ -251,7 +260,6 @@ export class ListProcessor {
       return false;
     }
   }
-
 }
 
 export const listProcessor = new ListProcessor();

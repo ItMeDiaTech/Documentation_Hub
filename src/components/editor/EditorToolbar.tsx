@@ -8,8 +8,8 @@
  * - Save and Close buttons
  */
 
-import { useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   Save,
@@ -29,9 +29,9 @@ import {
   Check,
   XCircle,
   Loader2,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
-import type { QuickActionId, EditorState } from '@/types/editor';
+} from "lucide-react";
+import { cn } from "@/utils/cn";
+import type { QuickActionId, EditorState } from "@/types/editor";
 
 interface EditorToolbarProps {
   /** Document name/title */
@@ -70,44 +70,44 @@ function QuickActionsDropdown({
 
   const actionGroups = [
     {
-      label: 'Text Formatting',
+      label: "Text Formatting",
       actions: [
-        { id: 'bold' as QuickActionId, icon: Bold, label: 'Bold', shortcut: 'Ctrl+B' },
-        { id: 'italic' as QuickActionId, icon: Italic, label: 'Italic', shortcut: 'Ctrl+I' },
+        { id: "bold" as QuickActionId, icon: Bold, label: "Bold", shortcut: "Ctrl+B" },
+        { id: "italic" as QuickActionId, icon: Italic, label: "Italic", shortcut: "Ctrl+I" },
         {
-          id: 'underline' as QuickActionId,
+          id: "underline" as QuickActionId,
           icon: Underline,
-          label: 'Underline',
-          shortcut: 'Ctrl+U',
+          label: "Underline",
+          shortcut: "Ctrl+U",
         },
         {
-          id: 'clear-formatting' as QuickActionId,
+          id: "clear-formatting" as QuickActionId,
           icon: RemoveFormatting,
-          label: 'Clear Formatting',
+          label: "Clear Formatting",
         },
       ],
     },
     {
-      label: 'Hyperlinks',
+      label: "Hyperlinks",
       actions: [
-        { id: 'insert-hyperlink' as QuickActionId, icon: Link2, label: 'Insert Hyperlink' },
-        { id: 'remove-hyperlink' as QuickActionId, icon: Unlink, label: 'Remove Hyperlink' },
+        { id: "insert-hyperlink" as QuickActionId, icon: Link2, label: "Insert Hyperlink" },
+        { id: "remove-hyperlink" as QuickActionId, icon: Unlink, label: "Remove Hyperlink" },
       ],
     },
     {
-      label: 'Styles',
+      label: "Styles",
       actions: [
-        { id: 'style-heading1' as QuickActionId, icon: FileText, label: 'Heading 1' },
-        { id: 'style-heading2' as QuickActionId, icon: FileText, label: 'Heading 2' },
-        { id: 'style-normal' as QuickActionId, icon: FileText, label: 'Normal' },
-        { id: 'style-list' as QuickActionId, icon: ListOrdered, label: 'List Paragraph' },
+        { id: "style-heading1" as QuickActionId, icon: FileText, label: "Heading 1" },
+        { id: "style-heading2" as QuickActionId, icon: FileText, label: "Heading 2" },
+        { id: "style-normal" as QuickActionId, icon: FileText, label: "Normal" },
+        { id: "style-list" as QuickActionId, icon: ListOrdered, label: "List Paragraph" },
       ],
     },
     {
-      label: 'Tracked Changes',
+      label: "Tracked Changes",
       actions: [
-        { id: 'accept-all' as QuickActionId, icon: Check, label: 'Accept All Changes' },
-        { id: 'reject-all' as QuickActionId, icon: XCircle, label: 'Reject All Changes' },
+        { id: "accept-all" as QuickActionId, icon: Check, label: "Accept All Changes" },
+        { id: "reject-all" as QuickActionId, icon: XCircle, label: "Reject All Changes" },
       ],
     },
   ];
@@ -118,24 +118,19 @@ function QuickActionsDropdown({
         onClick={() => setIsOpen(!isOpen)}
         disabled={disabled}
         className={cn(
-          'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors',
-          'hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed'
+          "flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors",
+          "hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
         )}
       >
         Quick Actions
-        <ChevronDown
-          className={cn('w-4 h-4 transition-transform', isOpen && 'rotate-180')}
-        />
+        <ChevronDown className={cn("w-4 h-4 transition-transform", isOpen && "rotate-180")} />
       </button>
 
       <AnimatePresence>
         {isOpen && (
           <>
             {/* Backdrop */}
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setIsOpen(false)}
-            />
+            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
 
             {/* Dropdown */}
             <motion.div
@@ -163,9 +158,7 @@ function QuickActionsDropdown({
                       <action.icon className="w-4 h-4" />
                       <span className="flex-1 text-left">{action.label}</span>
                       {action.shortcut && (
-                        <span className="text-xs text-muted-foreground">
-                          {action.shortcut}
-                        </span>
+                        <span className="text-xs text-muted-foreground">{action.shortcut}</span>
                       )}
                     </button>
                   ))}
@@ -198,7 +191,7 @@ export function EditorToolbar({
     if (isDirty) {
       // Show confirmation dialog
       const confirmed = window.confirm(
-        'You have unsaved changes. Are you sure you want to close without saving?'
+        "You have unsaved changes. Are you sure you want to close without saving?"
       );
       if (!confirmed) return;
     }
@@ -253,21 +246,21 @@ export function EditorToolbar({
         {/* Quick formatting buttons */}
         <div className="flex items-center gap-1 pr-2 border-r border-border">
           <button
-            onClick={() => onQuickAction('bold')}
+            onClick={() => onQuickAction("bold")}
             className="p-1.5 rounded-lg hover:bg-muted transition-colors"
             title="Bold (Ctrl+B)"
           >
             <Bold className="w-4 h-4" />
           </button>
           <button
-            onClick={() => onQuickAction('italic')}
+            onClick={() => onQuickAction("italic")}
             className="p-1.5 rounded-lg hover:bg-muted transition-colors"
             title="Italic (Ctrl+I)"
           >
             <Italic className="w-4 h-4" />
           </button>
           <button
-            onClick={() => onQuickAction('underline')}
+            onClick={() => onQuickAction("underline")}
             className="p-1.5 rounded-lg hover:bg-muted transition-colors"
             title="Underline (Ctrl+U)"
           >
@@ -285,11 +278,11 @@ export function EditorToolbar({
           onClick={onSave}
           disabled={isSaving || !isDirty}
           className={cn(
-            'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors',
+            "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors",
             isDirty
-              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-              : 'bg-muted text-muted-foreground',
-            (isSaving || !isDirty) && 'opacity-50 cursor-not-allowed'
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              : "bg-muted text-muted-foreground",
+            (isSaving || !isDirty) && "opacity-50 cursor-not-allowed"
           )}
         >
           {isSaving ? (

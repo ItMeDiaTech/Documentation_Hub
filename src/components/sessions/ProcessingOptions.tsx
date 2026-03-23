@@ -1,15 +1,15 @@
-import { cn } from '@/utils/cn';
-import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
-import { RevisionHandlingOptions } from './RevisionHandlingOptions';
+import { cn } from "@/utils/cn";
+import { motion } from "framer-motion";
+import { Check } from "lucide-react";
+import { useCallback, useMemo } from "react";
+import { RevisionHandlingOptions } from "./RevisionHandlingOptions";
 
 /**
  * TYPE SAFETY: Define processing groups as const tuple for runtime validation
  * This allows us to derive the type from the value, ensuring consistency
  * between runtime checks and TypeScript types.
  */
-export const PROCESSING_GROUPS = ['text', 'hyperlinks', 'structure', 'lists'] as const;
+export const PROCESSING_GROUPS = ["text", "hyperlinks", "structure", "lists"] as const;
 export type ProcessingGroup = (typeof PROCESSING_GROUPS)[number];
 
 export interface ProcessingOption {
@@ -22,78 +22,133 @@ export interface ProcessingOption {
 // User-friendly descriptions for the right panel
 const optionDescriptions: Record<string, string> = {
   // Text Formatting
-  'remove-italics': 'Removes all italic text formatting',
-  'remove-em-en-variants': 'Replaces em/en dashes with hyphens and em/en spaces with regular spaces',
-  'preserve-red-font': 'Prevents changes to text that is colored red',
-  'replace-outdated-titles': 'Updates a hyperlink\'s display text to match the title within theSource if different',
-  'validate-document-styles': 'Applies your custom style settings from the Styles tab',
-  'correct-misapplied-styles': 'Fixes paragraphs with incorrectly applied TOC or Hyperlink styles so they receive proper formatting',
+  "remove-italics": "Removes all italic text formatting",
+  "remove-em-en-variants":
+    "Replaces em/en dashes with hyphens and em/en spaces with regular spaces",
+  "preserve-red-font": "Prevents changes to text that is colored red",
+  "replace-outdated-titles":
+    "Updates a hyperlink's display text to match the title within theSource if different",
+  "validate-document-styles": "Applies your custom style settings from the Styles tab",
+  "correct-misapplied-styles":
+    "Fixes paragraphs with incorrectly applied TOC or Hyperlink styles so they receive proper formatting",
 
   // Links & Navigation
-  'update-top-hyperlinks': 'Adds or updates links that jump to the document start',
-  'update-toc-hyperlinks': 'Creates or updates clickable links in the table of contents',
-  'force-remove-heading1-toc': 'Removes the main document title from the table of contents',
-  'fix-internal-hyperlinks': 'Fixes broken links that point to other parts of the document',
-  'fix-content-ids': 'Appends Content ID to the end of theSource Hyperlinks',
+  "update-top-hyperlinks": "Adds or updates links that jump to the document start",
+  "update-toc-hyperlinks": "Creates or updates clickable links in the table of contents",
+  "force-remove-heading1-toc": "Removes the main document title from the table of contents",
+  "fix-internal-hyperlinks": "Fixes broken links that point to other parts of the document",
+  "fix-content-ids": "Appends Content ID to the end of theSource Hyperlinks",
 
   // Document Structure
-  'center-border-images': 'Centers and borders images if image is bigger than 100x100 pixels',
-  'remove-whitespace': 'Removes unnecessary spaces, tabs, and blank areas',
-  'remove-paragraph-lines': 'Makes spacing between paragraphs consistent',
-  'remove-headers-footers': 'Removes text from document headers and footers',
-  'add-document-warning': 'Adds a standard disclaimer notice if missing',
-  'validate-header2-tables': 'Formats 1x1 Heading 2 tables to ensure standardization across document',
+  "center-border-images": "Centers and borders images if image is bigger than 100x100 pixels",
+  "remove-whitespace": "Removes unnecessary spaces, tabs, and blank areas",
+  "remove-paragraph-lines": "Makes spacing between paragraphs consistent",
+  "remove-headers-footers": "Removes text from document headers and footers",
+  "add-document-warning": "Adds a standard disclaimer notice if missing",
+  "validate-header2-tables":
+    "Formats 1x1 Heading 2 tables to ensure standardization across document",
 
   // Lists & Tables
-  'list-indentation': 'Corrects the indentation of bulleted and numbered lists',
-  'bullet-uniformity': 'Makes bullet styles consistent throughout',
-  'normalize-table-lists': 'Converts typed list prefixes (1., A., •) to proper Word formatting and fixes mixed lists',
-  'smart-tables': 'Applies consistent styling to all tables',
-  'adjust-table-padding': 'Adjusts the space inside table cells',
-  'standardize-table-borders': 'Makes table border styles uniform',
-  'set-landscape-margins': 'Sets document to landscape orientation with 1-inch margins',
+  "list-indentation": "Corrects the indentation of bulleted and numbered lists",
+  "bullet-uniformity": "Makes bullet styles consistent throughout",
+  "normalize-table-lists":
+    "Converts typed list prefixes (1., A., •) to proper Word formatting and fixes mixed lists",
+  "smart-tables": "Applies consistent styling to all tables",
+  "adjust-table-padding": "Adjusts the space inside table cells",
+  "standardize-table-borders": "Makes table border styles uniform",
+  "set-landscape-margins": "Sets document to landscape orientation with 1-inch margins",
 };
 
 export const defaultOptions: ProcessingOption[] = [
   // Text Formatting Group
-  { id: 'remove-italics', label: 'Remove Italics', group: 'text', enabled: true },
-  { id: 'remove-em-en-variants', label: 'Remove "em" / "en" Variants', group: 'text', enabled: true },
-  { id: 'preserve-red-font', label: 'Keep Red Text', group: 'text', enabled: false },
-  { id: 'replace-outdated-titles', label: 'Update theSource Link Titles', group: 'hyperlinks', enabled: true },
-  { id: 'validate-document-styles', label: 'Apply Custom Styles', group: 'text', enabled: true },
-  { id: 'correct-misapplied-styles', label: 'Fix Misapplied Styles', group: 'text', enabled: true },
+  { id: "remove-italics", label: "Remove Italics", group: "text", enabled: true },
+  {
+    id: "remove-em-en-variants",
+    label: 'Remove "em" / "en" Variants',
+    group: "text",
+    enabled: true,
+  },
+  { id: "preserve-red-font", label: "Keep Red Text", group: "text", enabled: false },
+  {
+    id: "replace-outdated-titles",
+    label: "Update theSource Link Titles",
+    group: "hyperlinks",
+    enabled: true,
+  },
+  { id: "validate-document-styles", label: "Apply Custom Styles", group: "text", enabled: true },
+  { id: "correct-misapplied-styles", label: "Fix Misapplied Styles", group: "text", enabled: true },
 
   // Links & Navigation Group
-  { id: 'update-top-hyperlinks', label: '"Top of Document" Hyperlinks', group: 'hyperlinks', enabled: true },
-  { id: 'update-toc-hyperlinks', label: 'Table of Contents Hyperlinks', group: 'hyperlinks', enabled: true },
-  { id: 'force-remove-heading1-toc', label: 'Remove Title from TOC', group: 'hyperlinks', enabled: true },
-  { id: 'fix-internal-hyperlinks', label: 'Internal Hyperlinks', group: 'hyperlinks', enabled: true },
-  { id: 'fix-content-ids', label: 'Content ID References', group: 'hyperlinks', enabled: true },
+  {
+    id: "update-top-hyperlinks",
+    label: '"Top of Document" Hyperlinks',
+    group: "hyperlinks",
+    enabled: true,
+  },
+  {
+    id: "update-toc-hyperlinks",
+    label: "Table of Contents Hyperlinks",
+    group: "hyperlinks",
+    enabled: true,
+  },
+  {
+    id: "force-remove-heading1-toc",
+    label: "Remove Title from TOC",
+    group: "hyperlinks",
+    enabled: true,
+  },
+  {
+    id: "fix-internal-hyperlinks",
+    label: "Internal Hyperlinks",
+    group: "hyperlinks",
+    enabled: true,
+  },
+  { id: "fix-content-ids", label: "Content ID References", group: "hyperlinks", enabled: true },
 
   // Document Structure Group
-  { id: 'center-border-images', label: 'Center and Border Images', group: 'structure', enabled: true },
-  { id: 'remove-whitespace', label: 'Clean Up Spaces', group: 'structure', enabled: true },
-  { id: 'remove-paragraph-lines', label: 'Standardize Blank Lines', group: 'structure', enabled: true },
-  { id: 'remove-headers-footers', label: 'Clear Headers/Footers', group: 'structure', enabled: true },
-  { id: 'add-document-warning', label: 'Add Missing Disclaimer', group: 'structure', enabled: true },
-  { id: 'validate-header2-tables', label: 'Heading 2 Tables', group: 'structure', enabled: true },
-  { id: 'set-landscape-margins', label: 'Landscape Layout', group: 'structure', enabled: true },
+  {
+    id: "center-border-images",
+    label: "Center and Border Images",
+    group: "structure",
+    enabled: true,
+  },
+  { id: "remove-whitespace", label: "Clean Up Spaces", group: "structure", enabled: true },
+  {
+    id: "remove-paragraph-lines",
+    label: "Standardize Blank Lines",
+    group: "structure",
+    enabled: true,
+  },
+  {
+    id: "remove-headers-footers",
+    label: "Clear Headers/Footers",
+    group: "structure",
+    enabled: true,
+  },
+  {
+    id: "add-document-warning",
+    label: "Add Missing Disclaimer",
+    group: "structure",
+    enabled: true,
+  },
+  { id: "validate-header2-tables", label: "Heading 2 Tables", group: "structure", enabled: true },
+  { id: "set-landscape-margins", label: "Landscape Layout", group: "structure", enabled: true },
 
   // Lists & Tables Group
-  { id: 'list-indentation', label: 'Fix List Spacing', group: 'lists', enabled: true },
-  { id: 'bullet-uniformity', label: 'Standardize Bullets', group: 'lists', enabled: true },
-  { id: 'normalize-table-lists', label: 'Fix Typed List Prefixes', group: 'lists', enabled: true },
-  { id: 'smart-tables', label: 'Format Tables', group: 'lists', enabled: true },
-  { id: 'adjust-table-padding', label: 'Table Cell Spacing', group: 'lists', enabled: true },
-  { id: 'standardize-table-borders', label: 'Fix Table Borders', group: 'lists', enabled: true },
+  { id: "list-indentation", label: "Fix List Spacing", group: "lists", enabled: true },
+  { id: "bullet-uniformity", label: "Standardize Bullets", group: "lists", enabled: true },
+  { id: "normalize-table-lists", label: "Fix Typed List Prefixes", group: "lists", enabled: true },
+  { id: "smart-tables", label: "Format Tables", group: "lists", enabled: true },
+  { id: "adjust-table-padding", label: "Table Cell Spacing", group: "lists", enabled: true },
+  { id: "standardize-table-borders", label: "Fix Table Borders", group: "lists", enabled: true },
 ];
 
 // User-friendly group labels
 const groupLabels: Record<ProcessingGroup, string> = {
-  text: 'Text Formatting',
-  hyperlinks: 'Links & Navigation',
-  structure: 'Document Structure',
-  lists: 'Lists & Tables',
+  text: "Text Formatting",
+  hyperlinks: "Links & Navigation",
+  structure: "Document Structure",
+  lists: "Lists & Tables",
 };
 
 interface ProcessingOptionsProps {
@@ -187,18 +242,18 @@ export function ProcessingOptions({
                   className="flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
                   onClick={() => toggleGroup(group)}
                   role="checkbox"
-                  aria-checked={allEnabled ? true : someEnabled ? 'mixed' : false}
+                  aria-checked={allEnabled ? true : someEnabled ? "mixed" : false}
                   aria-label={`Toggle ${groupLabels[group as ProcessingGroup]}`}
                 >
                   <div
                     aria-hidden="true"
                     className={cn(
-                      'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                      "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
                       allEnabled
-                        ? 'bg-primary border-primary checkbox-checked'
+                        ? "bg-primary border-primary checkbox-checked"
                         : someEnabled
-                          ? 'bg-primary/50 border-primary'
-                          : 'border-border hover:border-primary/50'
+                          ? "bg-primary/50 border-primary"
+                          : "border-border hover:border-primary/50"
                     )}
                   >
                     {(allEnabled || someEnabled) && (
@@ -222,17 +277,17 @@ export function ProcessingOptions({
                         />
                         <div
                           className={cn(
-                            'w-4 h-4 rounded border-2 flex items-center justify-center transition-all',
+                            "w-4 h-4 rounded border-2 flex items-center justify-center transition-all",
                             option.enabled
-                              ? 'bg-primary border-primary checkbox-checked'
-                              : 'border-border group-hover:border-primary/50'
+                              ? "bg-primary border-primary checkbox-checked"
+                              : "border-border group-hover:border-primary/50"
                           )}
                         >
                           {option.enabled && (
                             <motion.div
                               initial={{ scale: 0 }}
                               animate={{ scale: 1 }}
-                              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
                             >
                               <Check className="w-2.5 h-2.5 text-primary-foreground checkbox-checkmark" />
                             </motion.div>

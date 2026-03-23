@@ -5,8 +5,8 @@
  * differences between pre-processing and post-processing document content.
  */
 
-import { diffWords, diffLines, Change } from 'diff';
-import type { DiffSegment, ParagraphDiff, DocumentDiff } from '@/types/editor';
+import { diffWords, diffLines, Change } from "diff";
+import type { DiffSegment, ParagraphDiff, DocumentDiff } from "@/types/editor";
 
 /**
  * Generate word-level diff between two strings
@@ -29,23 +29,23 @@ export function generateWordDiff(
       // Text was added (only in modified)
       modifiedSegments.push({
         text: change.value,
-        type: 'added',
+        type: "added",
       });
     } else if (change.removed) {
       // Text was removed (only in original)
       originalSegments.push({
         text: change.value,
-        type: 'removed',
+        type: "removed",
       });
     } else {
       // Text is unchanged (in both)
       originalSegments.push({
         text: change.value,
-        type: 'unchanged',
+        type: "unchanged",
       });
       modifiedSegments.push({
         text: change.value,
-        type: 'unchanged',
+        type: "unchanged",
       });
     }
   }
@@ -60,10 +60,7 @@ export function generateWordDiff(
  * @param modified - Array of modified paragraph texts
  * @returns Complete document diff with per-paragraph analysis
  */
-export function generateDocumentDiff(
-  original: string[],
-  modified: string[]
-): DocumentDiff {
+export function generateDocumentDiff(original: string[], modified: string[]): DocumentDiff {
   const paragraphDiffs: ParagraphDiff[] = [];
 
   let wordsAdded = 0;
@@ -74,24 +71,24 @@ export function generateDocumentDiff(
   let removedParagraphs = 0;
 
   // Use line-level diff first to align paragraphs
-  const lineDiffs = diffLines(original.join('\n'), modified.join('\n'));
+  const lineDiffs = diffLines(original.join("\n"), modified.join("\n"));
 
   let originalIndex = 0;
   let modifiedIndex = 0;
   let paragraphIndex = 0;
 
   for (const lineDiff of lineDiffs) {
-    const lines = lineDiff.value.split('\n').filter((line) => line !== '');
+    const lines = lineDiff.value.split("\n").filter((line) => line !== "");
 
     if (lineDiff.added) {
       // Paragraphs were added
       for (const line of lines) {
         paragraphDiffs.push({
           index: paragraphIndex++,
-          original: '',
+          original: "",
           modified: line,
           originalSegments: [],
-          modifiedSegments: [{ text: line, type: 'added' }],
+          modifiedSegments: [{ text: line, type: "added" }],
           hasChanges: true,
         });
         addedParagraphs++;
@@ -104,8 +101,8 @@ export function generateDocumentDiff(
         paragraphDiffs.push({
           index: paragraphIndex++,
           original: line,
-          modified: '',
-          originalSegments: [{ text: line, type: 'removed' }],
+          modified: "",
+          originalSegments: [{ text: line, type: "removed" }],
           modifiedSegments: [],
           hasChanges: true,
         });
@@ -116,8 +113,8 @@ export function generateDocumentDiff(
     } else {
       // Paragraphs match - but content might differ
       for (const line of lines) {
-        const origText = original[originalIndex] || '';
-        const modText = modified[modifiedIndex] || '';
+        const origText = original[originalIndex] || "";
+        const modText = modified[modifiedIndex] || "";
 
         if (origText === modText) {
           // Exact match
@@ -125,16 +122,13 @@ export function generateDocumentDiff(
             index: paragraphIndex++,
             original: origText,
             modified: modText,
-            originalSegments: [{ text: origText, type: 'unchanged' }],
-            modifiedSegments: [{ text: modText, type: 'unchanged' }],
+            originalSegments: [{ text: origText, type: "unchanged" }],
+            modifiedSegments: [{ text: modText, type: "unchanged" }],
             hasChanges: false,
           });
         } else {
           // Content changed within paragraph
-          const { originalSegments, modifiedSegments } = generateWordDiff(
-            origText,
-            modText
-          );
+          const { originalSegments, modifiedSegments } = generateWordDiff(origText, modText);
 
           paragraphDiffs.push({
             index: paragraphIndex++,
@@ -164,8 +158,8 @@ export function generateDocumentDiff(
     paragraphDiffs.push({
       index: paragraphIndex++,
       original: origText,
-      modified: '',
-      originalSegments: [{ text: origText, type: 'removed' }],
+      modified: "",
+      originalSegments: [{ text: origText, type: "removed" }],
       modifiedSegments: [],
       hasChanges: true,
     });
@@ -178,10 +172,10 @@ export function generateDocumentDiff(
     const modText = modified[modifiedIndex];
     paragraphDiffs.push({
       index: paragraphIndex++,
-      original: '',
+      original: "",
       modified: modText,
       originalSegments: [],
-      modifiedSegments: [{ text: modText, type: 'added' }],
+      modifiedSegments: [{ text: modText, type: "added" }],
       hasChanges: true,
     });
     addedParagraphs++;
@@ -291,10 +285,10 @@ export function getDiffSummary(original: string[], modified: string[]): string {
   }
 
   if (parts.length === 0) {
-    return 'No changes';
+    return "No changes";
   }
 
-  return `${parts.join(', ')} paragraphs`;
+  return `${parts.join(", ")} paragraphs`;
 }
 
 /**

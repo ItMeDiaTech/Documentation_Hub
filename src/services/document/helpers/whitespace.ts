@@ -28,11 +28,7 @@ function hasVmlContent(run: Run): boolean {
  * invisible content (e.g. a Revision-wrapped hyperlink) sits between
  * runs[i] and runs[i+1].
  */
-function hasGapInRange(
-  gapAfter: Set<number> | undefined,
-  from: number,
-  to: number
-): boolean {
+function hasGapInRange(gapAfter: Set<number> | undefined, from: number, to: number): boolean {
   if (!gapAfter) return false;
   for (let k = from; k < to; k++) {
     if (gapAfter.has(k)) return true;
@@ -188,13 +184,21 @@ export function normalizeRunWhitespace(runs: Run[], gapAfter?: Set<number>): num
     // Step 2: Trim trailing space if next content run starts with space (cross-run double space)
     // Skip if invisible content (Revision-wrapped hyperlink) sits between the runs.
     if (i < runs.length - 1) {
-      let nextText = '';
+      let nextText = "";
       let nextJ = i + 1;
       for (let j = i + 1; j < runs.length; j++) {
         const candidate = runs[j]?.getText();
-        if (candidate) { nextText = candidate; nextJ = j; break; }
+        if (candidate) {
+          nextText = candidate;
+          nextJ = j;
+          break;
+        }
       }
-      if (/[ \u00A0]$/.test(cleaned) && /^[ \u00A0]/.test(nextText) && !hasGapInRange(gapAfter, i, nextJ)) {
+      if (
+        /[ \u00A0]$/.test(cleaned) &&
+        /^[ \u00A0]/.test(nextText) &&
+        !hasGapInRange(gapAfter, i, nextJ)
+      ) {
         cleaned = cleaned.trimEnd();
       }
     }
@@ -202,13 +206,21 @@ export function normalizeRunWhitespace(runs: Run[], gapAfter?: Set<number>): num
     // Step 3: Trim leading space if previous content run ends with space (cross-run double space)
     // Skip if invisible content (Revision-wrapped hyperlink) sits between the runs.
     if (i > 0) {
-      let prevText = '';
+      let prevText = "";
       let prevJ = i - 1;
       for (let j = i - 1; j >= 0; j--) {
         const candidate = runs[j]?.getText();
-        if (candidate) { prevText = candidate; prevJ = j; break; }
+        if (candidate) {
+          prevText = candidate;
+          prevJ = j;
+          break;
+        }
       }
-      if (/^[ \u00A0]/.test(cleaned) && /[ \u00A0]$/.test(prevText) && !hasGapInRange(gapAfter, prevJ, i)) {
+      if (
+        /^[ \u00A0]/.test(cleaned) &&
+        /[ \u00A0]$/.test(prevText) &&
+        !hasGapInRange(gapAfter, prevJ, i)
+      ) {
         cleaned = cleaned.trimStart();
       }
     }

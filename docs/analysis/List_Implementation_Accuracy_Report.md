@@ -39,7 +39,7 @@ The `List_Implementation.md` documentation contains **critical inaccuracies** re
 ```typescript
 return new NumberingLevel({
   level: index,
-  format: 'bullet',
+  format: "bullet",
   text: bullet,
   // Let framework use default 'Calibri' font for correct bullet rendering
 });
@@ -329,9 +329,9 @@ const hangingTwips = textTwips - symbolTwips;
 ```typescript
 // Replace custom XML injection with framework helper
 doc.standardizeBulletSymbols({
-  font: 'Verdana',
+  font: "Verdana",
   fontSize: 12,
-  color: '000000',
+  color: "000000",
   bold: true,
 });
 ```

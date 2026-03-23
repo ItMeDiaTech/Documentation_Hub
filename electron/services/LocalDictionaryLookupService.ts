@@ -10,11 +10,11 @@
  * @security Context isolation compliant
  */
 
-import { logger } from '../../src/utils/logger';
-import { getDictionaryService } from './DictionaryService';
-import type { DictionaryEntry, DictionaryLookupResult } from '../../src/types/dictionary';
+import { logger } from "../../src/utils/logger";
+import { getDictionaryService } from "./DictionaryService";
+import type { DictionaryEntry, DictionaryLookupResult } from "../../src/types/dictionary";
 
-const log = logger.namespace('LocalDictionaryLookupService');
+const log = logger.namespace("LocalDictionaryLookupService");
 
 /**
  * Result format matching the Power Automate API response
@@ -23,7 +23,7 @@ export interface HyperlinkLookupResult {
   Document_ID: string;
   Content_ID: string;
   Title: string;
-  Status: 'Active' | 'Deprecated' | 'Expired' | 'Moved' | 'Not_Found';
+  Status: "Active" | "Deprecated" | "Expired" | "Moved" | "Not_Found";
 }
 
 /**
@@ -57,9 +57,9 @@ export class LocalDictionaryLookupService {
       mappedResults.push(this.mapToHyperlinkResult(result));
     }
 
-    log.debug('Batch lookup completed', {
+    log.debug("Batch lookup completed", {
       requested: lookupIds.length,
-      found: mappedResults.filter((r) => r.Status !== 'Not_Found').length,
+      found: mappedResults.filter((r) => r.Status !== "Not_Found").length,
     });
 
     return mappedResults;
@@ -72,9 +72,9 @@ export class LocalDictionaryLookupService {
     if (!result.found || !result.entry) {
       return {
         Document_ID: result.lookupId,
-        Content_ID: '',
-        Title: '',
-        Status: 'Not_Found',
+        Content_ID: "",
+        Title: "",
+        Status: "Not_Found",
       };
     }
 
@@ -96,32 +96,32 @@ export class LocalDictionaryLookupService {
    */
   private mapStatus(
     dictionaryStatus: string
-  ): 'Active' | 'Deprecated' | 'Expired' | 'Moved' | 'Not_Found' {
+  ): "Active" | "Deprecated" | "Expired" | "Moved" | "Not_Found" {
     const status = dictionaryStatus.toLowerCase().trim();
 
     switch (status) {
-      case 'active':
-      case 'published':
-      case 'current':
-        return 'Active';
+      case "active":
+      case "published":
+      case "current":
+        return "Active";
 
-      case 'deprecated':
-      case 'obsolete':
-        return 'Deprecated';
+      case "deprecated":
+      case "obsolete":
+        return "Deprecated";
 
-      case 'expired':
-      case 'retired':
-      case 'archived':
-        return 'Expired';
+      case "expired":
+      case "retired":
+      case "archived":
+        return "Expired";
 
-      case 'moved':
-      case 'relocated':
-      case 'redirected':
-        return 'Moved';
+      case "moved":
+      case "relocated":
+      case "redirected":
+        return "Moved";
 
       default:
         // If status is empty or unknown, assume active
-        return status === '' ? 'Active' : 'Active';
+        return status === "" ? "Active" : "Active";
     }
   }
 

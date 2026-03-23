@@ -1,9 +1,9 @@
-import { useUserSettings } from '@/contexts/UserSettingsContext';
-import logger from '@/utils/logger';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Bug, Send, X } from 'lucide-react';
-import { useState } from 'react';
-import { Button } from './Button';
+import { useUserSettings } from "@/contexts/UserSettingsContext";
+import logger from "@/utils/logger";
+import { AnimatePresence, motion } from "framer-motion";
+import { Bug, Send, X } from "lucide-react";
+import { useState } from "react";
+import { Button } from "./Button";
 
 interface BugReportDialogProps {
   isOpen: boolean;
@@ -12,8 +12,8 @@ interface BugReportDialogProps {
 
 export function BugReportDialog({ isOpen, onClose }: BugReportDialogProps) {
   const { settings } = useUserSettings();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
@@ -22,7 +22,7 @@ export function BugReportDialog({ isOpen, onClose }: BugReportDialogProps) {
     setIsSubmitting(true);
 
     const bugReport = {
-      Type: 'Bug Report',
+      Type: "Bug Report",
       Email: settings.profile.email,
       Title: title,
       Description: description,
@@ -31,7 +31,7 @@ export function BugReportDialog({ isOpen, onClose }: BugReportDialogProps) {
     const apiUrl = settings.apiConnections.bugReportUrl;
 
     // Check if using default URL - if so, fallback to mailto
-    if (apiUrl === 'https://www.example.com' || !apiUrl) {
+    if (apiUrl === "https://www.example.com" || !apiUrl) {
       const subject = encodeURIComponent(`Bug Report: ${title}`);
       const body = encodeURIComponent(`
 Bug Report
@@ -48,48 +48,48 @@ Submitted: ${new Date().toLocaleString()}
       window.location.href = `mailto:support@example.com?subject=${subject}&body=${body}`;
 
       // Clear fields and close dialog
-      setTitle('');
-      setDescription('');
+      setTitle("");
+      setDescription("");
       setIsSubmitting(false);
       onClose();
 
       // Show success notification
-      alert('Your bug report has been sent to the Documentation Hub Admin');
+      alert("Your bug report has been sent to the Documentation Hub Admin");
       return;
     }
 
     // Use API if configured
     try {
       const response = await fetch(apiUrl, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(bugReport),
       });
 
       if (response.ok) {
         // Clear fields and close dialog on success
-        setTitle('');
-        setDescription('');
+        setTitle("");
+        setDescription("");
         onClose();
 
         // Show success notification
-        alert('Your bug report has been sent to the Documentation Hub Admin');
+        alert("Your bug report has been sent to the Documentation Hub Admin");
       } else {
-        alert('Failed to submit bug report. Please try again.');
+        alert("Failed to submit bug report. Please try again.");
       }
     } catch (error) {
-      logger.error('Error submitting bug report:', error);
-      alert('Failed to submit bug report. Please check your API configuration.');
+      logger.error("Error submitting bug report:", error);
+      alert("Failed to submit bug report. Please check your API configuration.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleCancel = () => {
-    setTitle('');
-    setDescription('');
+    setTitle("");
+    setDescription("");
     onClose();
   };
 
@@ -111,7 +111,7 @@ Submitted: ${new Date().toLocaleString()}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            transition={{ type: "spring", damping: 20, stiffness: 300 }}
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg z-50"
           >
             <div className="bg-background border border-border rounded-lg shadow-xl overflow-hidden">
@@ -181,7 +181,7 @@ Submitted: ${new Date().toLocaleString()}
                   disabled={!title.trim() || !description.trim() || isSubmitting}
                   icon={<Send className="w-4 h-4" />}
                 >
-                  {isSubmitting ? 'Sending...' : 'Send Report'}
+                  {isSubmitting ? "Sending..." : "Send Report"}
                 </Button>
               </div>
             </div>

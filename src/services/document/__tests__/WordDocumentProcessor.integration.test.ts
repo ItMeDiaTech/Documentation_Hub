@@ -7,20 +7,19 @@
  * Coverage target: 90%+ of WordDocumentProcessor.ts
  */
 
-
 import {
   WordDocumentProcessor,
   WordProcessingOptions,
   WordProcessingResult,
-} from '../WordDocumentProcessor';
-import { Document } from 'docxmlater';
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import { hyperlinkService } from '../../HyperlinkService';
+} from "../WordDocumentProcessor";
+import { Document } from "docxmlater";
+import { promises as fs } from "fs";
+import * as path from "path";
+import { hyperlinkService } from "../../HyperlinkService";
 
 // Mock ONLY external dependencies, NOT docxmlater
-jest.mock('../../HyperlinkService');
-jest.mock('@/utils/MemoryMonitor', () => ({
+jest.mock("../../HyperlinkService");
+jest.mock("@/utils/MemoryMonitor", () => ({
   MemoryMonitor: {
     checkMemory: jest.fn(),
     forceGarbageCollection: jest.fn(),
@@ -33,7 +32,7 @@ jest.mock('@/utils/MemoryMonitor', () => ({
     }),
   },
 }));
-jest.mock('@/utils/logger', () => ({
+jest.mock("@/utils/logger", () => ({
   logger: {
     namespace: jest.fn().mockReturnValue({
       info: jest.fn(),
@@ -47,20 +46,20 @@ jest.mock('@/utils/logger', () => ({
     elapsed: jest.fn().mockReturnValue(0),
   }),
   debugModes: {
-    DOCUMENT_PROCESSING: 'debug:documentProcessing',
-    SESSION_STATE: 'debug:sessionState',
-    IPC_CALLS: 'debug:ipcCalls',
-    DATABASE: 'debug:database',
-    HYPERLINKS: 'debug:hyperlinks',
-    BACKUPS: 'debug:backups',
-    LIST_PROCESSING: 'debug:listProcessing',
+    DOCUMENT_PROCESSING: "debug:documentProcessing",
+    SESSION_STATE: "debug:sessionState",
+    IPC_CALLS: "debug:ipcCalls",
+    DATABASE: "debug:database",
+    HYPERLINKS: "debug:hyperlinks",
+    BACKUPS: "debug:backups",
+    LIST_PROCESSING: "debug:listProcessing",
   },
   isDebugEnabled: jest.fn().mockReturnValue(false),
 }));
 
-const fixturesDir = path.join(__dirname, 'fixtures');
+const fixturesDir = path.join(__dirname, "fixtures");
 
-describe('WordDocumentProcessor - Integration Tests', () => {
+describe("WordDocumentProcessor - Integration Tests", () => {
   let processor: WordDocumentProcessor;
 
   beforeEach(() => {
@@ -68,9 +67,9 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     processor = new WordDocumentProcessor();
   });
 
-  describe('Document Loading & Validation', () => {
-    it('should successfully load and process a valid DOCX file', async () => {
-      const filePath = path.join(fixturesDir, 'sample.docx');
+  describe("Document Loading & Validation", () => {
+    it("should successfully load and process a valid DOCX file", async () => {
+      const filePath = path.join(fixturesDir, "sample.docx");
 
       const result = await processor.processDocument(filePath);
 
@@ -87,10 +86,10 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       });
     });
 
-    it('should reject files exceeding size limit', async () => {
-      const filePath = path.join(fixturesDir, 'sample.docx');
+    it("should reject files exceeding size limit", async () => {
+      const filePath = path.join(fixturesDir, "sample.docx");
 
-      jest.spyOn(fs, 'stat').mockResolvedValue({
+      jest.spyOn(fs, "stat").mockResolvedValue({
         size: 200 * 1024 * 1024, // 200MB
       } as any);
 
@@ -100,15 +99,15 @@ describe('WordDocumentProcessor - Integration Tests', () => {
 
       expect(result.success).toBe(false);
       expect(result.errorMessages.length).toBeGreaterThan(0);
-      expect(result.errorMessages[0]).toContain('File too large');
-      expect(result.errorMessages[0]).toContain('200.00MB');
+      expect(result.errorMessages[0]).toContain("File too large");
+      expect(result.errorMessages[0]).toContain("200.00MB");
 
       // Restore fs.stat
       jest.restoreAllMocks();
     });
 
-    it('should handle corrupt DOCX files gracefully', async () => {
-      const filePath = path.join(fixturesDir, 'corrupt.docx');
+    it("should handle corrupt DOCX files gracefully", async () => {
+      const filePath = path.join(fixturesDir, "corrupt.docx");
 
       const result = await processor.processDocument(filePath);
 
@@ -118,10 +117,10 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       expect(result.errorMessages[0]).toMatch(/load|invalid|corrupt|format/i);
     });
 
-    it('should create backup before processing when requested', async () => {
-      const filePath = path.join(fixturesDir, 'sample.docx');
+    it("should create backup before processing when requested", async () => {
+      const filePath = path.join(fixturesDir, "sample.docx");
 
-      const copyFileSpy = jest.spyOn(fs, 'copyFile').mockResolvedValue(undefined);
+      const copyFileSpy = jest.spyOn(fs, "copyFile").mockResolvedValue(undefined);
 
       const result = await processor.processDocument(filePath, {
         createBackup: true,
@@ -130,23 +129,23 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       expect(copyFileSpy).toHaveBeenCalled();
       const [sourcePath, backupPath] = copyFileSpy.mock.calls[0];
       expect(sourcePath).toBe(filePath);
-      expect(backupPath).toContain('Backup');
+      expect(backupPath).toContain("Backup");
       expect(result.backupPath).toBeDefined();
 
       jest.restoreAllMocks();
     });
 
-    it('should handle file not found errors', async () => {
-      const result = await processor.processDocument('/nonexistent/path/fake.docx');
+    it("should handle file not found errors", async () => {
+      const result = await processor.processDocument("/nonexistent/path/fake.docx");
 
       expect(result.success).toBe(false);
       expect(result.errorMessages.length).toBeGreaterThan(0);
     });
   });
 
-  describe('Hyperlink Extraction', () => {
-    it('should extract all hyperlinks from document', async () => {
-      const filePath = path.join(fixturesDir, 'hyperlinks.docx');
+  describe("Hyperlink Extraction", () => {
+    it("should extract all hyperlinks from document", async () => {
+      const filePath = path.join(fixturesDir, "hyperlinks.docx");
 
       const result = await processor.processDocument(filePath);
 
@@ -158,16 +157,16 @@ describe('WordDocumentProcessor - Integration Tests', () => {
 
       if (result.processedLinks.length > 0) {
         const link = result.processedLinks[0];
-        expect(link).toHaveProperty('id');
-        expect(link).toHaveProperty('url');
-        expect(link).toHaveProperty('displayText');
-        expect(link).toHaveProperty('type');
-        expect(link).toHaveProperty('status');
+        expect(link).toHaveProperty("id");
+        expect(link).toHaveProperty("url");
+        expect(link).toHaveProperty("displayText");
+        expect(link).toHaveProperty("type");
+        expect(link).toHaveProperty("status");
       }
     });
 
-    it('should extract hyperlinks with correct URLs and text', async () => {
-      const filePath = path.join(fixturesDir, 'hyperlinks.docx');
+    it("should extract hyperlinks with correct URLs and text", async () => {
+      const filePath = path.join(fixturesDir, "hyperlinks.docx");
 
       // Load document directly to verify
       const doc = await Document.load(filePath);
@@ -186,8 +185,8 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       doc.dispose();
     });
 
-    it('should handle documents with no hyperlinks', async () => {
-      const filePath = path.join(fixturesDir, 'sample.docx');
+    it("should handle documents with no hyperlinks", async () => {
+      const filePath = path.join(fixturesDir, "sample.docx");
 
       const result = await processor.processDocument(filePath);
 
@@ -198,13 +197,13 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     });
   });
 
-  describe('Content ID Appending', () => {
-    it('should append content ID to theSource URLs', async () => {
-      const filePath = path.join(fixturesDir, 'theSource.docx');
+  describe("Content ID Appending", () => {
+    it("should append content ID to theSource URLs", async () => {
+      const filePath = path.join(fixturesDir, "theSource.docx");
 
       const result = await processor.processDocument(filePath, {
         operations: { fixContentIds: true },
-        contentId: '#test-content',
+        contentId: "#test-content",
       });
 
       expect(result.success).toBe(true);
@@ -216,7 +215,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
 
       // Check processedLinks for modifications
       const modifiedLinks = result.processedLinks.filter(
-        (l) => l.status === 'processed' && l.after
+        (l) => l.status === "processed" && l.after
       );
 
       // If content IDs were appended, verify they contain the ID
@@ -224,19 +223,19 @@ describe('WordDocumentProcessor - Integration Tests', () => {
         expect(modifiedLinks.length).toBeGreaterThan(0);
 
         for (const link of modifiedLinks) {
-          if (link.after && link.after.includes('thesource')) {
-            expect(link.after).toContain('#test-content');
+          if (link.after && link.after.includes("thesource")) {
+            expect(link.after).toContain("#test-content");
           }
         }
       }
     });
 
-    it('should skip URLs that already have content IDs', async () => {
-      const filePath = path.join(fixturesDir, 'theSource-with-ids.docx');
+    it("should skip URLs that already have content IDs", async () => {
+      const filePath = path.join(fixturesDir, "theSource-with-ids.docx");
 
       const result = await processor.processDocument(filePath, {
         operations: { fixContentIds: true },
-        contentId: '#test-content',
+        contentId: "#test-content",
       });
 
       expect(result.success).toBe(true);
@@ -250,12 +249,12 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       }
     });
 
-    it('should handle edge case URLs gracefully', async () => {
-      const filePath = path.join(fixturesDir, 'theSource-malformed.docx');
+    it("should handle edge case URLs gracefully", async () => {
+      const filePath = path.join(fixturesDir, "theSource-malformed.docx");
 
       const result = await processor.processDocument(filePath, {
         operations: { fixContentIds: true },
-        contentId: '#test',
+        contentId: "#test",
       });
 
       // Should not crash on edge cases
@@ -264,17 +263,17 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     });
   });
 
-  describe('Custom Replacements', () => {
-    it('should apply custom URL replacements', async () => {
-      const filePath = path.join(fixturesDir, 'hyperlinks.docx');
+  describe("Custom Replacements", () => {
+    it("should apply custom URL replacements", async () => {
+      const filePath = path.join(fixturesDir, "hyperlinks.docx");
 
       const result = await processor.processDocument(filePath, {
         customReplacements: [
           {
-            find: 'example.com',
-            replace: 'new-example.com',
-            matchType: 'contains',
-            applyTo: 'url',
+            find: "example.com",
+            replace: "new-example.com",
+            matchType: "contains",
+            applyTo: "url",
           },
         ],
       });
@@ -288,7 +287,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
 
       // Check processedLinks for URL modifications
       const urlReplacements = result.processedLinks.filter(
-        (l) => l.before && l.after && l.before !== l.after && l.after.includes('new-example.com')
+        (l) => l.before && l.after && l.before !== l.after && l.after.includes("new-example.com")
       );
 
       if (result.updatedUrls && result.updatedUrls > 0) {
@@ -296,16 +295,16 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       }
     });
 
-    it('should apply custom text replacements', async () => {
-      const filePath = path.join(fixturesDir, 'hyperlinks.docx');
+    it("should apply custom text replacements", async () => {
+      const filePath = path.join(fixturesDir, "hyperlinks.docx");
 
       const result = await processor.processDocument(filePath, {
         customReplacements: [
           {
-            find: 'GitHub',
-            replace: 'GitLab',
-            matchType: 'exact',
-            applyTo: 'text',
+            find: "GitHub",
+            replace: "GitLab",
+            matchType: "exact",
+            applyTo: "text",
           },
         ],
       });
@@ -319,12 +318,12 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     });
   });
 
-  describe('Batch Processing', () => {
-    it('should process multiple documents concurrently', async () => {
+  describe("Batch Processing", () => {
+    it("should process multiple documents concurrently", async () => {
       const files = [
-        path.join(fixturesDir, 'sample.docx'),
-        path.join(fixturesDir, 'hyperlinks.docx'),
-        path.join(fixturesDir, 'theSource.docx'),
+        path.join(fixturesDir, "sample.docx"),
+        path.join(fixturesDir, "hyperlinks.docx"),
+        path.join(fixturesDir, "theSource.docx"),
       ];
 
       const batchResult = await processor.batchProcess(files, {}, 2);
@@ -340,11 +339,11 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       }
     });
 
-    it('should handle individual file failures in batch', async () => {
+    it("should handle individual file failures in batch", async () => {
       const files = [
-        path.join(fixturesDir, 'sample.docx'),
-        path.join(fixturesDir, 'corrupt.docx'), // This will fail
-        path.join(fixturesDir, 'hyperlinks.docx'),
+        path.join(fixturesDir, "sample.docx"),
+        path.join(fixturesDir, "corrupt.docx"), // This will fail
+        path.join(fixturesDir, "hyperlinks.docx"),
       ];
 
       const batchResult = await processor.batchProcess(files, {}, 2);
@@ -354,10 +353,10 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       expect(batchResult.failedFiles).toBe(1);
     });
 
-    it('should call progress callback for each file', async () => {
+    it("should call progress callback for each file", async () => {
       const files = [
-        path.join(fixturesDir, 'sample.docx'),
-        path.join(fixturesDir, 'hyperlinks.docx'),
+        path.join(fixturesDir, "sample.docx"),
+        path.join(fixturesDir, "hyperlinks.docx"),
       ];
 
       const progressCallback = jest.fn();
@@ -373,8 +372,8 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       );
     });
 
-    it('should respect concurrency limit', async () => {
-      const files = Array(5).fill(path.join(fixturesDir, 'sample.docx'));
+    it("should respect concurrency limit", async () => {
+      const files = Array(5).fill(path.join(fixturesDir, "sample.docx"));
 
       const startTime = Date.now();
       await processor.batchProcess(files, {}, 2); // Max 2 concurrent
@@ -386,9 +385,9 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     });
   });
 
-  describe('Memory Management', () => {
-    it('should trigger garbage collection periodically in batch processing', async () => {
-      const files = Array(15).fill(path.join(fixturesDir, 'sample.docx'));
+  describe("Memory Management", () => {
+    it("should trigger garbage collection periodically in batch processing", async () => {
+      const files = Array(15).fill(path.join(fixturesDir, "sample.docx"));
 
       // Mock global.gc
       global.gc = jest.fn();
@@ -401,8 +400,8 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       }
     });
 
-    it('should clean up resources after processing', async () => {
-      const filePath = path.join(fixturesDir, 'sample.docx');
+    it("should clean up resources after processing", async () => {
+      const filePath = path.join(fixturesDir, "sample.docx");
 
       const result = await processor.processDocument(filePath);
 
@@ -412,9 +411,9 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     });
   });
 
-  describe('PowerAutomate API Integration', () => {
-    it('should process hyperlinks with PowerAutomate API', async () => {
-      const filePath = path.join(fixturesDir, 'theSource.docx');
+  describe("PowerAutomate API Integration", () => {
+    it("should process hyperlinks with PowerAutomate API", async () => {
+      const filePath = path.join(fixturesDir, "theSource.docx");
 
       // Mock API response
       const mockApiResponse = {
@@ -422,19 +421,21 @@ describe('WordDocumentProcessor - Integration Tests', () => {
         body: {
           results: [
             {
-              contentId: 'TSRC-ABC-123456',
-              documentId: 'uuid-123',
-              title: 'Test Document',
-              status: 'active',
+              contentId: "TSRC-ABC-123456",
+              documentId: "uuid-123",
+              title: "Test Document",
+              status: "active",
             },
           ],
         },
       };
 
-      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue(mockApiResponse);
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue(
+        mockApiResponse
+      );
 
       const result = await processor.processDocument(filePath, {
-        apiEndpoint: 'https://api.example.com',
+        apiEndpoint: "https://api.example.com",
         operations: { updateTitles: true },
       });
 
@@ -446,16 +447,16 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should handle API failures gracefully', async () => {
-      const filePath = path.join(fixturesDir, 'theSource.docx');
+    it("should handle API failures gracefully", async () => {
+      const filePath = path.join(fixturesDir, "theSource.docx");
 
       (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue({
         success: false,
-        error: 'API timeout',
+        error: "API timeout",
       });
 
       const result = await processor.processDocument(filePath, {
-        apiEndpoint: 'https://api.example.com',
+        apiEndpoint: "https://api.example.com",
         operations: { updateTitles: true },
       });
 
@@ -463,14 +464,14 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       // If no hyperlinks, processing succeeds without API call
       if (result.totalHyperlinks > 0) {
         expect(result.success).toBe(false);
-        expect(result.errorMessages.some((msg) => msg.includes('PowerAutomate'))).toBe(true);
+        expect(result.errorMessages.some((msg) => msg.includes("PowerAutomate"))).toBe(true);
       } else {
         expect(result.success).toBe(true);
       }
     });
 
-    it('should fail when API endpoint not configured', async () => {
-      const filePath = path.join(fixturesDir, 'theSource.docx');
+    it("should fail when API endpoint not configured", async () => {
+      const filePath = path.join(fixturesDir, "theSource.docx");
 
       const result = await processor.processDocument(filePath, {
         operations: { updateTitles: true },
@@ -481,28 +482,28 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       // If no hyperlinks, processing succeeds
       if (result.totalHyperlinks > 0) {
         expect(result.success).toBe(false);
-        expect(result.errorMessages[0]).toContain('API endpoint not configured');
+        expect(result.errorMessages[0]).toContain("API endpoint not configured");
       } else {
         expect(result.success).toBe(true);
       }
     });
   });
 
-  describe('Step Column Width Fix', () => {
-    it('should set step column to exactly 1 inch with fixed layout, preserving original grid', async () => {
+  describe("Step Column Width Fix", () => {
+    it("should set step column to exactly 1 inch with autofit layout, updating grid proportionally", async () => {
       // 1. Create a DOCX with a 2-column Step/Action table
       const doc = Document.create();
       const table = doc.createTable(3, 2); // 3 rows, 2 columns
 
       // Set header row
-      table.getCell(0, 0)?.createParagraph('Step');
-      table.getCell(0, 1)?.createParagraph('Action');
+      table.getCell(0, 0)?.createParagraph("Step");
+      table.getCell(0, 1)?.createParagraph("Action");
 
       // Set data rows with step numbers
-      table.getCell(1, 0)?.createParagraph('1');
-      table.getCell(1, 1)?.createParagraph('Do something');
-      table.getCell(2, 0)?.createParagraph('2');
-      table.getCell(2, 1)?.createParagraph('Do something else');
+      table.getCell(1, 0)?.createParagraph("1");
+      table.getCell(1, 1)?.createParagraph("Do something");
+      table.getCell(2, 0)?.createParagraph("2");
+      table.getCell(2, 1)?.createParagraph("Do something else");
 
       // Set initial grid (typical Word default)
       const originalGrid = [2500, 7000];
@@ -510,7 +511,7 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       table.setLayout("auto");
 
       // 2. Save to temp file, process, reload
-      const tmpPath = path.join(fixturesDir, '_step-column-test.docx');
+      const tmpPath = path.join(fixturesDir, "_step-column-test.docx");
       await doc.save(tmpPath);
       doc.dispose();
 
@@ -524,26 +525,39 @@ describe('WordDocumentProcessor - Integration Tests', () => {
       const tables = processed.getTables();
       expect(tables.length).toBeGreaterThanOrEqual(1);
 
-      const stepTable = tables.find(t => {
+      const stepTable = tables.find((t) => {
         const firstCell = t.getCell(0, 0);
-        return firstCell?.getText().trim().toLowerCase() === 'step';
+        return firstCell?.getText().trim().toLowerCase() === "step";
       });
       expect(stepTable).toBeDefined();
 
-      // Verify fixed layout
-      expect(stepTable!.getLayout()).toBe('fixed');
+      // Verify autofit layout so table fills view without scaling step column
+      expect(stepTable!.getLayout()).toBe("autofit");
 
-      // Verify original grid is preserved (not modified)
+      // Verify percentage table width (fills available width in all views)
+      expect(stepTable!.getWidthType()).toBe("pct");
+      expect(stepTable!.getWidth()).toBe(5000);
+
+      // Verify grid is updated: first column = 1440, remaining recalculated
+      // Document.create() defaults to Letter page (12240) with 1" margins (1440 each)
+      // Available page width = 12240 - 1440 - 1440 = 9360
+      // New grid: step=1440, remaining=9360-1440=7920 (all to single remaining column)
       const grid = stepTable!.getTableGrid();
       expect(grid).toBeDefined();
-      expect(grid![0]).toBe(originalGrid[0]);
-      expect(grid![1]).toBe(originalGrid[1]);
+      expect(grid![0]).toBe(1440);
+      expect(grid![1]).toBe(7920);
 
       // Verify step column cell widths = 1440 (1 inch)
       for (const row of stepTable!.getRows()) {
         const cell = row.getCells()[0];
         expect(cell.getWidth()).toBe(1440);
-        expect(cell.getWidthType()).toBe('dxa');
+        expect(cell.getWidthType()).toBe("dxa");
+      }
+
+      // Verify action column cells are auto (no preferred width)
+      for (const row of stepTable!.getRows()) {
+        const actionCell = row.getCells()[1];
+        expect(actionCell.getWidthType()).toBe("auto");
       }
 
       // Cleanup
@@ -552,16 +566,16 @@ describe('WordDocumentProcessor - Integration Tests', () => {
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle processing errors gracefully', async () => {
-      const result = await processor.processDocument('');
+  describe("Error Handling", () => {
+    it("should handle processing errors gracefully", async () => {
+      const result = await processor.processDocument("");
 
       expect(result.success).toBe(false);
       expect(result.errorMessages.length).toBeGreaterThan(0);
     });
 
-    it('should return proper error structure on failure', async () => {
-      const result = await processor.processDocument('/invalid/path.docx');
+    it("should return proper error structure on failure", async () => {
+      const result = await processor.processDocument("/invalid/path.docx");
 
       expect(result).toMatchObject({
         success: false,

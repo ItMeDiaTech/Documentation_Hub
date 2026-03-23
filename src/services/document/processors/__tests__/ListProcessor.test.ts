@@ -4,14 +4,13 @@
  * Tests list bullet settings, indentation, and numbered list formatting.
  */
 
-
-import { ListProcessor, ListBulletSettings } from '../ListProcessor';
-import { Document, Paragraph } from 'docxmlater';
+import { ListProcessor, ListBulletSettings } from "../ListProcessor";
+import { Document, Paragraph } from "docxmlater";
 
 // Mock docxmlater
-jest.mock('docxmlater');
+jest.mock("docxmlater");
 
-describe('ListProcessor', () => {
+describe("ListProcessor", () => {
   let processor: ListProcessor;
   let mockDoc: jest.Mocked<Document>;
 
@@ -27,8 +26,8 @@ describe('ListProcessor', () => {
     } as unknown as jest.Mocked<Document>;
   });
 
-  describe('applyListIndentation', () => {
-    it('should apply indentation to list items', async () => {
+  describe("applyListIndentation", () => {
+    it("should apply indentation to list items", async () => {
       const mockParagraph = createMockListParagraph(0, 1);
       mockDoc.getAllParagraphs.mockReturnValue([mockParagraph]);
 
@@ -48,7 +47,7 @@ describe('ListProcessor', () => {
       expect(mockParagraph.setSpaceAfter).toHaveBeenCalledWith(120); // 6 * 20 twips
     });
 
-    it('should skip non-list paragraphs', async () => {
+    it("should skip non-list paragraphs", async () => {
       const mockParagraph = createMockNormalParagraph();
       mockDoc.getAllParagraphs.mockReturnValue([mockParagraph]);
 
@@ -64,7 +63,7 @@ describe('ListProcessor', () => {
       expect(mockParagraph.setLeftIndent).not.toHaveBeenCalled();
     });
 
-    it('should return zero counts when disabled', async () => {
+    it("should return zero counts when disabled", async () => {
       const settings: ListBulletSettings = {
         enabled: false,
         indentationLevels: [],
@@ -77,7 +76,7 @@ describe('ListProcessor', () => {
       expect(result.levelsProcessed).toBe(0);
     });
 
-    it('should handle multiple list levels', async () => {
+    it("should handle multiple list levels", async () => {
       const level0Para = createMockListParagraph(0, 1);
       const level1Para = createMockListParagraph(1, 1);
       const level2Para = createMockListParagraph(2, 1);
@@ -103,9 +102,9 @@ describe('ListProcessor', () => {
     });
   });
 
-  describe('standardizeListPrefixFormatting', () => {
-    it('should standardize list prefix formatting to Verdana', async () => {
-      const mockLevel = createMockNumberingLevel('Arial');
+  describe("standardizeListPrefixFormatting", () => {
+    it("should standardize list prefix formatting to Verdana", async () => {
+      const mockLevel = createMockNumberingLevel("Arial");
       const mockAbstractNum = {
         getLevel: jest.fn((idx: number) => (idx === 0 ? mockLevel : null)),
       };
@@ -117,13 +116,13 @@ describe('ListProcessor', () => {
       const count = await processor.standardizeListPrefixFormatting(mockDoc);
 
       expect(count).toBe(1);
-      expect(mockLevel.setFont).toHaveBeenCalledWith('Verdana');
-      expect(mockLevel.setColor).toHaveBeenCalledWith('000000');
+      expect(mockLevel.setFont).toHaveBeenCalledWith("Verdana");
+      expect(mockLevel.setColor).toHaveBeenCalledWith("000000");
       expect(mockLevel.setFontSize).toHaveBeenCalledWith(24);
       expect(mockLevel.setBold).toHaveBeenCalledWith(false);
     });
 
-    it('should handle missing numbering manager', async () => {
+    it("should handle missing numbering manager", async () => {
       mockDoc.getNumberingManager = jest.fn().mockReturnValue(null);
 
       const count = await processor.standardizeListPrefixFormatting(mockDoc);
@@ -131,8 +130,8 @@ describe('ListProcessor', () => {
       expect(count).toBe(0);
     });
 
-    it('should preserve special bullet fonts', async () => {
-      const mockLevel = createMockNumberingLevel('Symbol');
+    it("should preserve special bullet fonts", async () => {
+      const mockLevel = createMockNumberingLevel("Symbol");
       const mockAbstractNum = {
         getLevel: jest.fn((idx: number) => (idx === 0 ? mockLevel : null)),
       };
@@ -144,16 +143,16 @@ describe('ListProcessor', () => {
       await processor.standardizeListPrefixFormatting(mockDoc);
 
       // Symbol font should be preserved, not replaced with Verdana
-      expect(mockLevel.setFont).toHaveBeenCalledWith('Symbol');
+      expect(mockLevel.setFont).toHaveBeenCalledWith("Symbol");
       expect(mockLevel.setBold).toHaveBeenCalledWith(false);
     });
   });
 
-  describe('isBulletList', () => {
-    it('should identify bullet lists', () => {
+  describe("isBulletList", () => {
+    it("should identify bullet lists", () => {
       const mockAbstractNum = {
         getLevel: jest.fn().mockReturnValue({
-          getFormat: jest.fn().mockReturnValue('bullet'),
+          getFormat: jest.fn().mockReturnValue("bullet"),
         }),
       };
       const mockInstance = {
@@ -170,10 +169,10 @@ describe('ListProcessor', () => {
       expect(result).toBe(true);
     });
 
-    it('should return false for numbered lists', () => {
+    it("should return false for numbered lists", () => {
       const mockAbstractNum = {
         getLevel: jest.fn().mockReturnValue({
-          getFormat: jest.fn().mockReturnValue('decimal'),
+          getFormat: jest.fn().mockReturnValue("decimal"),
         }),
       };
       const mockInstance = {
@@ -191,11 +190,11 @@ describe('ListProcessor', () => {
     });
   });
 
-  describe('isNumberedList', () => {
-    it('should identify decimal numbered lists', () => {
+  describe("isNumberedList", () => {
+    it("should identify decimal numbered lists", () => {
       const mockAbstractNum = {
         getLevel: jest.fn().mockReturnValue({
-          getFormat: jest.fn().mockReturnValue('decimal'),
+          getFormat: jest.fn().mockReturnValue("decimal"),
         }),
       };
       const mockInstance = {
@@ -212,10 +211,10 @@ describe('ListProcessor', () => {
       expect(result).toBe(true);
     });
 
-    it('should identify letter numbered lists', () => {
+    it("should identify letter numbered lists", () => {
       const mockAbstractNum = {
         getLevel: jest.fn().mockReturnValue({
-          getFormat: jest.fn().mockReturnValue('lowerLetter'),
+          getFormat: jest.fn().mockReturnValue("lowerLetter"),
         }),
       };
       const mockInstance = {
@@ -232,10 +231,10 @@ describe('ListProcessor', () => {
       expect(result).toBe(true);
     });
 
-    it('should return false for bullet lists', () => {
+    it("should return false for bullet lists", () => {
       const mockAbstractNum = {
         getLevel: jest.fn().mockReturnValue({
-          getFormat: jest.fn().mockReturnValue('bullet'),
+          getFormat: jest.fn().mockReturnValue("bullet"),
         }),
       };
       const mockInstance = {
@@ -262,15 +261,15 @@ function createMockListParagraph(level: number, numId: number): jest.Mocked<Para
     setLeftIndent: jest.fn().mockReturnThis(),
     setFirstLineIndent: jest.fn().mockReturnThis(),
     setSpaceAfter: jest.fn(),
-    getText: jest.fn().mockReturnValue('List item'),
-    getStyle: jest.fn().mockReturnValue('ListParagraph'),
+    getText: jest.fn().mockReturnValue("List item"),
+    getStyle: jest.fn().mockReturnValue("ListParagraph"),
   } as unknown as jest.Mocked<Paragraph>;
 }
 
 function createMockNumberingLevel(font: string) {
   return {
     getProperties: jest.fn().mockReturnValue({ font }),
-    getFormat: jest.fn().mockReturnValue('bullet'),
+    getFormat: jest.fn().mockReturnValue("bullet"),
     setFont: jest.fn().mockReturnThis(),
     setColor: jest.fn().mockReturnThis(),
     setFontSize: jest.fn().mockReturnThis(),
@@ -285,7 +284,7 @@ function createMockNormalParagraph(): jest.Mocked<Paragraph> {
     setLeftIndent: jest.fn().mockReturnThis(),
     setFirstLineIndent: jest.fn().mockReturnThis(),
     setSpaceAfter: jest.fn(),
-    getText: jest.fn().mockReturnValue('Normal paragraph'),
-    getStyle: jest.fn().mockReturnValue('Normal'),
+    getText: jest.fn().mockReturnValue("Normal paragraph"),
+    getStyle: jest.fn().mockReturnValue("Normal"),
   } as unknown as jest.Mocked<Paragraph>;
 }

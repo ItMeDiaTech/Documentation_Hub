@@ -5,9 +5,9 @@
  * optional diff view, and location context.
  */
 
-import type { UnifiedChange } from '@/types/session';
-import { cn } from '@/utils/cn';
-import { FileText, User } from 'lucide-react';
+import type { UnifiedChange } from "@/types/session";
+import { cn } from "@/utils/cn";
+import { FileText, User } from "lucide-react";
 
 interface ChangeItemProps {
   change: UnifiedChange;
@@ -16,12 +16,12 @@ interface ChangeItemProps {
 export function ChangeItem({ change }: ChangeItemProps) {
   const hasContent = change.before || change.after;
   const hasDiff = change.before && change.after && change.before !== change.after;
-  const isHyperlinkChange = change.category === 'hyperlink' && change.hyperlinkChange;
+  const isHyperlinkChange = change.category === "hyperlink" && change.hyperlinkChange;
   const hasPropertyChange = change.propertyChange && change.propertyChange.property;
   const hasGroupedProperties = change.groupedProperties && change.groupedProperties.length > 0;
 
   // Detect if this is a combined "Updated" change (has both before and after)
-  const isUpdatedChange = hasDiff || change.description?.toLowerCase().startsWith('updated');
+  const isUpdatedChange = hasDiff || change.description?.toLowerCase().startsWith("updated");
 
   return (
     <div className="group p-3 bg-muted/30 rounded-md hover:bg-muted/50 transition-colors">
@@ -34,7 +34,7 @@ export function ChangeItem({ change }: ChangeItemProps) {
           {/* Description */}
           <div className="flex-1 min-w-0">
             <p className="text-sm text-foreground break-words">
-              {change.description || 'Change applied'}
+              {change.description || "Change applied"}
               {/* Show Content ID in title for hyperlink changes */}
               {isHyperlinkChange && change.hyperlinkChange?.contentId && (
                 <code className="ml-2 bg-primary/10 text-primary px-1.5 py-0.5 rounded text-xs font-medium">
@@ -167,22 +167,22 @@ export function ChangeItem({ change }: ChangeItemProps) {
 // Sub-components
 
 interface SourceBadgeProps {
-  source: 'word' | 'processing';
+  source: "word" | "processing";
 }
 
 function SourceBadge({ source }: SourceBadgeProps) {
-  const isWord = source === 'word';
+  const isWord = source === "word";
 
   return (
     <span
       className={cn(
-        'shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded uppercase tracking-wide',
+        "shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded uppercase tracking-wide",
         isWord
-          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-          : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+          ? "bg-primary/15 text-primary"
+          : "bg-muted text-muted-foreground"
       )}
     >
-      {isWord ? 'Word' : 'DocHub'}
+      {isWord ? "Word" : "DocHub"}
     </span>
   );
 }
@@ -209,9 +209,7 @@ function UpdatedDiffView({ before, after }: UpdatedDiffViewProps) {
       </div>
       <div className="flex items-start gap-2">
         <span className="text-muted-foreground shrink-0">To:</span>
-        <span className="text-green-600 dark:text-green-400 break-words">
-          "{afterContext}"
-        </span>
+        <span className="text-green-600 dark:text-green-400 break-words">"{afterContext}"</span>
       </div>
     </div>
   );
@@ -223,7 +221,7 @@ interface HyperlinkChangeViewProps {
     urlAfter?: string;
     textBefore?: string;
     textAfter?: string;
-    status?: 'updated' | 'not_found' | 'expired';
+    status?: "updated" | "not_found" | "expired";
     contentId?: string;
   };
 }
@@ -245,17 +243,17 @@ function HyperlinkChangeView({ change }: HyperlinkChangeViewProps) {
       )}
 
       {/* Status Badge (for not_found or expired) */}
-      {change.status && change.status !== 'updated' && (
+      {change.status && change.status !== "updated" && (
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              'px-2 py-0.5 text-xs font-medium rounded uppercase',
-              change.status === 'not_found'
-                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+              "px-2 py-0.5 text-xs font-medium rounded uppercase",
+              change.status === "not_found"
+                ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
             )}
           >
-            {change.status === 'not_found' ? 'Source Not Found' : 'Source Expired'}
+            {change.status === "not_found" ? "Source Not Found" : "Source Expired"}
           </span>
         </div>
       )}
@@ -325,17 +323,17 @@ function HyperlinkChangeView({ change }: HyperlinkChangeViewProps) {
 // Utility functions
 
 function formatDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = typeof date === "string" ? new Date(date) : date;
   return d.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
 function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength) + '...';
+  return text.substring(0, maxLength) + "...";
 }
 
 /**
@@ -343,15 +341,15 @@ function truncateText(text: string, maxLength: number): string {
  * Provides meaningful context without overwhelming the UI
  */
 function getContextWords(text: string): string {
-  if (!text) return '';
+  if (!text) return "";
 
   // Clean up whitespace
-  const cleaned = text.replace(/\s+/g, ' ').trim();
-  if (!cleaned) return '';
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
 
   // Split into words
-  const words = cleaned.split(' ').filter((w) => w.length > 0);
-  if (words.length === 0) return '';
+  const words = cleaned.split(" ").filter((w) => w.length > 0);
+  if (words.length === 0) return "";
 
   // If 8 words or less, return as-is
   if (words.length <= 8) {
@@ -359,7 +357,7 @@ function getContextWords(text: string): string {
   }
 
   // Take first 6 words and add ellipsis
-  return words.slice(0, 6).join(' ') + '...';
+  return words.slice(0, 6).join(" ") + "...";
 }
 
 function truncateUrl(url: string, maxLength: number = 60): string {
@@ -370,7 +368,7 @@ function truncateUrl(url: string, maxLength: number = 60): string {
     const remaining = maxLength - domain.length - 5;
     return `${domain}/...${url.slice(-Math.max(10, remaining))}`;
   } catch {
-    return url.substring(0, maxLength) + '...';
+    return url.substring(0, maxLength) + "...";
   }
 }
 
@@ -393,15 +391,15 @@ function extractContentIdSuffix(contentId: string): string {
  * Format property values for display, handling objects that would show as [object Object]
  */
 function formatPropertyValue(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'object') {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
     try {
       // For complex objects, show a simplified JSON representation
       const json = JSON.stringify(value);
       // Truncate if too long
-      return json.length > 50 ? json.substring(0, 47) + '...' : json;
+      return json.length > 50 ? json.substring(0, 47) + "..." : json;
     } catch {
-      return '[complex value]';
+      return "[complex value]";
     }
   }
   return String(value);

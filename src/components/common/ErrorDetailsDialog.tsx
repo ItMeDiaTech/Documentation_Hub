@@ -1,15 +1,15 @@
-import * as React from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { Button } from './Button';
-import { AlertCircle, X } from 'lucide-react';
-import { cn } from '@/utils/cn';
+import * as React from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { Button } from "./Button";
+import { AlertCircle, X } from "lucide-react";
+import { cn } from "@/utils/cn";
 
 export interface ErrorDetailsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   documentName: string;
   errors: string[];
-  errorType?: 'file_locked' | 'api_timeout' | 'word_compatibility' | 'general';
+  errorType?: "file_locked" | "api_timeout" | "word_compatibility" | "general";
   processedAt?: Date;
 }
 
@@ -27,13 +27,13 @@ export function ErrorDetailsDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 z-50" />
         <Dialog.Content
           className={cn(
-            'fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%]',
-            'w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-            'data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]',
-            'data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]'
+            "fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%]",
+            "w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg",
+            "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+            "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+            "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
+            "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]"
           )}
         >
           {/* Header */}
@@ -62,15 +62,15 @@ export function ErrorDetailsDialog({
 
           {/* Error Type Badge */}
           <div className="mb-4">
-            {errorType === 'file_locked' ? (
+            {errorType === "file_locked" ? (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
                 File Locked
               </span>
-            ) : errorType === 'api_timeout' ? (
+            ) : errorType === "api_timeout" ? (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">
                 API Timeout
               </span>
-            ) : errorType === 'word_compatibility' ? (
+            ) : errorType === "word_compatibility" ? (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
                 Compatibility Mode
               </span>
@@ -98,25 +98,27 @@ export function ErrorDetailsDialog({
           </div>
 
           {/* Helpful Tip for File Locked */}
-          {errorType === 'file_locked' && (
+          {errorType === "file_locked" && (
             <div className="mb-4 p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                <strong>Tip:</strong> Please close the document in Microsoft Word and try processing again.
+                <strong>Tip:</strong> Please close the document in Microsoft Word and try processing
+                again.
               </p>
             </div>
           )}
 
           {/* Helpful Tip for API Timeout */}
-          {errorType === 'api_timeout' && (
+          {errorType === "api_timeout" && (
             <div className="mb-4 p-3 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
               <p className="text-sm text-orange-800 dark:text-orange-200">
-                <strong>Tip:</strong> The Power Automate service timed out. Please wait a moment and try again.
+                <strong>Tip:</strong> The Power Automate service timed out. Please wait a moment and
+                try again.
               </p>
             </div>
           )}
 
           {/* Helpful Tip for Word Compatibility Mode */}
-          {errorType === 'word_compatibility' && (
+          {errorType === "word_compatibility" && (
             <div className="mb-4 p-3 rounded-md bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
               <p className="text-sm text-purple-800 dark:text-purple-200 mb-2">
                 <strong>How to Convert Your Document:</strong>
@@ -127,14 +129,20 @@ export function ErrorDetailsDialog({
               </p>
               <ol className="text-sm text-purple-700 dark:text-purple-300 list-decimal list-inside space-y-1">
                 <li>Open the document in Microsoft Word</li>
-                <li>Click on the word <strong>&quot;Compatibility&quot;</strong> in the Title Bar</li>
-                <li>Click <strong>&quot;Convert&quot;</strong></li>
+                <li>
+                  Click on the word <strong>&quot;Compatibility&quot;</strong> in the Title Bar
+                </li>
+                <li>
+                  Click <strong>&quot;Convert&quot;</strong>
+                </li>
                 <li>Save and close the document</li>
-                <li>Return here and click <strong>Retry</strong></li>
+                <li>
+                  Return here and click <strong>Retry</strong>
+                </li>
               </ol>
               <p className="text-xs text-purple-600 dark:text-purple-400 mt-3 italic">
-                Be cautious: Even Word&apos;s own conversion methods aren&apos;t always accurate, so some
-                odd formatting may occur as a result. Thoroughly compare the original to the
+                Be cautious: Even Word&apos;s own conversion methods aren&apos;t always accurate, so
+                some odd formatting may occur as a result. Thoroughly compare the original to the
                 processed file to ensure everything aligns with our Documentation Standards.
               </p>
             </div>

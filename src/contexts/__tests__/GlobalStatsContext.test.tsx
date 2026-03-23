@@ -8,14 +8,14 @@
  * - Verifies connection reuse across operations
  */
 
-import React from 'react';
-import { render, renderHook, waitFor, act, cleanup } from '@testing-library/react';
-import { GlobalStatsProvider, useGlobalStats } from '../GlobalStatsContext';
-import * as indexedDB from '@/utils/indexedDB';
-import { createDefaultGlobalStats } from '@/types/globalStats';
+import React from "react";
+import { render, renderHook, waitFor, act, cleanup } from "@testing-library/react";
+import { GlobalStatsProvider, useGlobalStats } from "../GlobalStatsContext";
+import * as indexedDB from "@/utils/indexedDB";
+import { createDefaultGlobalStats } from "@/types/globalStats";
 
 // Mock IndexedDB utilities
-jest.mock('@/utils/indexedDB', () => ({
+jest.mock("@/utils/indexedDB", () => ({
   loadGlobalStats: jest.fn(),
   saveGlobalStats: jest.fn(),
   resetGlobalStats: jest.fn(),
@@ -23,7 +23,7 @@ jest.mock('@/utils/indexedDB', () => ({
 }));
 
 // Mock logger
-jest.mock('@/utils/logger', () => ({
+jest.mock("@/utils/logger", () => ({
   logger: {
     namespace: () => ({
       info: jest.fn(),
@@ -34,7 +34,7 @@ jest.mock('@/utils/logger', () => ({
   },
 }));
 
-describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
+describe("GlobalStatsContext - Issue #3: Memory Leak Prevention", () => {
   const mockConnectionPool = {
     getConnection: jest.fn(),
     close: jest.fn(),
@@ -67,8 +67,8 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
     jest.restoreAllMocks();
   });
 
-  describe('Connection Pool Usage', () => {
-    it('should use connection pool singleton for all operations', async () => {
+  describe("Connection Pool Usage", () => {
+    it("should use connection pool singleton for all operations", async () => {
       const { result } = renderHook(() => useGlobalStats(), {
         wrapper: GlobalStatsProvider,
       });
@@ -100,7 +100,7 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
       // Connection pool reused - no new connections created
     });
 
-    it('should not create duplicate connections on multiple renders', async () => {
+    it("should not create duplicate connections on multiple renders", async () => {
       const { rerender } = render(
         <GlobalStatsProvider>
           <div>Test</div>
@@ -125,7 +125,7 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
       });
     });
 
-    it('should reuse connection across state updates', async () => {
+    it("should reuse connection across state updates", async () => {
       const connectionCallsBefore = mockConnectionPool.getConnection.mock.calls.length;
 
       const { result } = renderHook(() => useGlobalStats(), {
@@ -151,8 +151,8 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
     });
   });
 
-  describe('Memory Leak Prevention', () => {
-    it('should properly cleanup on unmount', async () => {
+  describe("Memory Leak Prevention", () => {
+    it("should properly cleanup on unmount", async () => {
       const { unmount } = renderHook(() => useGlobalStats(), {
         wrapper: GlobalStatsProvider,
       });
@@ -168,7 +168,7 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
       // (verified by useEffect cleanup setting isMounted = false)
     });
 
-    it('should not create memory leak with rapid mount/unmount', async () => {
+    it("should not create memory leak with rapid mount/unmount", async () => {
       const mockLoadGlobalStats = indexedDB.loadGlobalStats as jest.Mock;
       const connectionsBefore = mockLoadGlobalStats.mock.calls.length;
 
@@ -193,7 +193,7 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
       expect(connectionsAfter).toBeGreaterThanOrEqual(connectionsBefore);
     });
 
-    it('should handle concurrent updates without connection leaks', async () => {
+    it("should handle concurrent updates without connection leaks", async () => {
       const { result, unmount } = renderHook(() => useGlobalStats(), {
         wrapper: GlobalStatsProvider,
       });
@@ -219,8 +219,8 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
     });
   });
 
-  describe('Connection Pool Singleton', () => {
-    it('should enforce singleton pattern across multiple providers', async () => {
+  describe("Connection Pool Singleton", () => {
+    it("should enforce singleton pattern across multiple providers", async () => {
       // Even if we create multiple provider instances,
       // they should all use the same connection pool
 
@@ -259,19 +259,19 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
       expect(indexedDB.saveGlobalStats).toHaveBeenCalled();
     });
 
-    it('should retrieve connection pool instance correctly', () => {
+    it("should retrieve connection pool instance correctly", () => {
       const pool = indexedDB.getGlobalStatsConnectionPool();
 
       expect(pool).toBeDefined();
       expect(pool).toBe(mockConnectionPool);
-      expect(typeof pool.getConnection).toBe('function');
-      expect(typeof pool.close).toBe('function');
-      expect(typeof pool.getStats).toBe('function');
+      expect(typeof pool.getConnection).toBe("function");
+      expect(typeof pool.close).toBe("function");
+      expect(typeof pool.getStats).toBe("function");
     });
   });
 
-  describe('Functional Tests', () => {
-    it('should initialize with default stats', async () => {
+  describe("Functional Tests", () => {
+    it("should initialize with default stats", async () => {
       const { result } = renderHook(() => useGlobalStats(), {
         wrapper: GlobalStatsProvider,
       });
@@ -286,7 +286,7 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
       expect(result.current?.stats.today).toBeDefined();
     });
 
-    it('should update stats correctly', async () => {
+    it("should update stats correctly", async () => {
       const { result } = renderHook(() => useGlobalStats(), {
         wrapper: GlobalStatsProvider,
       });
@@ -305,7 +305,7 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
       expect(result.current?.stats.allTime.documentsProcessed).toBe(initialDocsProcessed + 5);
     });
 
-    it('should persist stats to IndexedDB on update', async () => {
+    it("should persist stats to IndexedDB on update", async () => {
       const { result } = renderHook(() => useGlobalStats(), {
         wrapper: GlobalStatsProvider,
       });
@@ -325,7 +325,7 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
       expect(savedStats.allTime.documentsProcessed).toBeGreaterThan(0);
     });
 
-    it('should reset stats correctly', async () => {
+    it("should reset stats correctly", async () => {
       const { result } = renderHook(() => useGlobalStats(), {
         wrapper: GlobalStatsProvider,
       });
@@ -347,10 +347,10 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle load errors gracefully', async () => {
+  describe("Error Handling", () => {
+    it("should handle load errors gracefully", async () => {
       (indexedDB.loadGlobalStats as jest.Mock).mockRejectedValue(
-        new Error('Database connection failed')
+        new Error("Database connection failed")
       );
 
       const { result } = renderHook(() => useGlobalStats(), {
@@ -366,8 +366,8 @@ describe('GlobalStatsContext - Issue #3: Memory Leak Prevention', () => {
       expect(result.current?.stats).toBeDefined();
     });
 
-    it('should handle save errors without crashing', async () => {
-      (indexedDB.saveGlobalStats as jest.Mock).mockRejectedValue(new Error('Quota exceeded'));
+    it("should handle save errors without crashing", async () => {
+      (indexedDB.saveGlobalStats as jest.Mock).mockRejectedValue(new Error("Quota exceeded"));
 
       const { result } = renderHook(() => useGlobalStats(), {
         wrapper: GlobalStatsProvider,

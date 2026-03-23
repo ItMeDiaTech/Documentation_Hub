@@ -19,57 +19,57 @@
 const pathUtils = {
   normalize(p: string): string {
     // Replace backslashes with forward slashes for consistency
-    let normalized = p.replace(/\\/g, '/');
+    let normalized = p.replace(/\\/g, "/");
 
     // Remove duplicate slashes
-    normalized = normalized.replace(/\/+/g, '/');
+    normalized = normalized.replace(/\/+/g, "/");
 
     // Handle . and .. segments
-    const parts = normalized.split('/');
+    const parts = normalized.split("/");
     const result: string[] = [];
 
     for (const part of parts) {
-      if (part === '..' && result.length > 0 && result[result.length - 1] !== '..') {
+      if (part === ".." && result.length > 0 && result[result.length - 1] !== "..") {
         result.pop();
-      } else if (part !== '.' && part !== '') {
+      } else if (part !== "." && part !== "") {
         result.push(part);
       }
     }
 
-    return result.join('/');
+    return result.join("/");
   },
 
   resolve(...paths: string[]): string {
-    let resolved = '';
+    let resolved = "";
     let isAbsolute = false;
 
     for (let i = paths.length - 1; i >= 0 && !isAbsolute; i--) {
       const p = paths[i];
       if (!p) continue;
 
-      resolved = p + '/' + resolved;
+      resolved = p + "/" + resolved;
       isAbsolute = /^([a-zA-Z]:)?\//.test(p);
     }
 
     resolved = this.normalize(resolved);
-    return resolved || '.';
+    return resolved || ".";
   },
 
   basename(p: string): string {
-    const normalized = p.replace(/\\/g, '/');
-    const parts = normalized.split('/');
-    return parts[parts.length - 1] || '';
+    const normalized = p.replace(/\\/g, "/");
+    const parts = normalized.split("/");
+    return parts[parts.length - 1] || "";
   },
 
   dirname(p: string): string {
-    const normalized = p.replace(/\\/g, '/');
-    const parts = normalized.split('/');
+    const normalized = p.replace(/\\/g, "/");
+    const parts = normalized.split("/");
     parts.pop();
-    return parts.join('/') || '.';
+    return parts.join("/") || ".";
   },
 
   join(...paths: string[]): string {
-    return this.normalize(paths.join('/'));
+    return this.normalize(paths.join("/"));
   },
 };
 
@@ -81,12 +81,12 @@ export function hasPathTraversal(filePath: string): boolean {
   const normalized = pathUtils.normalize(filePath);
 
   // Check for parent directory references
-  if (normalized.includes('..')) {
+  if (normalized.includes("..")) {
     return true;
   }
 
   // Check for absolute path attempts on Windows
-  const isWindows = navigator.userAgent.includes('Windows');
+  const isWindows = navigator.userAgent.includes("Windows");
   if (isWindows) {
     // Check for drive letter changes (C:, D:, etc.)
     const driveLetter = filePath.match(/^[a-zA-Z]:/);
@@ -110,7 +110,7 @@ export function isWithinDirectory(filePath: string, allowedDir: string): boolean
   const resolvedAllowedDir = pathUtils.resolve(allowedDir);
 
   // On Windows, compare case-insensitively
-  const isWindows = navigator.userAgent.includes('Windows');
+  const isWindows = navigator.userAgent.includes("Windows");
   if (isWindows) {
     return resolvedPath.toLowerCase().startsWith(resolvedAllowedDir.toLowerCase());
   }
@@ -124,7 +124,7 @@ export function isWithinDirectory(filePath: string, allowedDir: string): boolean
 export function sanitizeFileName(fileName: string): string {
   // Remove or replace dangerous characters
   // Allow: letters, numbers, spaces, dots, dashes, underscores
-  return fileName.replace(/[^a-zA-Z0-9\s.\-_]/g, '_');
+  return fileName.replace(/[^a-zA-Z0-9\s.\-_]/g, "_");
 }
 
 /**
@@ -139,10 +139,10 @@ export function validateFilePath(
   allowedDirectories?: string[]
 ): { isValid: boolean; error?: string } {
   // Check for empty or null paths
-  if (!filePath || filePath.trim() === '') {
+  if (!filePath || filePath.trim() === "") {
     return {
       isValid: false,
-      error: 'File path is empty',
+      error: "File path is empty",
     };
   }
 
@@ -150,7 +150,7 @@ export function validateFilePath(
   if (hasPathTraversal(filePath)) {
     return {
       isValid: false,
-      error: 'Path traversal attempt detected',
+      error: "Path traversal attempt detected",
     };
   }
 
@@ -161,7 +161,7 @@ export function validateFilePath(
   if (dangerousChars.test(fileName)) {
     return {
       isValid: false,
-      error: 'File name contains illegal characters',
+      error: "File name contains illegal characters",
     };
   }
 
@@ -174,16 +174,16 @@ export function validateFilePath(
     if (!isInAllowedDir) {
       return {
         isValid: false,
-        error: 'File path is outside allowed directories',
+        error: "File path is outside allowed directories",
       };
     }
   }
 
   // Check for system file access attempts
-  const systemPaths = ['/etc', '/sys', '/proc', 'C:\\Windows\\System32', 'C:\\Program Files'];
+  const systemPaths = ["/etc", "/sys", "/proc", "C:\\Windows\\System32", "C:\\Program Files"];
 
   const resolvedPath = pathUtils.resolve(filePath);
-  const isWindows = navigator.userAgent.includes('Windows');
+  const isWindows = navigator.userAgent.includes("Windows");
   const isSystemPath = systemPaths.some((sysPath) => {
     if (isWindows) {
       return resolvedPath.toLowerCase().startsWith(sysPath.toLowerCase());
@@ -194,7 +194,7 @@ export function validateFilePath(
   if (isSystemPath) {
     return {
       isValid: false,
-      error: 'Access to system files is not allowed',
+      error: "Access to system files is not allowed",
     };
   }
 

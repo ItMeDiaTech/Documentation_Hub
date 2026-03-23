@@ -3,17 +3,17 @@
  * Defines types for document operations, tracking, and undo/redo functionality
  */
 
-import type { DocumentOperation, ProcessingError, ProcessingWarning } from './document-processing';
-import type { HyperlinkChange } from './hyperlink';
+import type { DocumentOperation, ProcessingError, ProcessingWarning } from "./document-processing";
+import type { HyperlinkChange } from "./hyperlink";
 
 // Operation status
 export enum OperationStatus {
-  PENDING = 'pending',
-  IN_PROGRESS = 'in_progress',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  CANCELLED = 'cancelled',
-  ROLLED_BACK = 'rolled_back',
+  PENDING = "pending",
+  IN_PROGRESS = "in_progress",
+  COMPLETED = "completed",
+  FAILED = "failed",
+  CANCELLED = "cancelled",
+  ROLLED_BACK = "rolled_back",
 }
 
 // Operation priority levels
@@ -65,7 +65,7 @@ export interface RollbackData {
 // Reversible change for undo/redo
 export interface ReversibleChange {
   id: string;
-  type: 'hyperlink' | 'text' | 'style' | 'structure';
+  type: "hyperlink" | "text" | "style" | "structure";
   elementPath: string;
   originalValue: unknown;
   newValue: unknown;
@@ -96,12 +96,12 @@ export interface QueuedOperation extends TrackedOperation {
 }
 
 export enum QueueStatus {
-  IDLE = 'idle',
-  RUNNING = 'running',
-  PAUSED = 'paused',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  CANCELLED = 'cancelled',
+  IDLE = "idle",
+  RUNNING = "running",
+  PAUSED = "paused",
+  COMPLETED = "completed",
+  FAILED = "failed",
+  CANCELLED = "cancelled",
 }
 
 export interface QueueProgress {
@@ -155,7 +155,7 @@ export interface ScheduledOperation {
 }
 
 export interface OperationSchedule {
-  type: 'once' | 'recurring' | 'cron';
+  type: "once" | "recurring" | "cron";
   interval?: number; // milliseconds for recurring
   cronExpression?: string; // for cron type
   startDate?: Date;
@@ -166,12 +166,12 @@ export interface OperationSchedule {
 // Operation dependencies and conditions
 export interface OperationDependency {
   operationId: string;
-  type: 'requires' | 'blocks' | 'optional';
+  type: "requires" | "blocks" | "optional";
   condition?: DependencyCondition;
 }
 
 export interface DependencyCondition {
-  type: 'success' | 'failure' | 'completion' | 'custom';
+  type: "success" | "failure" | "completion" | "custom";
   customCondition?: (result: OperationResult) => boolean;
 }
 
@@ -192,7 +192,7 @@ export interface OperationTemplate {
 
 export interface TemplateParameter {
   name: string;
-  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  type: "string" | "number" | "boolean" | "array" | "object";
   required: boolean;
   default?: unknown;
   description?: string;
@@ -247,7 +247,7 @@ export interface ValidationRule {
   name: string;
   description: string;
   condition: (operation: DocumentOperation) => boolean;
-  severity: 'error' | 'warning' | 'info';
+  severity: "error" | "warning" | "info";
   message: string;
 }
 
@@ -268,7 +268,7 @@ export interface OperationPermissions {
 }
 
 export interface PermissionRestriction {
-  type: 'time' | 'user' | 'document' | 'operation';
+  type: "time" | "user" | "document" | "operation";
   condition: string;
   message?: string;
 }
@@ -284,15 +284,15 @@ export interface OperationEvent {
 }
 
 export enum OperationEventType {
-  STARTED = 'started',
-  PROGRESS = 'progress',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  CANCELLED = 'cancelled',
-  RETRYING = 'retrying',
-  ROLLED_BACK = 'rolled_back',
-  QUEUED = 'queued',
-  DEQUEUED = 'dequeued',
+  STARTED = "started",
+  PROGRESS = "progress",
+  COMPLETED = "completed",
+  FAILED = "failed",
+  CANCELLED = "cancelled",
+  RETRYING = "retrying",
+  ROLLED_BACK = "rolled_back",
+  QUEUED = "queued",
+  DEQUEUED = "dequeued",
 }
 
 // Operation context for execution

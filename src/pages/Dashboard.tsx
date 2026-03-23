@@ -1,16 +1,16 @@
-import { Button } from '@/components/common/Button';
+import { Button } from "@/components/common/Button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/common/Card';
-import { SessionManager } from '@/components/sessions/SessionManager';
-import { useGlobalStats } from '@/contexts/GlobalStatsContext';
-import { useSession } from '@/contexts/SessionContext';
-import { cn } from '@/utils/cn';
-import { motion } from 'framer-motion';
+} from "@/components/common/Card";
+import { SessionManager } from "@/components/sessions/SessionManager";
+import { useGlobalStats } from "@/contexts/GlobalStatsContext";
+import { useSession } from "@/contexts/SessionContext";
+import { cn } from "@/utils/cn";
+import { motion } from "framer-motion";
 import {
   ArrowUpRight,
   Calendar,
@@ -24,9 +24,9 @@ import {
   Plus,
   TrendingDown,
   TrendingUp,
-} from 'lucide-react';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+} from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -54,7 +54,7 @@ export function Dashboard() {
   const { stats: globalStats, getTodayStats, getTodayChange } = useGlobalStats();
   const navigate = useNavigate();
   const [showSessionManager, setShowSessionManager] = useState(false);
-  const [sessionManagerMode, setSessionManagerMode] = useState<'new' | 'load'>('new');
+  const [sessionManagerMode, setSessionManagerMode] = useState<"new" | "load">("new");
 
   // Get today's stats and changes from yesterday
   const todayStats = getTodayStats();
@@ -62,50 +62,50 @@ export function Dashboard() {
 
   const stats = [
     {
-      title: 'Documents Processed',
+      title: "Documents Processed",
       value: globalStats.allTime.documentsProcessed.toString(),
       todayValue: todayStats.documentsProcessed,
       change: todayChange.documentsProcessed || 0,
       icon: FileCheck,
-      gradient: 'from-green-400 to-emerald-600',
-      bgGradient: 'from-green-500/20 to-emerald-500/10',
+      gradient: "from-green-400 to-emerald-600",
+      bgGradient: "from-green-500/20 to-emerald-500/10",
     },
     {
-      title: 'Hyperlinks Checked',
+      title: "Hyperlinks Checked",
       value: globalStats.allTime.hyperlinksChecked.toString(),
       todayValue: todayStats.hyperlinksChecked,
       change: todayChange.hyperlinksChecked || 0,
       icon: Link,
-      gradient: 'from-blue-400 to-indigo-600',
-      bgGradient: 'from-blue-500/20 to-indigo-500/10',
+      gradient: "from-blue-400 to-indigo-600",
+      bgGradient: "from-blue-500/20 to-indigo-500/10",
     },
     {
-      title: 'Feedback Imported',
+      title: "Feedback Imported",
       value: globalStats.allTime.feedbackImported.toString(),
       todayValue: todayStats.feedbackImported,
       change: todayChange.feedbackImported || 0,
       icon: MessageSquare,
-      gradient: 'from-purple-400 to-pink-600',
-      bgGradient: 'from-purple-500/20 to-pink-500/10',
+      gradient: "from-purple-400 to-pink-600",
+      bgGradient: "from-purple-500/20 to-pink-500/10",
     },
     {
-      title: 'Time Saved',
+      title: "Time Saved",
       value: `${globalStats.allTime.timeSaved}m`,
       todayValue: todayStats.timeSaved,
       change: todayChange.timeSaved || 0,
       icon: Clock,
-      gradient: 'from-orange-400 to-red-600',
-      bgGradient: 'from-orange-500/20 to-red-500/10',
+      gradient: "from-orange-400 to-red-600",
+      bgGradient: "from-orange-500/20 to-red-500/10",
     },
   ];
 
   const handleNewSession = () => {
-    setSessionManagerMode('new');
+    setSessionManagerMode("new");
     setShowSessionManager(true);
   };
 
   const handleLoadSession = () => {
-    setSessionManagerMode('load');
+    setSessionManagerMode("load");
     setShowSessionManager(true);
   };
 
@@ -130,7 +130,7 @@ export function Dashboard() {
       return `${hours} hours ago`;
     } else {
       const days = Math.floor(hours / 24);
-      return `${days} day${days > 1 ? 's' : ''} ago`;
+      return `${days} day${days > 1 ? "s" : ""} ago`;
     }
   };
 
@@ -174,14 +174,14 @@ export function Dashboard() {
               <Card className="relative overflow-hidden group cursor-pointer border-0 shadow-lg hover:shadow-2xl transition-all">
                 <div
                   className={cn(
-                    'absolute inset-0 bg-linear-to-br opacity-5 group-hover:opacity-10 transition-opacity',
+                    "absolute inset-0 bg-linear-to-br opacity-5 group-hover:opacity-10 transition-opacity",
                     stat.bgGradient
                   )}
                 />
                 <CardContent className="p-6 relative">
                   <div className="flex items-center justify-between mb-4">
                     <div
-                      className={cn('p-3 rounded-xl bg-linear-to-br', stat.gradient, 'shadow-lg')}
+                      className={cn("p-3 rounded-xl bg-linear-to-br", stat.gradient, "shadow-lg")}
                     >
                       <Icon className="w-6 h-6 text-white" />
                     </div>
@@ -288,10 +288,10 @@ export function Dashboard() {
                     <div className="flex items-center gap-2">
                       <span
                         className={cn(
-                          'text-xs px-2 py-1 rounded-full',
-                          session.status === 'active'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : 'bg-muted text-muted-foreground'
+                          "text-xs px-2 py-1 rounded-full",
+                          session.status === "active"
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : "bg-muted text-muted-foreground"
                         )}
                       >
                         {session.status}

@@ -19,7 +19,7 @@ This document tracks the refactored style application API, providing a comprehen
 #### `EmphasisType`
 
 ```typescript
-type EmphasisType = 'bold' | 'italic' | 'underline';
+type EmphasisType = "bold" | "italic" | "underline";
 ```
 
 Text emphasis options for formatting.
@@ -28,7 +28,7 @@ Text emphasis options for formatting.
 
 ```typescript
 interface ListPrefix {
-  format: 'bullet' | 'number';
+  format: "bullet" | "number";
   style: string; // e.g., '•', '1.', 'a)'
 }
 ```
@@ -46,7 +46,7 @@ interface FormatOptions {
   emphasis?: EmphasisType[]; // Array of emphasis types
 
   // Alignment
-  alignment?: 'left' | 'right' | 'center' | 'justify';
+  alignment?: "left" | "right" | "center" | "justify";
 
   // Spacing (in points)
   spaceAbove?: number; // Space before paragraph
@@ -117,13 +117,13 @@ doc.applyH1();
 
 // With custom formatting
 doc.applyH1({
-  format: { font: 'Arial', size: 18, emphasis: ['bold'] },
+  format: { font: "Arial", size: 18, emphasis: ["bold"] },
 });
 
 // Preserve specific properties
 doc.applyH1({
-  keepProperties: ['bold', 'color'],
-  format: { font: 'Verdana' },
+  keepProperties: ["bold", "color"],
+  format: { font: "Verdana" },
 });
 ```
 
@@ -136,7 +136,7 @@ Applies Heading 2 style to paragraphs with H2-like style names.
 
 ```typescript
 doc.applyH2({
-  format: { font: 'Verdana', size: 14, color: '000000' },
+  format: { font: "Verdana", size: 14, color: "000000" },
 });
 ```
 
@@ -149,7 +149,7 @@ Applies Heading 3 style to paragraphs with H3-like style names.
 
 ```typescript
 doc.applyH3({
-  format: { font: 'Verdana', size: 12, emphasis: ['bold'] },
+  format: { font: "Verdana", size: 12, emphasis: ["bold"] },
 });
 ```
 
@@ -163,9 +163,9 @@ Applies Normal style to paragraphs without recognized styles.
 ```typescript
 doc.applyNormal({
   format: {
-    font: 'Verdana',
+    font: "Verdana",
     size: 12,
-    alignment: 'justify',
+    alignment: "justify",
     spaceBelow: 3,
   },
 });
@@ -206,10 +206,10 @@ Applies header style to table cell paragraphs (typically first row).
 ```typescript
 doc.applyCellHeader({
   format: {
-    font: 'Arial',
+    font: "Arial",
     size: 12,
-    emphasis: ['bold'],
-    alignment: 'center',
+    emphasis: ["bold"],
+    alignment: "center",
   },
 });
 ```
@@ -341,7 +341,7 @@ paragraph.clearDirectFormatting();
 doc.cleanFormatting();
 
 // Clean specific styles only
-doc.cleanFormatting(['Heading1', 'Heading2', 'Normal']);
+doc.cleanFormatting(["Heading1", "Heading2", "Normal"]);
 ```
 
 ---
@@ -383,11 +383,11 @@ doc.applyNormal();
 // Apply style with custom formatting
 doc.applyH2({
   format: {
-    font: 'Verdana',
+    font: "Verdana",
     size: 14,
-    color: '000000',
-    emphasis: ['bold'],
-    alignment: 'left',
+    color: "000000",
+    emphasis: ["bold"],
+    alignment: "left",
     spaceBelow: 6,
     indentLeft: 0.25,
   },
@@ -399,11 +399,11 @@ doc.applyH2({
 ```typescript
 // Keep existing bold and color, apply new formatting
 doc.applyH1({
-  keepProperties: ['bold', 'color'],
+  keepProperties: ["bold", "color"],
   format: {
-    font: 'Arial',
+    font: "Arial",
     size: 18,
-    alignment: 'center',
+    alignment: "center",
   },
 });
 ```
@@ -415,7 +415,7 @@ doc.applyH1({
 const someParagraphs = doc.getAllParagraphs().slice(0, 10);
 doc.applyH1({
   paragraphs: someParagraphs,
-  format: { font: 'Verdana', size: 18 },
+  format: { font: "Verdana", size: 18 },
 });
 ```
 
@@ -424,12 +424,12 @@ doc.applyH1({
 ```typescript
 // Full-featured example
 doc.applyNormal({
-  keepProperties: ['bold', 'italic'],
+  keepProperties: ["bold", "italic"],
   format: {
-    font: 'Verdana',
+    font: "Verdana",
     size: 12,
-    color: '000000',
-    alignment: 'justify',
+    color: "000000",
+    alignment: "justify",
     spaceAbove: 0,
     spaceBelow: 3,
     lineSpacing: 1.15,
@@ -437,7 +437,7 @@ doc.applyNormal({
     indentRight: 0,
     indentFirst: 0.5,
     keepWithNext: true,
-    shading: 'F0F0F0',
+    shading: "F0F0F0",
   },
 });
 ```
@@ -461,12 +461,12 @@ doc.applyH1(); // Works exactly the same
 
 // New: With options
 doc.applyH1({
-  format: { font: 'Arial', size: 18 },
+  format: { font: "Arial", size: 18 },
 });
 
 // New: Preserve properties
 doc.applyH1({
-  keepProperties: ['bold', 'color'],
+  keepProperties: ["bold", "color"],
 });
 ```
 
@@ -614,7 +614,7 @@ The refactored style API successfully bridges formatting capabilities between do
 class FormattingService {
   static generateFormatOptions(
     from: SessionStyle,
-    type: 'header1' | 'header2' | 'normal'
+    type: "header1" | "header2" | "normal"
   ): FormatOptions {
     // Consolidated logic for FormatOptions creation
     // Handles unit conversions, property mapping, validation
@@ -785,17 +785,17 @@ Since the integration heavily uses new APIs, comprehensive tests needed:
 
 ```typescript
 // RECOMMENDED: src/services/document/tests/active-integration.test.ts
-describe('WordDocumentProcessor - docXMLater Integration', () => {
-  test('applyH1() works with sessions', () => {
+describe("WordDocumentProcessor - docXMLater Integration", () => {
+  test("applyH1() works with sessions", () => {
     /* StyleApplyOptions integration */
   });
-  test('hyperlink standardization consistency', () => {
+  test("hyperlink standardization consistency", () => {
     /* duplicate logic check */
   });
-  test('unit conversions match Microsoft specs', () => {
+  test("unit conversions match Microsoft specs", () => {
     /* points/twips validation */
   });
-  test('dispose() called in all error paths', () => {
+  test("dispose() called in all error paths", () => {
     /* memory leak prevention */
   });
 });

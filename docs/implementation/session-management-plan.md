@@ -36,7 +36,7 @@ interface Session {
   lastModified: Date; // Last modification timestamp
   documents: Document[]; // Array of documents in session
   stats: SessionStats; // Processing statistics
-  status: 'active' | 'closed'; // Session status
+  status: "active" | "closed"; // Session status
 }
 ```
 
@@ -48,7 +48,7 @@ interface Document {
   name: string; // File name
   path: string; // File system path
   size: number; // File size in bytes
-  status: 'pending' | 'processing' | 'completed' | 'error';
+  status: "pending" | "processing" | "completed" | "error";
   processedAt?: Date; // Processing completion time
   errors?: string[]; // Processing errors if any
 }
@@ -166,14 +166,14 @@ interface SessionStats {
 
 ```typescript
 // Main process handlers
-ipcMain.handle('select-documents', async () => {
+ipcMain.handle("select-documents", async () => {
   return dialog.showOpenDialog({
-    properties: ['openFile', 'multiSelections'],
-    filters: [{ name: 'Word Documents', extensions: ['docx'] }],
+    properties: ["openFile", "multiSelections"],
+    filters: [{ name: "Word Documents", extensions: ["docx"] }],
   });
 });
 
-ipcMain.handle('process-document', async (event, path) => {
+ipcMain.handle("process-document", async (event, path) => {
   // Document processing logic
 });
 ```

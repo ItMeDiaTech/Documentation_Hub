@@ -655,11 +655,13 @@ Planned features for future releases:
 ### Recent Major Updates
 
 **February 2026 - DocXMLater 10.1 Upgrade:**
+
 - Upgraded to DocXMLater 10.1.0 with 70+ new ECMA-376 API methods
 - Refactored ListProcessor to use NumberingLevel API, eliminating raw XML manipulation
 - List prefix standardization now uses type-safe setters (setFont, setColor, setFontSize, setBold)
 
 **January 2025 - DocXMLater Migration:**
+
 - Complete migration to DocXMLater library for document processing
 - 90% code reduction in document processing (8,000+ lines → 4,000+ lines)
 - Full TypeScript type safety throughout document operations

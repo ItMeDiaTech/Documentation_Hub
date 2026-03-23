@@ -21,7 +21,7 @@ Located in `src/services/document/WordDocumentProcessor.ts` lines 933-946:
 
 ```typescript
 if (options.operations?.updateTocHyperlinks) {
-  this.log.debug('=== GENERATING/UPDATING TABLE OF CONTENTS ===');
+  this.log.debug("=== GENERATING/UPDATING TABLE OF CONTENTS ===");
 
   // Use DocXMLater's replaceTableOfContents() to populate TOC entries
   const tocCount = await doc.replaceTableOfContents(filePath);
@@ -30,7 +30,7 @@ if (options.operations?.updateTocHyperlinks) {
 
   if (tocCount === 0) {
     this.log.warn(
-      'No TOC elements found in document. To create a TOC, insert a Table of Contents field in Word first.'
+      "No TOC elements found in document. To create a TOC, insert a Table of Contents field in Word first."
     );
   }
 }
@@ -78,7 +78,7 @@ const processingOptions: WordProcessingOptions = {
   // ... other options
   operations: {
     // ... other operations
-    updateTocHyperlinks: formData['update-toc-hyperlinks'], // Map UI checkbox to option
+    updateTocHyperlinks: formData["update-toc-hyperlinks"], // Map UI checkbox to option
   },
 };
 ```
@@ -228,7 +228,7 @@ interface TOCProperties {
   hyperlinked: boolean; // Use hyperlinks vs page numbers
   includePageNumbers: boolean; // Show page numbers
   rightAlignPageNumbers: boolean; // Right-align page numbers
-  tabLeaderStyle: 'none' | 'dots' | 'dashes' | 'underline';
+  tabLeaderStyle: "none" | "dots" | "dashes" | "underline";
   spacingBetweenEntries: number; // Points
   hyperlinkColor: string; // Hex color
 }
@@ -266,24 +266,24 @@ tableOfContentsSettings?: {
 ### Automated Testing
 
 ```typescript
-describe('TOC Generation', () => {
-  it('should populate TOC when option enabled', async () => {
+describe("TOC Generation", () => {
+  it("should populate TOC when option enabled", async () => {
     const options = {
       operations: { updateTocHyperlinks: true },
     };
 
-    const result = await processor.processDocument('test-with-toc.docx', options);
+    const result = await processor.processDocument("test-with-toc.docx", options);
 
     expect(result.success).toBe(true);
     // Verify TOC was populated (check logs or inspect document)
   });
 
-  it('should skip TOC when option disabled', async () => {
+  it("should skip TOC when option disabled", async () => {
     const options = {
       operations: { updateTocHyperlinks: false },
     };
 
-    const result = await processor.processDocument('test-with-toc.docx', options);
+    const result = await processor.processDocument("test-with-toc.docx", options);
 
     expect(result.success).toBe(true);
     // Verify TOC still shows placeholder
@@ -305,7 +305,7 @@ describe('TOC Generation', () => {
 
 ```typescript
 // Add logging to verify option value
-console.log('TOC option:', options.operations?.updateTocHyperlinks);
+console.log("TOC option:", options.operations?.updateTocHyperlinks);
 ```
 
 ### Problem: TOC Missing Some Headings

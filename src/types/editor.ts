@@ -80,7 +80,7 @@ export interface CellSelection {
  */
 export interface EditorAction {
   /** Type of action */
-  type: 'text' | 'formatting' | 'structure' | 'table';
+  type: "text" | "formatting" | "structure" | "table";
   /** When action was performed */
   timestamp: Date;
   /** Function to undo this action */
@@ -96,39 +96,39 @@ export interface EditorAction {
  */
 export type QuickActionId =
   // Shading
-  | 'apply-h2-shading'
-  | 'apply-other-shading'
+  | "apply-h2-shading"
+  | "apply-other-shading"
   // Text formatting
-  | 'bold'
-  | 'italic'
-  | 'underline'
-  | 'clear-formatting'
+  | "bold"
+  | "italic"
+  | "underline"
+  | "clear-formatting"
   // Hyperlinks
-  | 'insert-hyperlink'
-  | 'remove-hyperlink'
+  | "insert-hyperlink"
+  | "remove-hyperlink"
   // Styles
-  | 'style-heading1'
-  | 'style-heading2'
-  | 'style-normal'
-  | 'style-list-paragraph'
+  | "style-heading1"
+  | "style-heading2"
+  | "style-normal"
+  | "style-list-paragraph"
   // Structure
-  | 'page-break'
-  | 'find-replace'
+  | "page-break"
+  | "find-replace"
   // Tracked changes
-  | 'accept-all-changes'
-  | 'reject-all-changes'
+  | "accept-all-changes"
+  | "reject-all-changes"
   // Table operations
-  | 'table-add-row-above'
-  | 'table-add-row-below'
-  | 'table-add-col-left'
-  | 'table-add-col-right'
-  | 'table-delete-row'
-  | 'table-delete-col'
-  | 'table-merge-cells'
-  | 'table-split-cell'
-  | 'table-cell-shading'
-  | 'table-cell-borders'
-  | 'table-vertical-align';
+  | "table-add-row-above"
+  | "table-add-row-below"
+  | "table-add-col-left"
+  | "table-add-col-right"
+  | "table-delete-row"
+  | "table-delete-col"
+  | "table-merge-cells"
+  | "table-split-cell"
+  | "table-cell-shading"
+  | "table-cell-borders"
+  | "table-vertical-align";
 
 /**
  * Quick action configuration
@@ -138,7 +138,7 @@ export interface QuickAction {
   label: string;
   icon: string;
   shortcut?: string;
-  category: 'formatting' | 'style' | 'structure' | 'table' | 'revision';
+  category: "formatting" | "style" | "structure" | "table" | "revision";
   requiresSelection?: boolean;
   requiresTableSelection?: boolean;
 }
@@ -150,7 +150,7 @@ export interface DiffSegment {
   /** Text content of this segment */
   text: string;
   /** Type of change */
-  type: 'unchanged' | 'added' | 'removed' | 'modified';
+  type: "unchanged" | "added" | "removed" | "modified";
 }
 
 /**
@@ -204,7 +204,7 @@ export interface EditorState {
   /** Current table cell selection */
   tableSelection: CellSelection | null;
   /** Currently selected element type */
-  selectedElementType: 'paragraph' | 'table' | 'image' | null;
+  selectedElementType: "paragraph" | "table" | "image" | null;
   /** Selected paragraph index */
   selectedParagraphIndex: number | null;
   /** Selected table index */
@@ -224,7 +224,7 @@ export interface EditorState {
 /**
  * View mode for tracked changes panel
  */
-export type TrackedChangesViewMode = 'inline' | 'list' | 'comparison';
+export type TrackedChangesViewMode = "inline" | "list" | "comparison";
 
 /**
  * Props for tracked changes panel
@@ -262,19 +262,19 @@ export interface InlineChangeStyle {
  */
 export const DEFAULT_INLINE_CHANGE_STYLES: InlineChangeStyle = {
   insertion: {
-    background: 'bg-green-100 dark:bg-green-900/30',
-    textColor: 'text-green-700 dark:text-green-300',
+    background: "bg-green-100 dark:bg-green-900/30",
+    textColor: "text-green-700 dark:text-green-300",
   },
   deletion: {
-    background: 'bg-red-100 dark:bg-red-900/30',
-    textColor: 'text-red-700 dark:text-red-300',
-    textDecoration: 'line-through',
+    background: "bg-red-100 dark:bg-red-900/30",
+    textColor: "text-red-700 dark:text-red-300",
+    textDecoration: "line-through",
   },
   formatting: {
-    borderStyle: 'border-b-2 border-dashed',
-    borderColor: 'border-blue-500',
+    borderStyle: "border-b-2 border-dashed",
+    borderColor: "border-blue-500",
   },
   hyperlink: {
-    iconColor: 'text-cyan-500',
+    iconColor: "text-cyan-500",
   },
 };

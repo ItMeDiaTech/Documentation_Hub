@@ -12,7 +12,7 @@ import type {
   HyperlinkProcessingOptions,
   BatchProcessingOptions,
   BatchProgress,
-} from './hyperlink';
+} from "./hyperlink";
 
 import type {
   BackupCreateResponse,
@@ -24,7 +24,7 @@ import type {
   BackupStorageInfoResponse,
   BackupSetConfigResponse,
   BackupConfig,
-} from './backup';
+} from "./backup";
 
 import type {
   SharePointConfig,
@@ -33,7 +33,7 @@ import type {
   DictionaryInitResponse,
   DictionaryCredentialsResponse,
   SyncProgressUpdate,
-} from './dictionary';
+} from "./dictionary";
 
 /**
  * Update event info types
@@ -73,7 +73,7 @@ export interface UpdateStatusInfo {
  * SharePoint update source configuration
  */
 export interface UpdateProviderConfig {
-  type: 'github' | 'sharepoint';
+  type: "github" | "sharepoint";
   sharePointUrl?: string;
 }
 
@@ -125,7 +125,8 @@ export interface DisplayAPI {
   openComparison: (
     backupPath: string,
     processedPath: string,
-    monitorIndex: number
+    workArea: { x: number; y: number; width: number; height: number },
+    scaleFactor: number
   ) => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -164,11 +165,17 @@ export interface DictionaryAPI {
   sync: () => Promise<DictionarySyncResponse>;
   startScheduler: (intervalHours: number) => Promise<{ success: boolean; error?: string }>;
   stopScheduler: () => Promise<{ success: boolean; error?: string }>;
-  lookup: (lookupId: string) => Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }>;
-  batchLookup: (lookupIds: string[]) => Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }>;
+  lookup: (
+    lookupId: string
+  ) => Promise<{ success: boolean; result?: HyperlinkLookupResult; error?: string }>;
+  batchLookup: (
+    lookupIds: string[]
+  ) => Promise<{ success: boolean; results?: HyperlinkLookupResult[]; error?: string }>;
   getStatus: () => Promise<{ success: boolean; status?: DictionarySyncStatus; error?: string }>;
   // Interactive SharePoint retrieval (using browser login)
-  retrieveFromSharePoint: (fileUrl: string) => Promise<{ success: boolean; entriesImported?: number; error?: string }>;
+  retrieveFromSharePoint: (
+    fileUrl: string
+  ) => Promise<{ success: boolean; entriesImported?: number; error?: string }>;
   sharePointLogin: () => Promise<{ success: boolean; error?: string }>;
   isSharePointAuthenticated: () => Promise<{ authenticated: boolean }>;
   onSyncProgress: (callback: (progress: SyncProgressUpdate) => void) => () => void;
@@ -217,9 +224,12 @@ export interface ElectronAPI {
   createFolder: (folderPath: string) => Promise<boolean>;
   copyFileToFolder: (sourcePath: string, destFolder: string) => Promise<boolean>;
   createReportZip: (folderPath: string, zipName: string) => Promise<string>;
-  openOutlookEmail: (subject: string, attachmentPath: string) => Promise<{
+  openOutlookEmail: (
+    subject: string,
+    attachmentPath: string
+  ) => Promise<{
     success: boolean;
-    method: 'outlook' | 'mailto';
+    method: "outlook" | "mailto";
   }>;
 
   // Document text extraction (for comparison views)
@@ -238,10 +248,7 @@ export interface ElectronAPI {
     filePath: string,
     options: HyperlinkProcessingOptions
   ) => Promise<unknown>;
-  batchProcessDocuments: (
-    filePaths: string[],
-    options: BatchProcessingOptions
-  ) => Promise<unknown>;
+  batchProcessDocuments: (filePaths: string[], options: BatchProcessingOptions) => Promise<unknown>;
   validateApi: (apiUrl: string) => Promise<unknown>;
   callPowerAutomateApi: (
     apiUrl: string,
@@ -291,7 +298,9 @@ export interface ElectronAPI {
   getCurrentVersion: () => Promise<string>;
 
   // SharePoint update source
-  setUpdateProvider: (config: UpdateProviderConfig) => Promise<{ success: boolean; error?: string }>;
+  setUpdateProvider: (
+    config: UpdateProviderConfig
+  ) => Promise<{ success: boolean; error?: string }>;
   testSharePointConnection: (url: string) => Promise<SharePointConnectionTestResult>;
   sharePointLogin: () => Promise<SharePointLoginResult>;
   sharePointLogout: () => Promise<void>;

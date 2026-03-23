@@ -1,15 +1,24 @@
-import {
-  Document,
-  isHyperlink,
-  isRevision,
-  isHyperlinkContent,
-} from 'docxmlater';
-import type { Hyperlink, Paragraph, Revision } from 'docxmlater';
-import { ProcessorResult } from './types/docx-processing';
-import { logger } from '@/utils/logger';
+import { ComplexField, Document, isHyperlink, isRevision, isHyperlinkContent } from "docxmlater";
+import type { Hyperlink, Paragraph, Revision } from "docxmlater";
+import { ProcessorResult } from "./types/docx-processing";
+import { logger } from "@/utils/logger";
 
 // Create namespaced logger for document processing operations
-const log = logger.namespace('DocXMLater');
+const log = logger.namespace("DocXMLater");
+
+/**
+ * Represents a hyperlink extracted from a document paragraph.
+ * Supports both w:hyperlink elements (Hyperlink) and HYPERLINK field codes (ComplexField).
+ */
+export interface ExtractedHyperlink {
+  hyperlink: Hyperlink | ComplexField;
+  isComplexField: boolean;
+  paragraph: Paragraph;
+  paragraphIndex: number;
+  hyperlinkIndexInParagraph: number;
+  url?: string;
+  text: string;
+}
 
 /**
  * Configuration options for the DocXMLaterProcessor
@@ -116,17 +125,17 @@ export class DocXMLaterProcessor {
    * @see {@link ProcessorResult} for result handling
    */
   async loadFromFile(filePath: string): Promise<ProcessorResult<Document>> {
-    log.debug('Loading document from file', { filePath });
+    log.debug("Loading document from file", { filePath });
     try {
       // Use framework defaults to ensure no corruption
       const doc = await Document.load(filePath, { strictParsing: false });
-      log.info('Document loaded successfully', { filePath });
+      log.info("Document loaded successfully", { filePath });
       return {
         success: true,
         data: doc,
       };
     } catch (error: any) {
-      log.error('Failed to load document', { filePath, error: error.message });
+      log.error("Failed to load document", { filePath, error: error.message });
       return {
         success: false,
         error: `Failed to load document: ${error.message}`,
@@ -174,17 +183,20 @@ export class DocXMLaterProcessor {
    * @see {@link Document} for document manipulation methods
    */
   async loadFromBuffer(buffer: Buffer): Promise<ProcessorResult<Document>> {
-    log.debug('Loading document from buffer', { bufferSize: buffer.length });
+    log.debug("Loading document from buffer", { bufferSize: buffer.length });
     try {
       // Use framework defaults to ensure no corruption
       const doc = await Document.loadFromBuffer(buffer);
-      log.info('Document loaded from buffer successfully', { bufferSize: buffer.length });
+      log.info("Document loaded from buffer successfully", { bufferSize: buffer.length });
       return {
         success: true,
         data: doc,
       };
     } catch (error: any) {
-      log.error('Failed to load document from buffer', { bufferSize: buffer.length, error: error.message });
+      log.error("Failed to load document from buffer", {
+        bufferSize: buffer.length,
+        error: error.message,
+      });
       return {
         success: false,
         error: `Failed to load document from buffer: ${error.message}`,
@@ -241,9 +253,9 @@ export class DocXMLaterProcessor {
       trackFormatting?: boolean;
     } = {}
   ): Promise<ProcessorResult<Document>> {
-    const { acceptRevisions = false, author = 'Doc Hub', trackFormatting = true } = options;
+    const { acceptRevisions = false, author = "Doc Hub", trackFormatting = true } = options;
 
-    log.debug('Loading document with revision handling', {
+    log.debug("Loading document with revision handling", {
       filePath,
       acceptRevisions,
       author,
@@ -254,7 +266,7 @@ export class DocXMLaterProcessor {
       const doc = await Document.load(filePath, {
         strictParsing: false,
         acceptRevisions: acceptRevisions, // NEW: Uses in-memory acceptance if true
-        revisionHandling: acceptRevisions ? undefined : 'preserve', // Preserve if not accepting
+        revisionHandling: acceptRevisions ? undefined : "preserve", // Preserve if not accepting
       });
 
       // Enable track changes for subsequent modifications
@@ -263,7 +275,7 @@ export class DocXMLaterProcessor {
         trackFormatting,
       });
 
-      log.info('Document loaded with revision handling', {
+      log.info("Document loaded with revision handling", {
         filePath,
         acceptRevisions,
         author,
@@ -274,7 +286,7 @@ export class DocXMLaterProcessor {
         data: doc,
       };
     } catch (error: any) {
-      log.error('Failed to load document with revision handling', {
+      log.error("Failed to load document with revision handling", {
         filePath,
         error: error.message,
       });
@@ -286,15 +298,15 @@ export class DocXMLaterProcessor {
   }
 
   async saveToFile(doc: Document, filePath: string): Promise<ProcessorResult<void>> {
-    log.debug('Saving document to file', { filePath });
+    log.debug("Saving document to file", { filePath });
     try {
       await doc.save(filePath);
-      log.info('Document saved successfully', { filePath });
+      log.info("Document saved successfully", { filePath });
       return {
         success: true,
       };
     } catch (error: any) {
-      log.error('Failed to save document', { filePath, error: error.message });
+      log.error("Failed to save document", { filePath, error: error.message });
       return {
         success: false,
         error: `Failed to save document: ${error.message}`,
@@ -368,7 +380,7 @@ export class DocXMLaterProcessor {
       if (!sizeResult.success || !sizeResult.data) {
         return {
           success: false,
-          error: `Size validation failed: ${sizeResult.error || 'No size data returned'}`,
+          error: `Size validation failed: ${sizeResult.error || "No size data returned"}`,
         };
       }
 
@@ -398,7 +410,7 @@ export class DocXMLaterProcessor {
       if (!saveResult.success) {
         return {
           success: false,
-          error: saveResult.error || 'Save operation failed',
+          error: saveResult.error || "Save operation failed",
         };
       }
 
@@ -505,32 +517,16 @@ export class DocXMLaterProcessor {
    *
    * @see {@link WordDocumentProcessor} - Uses this method for document processing
    */
-  async extractHyperlinks(doc: Document): Promise<
-    Array<{
-      hyperlink: Hyperlink;
-      paragraph: Paragraph;
-      paragraphIndex: number;
-      hyperlinkIndexInParagraph: number; // Index of this hyperlink within its paragraph
-      url?: string;
-      text: string;
-    }>
-  > {
-    log.debug('Extracting hyperlinks from document');
+  async extractHyperlinks(doc: Document): Promise<ExtractedHyperlink[]> {
+    log.debug("Extracting hyperlinks from document");
     // Dynamic import to avoid formatter issues with unused imports
-    const { sanitizeHyperlinkText } = await import('@/utils/textSanitizer');
+    const { sanitizeHyperlinkText } = await import("@/utils/textSanitizer");
 
-    const hyperlinks: Array<{
-      hyperlink: Hyperlink;
-      paragraph: Paragraph;
-      paragraphIndex: number;
-      hyperlinkIndexInParagraph: number;
-      url?: string;
-      text: string;
-    }> = [];
+    const hyperlinks: ExtractedHyperlink[] = [];
 
     // Get all paragraphs from the document
     const paragraphs = doc.getAllParagraphs();
-    log.debug('Scanning paragraphs for hyperlinks', { paragraphCount: paragraphs.length });
+    log.debug("Scanning paragraphs for hyperlinks", { paragraphCount: paragraphs.length });
 
     // Iterate through each paragraph to find hyperlinks
     for (let i = 0; i < paragraphs.length; i++) {
@@ -553,7 +549,7 @@ export class DocXMLaterProcessor {
           if (relationshipId) {
             // Log that URL couldn't be retrieved via primary API
             // The caller may need to resolve the relationship externally
-            log.debug('URL not available via getUrl(), relationship lookup may be needed', {
+            log.debug("URL not available via getUrl(), relationship lookup may be needed", {
               relationshipId,
             });
           }
@@ -562,14 +558,15 @@ export class DocXMLaterProcessor {
         return url;
       };
 
-      // Helper function to add a hyperlink to the results
+      // Helper function to add a Hyperlink to the results
       const addHyperlink = (hyperlinkItem: Hyperlink, isInsideRevision: boolean = false) => {
         const url = extractUrlFromHyperlink(hyperlinkItem);
-        const rawText = hyperlinkItem.getText() || '';
+        const rawText = hyperlinkItem.getText() || "";
         const sanitizedText = sanitizeHyperlinkText(rawText);
 
         hyperlinks.push({
           hyperlink: hyperlinkItem,
+          isComplexField: false,
           paragraph: para,
           paragraphIndex: i,
           hyperlinkIndexInParagraph,
@@ -580,8 +577,34 @@ export class DocXMLaterProcessor {
         hyperlinkIndexInParagraph++;
 
         if (isInsideRevision) {
-          log.debug('Found hyperlink inside revision element', { text: sanitizedText.substring(0, 50) });
+          log.debug("Found hyperlink inside revision element", {
+            text: sanitizedText.substring(0, 50),
+          });
         }
+      };
+
+      // Helper function to add a ComplexField HYPERLINK to the results
+      const addComplexFieldHyperlink = (field: ComplexField) => {
+        const parsed = field.getParsedHyperlink();
+        const url = parsed?.fullUrl || parsed?.url || field.getHyperlinkUrl();
+        const rawText = field.getResult() || "";
+        const sanitizedText = sanitizeHyperlinkText(rawText);
+
+        hyperlinks.push({
+          hyperlink: field,
+          isComplexField: true,
+          paragraph: para,
+          paragraphIndex: i,
+          hyperlinkIndexInParagraph,
+          url: url,
+          text: sanitizedText,
+        });
+
+        hyperlinkIndexInParagraph++;
+        log.debug("Found HYPERLINK field code (ComplexField)", {
+          text: sanitizedText.substring(0, 50),
+          url: url?.substring(0, 80),
+        });
       };
 
       // Check each content item for hyperlinks using proper type guards
@@ -590,26 +613,33 @@ export class DocXMLaterProcessor {
         if (isHyperlink(item)) {
           addHyperlink(item, false);
         }
-        // Case 2: Hyperlinks inside Revision elements (w:ins, w:del tracked changes)
+        // Case 2: Hyperlinks inside Revision elements (w:ins tracked changes)
         else if (isRevision(item)) {
+          // Only extract from insert/moveTo revisions — skip delete/moveFrom
+          if (item.getType() === "delete" || item.getType() === "moveFrom") continue;
           const revisionContent = item.getContent();
           for (const innerItem of revisionContent) {
-            // Check if the inner item is a Hyperlink using type guard
             if (isHyperlinkContent(innerItem)) {
               addHyperlink(innerItem, true);
             }
           }
         }
+        // Case 3: HYPERLINK field codes (ComplexField)
+        else if (item instanceof ComplexField && item.isHyperlinkField()) {
+          addComplexFieldHyperlink(item);
+        }
       }
     }
 
     // Log summary with type breakdown
+    const complexFieldLinks = hyperlinks.filter((h) => h.isComplexField).length;
     const internalLinks = hyperlinks.filter((h) => !h.url).length;
     const externalLinks = hyperlinks.filter((h) => h.url).length;
-    log.info('Hyperlinks extracted', {
+    log.info("Hyperlinks extracted", {
       total: hyperlinks.length,
       external: externalLinks,
       internal: internalLinks,
+      complexField: complexFieldLinks,
     });
 
     return hyperlinks;

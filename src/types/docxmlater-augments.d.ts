@@ -8,9 +8,9 @@
  * @module docxmlater-augments
  */
 
-import type { Document } from 'docxmlater';
-import type { SessionStyle } from './session';
-import type { TableShadingSettings } from '@/services/document/processors/TableProcessor';
+import type { Document } from "docxmlater";
+import type { SessionStyle } from "./session";
+import type { TableShadingSettings } from "@/services/document/processors/TableProcessor";
 
 /**
  * Configuration for the applyStyles method
@@ -34,7 +34,7 @@ export interface StyleConfig {
   italic?: boolean;
   underline?: boolean;
   color?: string;
-  alignment?: 'left' | 'center' | 'right' | 'justify';
+  alignment?: "left" | "center" | "right" | "justify";
   spaceBefore?: number;
   spaceAfter?: number;
   lineSpacing?: number;
@@ -69,7 +69,7 @@ export interface StyleResults {
  */
 export interface ChangeEntry {
   id: string;
-  type: 'insertion' | 'deletion' | 'formatting';
+  type: "insertion" | "deletion" | "formatting";
   author: string;
   date?: string;
   text?: string;
@@ -77,7 +77,7 @@ export interface ChangeEntry {
 }
 
 // Augment the docxmlater module to include optional methods
-declare module 'docxmlater' {
+declare module "docxmlater" {
   interface Document {
     /**
      * Apply custom styles to paragraphs based on configuration.
@@ -117,8 +117,10 @@ declare module 'docxmlater' {
  * }
  * ```
  */
-export function hasApplyStyles(doc: Document): doc is Document & { applyStyles: NonNullable<Document['applyStyles']> } {
-  return typeof (doc as Document).applyStyles === 'function';
+export function hasApplyStyles(
+  doc: Document
+): doc is Document & { applyStyles: NonNullable<Document["applyStyles"]> } {
+  return typeof (doc as Document).applyStyles === "function";
 }
 
 /**
@@ -127,8 +129,10 @@ export function hasApplyStyles(doc: Document): doc is Document & { applyStyles: 
  * @param doc - The document to check
  * @returns true if the document has the flushPendingChanges method
  */
-export function hasFlushPendingChanges(doc: Document): doc is Document & { flushPendingChanges: NonNullable<Document['flushPendingChanges']> } {
-  return typeof (doc as Document).flushPendingChanges === 'function';
+export function hasFlushPendingChanges(
+  doc: Document
+): doc is Document & { flushPendingChanges: NonNullable<Document["flushPendingChanges"]> } {
+  return typeof (doc as Document).flushPendingChanges === "function";
 }
 
 /**
@@ -137,6 +141,8 @@ export function hasFlushPendingChanges(doc: Document): doc is Document & { flush
  * @param doc - The document to check
  * @returns true if the document has the acceptAllRevisions method
  */
-export function hasAcceptAllRevisions(doc: Document): doc is Document & { acceptAllRevisions: NonNullable<Document['acceptAllRevisions']> } {
-  return typeof (doc as Document).acceptAllRevisions === 'function';
+export function hasAcceptAllRevisions(
+  doc: Document
+): doc is Document & { acceptAllRevisions: NonNullable<Document["acceptAllRevisions"]> } {
+  return typeof (doc as Document).acceptAllRevisions === "function";
 }

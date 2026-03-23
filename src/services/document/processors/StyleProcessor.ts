@@ -91,10 +91,7 @@ export class StyleProcessor {
 
     // Use docxmlater's applyStyles if available
     if (typeof (doc as any).applyStyles === "function") {
-      const config = this.convertStylesToDocXMLaterConfig(
-        styles,
-        tableShadingSettings
-      );
+      const config = this.convertStylesToDocXMLaterConfig(styles, tableShadingSettings);
 
       try {
         const docResult = (doc as any).applyStyles(config);
@@ -179,7 +176,7 @@ export class StyleProcessor {
     // PRESERVE center alignment if it already exists in the document
     // This prevents overriding intentional center formatting (like image captions)
     const existingAlignment = para.getFormatting().alignment;
-    if (existingAlignment === 'center') {
+    if (existingAlignment === "center") {
       log.debug(`Preserving center alignment for: "${para.getText().substring(0, 30)}..."`);
       // Don't change alignment - keep center
     } else {
@@ -222,11 +219,11 @@ export class StyleProcessor {
       }
       // If the run has Hyperlink character style but is NOT a real hyperlink,
       // strip the false character style so it gets proper paragraph formatting
-      if (typeof run.isHyperlinkStyled === 'function' && run.isHyperlinkStyled()) {
+      if (typeof run.isHyperlinkStyled === "function" && run.isHyperlinkStyled()) {
         run.setCharacterStyle(undefined as unknown as string);
         log.debug(
           `[FalseHyperlink] Stripped Hyperlink character style from run: ` +
-          `"${run.getText()?.substring(0, 40) || ''}"`
+            `"${run.getText()?.substring(0, 40) || ""}"`
         );
       }
 
@@ -245,7 +242,7 @@ export class StyleProcessor {
 
       // Preserve white font - don't change color if run is white (FFFFFF)
       const currentColor = run.getFormatting().color?.toUpperCase();
-      if (currentColor !== 'FFFFFF') {
+      if (currentColor !== "FFFFFF") {
         run.setColor(style.color.replace("#", ""));
       }
     }
@@ -374,6 +371,8 @@ export class StyleProcessor {
       const content = para.getContent();
       for (const item of content) {
         if (isRevision(item)) {
+          const type = item.getType();
+          if (type === "delete" || type === "moveFrom") continue;
           const revisionRuns = item.getRuns();
           runs.push(...revisionRuns);
         }

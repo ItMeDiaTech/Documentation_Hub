@@ -4,12 +4,12 @@
  * Tests blank paragraph removal, structure operations, and document warnings.
  */
 
-import type { Mocked } from 'jest-mock';
-import { StructureProcessor } from '../StructureProcessor';
-import { Document, Paragraph, Run, Hyperlink, Image } from 'docxmlater';
+import type { Mocked } from "jest-mock";
+import { StructureProcessor } from "../StructureProcessor";
+import { Document, Paragraph, Run, Hyperlink, Image } from "docxmlater";
 
 // Mock docxmlater
-jest.mock('docxmlater');
+jest.mock("docxmlater");
 
 // Setup Paragraph.create to return a usable mock paragraph
 function createMockWarningParagraph(): any {
@@ -17,15 +17,17 @@ function createMockWarningParagraph(): any {
     setAlignment: jest.fn(),
     setSpaceBefore: jest.fn(),
     setSpaceAfter: jest.fn(),
-    getRuns: jest.fn().mockReturnValue([{
-      setItalic: jest.fn(),
-      setFont: jest.fn(),
-      setSize: jest.fn(),
-    }]),
+    getRuns: jest.fn().mockReturnValue([
+      {
+        setItalic: jest.fn(),
+        setFont: jest.fn(),
+        setSize: jest.fn(),
+      },
+    ]),
   };
 }
 
-describe('StructureProcessor', () => {
+describe("StructureProcessor", () => {
   let processor: StructureProcessor;
   let mockDoc: Mocked<Document>;
 
@@ -34,18 +36,19 @@ describe('StructureProcessor', () => {
     processor = new StructureProcessor();
 
     // Setup Paragraph.create static method to return mock paragraphs
-    (Paragraph.create as ReturnType<typeof jest.fn>) = jest.fn().mockImplementation(() => createMockWarningParagraph());
+    (Paragraph.create as ReturnType<typeof jest.fn>) = jest
+      .fn()
+      .mockImplementation(() => createMockWarningParagraph());
 
     mockDoc = {
       getAllParagraphs: jest.fn().mockReturnValue([]),
       removeAllHeadersFooters: jest.fn().mockReturnValue(0),
       addParagraph: jest.fn().mockReturnThis(),
     } as unknown as Mocked<Document>;
-
   });
 
-  describe('removeItalicFormatting', () => {
-    it('should remove italic from formatted runs', async () => {
+  describe("removeItalicFormatting", () => {
+    it("should remove italic from formatted runs", async () => {
       const mockRun = createMockFormattedRun(false, true); // not bold, italic
       const mockParagraph = createMockParagraphWithRuns([mockRun]);
       mockDoc.getAllParagraphs.mockReturnValue([mockParagraph]);
@@ -56,7 +59,7 @@ describe('StructureProcessor', () => {
       expect(mockRun.setItalic).toHaveBeenCalledWith(false);
     });
 
-    it('should skip non-italic runs', async () => {
+    it("should skip non-italic runs", async () => {
       const mockRun = createMockFormattedRun(true, false); // bold, not italic
       const mockParagraph = createMockParagraphWithRuns([mockRun]);
       mockDoc.getAllParagraphs.mockReturnValue([mockParagraph]);
@@ -68,8 +71,8 @@ describe('StructureProcessor', () => {
     });
   });
 
-  describe('removeHeadersFooters', () => {
-    it('should remove all headers and footers', async () => {
+  describe("removeHeadersFooters", () => {
+    it("should remove all headers and footers", async () => {
       mockDoc.removeAllHeadersFooters.mockReturnValue(3);
 
       const count = await processor.removeHeadersFooters(mockDoc);
@@ -78,7 +81,7 @@ describe('StructureProcessor', () => {
       expect(mockDoc.removeAllHeadersFooters).toHaveBeenCalled();
     });
 
-    it('should handle documents without headers/footers', async () => {
+    it("should handle documents without headers/footers", async () => {
       mockDoc.removeAllHeadersFooters.mockReturnValue(0);
 
       const count = await processor.removeHeadersFooters(mockDoc);
@@ -87,11 +90,9 @@ describe('StructureProcessor', () => {
     });
   });
 
-  describe('addDocumentWarning', () => {
-    it('should add warning paragraphs to document', async () => {
-      mockDoc.getAllParagraphs.mockReturnValue([
-        createMockTextParagraph('Some content'),
-      ]);
+  describe("addDocumentWarning", () => {
+    it("should add warning paragraphs to document", async () => {
+      mockDoc.getAllParagraphs.mockReturnValue([createMockTextParagraph("Some content")]);
 
       const result = await processor.addDocumentWarning(mockDoc);
 
@@ -99,10 +100,10 @@ describe('StructureProcessor', () => {
       expect(mockDoc.addParagraph).toHaveBeenCalled();
     });
 
-    it('should not add duplicate warning', async () => {
+    it("should not add duplicate warning", async () => {
       mockDoc.getAllParagraphs.mockReturnValue([
-        createMockTextParagraph('Some content'),
-        createMockTextParagraph('This is electronic data and is not to be reproduced'),
+        createMockTextParagraph("Some content"),
+        createMockTextParagraph("This is electronic data and is not to be reproduced"),
       ]);
 
       const result = await processor.addDocumentWarning(mockDoc);
@@ -112,8 +113,8 @@ describe('StructureProcessor', () => {
     });
   });
 
-  describe('isParagraphTrulyEmpty', () => {
-    it('should identify empty paragraphs', () => {
+  describe("isParagraphTrulyEmpty", () => {
+    it("should identify empty paragraphs", () => {
       const mockParagraph = {
         getNumbering: jest.fn().mockReturnValue(null),
         getContent: jest.fn().mockReturnValue([]),
@@ -124,7 +125,7 @@ describe('StructureProcessor', () => {
       expect(isEmpty).toBe(true);
     });
 
-    it('should not mark list items as empty', () => {
+    it("should not mark list items as empty", () => {
       const mockParagraph = {
         getNumbering: jest.fn().mockReturnValue({ level: 0 }),
         getContent: jest.fn().mockReturnValue([]),
@@ -135,7 +136,7 @@ describe('StructureProcessor', () => {
       expect(isEmpty).toBe(false);
     });
 
-    it('should not mark paragraphs with hyperlinks as empty', () => {
+    it("should not mark paragraphs with hyperlinks as empty", () => {
       const mockHyperlink = Object.create(Hyperlink.prototype);
       const mockParagraph = {
         getNumbering: jest.fn().mockReturnValue(null),
@@ -147,7 +148,7 @@ describe('StructureProcessor', () => {
       expect(isEmpty).toBe(false);
     });
 
-    it('should not mark paragraphs with images as empty', () => {
+    it("should not mark paragraphs with images as empty", () => {
       const mockImage = Object.create(Image.prototype);
       const mockParagraph = {
         getNumbering: jest.fn().mockReturnValue(null),
@@ -159,8 +160,8 @@ describe('StructureProcessor', () => {
       expect(isEmpty).toBe(false);
     });
 
-    it('should identify paragraphs with only empty runs as empty', () => {
-      const mockRun = { getText: jest.fn().mockReturnValue('   ') };
+    it("should identify paragraphs with only empty runs as empty", () => {
+      const mockRun = { getText: jest.fn().mockReturnValue("   ") };
       Object.setPrototypeOf(mockRun, Run.prototype);
 
       const mockParagraph = {
@@ -174,19 +175,19 @@ describe('StructureProcessor', () => {
     });
   });
 
-  describe('findNearestHeader2', () => {
-    it('should find nearest Header2 above paragraph', () => {
-      const header2Para = createMockStyledParagraph('Heading2', 'Section Title');
-      const normalPara = createMockStyledParagraph('Normal', 'Content');
+  describe("findNearestHeader2", () => {
+    it("should find nearest Header2 above paragraph", () => {
+      const header2Para = createMockStyledParagraph("Heading2", "Section Title");
+      const normalPara = createMockStyledParagraph("Normal", "Content");
       mockDoc.getAllParagraphs.mockReturnValue([header2Para, normalPara, normalPara]);
 
       const title = processor.findNearestHeader2(mockDoc, 2);
 
-      expect(title).toBe('Section Title');
+      expect(title).toBe("Section Title");
     });
 
-    it('should return null when no Header2 found', () => {
-      const normalPara = createMockStyledParagraph('Normal', 'Content');
+    it("should return null when no Header2 found", () => {
+      const normalPara = createMockStyledParagraph("Normal", "Content");
       mockDoc.getAllParagraphs.mockReturnValue([normalPara, normalPara]);
 
       const title = processor.findNearestHeader2(mockDoc, 1);
@@ -194,14 +195,14 @@ describe('StructureProcessor', () => {
       expect(title).toBeNull();
     });
 
-    it('should handle Heading 2 variant style name', () => {
-      const header2Para = createMockStyledParagraph('Heading 2', 'Section');
-      const normalPara = createMockStyledParagraph('Normal', 'Content');
+    it("should handle Heading 2 variant style name", () => {
+      const header2Para = createMockStyledParagraph("Heading 2", "Section");
+      const normalPara = createMockStyledParagraph("Normal", "Content");
       mockDoc.getAllParagraphs.mockReturnValue([header2Para, normalPara]);
 
       const title = processor.findNearestHeader2(mockDoc, 1);
 
-      expect(title).toBe('Section');
+      expect(title).toBe("Section");
     });
   });
 });
@@ -219,7 +220,7 @@ function createMockRun(text: string): Mocked<Run> {
 
 function createMockFormattedRun(bold: boolean, italic: boolean): Mocked<Run> {
   return {
-    getText: jest.fn().mockReturnValue('Text'),
+    getText: jest.fn().mockReturnValue("Text"),
     setText: jest.fn(),
     getFormatting: jest.fn().mockReturnValue({ bold, italic }),
     setItalic: jest.fn(),
@@ -231,8 +232,8 @@ function createMockParagraphWithRuns(runs: any[]): Mocked<Paragraph> {
     getRuns: jest.fn().mockReturnValue(runs),
     getNumbering: jest.fn().mockReturnValue(null),
     getContent: jest.fn().mockReturnValue(runs),
-    getText: jest.fn().mockReturnValue(''),
-    getStyle: jest.fn().mockReturnValue('Normal'),
+    getText: jest.fn().mockReturnValue(""),
+    getStyle: jest.fn().mockReturnValue("Normal"),
   } as unknown as Mocked<Paragraph>;
 }
 
@@ -242,7 +243,7 @@ function createMockTextParagraph(text: string): Mocked<Paragraph> {
     getNumbering: jest.fn().mockReturnValue(null),
     getContent: jest.fn().mockReturnValue([]),
     getText: jest.fn().mockReturnValue(text),
-    getStyle: jest.fn().mockReturnValue('Normal'),
+    getStyle: jest.fn().mockReturnValue("Normal"),
   } as unknown as Mocked<Paragraph>;
 }
 

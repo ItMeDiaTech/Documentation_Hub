@@ -55,7 +55,7 @@ TOC shows placeholder text: "Right-click to update field" instead of actual head
 
 ```typescript
 if (options.operations?.updateTocHyperlinks) {
-  this.log.debug('=== GENERATING/UPDATING TABLE OF CONTENTS ===');
+  this.log.debug("=== GENERATING/UPDATING TABLE OF CONTENTS ===");
   const tocCount = await doc.replaceTableOfContents(filePath);
   this.log.info(`✓ Replaced ${tocCount} Table of Contents element(s)`);
 }
@@ -141,7 +141,7 @@ The `standardizeHyperlinkFormatting()` method runs AUTOMATICALLY (line 615-617):
 
 ```typescript
 // ALWAYS standardize hyperlink formatting to ensure consistency
-this.log.debug('=== STANDARDIZING HYPERLINK FORMATTING (AUTOMATIC) ===');
+this.log.debug("=== STANDARDIZING HYPERLINK FORMATTING (AUTOMATIC) ===");
 const hyperlinksStandardized = await this.standardizeHyperlinkFormatting(doc);
 ```
 
@@ -215,16 +215,16 @@ The Hyperlink style doesn't specify a font, so it inherits from document default
 
 ```typescript
 // After line 645, before applyHyperlink()
-this.log.debug('=== UPDATING HYPERLINK STYLE DEFINITION ===');
+this.log.debug("=== UPDATING HYPERLINK STYLE DEFINITION ===");
 const hyperlinkStyle = Style.create({
-  styleId: 'Hyperlink',
-  name: 'Hyperlink',
-  type: 'character',
+  styleId: "Hyperlink",
+  name: "Hyperlink",
+  type: "character",
   runFormatting: {
-    font: 'Verdana',
+    font: "Verdana",
     size: 12,
-    color: '0000FF',
-    underline: 'single',
+    color: "0000FF",
+    underline: "single",
   },
 });
 doc.addStyle(hyperlinkStyle); // Updates existing or creates new
@@ -304,13 +304,13 @@ The code DOES attempt to update ALL abstractNum definitions:
 
 ```typescript
 // FIX: Update ALL existing abstractNum definitions to use user's bullet symbols
-this.log.debug('Updating existing abstractNum bullet lists...');
+this.log.debug("Updating existing abstractNum bullet lists...");
 const abstractNums = manager.getAllAbstractNumberings();
 
 for (const abstractNum of abstractNums) {
   for (let i = 0; i < bullets.length; i++) {
     const level = abstractNum.getLevel(i);
-    if (level && level.getFormat() === 'bullet') {
+    if (level && level.getFormat() === "bullet") {
       const oldSymbol = level.getProperties().text;
       const newSymbol = bullets[i];
 
@@ -335,7 +335,7 @@ Looking at the user's bullet configuration in `applyBulletUniformity()`:
 
 ```typescript
 const bullets = settings.indentationLevels.map(
-  (levelConfig) => levelConfig.bulletChar || '\u2022' // Default: ●
+  (levelConfig) => levelConfig.bulletChar || "\u2022" // Default: ●
 );
 ```
 
@@ -353,9 +353,9 @@ Add detailed logging to see what's happening:
 
 ```typescript
 // In applyBulletUniformity(), before updating abstractNums
-this.log.debug('User bullet configuration:');
+this.log.debug("User bullet configuration:");
 settings.indentationLevels.forEach((level, idx) => {
-  const char = level.bulletChar || '●';
+  const char = level.bulletChar || "●";
   const code = char.charCodeAt(0).toString(16);
   this.log.debug(`  Level ${idx}: "${char}" (U+${code})`);
 });
@@ -368,7 +368,7 @@ for (let i = 0; i < bullets.length; i++) {
     const oldSymbol = level.getProperties().text;
     this.log.debug(`  Level ${i}: format="${format}", current="${oldSymbol}"`);
 
-    if (format === 'bullet' && oldSymbol !== bullets[i]) {
+    if (format === "bullet" && oldSymbol !== bullets[i]) {
       this.log.debug(`    → Updating to "${bullets[i]}"`);
       level.setText(bullets[i]);
     }
@@ -401,7 +401,7 @@ If detection is failing, force update ALL levels regardless of current symbol:
 // Replace the if condition
 for (let i = 0; i < bullets.length; i++) {
   const level = abstractNum.getLevel(i);
-  if (level && level.getFormat() === 'bullet') {
+  if (level && level.getFormat() === "bullet") {
     // FORCE update - ignore current symbol
     level.setText(bullets[i]);
     this.log.debug(`Forced level ${i} to "${bullets[i]}"`);
@@ -435,7 +435,7 @@ Blank paragraphs inserted after 1x1 tables have **Heading2 style** instead of **
 
 ```typescript
 if (options.preserveBlankLinesAfterHeader2Tables) {
-  this.log.debug('=== ENSURING BLANK LINES AFTER 1x1 TABLES ===');
+  this.log.debug("=== ENSURING BLANK LINES AFTER 1x1 TABLES ===");
 
   const result = doc.ensureBlankLinesAfter1x1Tables({
     spacingAfter: 120,
@@ -465,8 +465,8 @@ Looking at manual blank line creation elsewhere in the code (line 779):
 
 ```typescript
 // In preserveBlankLinesAfterAllTables
-const blankPara = doc.createParagraph('');
-blankPara.setStyle('Normal'); // ✅ Explicitly sets Normal style
+const blankPara = doc.createParagraph("");
+blankPara.setStyle("Normal"); // ✅ Explicitly sets Normal style
 blankPara.setPreserved(true);
 blankPara.setSpaceAfter(120);
 ```

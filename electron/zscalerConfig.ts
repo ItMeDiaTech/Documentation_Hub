@@ -1,13 +1,13 @@
-import { app } from 'electron';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { logger } from '../src/utils/logger';
+import { app } from "electron";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import { exec } from "child_process";
+import { promisify } from "util";
+import { logger } from "../src/utils/logger";
 
 const execAsync = promisify(exec);
-const log = logger.namespace('ZscalerConfig');
+const log = logger.namespace("ZscalerConfig");
 
 /**
  * Zscaler-specific configuration for handling SSL inspection
@@ -29,38 +29,57 @@ export class ZscalerConfig {
     const homeDir = os.homedir();
     const paths: string[] = [];
 
-    if (process.platform === 'win32') {
+    if (process.platform === "win32") {
       paths.push(
         // Common Zscaler certificate locations on Windows
-        path.join('C:', 'Zscaler', 'ZscalerRootCertificate.crt'),
-        path.join('C:', 'Zscaler', 'ZscalerRootCertificate.pem'),
-        path.join('C:', 'Program Files', 'Zscaler', 'ZSAInstaller', 'ZscalerRootCertificate.crt'),
-        path.join('C:', 'Program Files (x86)', 'Zscaler', 'ZSAInstaller', 'ZscalerRootCertificate.crt'),
-        path.join(homeDir, 'AppData', 'Local', 'Zscaler', 'ZscalerRootCertificate.crt'),
-        path.join(homeDir, 'AppData', 'Local', 'Zscaler', 'ZscalerRootCertificate.pem'),
+        path.join("C:", "Zscaler", "ZscalerRootCertificate.crt"),
+        path.join("C:", "Zscaler", "ZscalerRootCertificate.pem"),
+        path.join("C:", "Program Files", "Zscaler", "ZSAInstaller", "ZscalerRootCertificate.crt"),
+        path.join(
+          "C:",
+          "Program Files (x86)",
+          "Zscaler",
+          "ZSAInstaller",
+          "ZscalerRootCertificate.crt"
+        ),
+        path.join(homeDir, "AppData", "Local", "Zscaler", "ZscalerRootCertificate.crt"),
+        path.join(homeDir, "AppData", "Local", "Zscaler", "ZscalerRootCertificate.pem"),
         // Sometimes IT departments place it here
-        path.join(homeDir, '.zscaler', 'cert.pem'),
-        path.join(homeDir, '.zscaler', 'ZscalerRootCA.pem'),
-        path.join(homeDir, 'zscaler.pem'),
-        path.join(homeDir, 'zscaler-cert.pem'),
+        path.join(homeDir, ".zscaler", "cert.pem"),
+        path.join(homeDir, ".zscaler", "ZscalerRootCA.pem"),
+        path.join(homeDir, "zscaler.pem"),
+        path.join(homeDir, "zscaler-cert.pem"),
         // Corporate standard locations
-        path.join('C:', 'certs', 'ZscalerRootCA.pem'),
-        path.join('C:', 'certificates', 'zscaler.pem')
+        path.join("C:", "certs", "ZscalerRootCA.pem"),
+        path.join("C:", "certificates", "zscaler.pem")
       );
-    } else if (process.platform === 'darwin') {
+    } else if (process.platform === "darwin") {
       paths.push(
         // macOS locations
-        path.join('/Library', 'Application Support', 'Zscaler', 'cert', 'ZscalerRootCertificate.pem'),
-        path.join(homeDir, 'Library', 'Application Support', 'Zscaler', 'cert', 'ZscalerRootCertificate.pem'),
-        path.join(homeDir, '.zscaler', 'cert.pem'),
-        path.join('/usr/local/share/ca-certificates', 'Zscaler_Root_CA.crt')
+        path.join(
+          "/Library",
+          "Application Support",
+          "Zscaler",
+          "cert",
+          "ZscalerRootCertificate.pem"
+        ),
+        path.join(
+          homeDir,
+          "Library",
+          "Application Support",
+          "Zscaler",
+          "cert",
+          "ZscalerRootCertificate.pem"
+        ),
+        path.join(homeDir, ".zscaler", "cert.pem"),
+        path.join("/usr/local/share/ca-certificates", "Zscaler_Root_CA.crt")
       );
     } else {
       // Linux
       paths.push(
-        path.join('/usr/local/share/ca-certificates', 'Zscaler_Root_CA.crt'),
-        path.join('/etc/ssl/certs', 'Zscaler_Root_CA.pem'),
-        path.join(homeDir, '.zscaler', 'cert.pem')
+        path.join("/usr/local/share/ca-certificates", "Zscaler_Root_CA.crt"),
+        path.join("/etc/ssl/certs", "Zscaler_Root_CA.pem"),
+        path.join(homeDir, ".zscaler", "cert.pem")
       );
     }
 
@@ -77,15 +96,15 @@ export class ZscalerConfig {
    * Detect if Zscaler is present and find its certificate
    */
   private async detectZscaler(): Promise<void> {
-    log.info('[ZscalerConfig] Detecting Zscaler presence...');
+    log.info("[ZscalerConfig] Detecting Zscaler presence...");
 
     // Check environment variables that indicate Zscaler
     const zscalerEnvVars = [
-      'ZSCALER_CERT_PATH',
-      'ZSCALER_CERT',
-      'ZSCALER_BYPASS',
-      'ZS_SDK_HOME',
-      'ZAPP_HOME'
+      "ZSCALER_CERT_PATH",
+      "ZSCALER_CERT",
+      "ZSCALER_BYPASS",
+      "ZS_SDK_HOME",
+      "ZAPP_HOME",
     ];
 
     for (const envVar of zscalerEnvVars) {
@@ -97,11 +116,11 @@ export class ZscalerConfig {
     }
 
     // Check for Zscaler processes (Windows)
-    if (process.platform === 'win32') {
+    if (process.platform === "win32") {
       try {
         const { stdout } = await execAsync('tasklist /FI "IMAGENAME eq ZSATunnel.exe"');
-        if (stdout.includes('ZSATunnel.exe')) {
-          log.info('[ZscalerConfig] Detected Zscaler process running');
+        if (stdout.includes("ZSATunnel.exe")) {
+          log.info("[ZscalerConfig] Detected Zscaler process running");
           this.isZscalerDetected = true;
         }
       } catch (error) {
@@ -114,7 +133,7 @@ export class ZscalerConfig {
           'reg query "HKLM\\SOFTWARE\\Zscaler" 2>nul || reg query "HKCU\\SOFTWARE\\Zscaler" 2>nul'
         );
         if (regOutput && regOutput.length > 0) {
-          log.info('[ZscalerConfig] Detected Zscaler in Windows registry');
+          log.info("[ZscalerConfig] Detected Zscaler in Windows registry");
           this.isZscalerDetected = true;
         }
       } catch {
@@ -132,21 +151,23 @@ export class ZscalerConfig {
 
         // Read certificate content
         try {
-          this.certificateContent = fs.readFileSync(certPath, 'utf8');
-          log.info('[ZscalerConfig] Successfully loaded Zscaler certificate from disk');
+          this.certificateContent = fs.readFileSync(certPath, "utf8");
+          log.info("[ZscalerConfig] Successfully loaded Zscaler certificate from disk");
         } catch (error) {
-          log.error('[ZscalerConfig] Failed to read certificate:', error);
+          log.error("[ZscalerConfig] Failed to read certificate:", error);
         }
         break;
       }
     }
 
     // NEW: If no certificate found on disk, try Windows Certificate Store
-    if (!this.zscalerCertPath && process.platform === 'win32') {
-      log.info('[ZscalerConfig] No certificate found on disk, checking Windows Certificate Store...');
+    if (!this.zscalerCertPath && process.platform === "win32") {
+      log.info(
+        "[ZscalerConfig] No certificate found on disk, checking Windows Certificate Store..."
+      );
       try {
         // Dynamically import windowsCertStore to avoid static import warning
-        const { windowsCertStore } = await import('./windowsCertStore');
+        const { windowsCertStore } = await import("./windowsCertStore");
         const certFromStore = await windowsCertStore.findZscalerCertificate();
         if (certFromStore) {
           log.info(` Found Zscaler certificate in Windows store: ${certFromStore}`);
@@ -155,12 +176,12 @@ export class ZscalerConfig {
 
           // Read the exported certificate
           if (fs.existsSync(certFromStore)) {
-            this.certificateContent = fs.readFileSync(certFromStore, 'utf8');
-            log.info('[ZscalerConfig] Successfully loaded certificate from Windows store');
+            this.certificateContent = fs.readFileSync(certFromStore, "utf8");
+            log.info("[ZscalerConfig] Successfully loaded certificate from Windows store");
           }
         }
       } catch (error) {
-        log.error('[ZscalerConfig] Error accessing Windows Certificate Store:', error);
+        log.error("[ZscalerConfig] Error accessing Windows Certificate Store:", error);
       }
     }
 
@@ -170,9 +191,9 @@ export class ZscalerConfig {
       // Check if it points to a Zscaler cert
       const certPath = process.env.NODE_EXTRA_CA_CERTS;
       if (fs.existsSync(certPath)) {
-        const content = fs.readFileSync(certPath, 'utf8');
-        if (content.includes('Zscaler') || content.includes('ZSCALER')) {
-          log.info('[ZscalerConfig] NODE_EXTRA_CA_CERTS points to Zscaler certificate');
+        const content = fs.readFileSync(certPath, "utf8");
+        if (content.includes("Zscaler") || content.includes("ZSCALER")) {
+          log.info("[ZscalerConfig] NODE_EXTRA_CA_CERTS points to Zscaler certificate");
           this.isZscalerDetected = true;
           this.zscalerCertPath = certPath;
           this.certificateContent = content;
@@ -181,9 +202,9 @@ export class ZscalerConfig {
     }
 
     if (this.isZscalerDetected) {
-      log.info('[ZscalerConfig] Zscaler detected - special handling will be applied');
+      log.info("[ZscalerConfig] Zscaler detected - special handling will be applied");
     } else {
-      log.info('[ZscalerConfig] Zscaler not detected');
+      log.info("[ZscalerConfig] Zscaler not detected");
     }
   }
 
@@ -192,11 +213,11 @@ export class ZscalerConfig {
    */
   public configureApp(): void {
     if (!this.isZscalerDetected) {
-      log.info('[ZscalerConfig] Zscaler not detected, skipping configuration');
+      log.info("[ZscalerConfig] Zscaler not detected, skipping configuration");
       return;
     }
 
-    log.info('[ZscalerConfig] Configuring app for Zscaler...');
+    log.info("[ZscalerConfig] Configuring app for Zscaler...");
 
     // Set NODE_EXTRA_CA_CERTS if we found a certificate
     if (this.zscalerCertPath && !process.env.NODE_EXTRA_CA_CERTS) {
@@ -205,18 +226,18 @@ export class ZscalerConfig {
     }
 
     // Configure Chromium to be more lenient with certificates
-    app.commandLine.appendSwitch('ignore-certificate-errors-spki-list', 'base64-encoded-spki');
+    app.commandLine.appendSwitch("ignore-certificate-errors-spki-list", "base64-encoded-spki");
 
     // Allow insecure connections to GitHub (Zscaler often causes issues with GitHub)
-    app.commandLine.appendSwitch('allow-insecure-localhost');
+    app.commandLine.appendSwitch("allow-insecure-localhost");
 
     // Disable certificate transparency checks (Zscaler certificates often fail these)
-    app.commandLine.appendSwitch('disable-features', 'CertificateTransparencyEnforcement');
+    app.commandLine.appendSwitch("disable-features", "CertificateTransparencyEnforcement");
 
     // Set Zscaler bypass flag
     if (!process.env.ZSCALER_BYPASS) {
-      process.env.ZSCALER_BYPASS = 'true';
-      log.info('[ZscalerConfig] Set ZSCALER_BYPASS flag');
+      process.env.ZSCALER_BYPASS = "true";
+      log.info("[ZscalerConfig] Set ZSCALER_BYPASS flag");
     }
   }
 
@@ -230,41 +251,41 @@ export class ZscalerConfig {
 
     const headers: Record<string, string> = {
       // Zscaler-specific bypass headers
-      'X-Zscaler-Bypass': 'true',
-      'X-Zscaler-Bypass-Inspection': 'true',
-      'X-BlueCoat-Via': 'bypass',
-      'X-Forwarded-For': '127.0.0.1',
-      'X-Real-IP': '127.0.0.1',
+      "X-Zscaler-Bypass": "true",
+      "X-Zscaler-Bypass-Inspection": "true",
+      "X-BlueCoat-Via": "bypass",
+      "X-Forwarded-For": "127.0.0.1",
+      "X-Real-IP": "127.0.0.1",
 
       // Mutual TLS authentication headers (for MSDTC/EAP-TLS)
-      'X-MS-CertAuth': 'true',
-      'X-ARR-ClientCert': 'required',
-      'X-SSL-Client-Verify': 'SUCCESS',
+      "X-MS-CertAuth": "true",
+      "X-ARR-ClientCert": "required",
+      "X-SSL-Client-Verify": "SUCCESS",
 
       // Corporate proxy bypass headers
-      'X-Corporate-Bypass': 'software-update',
-      'X-Update-Agent': 'DocumentationHub',
+      "X-Corporate-Bypass": "software-update",
+      "X-Update-Agent": "DocumentationHub",
 
       // GitHub-specific headers that might be whitelisted
-      'X-GitHub-Request-Id': `dochub-${Date.now()}`,
-      'X-GitHub-Media-Type': 'github.v3',
+      "X-GitHub-Request-Id": `dochub-${Date.now()}`,
+      "X-GitHub-Media-Type": "github.v3",
 
       // Some Zscaler configurations respect npm/package manager user agents
-      'User-Agent': `npm/8.0.0 node/${process.version} ${process.platform} ${process.arch} DocumentationHub/${app.getVersion()}`
+      "User-Agent": `npm/8.0.0 node/${process.version} ${process.platform} ${process.arch} DocumentationHub/${app.getVersion()}`,
     };
 
     // If we have a Zscaler API token (from environment), add it
     const zscalerToken = process.env.ZSCALER_API_TOKEN || process.env.ZS_API_TOKEN;
     if (zscalerToken) {
-      headers['X-Zscaler-API-Token'] = zscalerToken;
-      log.info('[ZscalerConfig] Added Zscaler API token to bypass headers');
+      headers["X-Zscaler-API-Token"] = zscalerToken;
+      log.info("[ZscalerConfig] Added Zscaler API token to bypass headers");
     }
 
     // If we have a bypass code from IT department
     const bypassCode = process.env.ZSCALER_BYPASS_CODE || process.env.CORPORATE_BYPASS_CODE;
     if (bypassCode) {
-      headers['X-Bypass-Code'] = bypassCode;
-      log.info('[ZscalerConfig] Added corporate bypass code to headers');
+      headers["X-Bypass-Code"] = bypassCode;
+      log.info("[ZscalerConfig] Added corporate bypass code to headers");
     }
 
     return headers;
@@ -276,24 +297,24 @@ export class ZscalerConfig {
   public isZscalerError(error: any): boolean {
     if (!error) return false;
 
-    const errorMessage = error.message?.toLowerCase() || '';
-    const errorCode = error.code || '';
+    const errorMessage = error.message?.toLowerCase() || "";
+    const errorCode = error.code || "";
 
     const zscalerIndicators = [
-      'zscaler',
-      'unable to get local issuer certificate',
-      'self signed certificate in certificate chain',
-      'unable_to_get_issuer_cert_locally',
-      'self_signed_cert_in_chain',
-      'depth zero self signed cert',
-      'certificate verify failed',
+      "zscaler",
+      "unable to get local issuer certificate",
+      "self signed certificate in certificate chain",
+      "unable_to_get_issuer_cert_locally",
+      "self_signed_cert_in_chain",
+      "depth zero self signed cert",
+      "certificate verify failed",
       // Common with Zscaler
-      'err_cert_authority_invalid',
-      'err_cert_common_name_invalid'
+      "err_cert_authority_invalid",
+      "err_cert_common_name_invalid",
     ];
 
-    return zscalerIndicators.some(indicator =>
-      errorMessage.includes(indicator) || errorCode.toLowerCase().includes(indicator)
+    return zscalerIndicators.some(
+      (indicator) => errorMessage.includes(indicator) || errorCode.toLowerCase().includes(indicator)
     );
   }
 
@@ -327,31 +348,31 @@ export class ZscalerConfig {
     }
 
     try {
-      const tempDir = app.getPath('temp');
-      const bundlePath = path.join(tempDir, 'zscaler-cert-bundle.pem');
+      const tempDir = app.getPath("temp");
+      const bundlePath = path.join(tempDir, "zscaler-cert-bundle.pem");
 
       // Get system certificates if available
-      let systemCerts = '';
-      if (process.platform === 'win32') {
+      let systemCerts = "";
+      if (process.platform === "win32") {
         // On Windows, we might need to export system certs
         try {
-          const { stdout } = await execAsync('certutil -store -silent Root');
+          const { stdout } = await execAsync("certutil -store -silent Root");
           // This would need more processing to extract actual certificates
-          log.info('[ZscalerConfig] System certificates available');
+          log.info("[ZscalerConfig] System certificates available");
         } catch (e) {
           // Ignore
         }
       }
 
       // Combine certificates
-      const bundle = this.certificateContent + '\n' + systemCerts;
+      const bundle = this.certificateContent + "\n" + systemCerts;
       // PEM files are text files, use UTF-8 encoding
-      fs.writeFileSync(bundlePath, bundle, 'utf-8');
+      fs.writeFileSync(bundlePath, bundle, "utf-8");
 
       log.info(` Created certificate bundle at: ${bundlePath}`);
       return bundlePath;
     } catch (error) {
-      log.error('[ZscalerConfig] Failed to create certificate bundle:', error);
+      log.error("[ZscalerConfig] Failed to create certificate bundle:", error);
       return null;
     }
   }
@@ -360,19 +381,19 @@ export class ZscalerConfig {
    * Log Zscaler configuration for debugging
    */
   public logConfiguration(): void {
-    log.info('[ZscalerConfig] Configuration Summary:');
+    log.info("[ZscalerConfig] Configuration Summary:");
     log.info(`  - Zscaler Detected: ${this.isZscalerDetected}`);
-    log.info(`  - Certificate Path: ${this.zscalerCertPath || 'Not found'}`);
-    log.info(`  - Certificate Loaded: ${this.certificateContent ? 'Yes' : 'No'}`);
-    log.info(`  - NODE_EXTRA_CA_CERTS: ${process.env.NODE_EXTRA_CA_CERTS || 'Not set'}`);
-    log.info(`  - ZSCALER_BYPASS: ${process.env.ZSCALER_BYPASS || 'Not set'}`);
+    log.info(`  - Certificate Path: ${this.zscalerCertPath || "Not found"}`);
+    log.info(`  - Certificate Loaded: ${this.certificateContent ? "Yes" : "No"}`);
+    log.info(`  - NODE_EXTRA_CA_CERTS: ${process.env.NODE_EXTRA_CA_CERTS || "Not set"}`);
+    log.info(`  - ZSCALER_BYPASS: ${process.env.ZSCALER_BYPASS || "Not set"}`);
 
     if (this.isZscalerDetected && !this.zscalerCertPath) {
-      log.info('[ZscalerConfig] WARNING: Zscaler detected but certificate not found!');
-      log.info('[ZscalerConfig] You may need to:');
-      log.info('  1. Export Zscaler certificate from your browser');
-      log.info('  2. Save it as C:\\Zscaler\\ZscalerRootCertificate.pem');
-      log.info('  3. Or set ZSCALER_CERT_PATH environment variable');
+      log.info("[ZscalerConfig] WARNING: Zscaler detected but certificate not found!");
+      log.info("[ZscalerConfig] You may need to:");
+      log.info("  1. Export Zscaler certificate from your browser");
+      log.info("  2. Save it as C:\\Zscaler\\ZscalerRootCertificate.pem");
+      log.info("  3. Or set ZSCALER_CERT_PATH environment variable");
     }
   }
 }

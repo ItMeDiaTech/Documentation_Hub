@@ -4,14 +4,14 @@
  * Provides visual feedback during context provider initialization
  */
 
-import { motion } from 'framer-motion';
-import { Loader2 } from 'lucide-react';
+import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 
 interface SplashScreenProps {
   message?: string;
 }
 
-export function SplashScreen({ message = 'Initializing Documentation Hub...' }: SplashScreenProps) {
+export function SplashScreen({ message = "Initializing Documentation Hub..." }: SplashScreenProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
       <motion.div
@@ -28,7 +28,7 @@ export function SplashScreen({ message = 'Initializing Documentation Hub...' }: 
           transition={{
             duration: 2,
             repeat: Infinity,
-            ease: 'easeInOut',
+            ease: "easeInOut",
           }}
           className="text-4xl font-bold text-primary"
         >
@@ -41,7 +41,7 @@ export function SplashScreen({ message = 'Initializing Documentation Hub...' }: 
           transition={{
             duration: 1,
             repeat: Infinity,
-            ease: 'linear',
+            ease: "linear",
           }}
         >
           <Loader2 className="h-12 w-12 text-primary" />

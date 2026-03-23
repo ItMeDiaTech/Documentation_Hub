@@ -1,11 +1,11 @@
-import { memo, useCallback, CSSProperties } from 'react';
+import { memo, useCallback, CSSProperties } from "react";
 // @ts-ignore - react-window exports these despite TypeScript not recognizing them
-import { FixedSizeList as List } from 'react-window';
-import { motion } from 'framer-motion';
-import { FolderOpen, FileText, Clock, CheckCircle, AlertCircle } from 'lucide-react';
-import { Session } from '@/types/session';
-import { cn } from '@/utils/cn';
-import { useNavigate } from 'react-router-dom';
+import { FixedSizeList as List } from "react-window";
+import { motion } from "framer-motion";
+import { FolderOpen, FileText, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { Session } from "@/types/session";
+import { cn } from "@/utils/cn";
+import { useNavigate } from "react-router-dom";
 
 interface VirtualSessionListProps {
   sessions: Session[];
@@ -42,9 +42,9 @@ const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
 
   const getStatusIcon = () => {
     switch (session.status) {
-      case 'active':
+      case "active":
         return <FolderOpen className="w-4 h-4 text-primary" />;
-      case 'closed':
+      case "closed":
         return <CheckCircle className="w-4 h-4 text-muted-foreground" />;
       default:
         return <Clock className="w-4 h-4 text-muted-foreground" />;
@@ -52,7 +52,7 @@ const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
   };
 
   const documentCount = session.documents?.length || 0;
-  const processedCount = session.documents?.filter((d) => d.status === 'completed').length || 0;
+  const processedCount = session.documents?.filter((d) => d.status === "completed").length || 0;
 
   return (
     <div style={style}>
@@ -61,10 +61,10 @@ const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
         whileTap={{ scale: 0.99 }}
         onClick={handleClick}
         className={cn(
-          'mx-2 p-4 rounded-lg border cursor-pointer transition-all',
-          'hover:shadow-md hover:border-primary/30',
-          isSelected && 'border-primary bg-primary/5',
-          !isSelected && 'border-border bg-card'
+          "mx-2 p-4 rounded-lg border cursor-pointer transition-all",
+          "hover:shadow-md hover:border-primary/30",
+          isSelected && "border-primary bg-primary/5",
+          !isSelected && "border-border bg-card"
         )}
       >
         <div className="flex items-start justify-between">
@@ -72,7 +72,7 @@ const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
             <div className="flex items-center gap-2">
               {getStatusIcon()}
               <h3 className="font-semibold text-sm">{session.name}</h3>
-              {session.status === 'active' && (
+              {session.status === "active" && (
                 <span className="px-2 py-0.5 text-xs bg-primary/10 text-primary rounded-full">
                   Active
                 </span>
@@ -120,7 +120,7 @@ const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
   );
 });
 
-SessionRow.displayName = 'SessionRow';
+SessionRow.displayName = "SessionRow";
 
 /**
  * Virtual scrolling session list component

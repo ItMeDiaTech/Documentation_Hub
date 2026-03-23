@@ -1,11 +1,11 @@
-import { logger } from './logger';
+import { logger } from "./logger";
 
 /**
  * Path Security Utilities
  * Provides comprehensive path validation to prevent directory traversal attacks
  */
 
-const log = logger.namespace('PathSecurity');
+const log = logger.namespace("PathSecurity");
 
 /**
  * Validates that a file path is safe and doesn't contain traversal attempts
@@ -14,14 +14,14 @@ const log = logger.namespace('PathSecurity');
  * @returns true if path is safe, false otherwise
  */
 export function isPathSafe(filePath: string, allowedExtensions?: string[]): boolean {
-  if (!filePath || typeof filePath !== 'string') {
-    log.warn('Invalid path: empty or not a string');
+  if (!filePath || typeof filePath !== "string") {
+    log.warn("Invalid path: empty or not a string");
     return false;
   }
 
   // Check for null bytes (poison null byte attack)
-  if (filePath.includes('\0')) {
-    log.error('Security: Path contains null byte', filePath);
+  if (filePath.includes("\0")) {
+    log.error("Security: Path contains null byte", filePath);
     return false;
   }
 
@@ -31,13 +31,13 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
   // IMPORTANT: Match only when ".." is surrounded by path separators to avoid false positives
   // For example, "DiaTech" should NOT trigger (contains "..") but "C:/Users/../Admin" should
   const traversalPatterns = [
-    '/../', // Unix-style parent directory traversal
-    '\\..\\', // Windows-style parent directory traversal
-    '%2e%2e%2f', // URL-encoded traversal
-    '%2e%2e%5c',
-    '%252e%252e',
-    '%c0%ae%c0%ae',
-    '0x2e0x2e',
+    "/../", // Unix-style parent directory traversal
+    "\\..\\", // Windows-style parent directory traversal
+    "%2e%2e%2f", // URL-encoded traversal
+    "%2e%2e%5c",
+    "%252e%252e",
+    "%c0%ae%c0%ae",
+    "0x2e0x2e",
   ];
 
   const lowerPath = filePath.toLowerCase();
@@ -45,31 +45,31 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
   // Check for patterns that are clearly traversal attempts
   for (const pattern of traversalPatterns) {
     if (lowerPath.includes(pattern)) {
-      log.error('Security: Path contains traversal pattern', { path: filePath, pattern });
+      log.error("Security: Path contains traversal pattern", { path: filePath, pattern });
       return false;
     }
   }
 
   // Check for leading traversal attempts (must be at start or after separator)
-  if (lowerPath.startsWith('../') || lowerPath.startsWith('..\\')) {
-    log.error('Security: Path starts with parent directory traversal', filePath);
+  if (lowerPath.startsWith("../") || lowerPath.startsWith("..\\")) {
+    log.error("Security: Path starts with parent directory traversal", filePath);
     return false;
   }
 
   // Check for trailing traversal attempts (must be at end or before separator)
-  if (lowerPath.endsWith('/..') || lowerPath.endsWith('\\..')) {
-    log.error('Security: Path ends with parent directory traversal', filePath);
+  if (lowerPath.endsWith("/..") || lowerPath.endsWith("\\..")) {
+    log.error("Security: Path ends with parent directory traversal", filePath);
     return false;
   }
 
   // Check for absolute path indicators on different platforms
   const isAbsolute =
-    filePath.startsWith('/') || // Unix absolute
-    filePath.startsWith('\\') || // Windows UNC
+    filePath.startsWith("/") || // Unix absolute
+    filePath.startsWith("\\") || // Windows UNC
     /^[a-zA-Z]:[\\/]/.test(filePath); // Windows drive letter
 
   if (!isAbsolute) {
-    log.warn('Security: Path is not absolute', filePath);
+    log.warn("Security: Path is not absolute", filePath);
     return false;
   }
 
@@ -80,7 +80,7 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
     );
 
     if (!hasValidExtension) {
-      log.error('Security: File extension not allowed', {
+      log.error("Security: File extension not allowed", {
         path: filePath,
         allowedExtensions,
       });
@@ -90,19 +90,19 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
 
   // Check for suspicious double extensions that might bypass filters
   const suspiciousDoubleExtensions = [
-    '.docx.exe',
-    '.docx.scr',
-    '.docx.bat',
-    '.docx.cmd',
-    '.docx.com',
-    '.docx.pif',
-    '.docx.vbs',
-    '.docx.js',
+    ".docx.exe",
+    ".docx.scr",
+    ".docx.bat",
+    ".docx.cmd",
+    ".docx.com",
+    ".docx.pif",
+    ".docx.vbs",
+    ".docx.js",
   ];
 
   for (const ext of suspiciousDoubleExtensions) {
     if (lowerPath.endsWith(ext)) {
-      log.error('Security: Suspicious double extension detected', {
+      log.error("Security: Suspicious double extension detected", {
         path: filePath,
         extension: ext,
       });
@@ -112,54 +112,54 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
 
   // Check path length (Windows has 260 char limit by default)
   if (filePath.length > 260) {
-    log.warn('Path exceeds maximum length (260 characters)', filePath.length);
+    log.warn("Path exceeds maximum length (260 characters)", filePath.length);
     // This is a warning not error as some systems support longer paths
   }
 
   // Check for special Windows device names
   const windowsDeviceNames = [
-    'CON',
-    'PRN',
-    'AUX',
-    'NUL',
-    'COM1',
-    'COM2',
-    'COM3',
-    'COM4',
-    'COM5',
-    'COM6',
-    'COM7',
-    'COM8',
-    'COM9',
-    'LPT1',
-    'LPT2',
-    'LPT3',
-    'LPT4',
-    'LPT5',
-    'LPT6',
-    'LPT7',
-    'LPT8',
-    'LPT9',
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "COM1",
+    "COM2",
+    "COM3",
+    "COM4",
+    "COM5",
+    "COM6",
+    "COM7",
+    "COM8",
+    "COM9",
+    "LPT1",
+    "LPT2",
+    "LPT3",
+    "LPT4",
+    "LPT5",
+    "LPT6",
+    "LPT7",
+    "LPT8",
+    "LPT9",
   ];
 
-  const fileName = filePath.split(/[\\/]/).pop()?.split('.')[0]?.toUpperCase();
+  const fileName = filePath.split(/[\\/]/).pop()?.split(".")[0]?.toUpperCase();
   if (fileName && windowsDeviceNames.includes(fileName)) {
-    log.error('Security: Windows device name detected', { path: filePath, deviceName: fileName });
+    log.error("Security: Windows device name detected", { path: filePath, deviceName: fileName });
     return false;
   }
 
   // Check for URL protocols that shouldn't be in file paths
-  const dangerousProtocols = ['file://', 'http://', 'https://', 'ftp://', 'javascript:', 'data:'];
+  const dangerousProtocols = ["file://", "http://", "https://", "ftp://", "javascript:", "data:"];
 
   for (const protocol of dangerousProtocols) {
     if (lowerPath.includes(protocol)) {
-      log.error('Security: URL protocol in file path', { path: filePath, protocol });
+      log.error("Security: URL protocol in file path", { path: filePath, protocol });
       return false;
     }
   }
 
   // All checks passed
-  log.debug('Path validation passed', filePath);
+  log.debug("Path validation passed", filePath);
   return true;
 }
 
@@ -191,11 +191,11 @@ export function isPathWithinAllowed(filePath: string, allowedPaths: string[]): b
   }
 
   // Normalize the file path for comparison
-  const normalizedFilePath = filePath.replace(/\\/g, '/').toLowerCase();
+  const normalizedFilePath = filePath.replace(/\\/g, "/").toLowerCase();
 
   // Check if file path starts with any allowed path
   return allowedPaths.some((allowed) => {
-    const normalizedAllowed = allowed.replace(/\\/g, '/').toLowerCase();
+    const normalizedAllowed = allowed.replace(/\\/g, "/").toLowerCase();
     return normalizedFilePath.startsWith(normalizedAllowed);
   });
 }
@@ -222,7 +222,7 @@ export function validateBatchPaths(
     } else {
       invalid.push({
         path,
-        reason: 'Failed security validation',
+        reason: "Failed security validation",
       });
     }
   }

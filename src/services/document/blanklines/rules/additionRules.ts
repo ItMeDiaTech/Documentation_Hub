@@ -10,8 +10,18 @@
 
 import { Paragraph, Table, ImageRun } from "docxmlater";
 import type { BlankLineRule, RuleContext } from "./ruleTypes";
-import { isParagraphBlank, isTocParagraph, startsWithBoldColon, getEffectiveLeftIndent, hasNavigationHyperlink } from "../helpers/paragraphChecks";
-import { getImageRunFromParagraph, isImageSmall, isSmallImageParagraph } from "../helpers/imageChecks";
+import {
+  isParagraphBlank,
+  isTocParagraph,
+  startsWithBoldColon,
+  getEffectiveLeftIndent,
+  hasNavigationHyperlink,
+} from "../helpers/paragraphChecks";
+import {
+  getImageRunFromParagraph,
+  isImageSmall,
+  isSmallImageParagraph,
+} from "../helpers/imageChecks";
 
 /**
  * Add blank line after Heading 1 style text.
@@ -387,6 +397,64 @@ export const aboveWarningRule: BlankLineRule = {
 };
 
 /**
+ * Add blank line between consecutive non-blank, non-indented, non-list body paragraphs.
+ * These are regular content paragraphs (Normal style) that should have visual separation.
+ * Skips paragraphs that are part of special structures (lists, indented sub-items, etc.).
+ */
+export const betweenBodyParagraphsRule: BlankLineRule = {
+  id: "add-between-body-paragraphs",
+  action: "add",
+  scope: "body",
+  matches(ctx: RuleContext): boolean {
+    if (ctx.scope !== "body") return false;
+    if (!(ctx.currentElement instanceof Paragraph)) return false;
+    if (!(ctx.nextElement instanceof Paragraph)) return false;
+
+    const current = ctx.currentElement;
+    const next = ctx.nextElement;
+
+    // Both must be non-blank
+    if (isParagraphBlank(current)) return false;
+    if (isParagraphBlank(next)) return false;
+
+    // Neither should be list items
+    if (current.getNumbering()) return false;
+    if (next.getNumbering()) return false;
+
+    // Neither should be indented
+    const currentIndent = current.getFormatting()?.indentation?.left;
+    if (currentIndent && currentIndent > 0) return false;
+    const nextIndent = next.getFormatting()?.indentation?.left;
+    if (nextIndent && nextIndent > 0) return false;
+
+    // Skip headings — they have their own rules
+    const currentStyle = current.getStyle() || "";
+    const nextStyle = next.getStyle() || "";
+    if (currentStyle.includes("Heading") || nextStyle.includes("Heading")) return false;
+
+    // Skip TOC paragraphs
+    if (isTocParagraph(current) || isTocParagraph(next)) return false;
+
+    // Skip navigation hyperlinks (handled by aboveTopOfDocHyperlinkRule)
+    if (hasNavigationHyperlink(current) || hasNavigationHyperlink(next)) return false;
+
+    // Skip bold+colon paragraphs (handled by their own rules)
+    if (startsWithBoldColon(current) || startsWithBoldColon(next)) return false;
+
+    // Skip disclaimer lines (handled by aboveWarningRule)
+    const isDisclaimer = (text: string) => {
+      const lower = text.toLowerCase();
+      return lower.includes("not to be reproduced") ||
+        lower.includes("electronic data") ||
+        lower.includes("paper copy = informational only");
+    };
+    if (isDisclaimer(current.getText()) || isDisclaimer(next.getText())) return false;
+
+    return true;
+  },
+};
+
+/**
  * All addition rules in evaluation order.
  */
 export const additionRules: BlankLineRule[] = [
@@ -402,4 +470,5 @@ export const additionRules: BlankLineRule[] = [
   afterListItemsRule,
   aboveAndBelowLargeImagesRule,
   aboveWarningRule,
+  betweenBodyParagraphsRule,
 ];

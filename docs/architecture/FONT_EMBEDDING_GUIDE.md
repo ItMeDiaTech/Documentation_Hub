@@ -47,33 +47,33 @@ When fonts are added, `FontManager` generates entries like:
 ### Basic Usage
 
 ```typescript
-import { Document } from 'docxmlater';
+import { Document } from "docxmlater";
 
 // Create or load document
-const doc = await Document.load('input.docx');
+const doc = await Document.load("input.docx");
 
 // Access the document's FontManager
 const fontManager = doc.getFontManager(); // Hypothetical API - needs verification
 
 // Add a font from file
-await fontManager.addFontFromFile('Arial', '/path/to/arial.ttf');
+await fontManager.addFontFromFile("Arial", "/path/to/arial.ttf");
 
 // Or add from buffer
-const fontData = fs.readFileSync('/path/to/custom.ttf');
-fontManager.addFont('CustomFont', fontData, 'ttf');
+const fontData = fs.readFileSync("/path/to/custom.ttf");
+fontManager.addFont("CustomFont", fontData, "ttf");
 
 // Save document - Content_Types.xml is automatically updated
-await doc.save('output.docx');
+await doc.save("output.docx");
 ```
 
 ### Supported Font Formats
 
-| Format | Extension | MIME Type | Description |
-|--------|-----------|-----------|-------------|
-| TrueType | `.ttf` | `application/x-font-ttf` | Standard TrueType fonts |
-| OpenType | `.otf` | `application/x-font-opentype` | OpenType fonts |
-| WOFF | `.woff` | `application/font-woff` | Web Open Font Format |
-| WOFF2 | `.woff2` | `font/woff2` | WOFF 2.0 (compressed) |
+| Format   | Extension | MIME Type                     | Description             |
+| -------- | --------- | ----------------------------- | ----------------------- |
+| TrueType | `.ttf`    | `application/x-font-ttf`      | Standard TrueType fonts |
+| OpenType | `.otf`    | `application/x-font-opentype` | OpenType fonts          |
+| WOFF     | `.woff`   | `application/font-woff`       | Web Open Font Format    |
+| WOFF2    | `.woff2`  | `font/woff2`                  | WOFF 2.0 (compressed)   |
 
 ### Font Manager Methods
 
@@ -104,11 +104,11 @@ generateContentTypeEntries(): string[]
 
 ```typescript
 interface FontEntry {
-  filename: string;       // e.g., 'arial_1.ttf'
-  format: FontFormat;     // 'ttf' | 'otf' | 'woff' | 'woff2'
-  fontFamily: string;     // e.g., 'Arial'
-  data: Buffer;          // Font file binary data
-  path: string;          // e.g., 'word/fonts/arial_1.ttf'
+  filename: string; // e.g., 'arial_1.ttf'
+  format: FontFormat; // 'ttf' | 'otf' | 'woff' | 'woff2'
+  fontFamily: string; // e.g., 'Arial'
+  data: Buffer; // Font file binary data
+  path: string; // e.g., 'word/fonts/arial_1.ttf'
 }
 ```
 
@@ -151,8 +151,8 @@ Font family names are sanitized for safe filenames:
 Each font gets a unique counter to prevent naming conflicts:
 
 ```typescript
-fontManager.addFont('Arial', data1, 'ttf');  // → 'arial_1.ttf'
-fontManager.addFont('Arial', data2, 'ttf');  // → 'arial_2.ttf'
+fontManager.addFont("Arial", data1, "ttf"); // → 'arial_1.ttf'
+fontManager.addFont("Arial", data2, "ttf"); // → 'arial_2.ttf'
 ```
 
 ## Obfuscated Fonts (.odttf)
@@ -179,7 +179,7 @@ For copyright protection, fonts can be obfuscated:
 
 ```typescript
 // ✅ GOOD: Only embed fonts you have license to redistribute
-fontManager.addFont('CustomBrandFont', brandFontData, 'ttf');
+fontManager.addFont("CustomBrandFont", brandFontData, "ttf");
 
 // ❌ BAD: Don't embed licensed fonts without permission
 // fontManager.addFont('HelveticaNeue', data, 'ttf'); // License violation!
@@ -199,9 +199,9 @@ For production use, embed only glyphs actually used in the document:
 
 ```typescript
 try {
-  await fontManager.addFontFromFile('CustomFont', '/path/to/font.ttf');
+  await fontManager.addFontFromFile("CustomFont", "/path/to/font.ttf");
 } catch (error) {
-  console.error('Font embedding failed:', error);
+  console.error("Font embedding failed:", error);
   // Fallback: Use system fonts
 }
 ```
@@ -213,13 +213,13 @@ try {
 const fonts = fontManager.getAllFonts();
 console.log(`Embedded ${fonts.length} fonts`);
 
-fonts.forEach(font => {
+fonts.forEach((font) => {
   console.log(`- ${font.fontFamily} (${font.format}) at ${font.path}`);
 });
 
 // Verify Content_Types entries will be generated
 const entries = fontManager.generateContentTypeEntries();
-console.log('Content_Types.xml entries:', entries);
+console.log("Content_Types.xml entries:", entries);
 ```
 
 ## Troubleshooting
@@ -229,28 +229,30 @@ console.log('Content_Types.xml entries:', entries);
 **Symptoms:** Document opens but custom fonts fall back to default
 
 **Causes:**
+
 1. Missing Content_Types.xml entries
 2. Incorrect MIME types
 3. Corrupted font files
 4. Missing fontTable.xml references
 
 **Solutions:**
+
 ```typescript
 // Verify Content_Types.xml contains font entries
 const entries = fontManager.generateContentTypeEntries();
 if (entries.length === 0) {
-  console.error('No font Content-Type entries generated!');
+  console.error("No font Content-Type entries generated!");
 }
 
 // Check font was actually added
-if (!fontManager.hasFont('CustomFont')) {
-  console.error('Font was not registered!');
+if (!fontManager.hasFont("CustomFont")) {
+  console.error("Font was not registered!");
 }
 
 // Verify font file is valid
-const fontData = fs.readFileSync('/path/to/font.ttf');
+const fontData = fs.readFileSync("/path/to/font.ttf");
 if (fontData.length === 0) {
-  console.error('Font file is empty!');
+  console.error("Font file is empty!");
 }
 ```
 
@@ -261,9 +263,10 @@ if (fontData.length === 0) {
 **Cause:** Incorrect ZIP structure or Content_Types.xml placement
 
 **Solution:** Ensure docxmlater handles ZIP creation:
+
 ```typescript
 // ✅ GOOD: Let docxmlater handle everything
-await doc.save('output.docx');
+await doc.save("output.docx");
 
 // ❌ BAD: Don't manually manipulate ZIP after adding fonts
 // const buffer = await doc.toBuffer();

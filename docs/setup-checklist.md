@@ -32,11 +32,13 @@ Manual steps required after committing the infrastructure configuration files.
 ## Local Development Tools
 
 - [ ] Install yalc globally:
+
   ```bash
   npm install -g yalc
   ```
 
 - [ ] Verify yalc works:
+
   ```bash
   # In docxmlater directory
   npm run build

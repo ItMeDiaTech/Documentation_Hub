@@ -1,77 +1,77 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState } from "react";
+import { motion } from "framer-motion";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/common/Card';
-import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
-import { Plus, FolderOpen, Clock, Users, MoreVertical, Grid, List } from 'lucide-react';
-import { cn } from '@/utils/cn';
+} from "@/components/common/Card";
+import { Button } from "@/components/common/Button";
+import { Input } from "@/components/common/Input";
+import { Plus, FolderOpen, Clock, Users, MoreVertical, Grid, List } from "lucide-react";
+import { cn } from "@/utils/cn";
 
 const projects = [
   {
     id: 1,
-    name: 'E-Commerce Platform',
-    description: 'Modern online shopping platform with AI recommendations',
-    status: 'In Progress',
+    name: "E-Commerce Platform",
+    description: "Modern online shopping platform with AI recommendations",
+    status: "In Progress",
     progress: 65,
     team: 5,
-    updated: '2 hours ago',
-    color: 'bg-blue-500',
+    updated: "2 hours ago",
+    color: "bg-blue-500",
   },
   {
     id: 2,
-    name: 'Mobile Banking App',
-    description: 'Secure and intuitive mobile banking solution',
-    status: 'Planning',
+    name: "Mobile Banking App",
+    description: "Secure and intuitive mobile banking solution",
+    status: "Planning",
     progress: 20,
     team: 3,
-    updated: '1 day ago',
-    color: 'bg-purple-500',
+    updated: "1 day ago",
+    color: "bg-purple-500",
   },
   {
     id: 3,
-    name: 'Analytics Dashboard',
-    description: 'Real-time data visualization and reporting tool',
-    status: 'In Progress',
+    name: "Analytics Dashboard",
+    description: "Real-time data visualization and reporting tool",
+    status: "In Progress",
     progress: 80,
     team: 4,
-    updated: '3 hours ago',
-    color: 'bg-green-500',
+    updated: "3 hours ago",
+    color: "bg-green-500",
   },
   {
     id: 4,
-    name: 'Content Management System',
-    description: 'Flexible CMS for enterprise content management',
-    status: 'Review',
+    name: "Content Management System",
+    description: "Flexible CMS for enterprise content management",
+    status: "Review",
     progress: 90,
     team: 6,
-    updated: '5 hours ago',
-    color: 'bg-orange-500',
+    updated: "5 hours ago",
+    color: "bg-orange-500",
   },
   {
     id: 5,
-    name: 'Social Media Platform',
-    description: 'Next-generation social networking application',
-    status: 'Planning',
+    name: "Social Media Platform",
+    description: "Next-generation social networking application",
+    status: "Planning",
     progress: 15,
     team: 8,
-    updated: '2 days ago',
-    color: 'bg-pink-500',
+    updated: "2 days ago",
+    color: "bg-pink-500",
   },
   {
     id: 6,
-    name: 'IoT Management System',
-    description: 'Cloud-based IoT device management and monitoring',
-    status: 'In Progress',
+    name: "IoT Management System",
+    description: "Cloud-based IoT device management and monitoring",
+    status: "In Progress",
     progress: 45,
     team: 4,
-    updated: '6 hours ago',
-    color: 'bg-indigo-500',
+    updated: "6 hours ago",
+    color: "bg-indigo-500",
   },
 ];
 
@@ -97,8 +97,8 @@ const itemVariants = {
 };
 
 export function Projects() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const filteredProjects = projects.filter(
     (project) =>
@@ -127,27 +127,27 @@ export function Projects() {
           placeholder="Search projects..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          onClear={() => setSearchQuery('')}
+          onClear={() => setSearchQuery("")}
           className="max-w-md"
         />
 
         <div className="flex gap-2">
           <div className="flex rounded-md border border-border">
             <button
-              onClick={() => setViewMode('grid')}
+              onClick={() => setViewMode("grid")}
               className={cn(
-                'p-2 rounded-l-md transition-colors',
-                viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                "p-2 rounded-l-md transition-colors",
+                viewMode === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
               )}
               aria-label="Grid view"
             >
               <Grid className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setViewMode('list')}
+              onClick={() => setViewMode("list")}
               className={cn(
-                'p-2 rounded-r-md transition-colors',
-                viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                "p-2 rounded-r-md transition-colors",
+                viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
               )}
               aria-label="List view"
             >
@@ -160,8 +160,8 @@ export function Projects() {
 
       <motion.div
         className={cn(
-          'grid gap-4',
-          viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'
+          "grid gap-4",
+          viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"
         )}
         variants={containerVariants}
       >
@@ -173,7 +173,7 @@ export function Projects() {
                   <div className="flex items-center gap-3">
                     <div
                       className={cn(
-                        'w-10 h-10 rounded-lg flex items-center justify-center',
+                        "w-10 h-10 rounded-lg flex items-center justify-center",
                         project.color
                       )}
                     >
@@ -183,13 +183,13 @@ export function Projects() {
                       <CardTitle className="text-lg">{project.name}</CardTitle>
                       <span
                         className={cn(
-                          'text-xs px-2 py-1 rounded-full mt-1 inline-block',
-                          project.status === 'In Progress' &&
-                            'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-                          project.status === 'Planning' &&
-                            'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
-                          project.status === 'Review' &&
-                            'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                          "text-xs px-2 py-1 rounded-full mt-1 inline-block",
+                          project.status === "In Progress" &&
+                            "bg-primary/15 text-primary",
+                          project.status === "Planning" &&
+                            "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
+                          project.status === "Review" &&
+                            "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300"
                         )}
                       >
                         {project.status}
@@ -216,7 +216,7 @@ export function Projects() {
                         initial={{ width: 0 }}
                         animate={{ width: `${project.progress}%` }}
                         transition={{ duration: 0.5, delay: 0.2 }}
-                        style={{ height: '100%' }}
+                        style={{ height: "100%" }}
                       />
                     </div>
                   </div>

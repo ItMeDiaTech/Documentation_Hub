@@ -7,13 +7,13 @@ Based on the source code analysis, here's how **docxmlater** handles bullet poin
 1. **Array of custom bullets** in [`createBulletList()`](examples/03-lists/simple-bullet-list.ts:51):
 
    ```typescript
-   const listId = doc.createBulletList(3, ['▪', '○', '▸']);
+   const listId = doc.createBulletList(3, ["▪", "○", "▸"]);
    ```
 
 2. **Direct symbol specification** via [`NumberingLevel.createBulletLevel()`](src/formatting/NumberingLevel.ts:461):
 
    ```typescript
-   const level = NumberingLevel.createBulletLevel(0, '➤'); // Arrow bullet
+   const level = NumberingLevel.createBulletLevel(0, "➤"); // Arrow bullet
    ```
 
 3. **Framework capability** (available but not currently used): [`getBulletSymbolWithFont()`](node_modules/docxmlater/dist/formatting/NumberingLevel.d.ts:35-38)
@@ -104,7 +104,7 @@ const bulletResult = doc.standardizeBulletSymbols({ fontSize: 12, bold: true });
 
 ```typescript
 // Standardize colors without changing other properties
-const bulletResult = doc.standardizeBulletSymbols({ color: '000000', bold: true });
+const bulletResult = doc.standardizeBulletSymbols({ color: "000000", bold: true });
 ```
 
 **NOT used in [`applyBulletUniformity()`](src/services/document/WordDocumentProcessor.ts:2845-2993)** - Complete property setting provides better control.
