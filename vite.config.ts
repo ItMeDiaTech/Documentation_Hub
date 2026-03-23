@@ -128,21 +128,16 @@ export default defineConfig({
       },
       output: {
         // Manual chunk splitting for better caching and smaller bundles
-        manualChunks: {
-          // Core React libraries
-          "vendor-react": ["react", "react-dom", "react-router-dom"],
-
-          // Heavy charting library
-          "vendor-charts": ["recharts"],
-
-          // Search functionality
-          "vendor-search": ["fuse.js"],
-
-          // UI libraries
-          "vendor-ui": ["framer-motion", "lucide-react", "cmdk", "@radix-ui/react-dialog"],
-
-          // Database
-          "vendor-db": ["idb"],
+        manualChunks(id: string) {
+          if (id.includes("react-dom") || id.includes("react-router-dom") || (id.includes("/react/") && !id.includes("react-"))) {
+            return "vendor-react";
+          }
+          if (id.includes("recharts")) return "vendor-charts";
+          if (id.includes("fuse.js")) return "vendor-search";
+          if (id.includes("framer-motion") || id.includes("lucide-react") || id.includes("cmdk") || id.includes("@radix-ui/react-dialog")) {
+            return "vendor-ui";
+          }
+          if (id.includes("/idb/")) return "vendor-db";
         },
       },
     },
