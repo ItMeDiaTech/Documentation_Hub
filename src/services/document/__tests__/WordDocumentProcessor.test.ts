@@ -119,7 +119,6 @@ describe("WordDocumentProcessor", () => {
       // Text Replacement
       replaceFormattedText: jest.fn().mockReturnValue(0),
       // Lists
-      normalizeTableLists: jest.fn().mockReturnValue({ tablesProcessed: 0, listsConverted: 0 }),
       removeBlanksBetweenListItems: jest.fn().mockReturnValue(0),
       removeExtraBlankParagraphs: jest
         .fn()
