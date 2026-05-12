@@ -118,7 +118,7 @@ async function syncBodyElementsToDocument(doc: Document, bodyElements: any[]): P
 
                 // Sync cell shading
                 if (editorCell.shading) {
-                  docCell.setShading(editorCell.shading.replace("#", ""));
+                  docCell.setBackgroundColor(editorCell.shading.replace("#", ""));
                 }
 
                 // Sync cell paragraphs
