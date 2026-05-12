@@ -2638,22 +2638,11 @@ export class WordDocumentProcessor {
         this.log.info(`Standardized ${numbersStandardized} numbered lists`);
         this.debugCaptureListState(doc, "AFTER applyBulletUniformity/applyNumberedUniformity");
 
-        // Convert mixed list formats to maintain consistency within each abstractNum
-        // This ensures all levels within a list use the same format type (all bullets or all numbered)
-        // based on what level 0 uses (the dominant format)
-        this.debugCaptureListState(doc, "BEFORE convertMixedListFormats");
-        this.log.debug("=== CONVERTING MIXED LIST FORMATS ===");
-        const mixedConverted = await this.convertMixedListFormats(doc, options.listBulletSettings);
-        if (mixedConverted > 0) {
-          this.log.info(`Converted ${mixedConverted} mixed list levels to uniform format`);
-        }
-        this.debugCaptureListState(doc, "AFTER convertMixedListFormats");
-
         // Remove w:tab val="num" tab stops from list level definitions in numbering.xml.
         // These tab stops create additional visual indentation that the indentation calculations
         // (which only use w:ind) don't account for.
         // ORDERING: Must run AFTER all NumberingManager API calls (applyBulletUniformity,
-        // applyNumberedUniformity, convertMixedListFormats) because it uses raw XML
+        // applyNumberedUniformity) because it uses raw XML
         // getPart/setPart which would be overwritten by later API-based saves.
         const tabStopsRemoved = await this.removeNumberingTabStops(doc);
         if (tabStopsRemoved > 0) {
@@ -2661,7 +2650,7 @@ export class WordDocumentProcessor {
         }
 
         // Track list formatting changes
-        const totalListsFixed = bulletsStandardized + numbersStandardized + mixedConverted;
+        const totalListsFixed = bulletsStandardized + numbersStandardized;
         if (totalListsFixed > 0) {
           result.changes?.push({
             type: "structure",
@@ -9621,136 +9610,6 @@ export class WordDocumentProcessor {
       this.log.info(`Context-aware typed prefix conversion: ${converted} paragraphs converted`);
     } else {
       this.log.debug("  No typed prefixes found for context-aware conversion");
-    }
-
-    return converted;
-  }
-
-  /**
-   * Convert mixed list formats to maintain consistency within each abstractNum definition.
-   *
-   * This method analyzes each abstractNum and ensures all levels use the same format type
-   * (either all bullets or all numbered) based on what level 0 uses.
-   *
-   * This fixes documents where lists have inconsistent formatting like:
-   * - Bullet level 0, but numbered levels 1-2
-   * - Numbered level 0, but bullet levels 1-3
-   *
-   * The dominant format is determined by level 0:
-   * - If level 0 is bullet → convert all numbered levels to bullets
-   * - If level 0 is numbered → convert all bullet levels to numbered
-   *
-   * @param doc - The document to process
-   * @param settings - User's indentation level settings from UI (for bullet chars and number formats)
-   * @returns Number of levels converted
-   */
-  /**
-   * Get appropriate format fallback string based on format family.
-   * When level 0 uses uppercase formats (A, B, C or I, II, III), nested levels
-   * should also use uppercase (A.) as the fallback. Otherwise use lowercase (a.).
-   *
-   * @param level0Format - The format of level 0 (e.g., 'upperLetter', 'lowerLetter', 'decimal')
-   * @returns The appropriate fallback format string ('A.' or 'a.')
-   */
-  private getFormatFallbackString(level0Format: string | undefined): string {
-    if (!level0Format) return "a.";
-
-    const upperFormats = ["upperLetter", "upperRoman"];
-    const isUpperFamily = upperFormats.includes(level0Format);
-
-    return isUpperFamily ? "A." : "a.";
-  }
-
-  private async convertMixedListFormats(
-    doc: Document,
-    settings: {
-      indentationLevels: Array<{
-        level: number;
-        symbolIndent: number;
-        textIndent: number;
-        bulletChar?: string;
-        numberedFormat?: string;
-      }>;
-    }
-  ): Promise<number> {
-    let converted = 0;
-    const manager = doc.getNumberingManager();
-
-    this.log.debug("=== CONVERTING MIXED LIST FORMATS ===");
-
-    try {
-      const abstractNums = manager.getAllAbstractNumberings();
-      this.log.debug(`  Analyzing ${abstractNums.length} abstractNum definitions`);
-
-      for (const abstractNum of abstractNums) {
-        // Determine dominant format based on level 0
-        const level0 = abstractNum.getLevel(0);
-        if (!level0) continue;
-
-        // Skip row-number column lists — their formatting is already standardized
-        if (this._rowNumberAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
-
-        // Skip HLP table lists — their numbering structure must be preserved
-        if (this._hlpAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
-
-        const dominantFormat = level0.getFormat();
-        const isBulletList = dominantFormat === "bullet";
-        const numberedFormats = [
-          "decimal",
-          "lowerLetter",
-          "upperLetter",
-          "lowerRoman",
-          "upperRoman",
-        ];
-
-        // Collect all level formats to determine if this is intentionally mixed
-        const levelFormats: Array<{ level: number; format: string }> = [];
-        for (let i = 0; i < 9; i++) {
-          const level = abstractNum.getLevel(i);
-          if (level) {
-            levelFormats.push({ level: i, format: level.getFormat() });
-          }
-        }
-
-        // Check if this is a standard multilevel list pattern (intentionally mixed).
-        // Standard patterns use different formats at different levels:
-        //   - Bullet at level 0 + numbered (letter/roman) at deeper levels
-        //   - Numbered (decimal) at level 0 + bullet at deeper levels
-        //   - Numbered hierarchy: decimal→letter→roman
-        // These should be PRESERVED, not flattened to uniform format.
-        const hasAnyMix = levelFormats.some(
-          (lf) =>
-            (isBulletList && lf.format !== "bullet" && numberedFormats.includes(lf.format)) ||
-            (!isBulletList && lf.format === "bullet")
-        );
-
-        if (!hasAnyMix) continue;
-
-        // Determine if the mix is a standard multilevel pattern
-        // Standard: different formats at consecutive levels (intentional hierarchy)
-        // Anomalous: same level having inconsistent format (rare, likely corruption)
-        // For now, preserve ALL mixed formats — documents with intentional mixed
-        // hierarchies (bullet→letter, numbered→bullet sub-items) are far more common
-        // than truly corrupted format mixes.
-        this.log.debug(
-          `  AbstractNum has mixed formats (level0=${dominantFormat}) — preserving intentional hierarchy`
-        );
-
-        // DO NOT convert levels — preserve the original mixed format structure.
-        // The old behavior destroyed intentional hierarchies like:
-        //   • For Retail Overrides:
-        //      a. Step one
-        //         i. Sub-step
-        // by converting everything to bullets or everything to numbered.
-      }
-
-      if (converted > 0) {
-        this.log.info(`Converted ${converted} mixed list levels to uniform format`);
-      } else {
-        this.log.debug("  No mixed format levels found");
-      }
-    } catch (error) {
-      this.log.warn("Failed to convert mixed list formats:", error);
     }
 
     return converted;
