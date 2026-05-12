@@ -3635,18 +3635,15 @@ export class WordDocumentProcessor {
       this.log.debug("=== DOCUMENT CLEANUP ===");
       try {
         const cleanup = new CleanupHelper(doc);
+        // defragmentHyperlinks is not requested here — it silently no-ops once
+        // track changes is enabled (see pre-tracking defrag earlier in this method).
         const cleanupReport = cleanup.run({
-          defragmentHyperlinks: true,
           cleanupNumbering: false,
           cleanupRelationships: true,
         });
-        if (
-          cleanupReport.hyperlinksDefragmented > 0 ||
-          cleanupReport.numberingRemoved > 0 ||
-          cleanupReport.relationshipsRemoved > 0
-        ) {
+        if (cleanupReport.numberingRemoved > 0 || cleanupReport.relationshipsRemoved > 0) {
           this.log.info(
-            `Cleanup: ${cleanupReport.hyperlinksDefragmented} hyperlinks defragmented, ${cleanupReport.numberingRemoved} unused numbering removed, ${cleanupReport.relationshipsRemoved} orphaned relationships removed`
+            `Cleanup: ${cleanupReport.numberingRemoved} unused numbering removed, ${cleanupReport.relationshipsRemoved} orphaned relationships removed`
           );
         }
       } catch (cleanupError) {
