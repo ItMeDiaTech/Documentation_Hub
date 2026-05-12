@@ -302,6 +302,7 @@ describe("HyperlinkProcessor", () => {
 function createMockHyperlink(url: string, text: string): jest.Mocked<Hyperlink> {
   return {
     getUrl: jest.fn().mockReturnValue(url),
+    getFullUrl: jest.fn().mockReturnValue(url),
     getText: jest.fn().mockReturnValue(text),
     setText: jest.fn(),
     setUrl: jest.fn(),
