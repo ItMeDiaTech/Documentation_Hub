@@ -52,7 +52,7 @@ const optionDescriptions: Record<string, string> = {
   "list-indentation": "Corrects the indentation of bulleted and numbered lists",
   "bullet-uniformity": "Makes bullet styles consistent throughout",
   "normalize-table-lists":
-    "Converts typed list prefixes (1., A., •) to proper Word formatting and fixes mixed lists",
+    "Converts typed list prefixes (1., A., •) to proper Word formatting",
   "smart-tables": "Applies consistent styling to all tables",
   "adjust-table-padding": "Adjusts the space inside table cells",
   "standardize-table-borders": "Makes table border styles uniform",
