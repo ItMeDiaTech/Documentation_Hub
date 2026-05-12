@@ -4,7 +4,7 @@
  * Screen-captured images often include the original document's visible border.
  * When the pipeline then applies its own border via borderAndCenterLargeImages(),
  * the result is a double-border. This module detects that embedded dark border
- * (+ white gap) and crops it away so the pipeline's border sits cleanly against
+ * and crops it away so the pipeline's border sits cleanly against
  * the actual content.
  *
  * Uses the existing `canvas` package for pixel analysis and docxmlater's
@@ -27,8 +27,8 @@ export const TRANSITION_DEPTH = 10; // check pixels at depth 4-10 for light tran
 export const MAX_BORDER_ZONE = 16; // max depth to search for border pixels (must accommodate initial skip + border thickness)
 export const MAX_INITIAL_SKIP = 20; // max non-dark pixels to skip at edge start (white padding before border)
 export const MIN_POST_BORDER_NONDARK = 2; // consecutive non-dark pixels to confirm border ended
-export const MAX_POSITION_SPREAD = 8; // max crop position variation across scan lines (gap-skipping adds variation)
-export const CONTENT_SAFETY_MARGIN = 3; // pixels to pull back from crop edge to avoid clipping content
+export const MAX_POSITION_SPREAD = 8; // max crop position variation across scan lines
+export const MAX_BORDER_GAP = 3; // max consecutive non-dark pixels within a border (anti-aliasing tolerance)
 
 export type Edge = "top" | "bottom" | "left" | "right";
 
@@ -301,14 +301,12 @@ function detectEmbeddedBorder(
 
   if (detectedCount < MIN_BORDERED_EDGES) return { cropRect: null, detectedEdges: detectedCount };
 
-  const safeCrop = (pos: number): number => Math.max(0, pos - CONTENT_SAFETY_MARGIN);
-
   return {
     cropRect: {
-      top: results.top.detected ? safeCrop(results.top.cropPosition) : 0,
-      bottom: results.bottom.detected ? safeCrop(results.bottom.cropPosition) : 0,
-      left: results.left.detected ? safeCrop(results.left.cropPosition) : 0,
-      right: results.right.detected ? safeCrop(results.right.cropPosition) : 0,
+      top: results.top.detected ? results.top.cropPosition : 0,
+      bottom: results.bottom.detected ? results.bottom.cropPosition : 0,
+      left: results.left.detected ? results.left.cropPosition : 0,
+      right: results.right.detected ? results.right.cropPosition : 0,
     },
     detectedEdges: detectedCount,
   };
@@ -412,9 +410,9 @@ export function edgeIsDark(pixels: Uint8ClampedArray, width: number, height: num
  *   Phase 2:   Scan border zone (MAX_BORDER_ZONE px anchored to first dark pixel).
  *   Phase 3:   Verify MIN_POST_BORDER_NONDARK consecutive non-dark pixels
  *              immediately after the last dark pixel (confirms border ended).
- *   Phase 4:   Skip white gap after border to reach content.
+ *   Phase 4:   Return crop position at border edge (lastDarkDepth + 1).
  *
- * @returns crop position (lastDarkDepth + 1, just past the border), or null
+ * @returns crop position (just past the border line), or null
  */
 export function scanLine(
   pixels: Uint8ClampedArray,
@@ -438,13 +436,21 @@ export function scanLine(
   if (firstDarkDepth === -1) return null; // no border pixels found within skip zone
 
   // ── Phase 2: Scan border zone anchored to firstDarkDepth ──
+  // Stop scanning if we encounter a gap larger than MAX_BORDER_GAP consecutive
+  // non-dark pixels — prevents reaching internal content borders (e.g., form
+  // field borders, dropdown outlines) that happen to fall within MAX_BORDER_ZONE.
   let lastDarkDepth = firstDarkDepth;
   let darkCount = 1;
+  let consecutiveNonDark = 0;
   const borderZoneEnd = Math.min(firstDarkDepth + MAX_BORDER_ZONE, maxDepth);
   for (let depth = firstDarkDepth + 1; depth < borderZoneEnd; depth++) {
     if (getPixelLuminance(pixels, width, height, edge, lineIndex, depth) <= DARK_THRESHOLD) {
       lastDarkDepth = depth;
       darkCount++;
+      consecutiveNonDark = 0;
+    } else {
+      consecutiveNonDark++;
+      if (consecutiveNonDark > MAX_BORDER_GAP) break;
     }
   }
   if (darkCount > MAX_BORDER_THICKNESS) return null; // too many dark pixels for a border
@@ -452,21 +458,27 @@ export function scanLine(
   // ── Phase 3: Verify border ended ─────────────────────────────────
   // Need MIN_POST_BORDER_NONDARK consecutive non-dark pixels after last dark
   let nondarkRun = 0;
+  let borderEndConfirmed = false;
   for (let depth = lastDarkDepth + 1; depth < maxDepth; depth++) {
     const lum = getPixelLuminance(pixels, width, height, edge, lineIndex, depth);
     if (lum > DARK_THRESHOLD) {
       nondarkRun++;
       if (nondarkRun >= MIN_POST_BORDER_NONDARK) {
-        // Crop right after the border line — do NOT skip whitespace gap.
-        // The whitespace is part of the screenshot's layout padding and should stay.
-        return lastDarkDepth + 1;
+        borderEndConfirmed = true;
+        break;
       }
     } else {
       return null; // more dark pixels beyond border zone — not a clean border
     }
   }
+  if (!borderEndConfirmed) return null; // ran out of pixels before confirming border ended
 
-  return null; // ran out of pixels before confirming border ended
+  // ── Phase 4: Crop right after the border line ──
+  // Previous approach scanned past whitespace to content, but content appears
+  // at varying depths across scan lines (text, UI elements at different positions),
+  // causing high spread that rejects valid borders. Cropping at the border edge
+  // keeps positions consistent and preserves the image's internal padding.
+  return lastDarkDepth + 1;
 }
 
 /**

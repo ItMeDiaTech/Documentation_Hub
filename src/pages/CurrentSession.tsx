@@ -259,7 +259,7 @@ export function CurrentSession() {
             name: name,
             size: stats.size,
             type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            lastModified: stats.mtimeMs || Date.now(),
+            lastModified: stats.modified ? new Date(stats.modified).getTime() : Date.now(),
             webkitRelativePath: "",
             // Stub methods - these are not used since we process via Electron IPC with file paths
             arrayBuffer: async () => {
@@ -502,7 +502,10 @@ export function CurrentSession() {
     );
 
     // Update session processing options using the context method
+    // Merge with existing options to preserve revision settings and other fields
+    // that are managed by different UI controls
     updateSessionOptions(session.id, {
+      ...session.processingOptions,
       validateUrls: true,
       createBackup: true,
       processInternalLinks: enabledOperations.includes("fix-internal-hyperlinks"),
@@ -549,13 +552,14 @@ export function CurrentSession() {
 
   const handleAutoAcceptRevisionsChange = (autoAccept: boolean) => {
     // Update session auto-accept revisions setting
-    // Note: We need to provide all required fields since TypeScript expects them
+    // Merge with existing options to preserve all other fields
     updateSessionOptions(session.id, {
-      validateUrls: session.processingOptions?.validateUrls ?? true,
-      createBackup: session.processingOptions?.createBackup ?? true,
-      processInternalLinks: session.processingOptions?.processInternalLinks ?? true,
-      processExternalLinks: session.processingOptions?.processExternalLinks ?? true,
-      enabledOperations: session.processingOptions?.enabledOperations ?? [],
+      validateUrls: true,
+      createBackup: true,
+      processInternalLinks: true,
+      processExternalLinks: true,
+      enabledOperations: [],
+      ...session.processingOptions,
       autoAcceptRevisions: autoAccept,
     });
   };
@@ -665,7 +669,7 @@ export function CurrentSession() {
             <div className="flex items-center gap-3">
               <Timer className="w-8 h-8 text-orange-500" />
               <div>
-                <p className="text-xs text-muted-foreground">Time Saved</p>
+                <p className="text-xs text-muted-foreground leading-tight">Time Saved<br />from Hyperlinks</p>
                 <p className="text-2xl font-bold">
                   {Math.round((session.stats.hyperlinksChecked * 101) / 60)}m
                 </p>

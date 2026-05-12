@@ -159,7 +159,9 @@ export class HyperlinkProcessor {
 
       for (const item of [...content]) {
         if (item instanceof Hyperlink) {
-          const oldUrl = item.getUrl();
+          // Use getFullUrl() to include w:anchor fragment (e.g. #!/view?docid=...)
+          // so the match works against full URLs stored in the urlMap
+          const oldUrl = item.getFullUrl();
 
           if (oldUrl && urlMap.has(oldUrl)) {
             const newUrl = urlMap.get(oldUrl)!;

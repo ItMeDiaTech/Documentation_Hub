@@ -580,8 +580,10 @@ export class CustomUpdater {
    * Compare versions to determine if target is newer than current
    */
   private isNewerVersion(target: string, current: string): boolean {
-    const targetParts = target.split(".").map(Number);
-    const currentParts = current.split(".").map(Number);
+    // Use parseInt to handle pre-release suffixes (e.g., "1.0.1-beta" → [1, 0, 1])
+    // Number("1-beta") returns NaN, but parseInt("1-beta") correctly returns 1
+    const targetParts = target.split(".").map((s) => parseInt(s, 10) || 0);
+    const currentParts = current.split(".").map((s) => parseInt(s, 10) || 0);
 
     for (let i = 0; i < Math.max(targetParts.length, currentParts.length); i++) {
       const t = targetParts[i] || 0;

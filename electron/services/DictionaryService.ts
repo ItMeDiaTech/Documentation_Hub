@@ -217,7 +217,8 @@ export class DictionaryService {
    */
   importEntries(
     entries: DictionaryEntry[],
-    onProgress?: (processed: number, total: number) => void
+    onProgress?: (processed: number, total: number) => void,
+    options?: { clearFirst?: boolean }
   ): { success: boolean; imported: number; error?: string } {
     if (!this.db || !this.initialized) {
       return { success: false, imported: 0, error: "Database not initialized" };
@@ -234,8 +235,12 @@ export class DictionaryService {
         )
       `);
 
-      // Use transaction for performance
+      // Use transaction for atomicity — if import fails, the clear is rolled back
+      // and old data is preserved (prevents empty dictionary on sync failure)
       const importMany = this.db.transaction((items: DictionaryEntry[]) => {
+        if (options?.clearFirst) {
+          this.db!.exec("DELETE FROM dictionary");
+        }
         let count = 0;
         for (const entry of items) {
           insertStmt.run(entry);

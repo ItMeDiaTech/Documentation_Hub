@@ -230,8 +230,8 @@ export const boldColonNoIndentAfterRule: BlankLineRule = {
     // Next line must NOT be indented and NOT be a list item
     if (ctx.nextElement instanceof Paragraph) {
       if (ctx.nextElement.getNumbering()) return false;
-      const nextIndent = ctx.nextElement.getFormatting()?.indentation?.left;
-      if (nextIndent && nextIndent > 0) return false;
+      const nextIndent = getEffectiveLeftIndent(ctx.nextElement, ctx.doc);
+      if (nextIndent > 0) return false;
     }
 
     // Near Related Documents: only add blank after the last bold-colon entry

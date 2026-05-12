@@ -89,11 +89,16 @@ export const Analytics = memo(function Analytics() {
   // Prepare chart data based on view mode
   // PERFORMANCE FIX: Memoize chart data to prevent unnecessary recalculations
   // Recharts will re-render only when data actually changes, not on every parent render
+  // Parse YYYY-MM-DD date strings as LOCAL timezone (not UTC).
+  // new Date("2026-04-12") is UTC midnight, which shifts to the previous day
+  // in US timezones. Appending T00:00:00 forces local timezone interpretation.
+  const parseLocalDate = (dateStr: string) => new Date(dateStr + "T00:00:00");
+
   const chartData = useMemo(() => {
     if (viewMode === "daily") {
       const history = getDailyHistory(30);
       return [...history].reverse().map((day) => ({
-        date: new Date(day.date).toLocaleDateString("en-US", {
+        date: parseLocalDate(day.date).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
         }),
@@ -105,10 +110,10 @@ export const Analytics = memo(function Analytics() {
     } else if (viewMode === "weekly") {
       const history = getWeeklyHistory(12);
       return [...history].reverse().map((week) => ({
-        date: `${new Date(week.weekStart).toLocaleDateString("en-US", {
+        date: `${parseLocalDate(week.weekStart).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
-        })} - ${new Date(week.weekEnd).toLocaleDateString("en-US", {
+        })} - ${parseLocalDate(week.weekEnd).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
         })}`,
@@ -120,7 +125,7 @@ export const Analytics = memo(function Analytics() {
     } else {
       const history = getMonthlyHistory(12);
       return [...history].reverse().map((month) => ({
-        date: new Date(month.month + "-01").toLocaleDateString("en-US", {
+        date: parseLocalDate(month.month + "-01").toLocaleDateString("en-US", {
           month: "short",
           year: "numeric",
         }),
@@ -191,7 +196,7 @@ export const Analytics = memo(function Analytics() {
       bgColor: "bg-purple-500/10",
     },
     {
-      title: "Time Saved",
+      title: "Time Saved from Hyperlinks",
       value: `${stats.allTime.timeSaved}m`,
       icon: Clock,
       color: "text-orange-500",

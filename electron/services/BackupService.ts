@@ -146,7 +146,9 @@ export class BackupService {
       const backups: BackupInfo[] = [];
 
       for (const file of files) {
-        if (file.startsWith(documentName) && !file.endsWith(".meta")) {
+        // Match exact document name followed by underscore (backup format: {name}_{timestamp}_{hash}.ext)
+        // Using documentName + "_" prevents "Report" from matching "Report_v2" backups
+        if (file.startsWith(documentName + "_") && !file.endsWith(".meta")) {
           const filePath = path.join(this.backupDir, file);
           const stats = await fs.stat(filePath);
           const metadata = await this.getBackupMetadata(filePath);

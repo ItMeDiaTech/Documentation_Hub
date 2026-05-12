@@ -540,16 +540,19 @@ export class DocXMLaterProcessor {
 
       // Helper function to extract URL from a hyperlink item
       const extractUrlFromHyperlink = (hyperlinkItem: Hyperlink): string | undefined => {
-        let url = hyperlinkItem.getUrl();
+        // Use getFullUrl() to include the w:anchor fragment (e.g. #!/view?docid=...)
+        // which is stored separately from the relationship target URL.
+        // getFullUrl() returns url + '#' + anchor when both exist, or just url otherwise.
+        let url = hyperlinkItem.getFullUrl();
 
-        // If getUrl() returns undefined, try fallback via relationship ID
+        // If getFullUrl() returns undefined, try fallback via relationship ID
         // This handles file-type hyperlinks where the URL is stored in the relationship
         if (!url) {
           const relationshipId = hyperlinkItem.getRelationshipId?.();
           if (relationshipId) {
             // Log that URL couldn't be retrieved via primary API
             // The caller may need to resolve the relationship externally
-            log.debug("URL not available via getUrl(), relationship lookup may be needed", {
+            log.debug("URL not available via getFullUrl(), relationship lookup may be needed", {
               relationshipId,
             });
           }

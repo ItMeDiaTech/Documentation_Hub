@@ -111,7 +111,7 @@ const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
 
           <div className="text-right text-xs text-muted-foreground">
             {session.stats?.timeSaved && (
-              <div>{Math.round(session.stats.timeSaved / 60)} min saved</div>
+              <div>{session.stats.timeSaved}m saved</div>
             )}
           </div>
         </div>

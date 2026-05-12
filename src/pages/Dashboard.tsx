@@ -89,7 +89,7 @@ export function Dashboard() {
       bgGradient: "from-purple-500/20 to-pink-500/10",
     },
     {
-      title: "Time Saved",
+      title: "Time Saved from Hyperlinks",
       value: `${globalStats.allTime.timeSaved}m`,
       todayValue: todayStats.timeSaved,
       change: todayChange.timeSaved || 0,
@@ -195,7 +195,7 @@ export function Dashboard() {
                   </div>
 
                   <div className="space-y-1">
-                    <p className="text-xs font-medium text-foreground uppercase tracking-wide">
+                    <p className="text-xs font-medium text-foreground uppercase tracking-wide leading-tight">
                       {stat.title}
                     </p>
                     <p className="text-3xl font-bold tracking-tight">{stat.value}</p>

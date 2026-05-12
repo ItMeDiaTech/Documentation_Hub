@@ -36,6 +36,7 @@ export const PATTERN_TO_CATEGORY: Record<string, ListCategory> = {
   lowerLetter: "numbered",
   upperLetter: "numbered",
   lowerRoman: "numbered",
+  upperRoman: "numbered",
   bullet: "bullet",
   dash: "bullet",
   arrow: "bullet",
@@ -131,9 +132,18 @@ export function detectTypedPrefix(text: string): {
         }
       }
 
+      // Distinguish uppercase vs lowercase Roman numerals.
+      // The lowerRoman regex uses /i flag so it matches both "ii." and "II.",
+      // but the format must reflect the actual case for correct level assignment
+      // (lowerRoman = level 2, upperRoman = level 4).
+      let resolvedFormat = format;
+      if (format === "lowerRoman" && match[1]) {
+        resolvedFormat = match[1] === match[1].toUpperCase() ? "upperRoman" : "lowerRoman";
+      }
+
       return {
         prefix: match[0],
-        format: format as NumberFormat | BulletFormat,
+        format: resolvedFormat as NumberFormat | BulletFormat,
         category: PATTERN_TO_CATEGORY[format] ?? "none",
       };
     }

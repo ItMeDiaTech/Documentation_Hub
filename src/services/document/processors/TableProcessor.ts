@@ -490,11 +490,23 @@ export class TableProcessor {
                 for (const para of cell.getParagraphs()) {
                   const isListItem = !!para.getNumbering();
                   for (const run of getVisibleRuns(para)) {
+                    // Detect hyperlink runs before setFont/setSize which can drop color
+                    const fmt = run.getFormatting();
+                    const color = fmt.color?.toUpperCase();
+                    const isHyperlink =
+                      fmt.characterStyle === "Hyperlink" ||
+                      color === "0000FF" ||
+                      color === "0563C1";
                     run.setFont(normalFontFamily);
                     run.setSize(normalFontSize);
                     // Don't force bold on list items - respect preserveBold setting
                     if (!isListItem) {
                       run.setBold(true);
+                    }
+                    // Restore blue color and underline for hyperlinks after setFont/setSize
+                    if (isHyperlink) {
+                      run.setColor("0000FF");
+                      run.setUnderline("single");
                     }
                   }
                   // Apply alignment (skip list items) - ALWAYS center for header row cells
@@ -526,11 +538,23 @@ export class TableProcessor {
                 for (const para of cell.getParagraphs()) {
                   const isListItem = !!para.getNumbering();
                   for (const run of getVisibleRuns(para)) {
+                    // Detect hyperlink runs before setFont/setSize which can drop color
+                    const fmt = run.getFormatting();
+                    const color = fmt.color?.toUpperCase();
+                    const isHyperlink =
+                      fmt.characterStyle === "Hyperlink" ||
+                      color === "0000FF" ||
+                      color === "0563C1";
                     run.setFont(normalFontFamily);
                     run.setSize(normalFontSize);
                     // Don't force bold on list items - respect preserveBold setting
                     if (!isListItem) {
                       run.setBold(true);
+                    }
+                    // Restore blue color and underline for hyperlinks after setFont/setSize
+                    if (isHyperlink) {
+                      run.setColor("0000FF");
+                      run.setUnderline("single");
                     }
                   }
                   // Apply alignment (skip list items) - ALWAYS center for shaded cells
@@ -555,9 +579,21 @@ export class TableProcessor {
                     );
                     if (!hasImage) {
                       for (const run of getVisibleRuns(para)) {
+                        // Detect hyperlink runs before setFont/setSize which can drop color
+                        const fmt = run.getFormatting();
+                        const color = fmt.color?.toUpperCase();
+                        const isHyperlink =
+                          fmt.characterStyle === "Hyperlink" ||
+                          color === "0000FF" ||
+                          color === "0563C1";
                         run.setFont(normalFontFamily);
                         run.setSize(normalFontSize);
                         // Note: NOT setting bold here - preserves original
+                        // Restore blue color and underline for hyperlinks after setFont/setSize
+                        if (isHyperlink) {
+                          run.setColor("0000FF");
+                          run.setUnderline("single");
+                        }
                       }
                     }
                   }
@@ -688,6 +724,13 @@ export class TableProcessor {
                 const runFormatting = run.getFormatting();
                 let needsUpdate = false;
 
+                // Detect hyperlink runs before setFont/setSize which can drop color
+                const runColor = runFormatting.color?.toUpperCase();
+                const isHyperlink =
+                  runFormatting.characterStyle === "Hyperlink" ||
+                  runColor === "0000FF" ||
+                  runColor === "0563C1";
+
                 if (runFormatting.font !== header2Style.fontFamily) {
                   run.setFont(header2Style.fontFamily);
                   needsUpdate = true;
@@ -706,6 +749,12 @@ export class TableProcessor {
                 if (!header2Style.preserveItalic && runFormatting.italic !== header2Style.italic) {
                   run.setItalic(header2Style.italic);
                   needsUpdate = true;
+                }
+
+                // Restore blue color and underline for hyperlinks after setFont/setSize
+                if (needsUpdate && isHyperlink) {
+                  run.setColor("0000FF");
+                  run.setUnderline("single");
                 }
 
                 if (needsUpdate) {
@@ -1367,7 +1416,7 @@ export class TableProcessor {
 
   /**
    * Apply explicit run formatting to HLP header row paragraphs.
-   * Sets h2Font/h2Size/bold/center on all runs so the header looks correct
+   * Sets h2Font/h2Size/bold/left-aligned on all runs so the header looks correct
    * regardless of Heading2 style definition.
    */
   private applyHLPHeaderRunFormatting(table: Table, settings?: TableShadingSettings): void {
@@ -1381,9 +1430,21 @@ export class TableProcessor {
       for (const para of cell.getParagraphs()) {
         para.setAlignment("left");
         for (const run of getVisibleRuns(para)) {
+          // Detect hyperlink runs before setFont/setSize which can drop color
+          const fmt = run.getFormatting();
+          const color = fmt.color?.toUpperCase();
+          const isHyperlink =
+            fmt.characterStyle === "Hyperlink" ||
+            color === "0000FF" ||
+            color === "0563C1";
           run.setFont(h2Font);
           run.setSize(h2Size);
           run.setBold(true);
+          // Restore blue color and underline for hyperlinks after setFont/setSize
+          if (isHyperlink) {
+            run.setColor("0000FF");
+            run.setUnderline("single");
+          }
         }
         this.applyNormalSpacing(para, settings);
       }
@@ -2108,10 +2169,6 @@ export class TableProcessor {
                 inserted++;
                 pIdx++; // Skip past inserted blank
                 paras = cell.getParagraphs(); // Refresh after insertion
-              }
-
-              if (isMainItem && isFirstLevel0) {
-                isFirstLevel0 = false;
               }
             }
           }

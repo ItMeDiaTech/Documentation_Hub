@@ -33,6 +33,8 @@ export function isPathSafe(filePath: string, allowedExtensions?: string[]): bool
   const traversalPatterns = [
     "/../", // Unix-style parent directory traversal
     "\\..\\", // Windows-style parent directory traversal
+    "\\../", // Mixed-separator traversal (backslash before, forward slash after)
+    "/..\\", // Mixed-separator traversal (forward slash before, backslash after)
     "%2e%2e%2f", // URL-encoded traversal
     "%2e%2e%5c",
     "%252e%252e",

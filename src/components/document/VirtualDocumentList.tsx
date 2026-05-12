@@ -124,7 +124,7 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
 
                   {document.processingResult?.hyperlinksModified && (
                     <div className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs">
-                      {Math.round(document.processingResult.hyperlinksModified * 101)} sec saved
+                      {Math.round((document.processingResult.hyperlinksModified * 101) / 60)}m saved
                     </div>
                   )}
                 </div>

@@ -838,6 +838,9 @@ class HyperlinkIPCHandler {
         return new Promise((resolve) => {
           log.info("[API Call] Sending request via Electron net.request...");
 
+          // Declare in outer scope so the timeout handler can abort the request
+          let netRequest: ReturnType<typeof net.request> | null = null;
+
           const timeoutHandle = setTimeout(() => {
             const duration = Date.now() - startTime;
             log.error("═══════════════════════════════════════════════════════════════════");
@@ -846,6 +849,14 @@ class HyperlinkIPCHandler {
             log.error(`[API Call] Timeout after ${timeoutMs}ms`);
             log.error(`[API Call] Duration: ${duration}ms`);
             log.error("═══════════════════════════════════════════════════════════════════");
+            // Abort the in-flight request to free the network connection
+            if (netRequest) {
+              try {
+                netRequest.abort();
+              } catch {
+                // Ignore abort errors — request may already be finished
+              }
+            }
             resolve({
               success: false,
               error: `Request timeout after ${timeoutMs}ms`,
@@ -854,7 +865,7 @@ class HyperlinkIPCHandler {
           }, timeoutMs);
 
           try {
-            const netRequest = net.request({
+            netRequest = net.request({
               method: "POST",
               url: request.apiUrl,
               session: session.defaultSession,
@@ -1285,12 +1296,17 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle("process-document", async (...[, path]: [Electron.IpcMainInvokeEvent, string]) => {
-  if (!path) {
+ipcMain.handle("process-document", async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
+  if (!filePath) {
     return { success: false, error: "No path provided" };
   }
   try {
-    const stats = fs.statSync(path);
+    const validatedPath = validateIpcPath(filePath, {
+      requireExists: true,
+      mustBeFile: true,
+      allowedExtensions: [".docx"],
+    });
+    const stats = fs.statSync(validatedPath);
     return {
       success: true,
       size: stats.size,
@@ -1336,19 +1352,15 @@ ipcMain.handle(
     }
 
     try {
-      // Validate file exists
-      if (!fs.existsSync(filePath)) {
-        return { success: false, error: `File not found: ${filePath}` };
-      }
-
-      // Validate file extension
-      if (!filePath.toLowerCase().endsWith(".docx")) {
-        return { success: false, error: "Only .docx files are supported" };
-      }
+      const validatedPath = validateIpcPath(filePath, {
+        requireExists: true,
+        mustBeFile: true,
+        allowedExtensions: [".docx"],
+      });
 
       // Load document using docxmlater
       const { Document } = await import("docxmlater");
-      const doc = await Document.load(filePath);
+      const doc = await Document.load(validatedPath);
 
       try {
         // Extract paragraph text

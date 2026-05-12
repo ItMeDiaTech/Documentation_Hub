@@ -240,9 +240,14 @@ export class StyleProcessor {
         run.setUnderline(style.underline ? "single" : false);
       }
 
-      // Preserve white font - don't change color if run is white (FFFFFF)
+      // Preserve white and red font colors during style application
+      // White (FFFFFF): hidden text markers that must stay invisible
+      // Red (FF0000): review/warning markers in Normal and ListParagraph paragraphs
       const currentColor = run.getFormatting().color?.toUpperCase();
-      if (currentColor !== "FFFFFF") {
+      const isWhiteFont = currentColor === "FFFFFF";
+      const isRedFont = currentColor === "FF0000";
+      const isNormalOrList = style.id === "normal" || style.id === "listParagraph";
+      if (!isWhiteFont && !(isRedFont && isNormalOrList)) {
         run.setColor(style.color.replace("#", ""));
       }
     }

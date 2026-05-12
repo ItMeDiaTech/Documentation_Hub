@@ -46,13 +46,18 @@ const SessionContext = createContext<SessionContextType | undefined>(undefined);
  * @param ms Timeout in milliseconds
  * @param operation Name of the operation for error messages
  */
-const withTimeout = <T,>(promise: Promise<T>, ms: number, operation: string): Promise<T> =>
-  Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${operation} timed out after ${ms}ms`)), ms)
+const withTimeout = <T,>(promise: Promise<T>, ms: number, operation: string): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise.then(
+      (result) => { clearTimeout(timeoutId); return result; },
+      (error) => { clearTimeout(timeoutId); throw error; }
     ),
+    new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`${operation} timed out after ${ms}ms`)), ms);
+    }),
   ]);
+};
 
 // Constants for IPC operations
 const IPC_TIMEOUT_MS = 12540000; // 209 minutes for document processing (large docs can take time)
@@ -664,7 +669,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         persistTimerRef.current = null; // Clear the ref
       }
     };
-  }, [sessions, activeSessions, debouncedPersistSessions]); // FIX: Removed debouncedPersistSessions - it's stable so doesn't need to be a dependency
+  }, [sessions, activeSessions, debouncedPersistSessions]);
 
   // CRITICAL FIX: Flush pending saves before window closes
   // Without this, sessions created/modified within the debounce window are lost
@@ -753,11 +758,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       log.info("[createSession] Using custom defaults for new session");
     }
 
+    const now = new Date();
     const newSession: Session = {
       id: `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       name,
-      createdAt: new Date(),
-      lastModified: new Date(),
+      createdAt: now,
+      lastModified: now,
       documents: [],
       stats: {
         documentsProcessed: 0,
@@ -886,7 +892,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Update session status to 'closed' but keep in sessions list for history
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === id ? { ...s, status: "closed" as const, lastModified: new Date(), closedAt } : s
+        s.id === id ? { ...s, status: "closed" as const, lastModified: closedAt, closedAt } : s
       )
     );
 
@@ -911,6 +917,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (currentSession?.id === id) {
       setCurrentSession(null);
     }
+
+    // Delete from IndexedDB so it doesn't reappear on next app start
+    deleteSessionFromDB(id).catch((err) =>
+      log.error(`[Session] Failed to delete session ${id} from IndexedDB:`, err)
+    );
 
     // Also remove individual session from localStorage if it exists
     localStorage.removeItem(`session_${id}`);
@@ -970,6 +981,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         continue;
       }
 
+      // Skip files that are already pending or processing in the session
+      // Allow re-adding files that were already processed or errored (user wants to reprocess)
+      const session = sessions.find((s) => s.id === sessionId);
+      const pendingDuplicate =
+        session?.documents.some(
+          (d) => d.path === fileWithPath.path && (d.status === "pending" || d.status === "processing")
+        ) || newDocuments.some((d) => d.path === fileWithPath.path);
+      if (pendingDuplicate) {
+        log.warn(`[addDocuments] File "${file.name}" skipped: already pending in session`);
+        invalidFiles.push({ name: file.name, reason: "File is already queued for processing" });
+        continue;
+      }
+
       // Create document with validated path
       newDocuments.push({
         id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
@@ -1002,44 +1026,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              documents: [...session.documents, ...newDocuments],
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
-
-    // Update active sessions
-    setActiveSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              documents: [...session.documents, ...newDocuments],
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
+    // Use updateSessionById to keep sessions, activeSessions, and currentSession in sync
+    updateSessionById(sessionId, (session) => ({
+      ...session,
+      documents: [...session.documents, ...newDocuments],
+      lastModified: new Date(),
+    }));
   };
 
   const removeDocument = (sessionId: string, documentId: string) => {
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              documents: session.documents.filter((d) => d.id !== documentId),
-              lastModified: new Date(),
-            }
-          : session
-      )
-    );
+    // Use updateSessionById to keep sessions, activeSessions, and currentSession in sync
+    updateSessionById(sessionId, (session) => ({
+      ...session,
+      documents: session.documents.filter((d) => d.id !== documentId),
+      lastModified: new Date(),
+    }));
   };
 
   // PERFORMANCE FIX: Wrap in useCallback to prevent child component re-renders
@@ -1352,6 +1353,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 "update-top-hyperlinks"
               ),
             updateTocHyperlinks: true, // Always enabled - no UI control
+            forceRemoveHeading1FromTOC:
+              sessionToProcess.processingOptions?.enabledOperations?.includes(
+                "force-remove-heading1-toc"
+              ),
             standardizeHyperlinkColor: true, // Always enabled - removed from UI
             validateHeader2Tables:
               sessionToProcess.processingOptions?.enabledOperations?.includes(
@@ -1810,7 +1815,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           log.info(`[SessionContext] Processor Duration: ${result.duration}ms`);
           log.info(`[SessionContext] Total Duration: ${totalDuration}ms`);
           log.info(
-            `[SessionContext] Time Saved: ${Math.round((result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) / SECONDS_PER_MINUTE)} seconds`
+            `[SessionContext] Time Saved: ${Math.round((result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) / SECONDS_PER_MINUTE)} minutes`
           );
           log.info("═══════════════════════════════════════════════════════════════════════");
         } else {
@@ -1895,27 +1900,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     // Remove the change from the tracked changes list
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === sessionId
+    // Use updateSessionById to keep activeSessions and currentSession in sync
+    updateSessionById(sessionId, (s) => ({
+      ...s,
+      documents: s.documents.map((d) =>
+        d.id === documentId && d.processingResult
           ? {
-              ...s,
-              documents: s.documents.map((d) =>
-                d.id === documentId && d.processingResult
-                  ? {
-                      ...d,
-                      processingResult: {
-                        ...d.processingResult,
-                        changes: d.processingResult.changes?.filter((c) => c.id !== changeId) || [],
-                      },
-                    }
-                  : d
-              ),
-              lastModified: new Date(),
+              ...d,
+              processingResult: {
+                ...d.processingResult,
+                changes: d.processingResult.changes?.filter((c) => c.id !== changeId) || [],
+              },
             }
-          : s
-      )
-    );
+          : d
+      ),
+      lastModified: new Date(),
+    }));
 
     log.info(`[Session] Reverted change ${changeId} from document ${documentId}`);
   };
@@ -1941,27 +1941,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await restoreAPI.restoreFromBackup(backupPath, document.path);
 
       // Clear all tracked changes and reset processing status
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === sessionId
+      // Use updateSessionById to keep activeSessions and currentSession in sync
+      updateSessionById(sessionId, (s) => ({
+        ...s,
+        documents: s.documents.map((d) =>
+          d.id === documentId
             ? {
-                ...s,
-                documents: s.documents.map((d) =>
-                  d.id === documentId
-                    ? {
-                        ...d,
-                        status: "pending" as const,
-                        processedAt: undefined,
-                        errors: undefined,
-                        processingResult: undefined,
-                      }
-                    : d
-                ),
-                lastModified: new Date(),
+                ...d,
+                status: "pending" as const,
+                processedAt: undefined,
+                errors: undefined,
+                processingResult: undefined,
               }
-            : s
-        )
-      );
+            : d
+        ),
+        lastModified: new Date(),
+      }));
 
       log.info(
         `[Session] Reverted all changes for document ${documentId} from backup ${backupPath}`

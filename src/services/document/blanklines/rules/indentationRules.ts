@@ -183,9 +183,14 @@ function getTextIndentForLevel(options: BlankLineProcessingOptions, level: numbe
     return inchesToTwips(levelConfig.textIndent);
   }
 
-  // If no exact level match, use the last configured level
+  // If no exact level match, extrapolate from the last configured level
+  // Each additional level adds 0.25 inches, matching WordDocumentProcessor.getTextIndentForLevel
   if (levels.length > 0) {
     const lastLevel = levels[levels.length - 1];
+    const extraLevels = level - lastLevel.level;
+    if (extraLevels > 0) {
+      return inchesToTwips(lastLevel.textIndent + extraLevels * 0.25);
+    }
     return inchesToTwips(lastLevel.textIndent);
   }
 

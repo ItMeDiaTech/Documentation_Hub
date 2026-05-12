@@ -905,7 +905,7 @@ export class WordDocumentProcessor {
                 hyperlinks.push({
                   paragraphIndex: pIndex,
                   hyperlinkIndex: hIndex++,
-                  url: element.getUrl() || "",
+                  url: element.getFullUrl() || "",
                   text: element.getText() || "",
                 });
               }
@@ -2142,6 +2142,7 @@ export class WordDocumentProcessor {
               (hyperlink as ComplexField).setResultFormatting(formatting);
             } else {
               (hyperlink as Hyperlink).setFormatting(formatting);
+              (hyperlink as Hyperlink).getRun().setCharacterStyle("Hyperlink");
             }
             reappliedCount++;
           } catch (err) {
@@ -2637,6 +2638,7 @@ export class WordDocumentProcessor {
         );
         this.log.info(`Standardized ${numbersStandardized} numbered lists`);
         this.debugCaptureListState(doc, "AFTER applyBulletUniformity/applyNumberedUniformity");
+
 
         // Remove w:tab val="num" tab stops from list level definitions in numbering.xml.
         // These tab stops create additional visual indentation that the indentation calculations
@@ -3173,6 +3175,83 @@ export class WordDocumentProcessor {
             gridIdx += span;
           }
         }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // ENFORCE MINIMUM COLUMN WIDTH (1 inch = 1440 twips)
+      // Any column narrower than 1" is widened to 1". The extra
+      // width is taken proportionally from columns wider than 1".
+      // Skips if there isn't enough surplus to cover the deficit.
+      // ═══════════════════════════════════════════════════════════
+      const MIN_COLUMN_WIDTH = 1440; // 1 inch in twips
+      let minWidthTablesAdjusted = 0;
+
+      for (const table of doc.getTables()) {
+        if (tableProcessor.shouldSkipTable(table)) continue;
+        if (tableProcessor.isHLPTable(table)) continue;
+
+        const grid = table.getTableGrid();
+        if (!grid || grid.length === 0) continue;
+
+        // Calculate deficit (total width needed) and surplus (total available to give)
+        let deficit = 0;
+        let surplus = 0;
+        for (const colWidth of grid) {
+          if (colWidth < MIN_COLUMN_WIDTH) {
+            deficit += MIN_COLUMN_WIDTH - colWidth;
+          } else if (colWidth > MIN_COLUMN_WIDTH) {
+            surplus += colWidth - MIN_COLUMN_WIDTH;
+          }
+        }
+
+        // Skip if no narrow columns, or not enough surplus to redistribute
+        if (deficit === 0 || surplus < deficit) continue;
+
+        // Build new grid: widen narrow columns, shrink wide ones proportionally
+        const newGrid: number[] = [];
+        for (const colWidth of grid) {
+          if (colWidth < MIN_COLUMN_WIDTH) {
+            newGrid.push(MIN_COLUMN_WIDTH);
+          } else if (colWidth > MIN_COLUMN_WIDTH) {
+            const contribution = ((colWidth - MIN_COLUMN_WIDTH) / surplus) * deficit;
+            newGrid.push(Math.round(colWidth - contribution));
+          } else {
+            newGrid.push(colWidth); // exactly 1" — leave as-is
+          }
+        }
+        table.setTableGrid(newGrid);
+
+        // Update cell widths (tcW) to match new grid
+        for (const row of table.getRows()) {
+          let gridIdx = 0;
+          for (const cell of row.getCells()) {
+            if (gridIdx >= newGrid.length) break;
+            const span = cell.getColumnSpan() || 1;
+            let expectedWidth = 0;
+            for (let s = 0; s < span && gridIdx + s < newGrid.length; s++) {
+              expectedWidth += newGrid[gridIdx + s];
+            }
+            cell.setWidthType(expectedWidth, "dxa");
+            gridIdx += span;
+          }
+        }
+
+        minWidthTablesAdjusted++;
+        this.log.debug(
+          `Enforced min column width on table: ${grid.map((w) => Math.round(w / 14.4) / 100 + '"').join(", ")} → ${newGrid.map((w) => Math.round(w / 14.4) / 100 + '"').join(", ")}`
+        );
+      }
+
+      if (minWidthTablesAdjusted > 0) {
+        this.log.info(
+          `Enforced minimum 1" column width on ${minWidthTablesAdjusted} tables`
+        );
+        result.changes?.push({
+          type: "table",
+          category: "structure",
+          description: "Enforced minimum 1\" column width",
+          count: minWidthTablesAdjusted,
+        });
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -3759,18 +3838,24 @@ export class WordDocumentProcessor {
 
       // PRESERVE TOC FIELD STRUCTURE
       // DocXMLater loses complex field structures (<w:fldChar>) during load.
-      // Always rebuild TOCs to restore proper field structure before save.
+      // Rebuild TOCs to restore proper field structure before save.
       // This ensures the TOC field codes are preserved and Word's "Update Field"
       // option remains available, regardless of TOC Processing Options.
+      //
+      // SKIP if buildProperTOC() already ran — it calls rebuildTOCs() internally
+      // and then applies formatTOCStyles() for blue/underlined entries. A second
+      // rebuildTOCs() here would regenerate entries and lose that formatting.
       // ═══════════════════════════════════════════════════════════
-      this.log.debug("=== REBUILDING TOC FIELD STRUCTURE ===");
-      try {
-        const tocResults = doc.rebuildTOCs();
-        if (tocResults.length > 0) {
-          this.log.info(`Rebuilt ${tocResults.length} TOC(s) to preserve field structure`);
+      if (!options.operations?.updateTocHyperlinks) {
+        this.log.debug("=== REBUILDING TOC FIELD STRUCTURE ===");
+        try {
+          const tocResults = doc.rebuildTOCs();
+          if (tocResults.length > 0) {
+            this.log.info(`Rebuilt ${tocResults.length} TOC(s) to preserve field structure`);
+          }
+        } catch (error) {
+          this.log.debug("No TOC to rebuild or rebuild failed:", error);
         }
-      } catch (error) {
-        this.log.debug("No TOC to rebuild or rebuild failed:", error);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -3789,9 +3874,10 @@ export class WordDocumentProcessor {
         );
 
         // Phase 2: Consolidate duplicate abstractNums with identical fingerprints
-        // Protect HLP abstractNums from consolidation (they may have special formatting)
+        // Protect HLP and row-number abstractNums from consolidation
+        const protectedIds = new Set([...this._hlpAbstractNumIds, ...this._rowNumberAbstractNumIds]);
         const consolidateResult = doc.consolidateNumbering({
-          protectedAbstractNumIds: this._hlpAbstractNumIds,
+          protectedAbstractNumIds: protectedIds,
         });
         if (consolidateResult.abstractNumsRemoved > 0) {
           this.log.info(
@@ -4369,7 +4455,8 @@ export class WordDocumentProcessor {
       for (const item of [...content]) {
         // Case 1: Direct Hyperlink instances
         if (item instanceof Hyperlink) {
-          const oldUrl = item.getUrl();
+          // Use getFullUrl() to include w:anchor fragment for matching
+          const oldUrl = item.getFullUrl();
 
           if (oldUrl && urlMap.has(oldUrl)) {
             // This hyperlink needs URL update
@@ -4413,7 +4500,7 @@ export class WordDocumentProcessor {
           const revisionContent = item.getContent();
           for (const revContent of revisionContent) {
             if (revContent instanceof Hyperlink) {
-              const oldUrl = revContent.getUrl();
+              const oldUrl = revContent.getFullUrl();
 
               if (oldUrl && urlMap.has(oldUrl)) {
                 const newUrl = urlMap.get(oldUrl)!;
@@ -5501,6 +5588,12 @@ export class WordDocumentProcessor {
       italic: false,
     });
 
+    // Ensure the run has rStyle="Hyperlink" character style.
+    // Without this, style application steps (doc.applyStyles()) can clear
+    // direct formatting, causing the hyperlink to fall back to Normal
+    // paragraph formatting (black text, no underline).
+    hyperlink.getRun().setCharacterStyle("Hyperlink");
+
     // Guard: restore text if setFormatting() altered it (e.g. dropped xml:space="preserve")
     const textAfterFormatting = hyperlink.getText();
     if (textAfterFormatting !== textBeforeFormatting && textBeforeFormatting) {
@@ -6098,6 +6191,10 @@ export class WordDocumentProcessor {
         for (const child of xml.children) {
           if (typeof child === "object" && child.name === "w:rPr") {
             if (!Array.isArray(child.children)) child.children = [];
+            // Remove existing <w:b> and <w:bCs> elements first (Word uses first match)
+            child.children = child.children.filter(
+              (c: any) => typeof c !== "object" || (c.name !== "w:b" && c.name !== "w:bCs")
+            );
             child.children.push({ name: "w:b", attributes: { "w:val": "0" } });
             child.children.push({ name: "w:bCs", attributes: { "w:val": "0" } });
             break;
@@ -9111,7 +9208,7 @@ export class WordDocumentProcessor {
             para.setAlignment("center");
             para.setSpaceBefore(pointsToTwips(normalStyle.spaceBefore));
             para.setSpaceAfter(pointsToTwips(normalStyle.spaceAfter));
-            // Set indentation AFTER spacing — spacing setters can drop <w:ind>
+            // Set indentation
             para.setLeftIndent(0);
             para.setFirstLineIndent(0);
             para.setHangingIndent(0);
@@ -9194,14 +9291,14 @@ export class WordDocumentProcessor {
       },
       // Lowercase Roman numerals with period: i., ii., iii., iv., v., vi., vii., viii., ix., x., xi., xii., xiii.
       {
-        regex: /^(i{1,3}|iv|vi{0,3}|ix|xi{1,3}|xiv|xv)\.\s*/i,
+        regex: /^(i{1,3}|iv|vi{0,3}|ix|x|xi{1,3}|xiv|xv)\.\s*/i,
         getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperRoman" : "lowerRoman"),
         getLevel: () => 2,
         description: "Roman numeral",
       },
       // Parenthetical Roman: (i), (ii), (iii), (I), (II), etc.
       {
-        regex: /^\((i{1,3}|iv|vi{0,3}|ix|xi{1,3}|xiv|xv)\)\s*/i,
+        regex: /^\((i{1,3}|iv|vi{0,3}|ix|x|xi{1,3}|xiv|xv)\)\s*/i,
         getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperRoman" : "lowerRoman"),
         getLevel: () => 2,
         description: "parenthetical Roman",
@@ -9614,6 +9711,7 @@ export class WordDocumentProcessor {
 
     return converted;
   }
+
 
   /**
    * Convert nested bullets in hybrid lists to letter format (a., b., c.)
@@ -11604,12 +11702,10 @@ export class WordDocumentProcessor {
         // No original instruction - TOC was created programmatically.
         // The buildFieldInstruction() generates \o "1-N" from levels.
         // We need to set an explicit instruction with "2-N".
-        const levels = toc.getLevels();
         const computedInstruction = toc.getFieldInstruction();
-        const updatedInstruction = computedInstruction.replace(
-          /\\o\s*"1(-\d+)"/,
-          `\\o "2-${levels}"`
-        );
+        const updatedInstruction = computedInstruction
+          .replace(/\\o\s*"1(-\d+)"/, '\\o "2$1"')
+          .replace(/\\o\s*&quot;1(-\d+)&quot;/, "\\o &quot;2$1&quot;");
 
         if (updatedInstruction !== computedInstruction) {
           toc.setOriginalFieldInstruction(updatedInstruction);

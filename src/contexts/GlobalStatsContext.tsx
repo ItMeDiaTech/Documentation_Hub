@@ -156,7 +156,22 @@ export function GlobalStatsProvider({ children }: { children: ReactNode }) {
   const updateStats = useCallback(
     async (update: StatsUpdate) => {
       setStats((prevStats) => {
-        const updatedStats = { ...prevStats };
+        // Roll over day/week/month periods before updating stats.
+        // Without this, stats added after midnight accumulate in the
+        // previous day's/week's/month's bucket until the app is restarted.
+        const rolledOver = checkAndRollOverPeriods({ ...prevStats });
+
+        // Deep copy nested stat objects to avoid mutating prevStats references.
+        // A shallow spread shares nested objects (allTime, today, etc.) between
+        // prevStats and updatedStats — mutating updatedStats.allTime would also
+        // mutate prevStats.allTime, corrupting React's state tracking.
+        const updatedStats = {
+          ...rolledOver,
+          allTime: { ...rolledOver.allTime },
+          today: { ...rolledOver.today },
+          currentWeek: { ...rolledOver.currentWeek },
+          currentMonth: { ...rolledOver.currentMonth },
+        };
 
         // Update all-time totals
         if (update.documentsProcessed) {

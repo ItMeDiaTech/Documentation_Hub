@@ -160,7 +160,7 @@ export class DocumentProcessingComparison {
           this.originalHyperlinks.set(key, {
             paragraphIndex: paraIndex,
             hyperlinkIndex,
-            url: item.getUrl() || "",
+            url: item.getFullUrl() || "",
             text: sanitizeHyperlinkText(rawText),
           });
           hyperlinkIndex++;
@@ -383,7 +383,7 @@ export class DocumentProcessingComparison {
           const original = this.originalHyperlinks.get(key);
 
           if (original) {
-            const currentUrl = item.getUrl() || "";
+            const currentUrl = item.getFullUrl() || "";
             const rawCurrentText = item.getText();
 
             // Log if XML corruption detected

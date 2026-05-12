@@ -213,20 +213,22 @@ export class SharePointSyncService {
         totalEntries: entries.length,
       });
 
-      // Clear existing entries
-      dictionaryService.clearEntries();
-
-      // Import new entries
-      const result = dictionaryService.importEntries(entries, (processed, total) => {
-        const progress = 70 + Math.floor((processed / total) * 25);
-        this.sendProgress({
-          phase: "importing",
-          progress,
-          message: `Importing entries... ${processed.toLocaleString()} / ${total.toLocaleString()}`,
-          entriesProcessed: processed,
-          totalEntries: total,
-        });
-      });
+      // Import new entries (clearing old entries atomically within the same transaction
+      // so a failed import rolls back the clear and preserves existing data)
+      const result = dictionaryService.importEntries(
+        entries,
+        (processed, total) => {
+          const progress = 70 + Math.floor((processed / total) * 25);
+          this.sendProgress({
+            phase: "importing",
+            progress,
+            message: `Importing entries... ${processed.toLocaleString()} / ${total.toLocaleString()}`,
+            entriesProcessed: processed,
+            totalEntries: total,
+          });
+        },
+        { clearFirst: true }
+      );
 
       if (!result.success) {
         throw new Error(result.error || "Import failed");

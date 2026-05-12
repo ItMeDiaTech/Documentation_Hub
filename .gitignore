@@ -6,7 +6,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
+.remember*
+CSO*
+DocHub_Backups*
 node_modules
 dist
 dist-electron
@@ -347,3 +349,17 @@ Fixes.md
 *.zip
 numbering_extract.txt
 .env.example
+
+# ============================================================================
+# LOCAL-ONLY: do not commit to repo
+# Personal docs, AI tool config, root-level scratch test scripts
+# ============================================================================
+Downloads/
+.kilocode/
+.kilocodemodes
+AI_Test.md
+/cropTest*.ts
+/cropTest*.mjs
+
+# Document regression test that needs an external fixture file
+src/services/document/__tests__/wontprocess.test.ts

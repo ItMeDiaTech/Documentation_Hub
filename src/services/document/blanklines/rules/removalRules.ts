@@ -5,7 +5,7 @@
  * of addition rules or preservation fallback.
  */
 
-import { Paragraph, Table } from "docxmlater";
+import { Paragraph, Table, Run, isRun } from "docxmlater";
 import type { BlankLineRule, RuleContext } from "./ruleTypes";
 import {
   isParagraphBlank,
@@ -202,10 +202,9 @@ export const boldColonToIndentedRule: BlankLineRule = {
     if (!prevContent || prevContent.length === 0) return false;
 
     // Check for bold first run with colon
-    const { Run } = require("docxmlater");
-    const firstRun = prevContent.find((item: any) => item instanceof Run) as any;
+    const firstRun = prevContent.find(isRun) as Run | undefined;
     if (!firstRun) return false;
-    const formatting = firstRun.getFormatting() as any;
+    const formatting = firstRun.getFormatting();
     if (!formatting.bold) return false;
     const fullText = ctx.prevElement.getText();
     if (!fullText || !fullText.substring(0, 55).includes(":")) return false;
@@ -219,8 +218,8 @@ export const boldColonToIndentedRule: BlankLineRule = {
 
     if (ctx.nextElement.getNumbering()) return true;
 
-    const nextIndent = ctx.nextElement.getFormatting()?.indentation?.left;
-    if (nextIndent && nextIndent > 0) return true;
+    const nextIndent = getEffectiveLeftIndent(ctx.nextElement, ctx.doc);
+    if (nextIndent > 0) return true;
 
     return false;
   },

@@ -45,7 +45,21 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         {},
         "UserSettings.loadSettings"
       );
-      setSettings({ ...defaultUserSettings, ...parsed });
+      // Deep merge nested objects so new fields added in app updates get their
+      // defaults even when localStorage has an older version of the object.
+      // A shallow spread ({ ...defaults, ...parsed }) would replace entire nested
+      // objects, losing any new fields not present in the stored version.
+      setSettings({
+        ...defaultUserSettings,
+        ...parsed,
+        profile: { ...defaultUserSettings.profile, ...parsed.profile },
+        notifications: { ...defaultUserSettings.notifications, ...parsed.notifications },
+        apiConnections: { ...defaultUserSettings.apiConnections, ...parsed.apiConnections },
+        updateSettings: { ...defaultUserSettings.updateSettings, ...parsed.updateSettings },
+        localDictionary: { ...defaultUserSettings.localDictionary, ...parsed.localDictionary },
+        backupSettings: { ...defaultUserSettings.backupSettings, ...parsed.backupSettings },
+        displaySettings: { ...defaultUserSettings.displaySettings, ...parsed.displaySettings },
+      });
     } finally {
       setIsLoading(false);
     }
