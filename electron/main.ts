@@ -1,8 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, screen, session, shell } from "electron";
-import * as fs from "fs";
-import { promises as fsPromises } from "fs";
-import * as path from "path";
-import { join } from "path";
+import * as fs from "node:fs";
+import { promises as fsPromises } from "node:fs";
+import * as path from "node:path";
+import { join } from "node:path";
 import { WordDocumentProcessor } from "../src/services/document/WordDocumentProcessor";
 import type { SharePointConfig } from "../src/types/dictionary";
 import type { BatchProcessingResult, HyperlinkProcessingResult } from "../src/types/hyperlink";
@@ -186,6 +186,24 @@ async function configureSession(): Promise<void> {
     const userAgent = `DocumentationHub/${app.getVersion()} (${process.platform})`;
     session.defaultSession.setUserAgent(userAgent);
 
+    // Renderer Content-Security-Policy: block supply-chain-injected scripts.
+    // Scoped to packaged builds only — Vite's HMR injects @vite/client via
+    // script tags that would be blocked by script-src 'self' in dev mode.
+    // 'unsafe-inline' is required for Tailwind/Radix inline styles.
+    // data: URIs are allowed for icons and embedded fonts.
+    if (app.isPackaged) {
+      session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+          responseHeaders: {
+            ...details.responseHeaders,
+            "Content-Security-Policy": [
+              "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https:",
+            ],
+          },
+        });
+      });
+    }
+
     log.info("✓ Session configured successfully");
   } catch (error) {
     log.error("❌ Failed to configure session:", error);
@@ -238,6 +256,9 @@ const REQUIRED_SECURITY_SETTINGS = {
   preload: join(__dirname, "preload.js"),
   nodeIntegration: false, // MUST be false for security
   contextIsolation: true, // MUST be true for React to work
+  sandbox: true, // Renderer in OS sandbox; only preload + IPC reach Node
+  webSecurity: true, // Enforce same-origin / CORS in the renderer
+  allowRunningInsecureContent: false, // Block mixed-content over http
 } as const;
 
 async function createWindow() {
@@ -305,80 +326,25 @@ async function createWindow() {
   // Runtime Security Validation (Development Only)
   // ============================================================================
   if (isDev) {
-    // Validate security settings at runtime to catch accidental changes
-    // Use getPreloadScripts() - getPreloads() is deprecated as of Electron 38.x
-    const preloadScripts = mainWindow.webContents.session.getPreloadScripts();
-
-    // Getting webPreferences - this method doesn't exist on webContents
-    // We need to check the actual settings we passed during BrowserWindow creation
-    // The validation approach needs to be different
-
-    // Since we can't get webPreferences directly in newer Electron,
-    // we validate by checking if the settings we defined are still intact
-    const expectedSettings = REQUIRED_SECURITY_SETTINGS;
-
-    // We can verify our settings are applied by testing actual behavior
-    // For example, trying to access Node APIs from renderer would fail with proper settings
-
-    // For now, we'll validate our constant hasn't been modified
-    // This is a compile-time check that TypeScript enforces
-    if (expectedSettings.nodeIntegration !== false) {
-      const errorMsg = `
-╔════════════════════════════════════════════════════════════════════════════╗
-║                     🚨 SECURITY VIOLATION DETECTED 🚨                      ║
-╠════════════════════════════════════════════════════════════════════════════╣
-║                                                                            ║
-║  nodeIntegration is enabled! This is a CRITICAL security vulnerability.   ║
-║                                                                            ║
-║  Current value: ${expectedSettings.nodeIntegration}                                              ║
-║  Required value: false                                                     ║
-║                                                                            ║
-║  This setting MUST be 'false' to:                                         ║
-║  - Prevent XSS attacks from accessing Node.js APIs                        ║
-║  - Protect filesystem and system resources                                ║
-║  - Maintain secure IPC communication                                      ║
-║                                                                            ║
-║  Fix: Set nodeIntegration: false in REQUIRED_SECURITY_SETTINGS            ║
-║  Location: electron/main.ts line 352-356                                  ║
-║                                                                            ║
-╚════════════════════════════════════════════════════════════════════════════╝
-      `;
-      log.error(errorMsg);
-      throw new Error("SECURITY VIOLATION: nodeIntegration must be false");
+    // Query the actual webPreferences Chromium applied to the renderer — not
+    // our compile-time const, which TypeScript already protects. This catches
+    // drift between REQUIRED_SECURITY_SETTINGS and what the BrowserWindow
+    // actually got (e.g., command-line flag override, fork that diverges).
+    const actual = mainWindow.webContents.getLastWebPreferences();
+    if (actual?.nodeIntegration === true) {
+      throw new Error("BrowserWindow.webPreferences.nodeIntegration must be false");
     }
-
-    // Validate contextIsolation
-    if (expectedSettings.contextIsolation !== true) {
-      const errorMsg = `
-╔════════════════════════════════════════════════════════════════════════════╗
-║                     🚨 CONFIGURATION ERROR DETECTED 🚨                     ║
-╠════════════════════════════════════════════════════════════════════════════╣
-║                                                                            ║
-║  contextIsolation is disabled! This will cause a BLACK SCREEN.            ║
-║                                                                            ║
-║  Current value: ${expectedSettings.contextIsolation}                                             ║
-║  Required value: true                                                      ║
-║                                                                            ║
-║  This setting MUST be 'true' for:                                         ║
-║  - React to render properly (lazy loading, Context API)                   ║
-║  - Router navigation to work                                              ║
-║  - Secure preload script execution                                        ║
-║  - Dynamic imports to load                                                ║
-║                                                                            ║
-║  Fix: Set contextIsolation: true in REQUIRED_SECURITY_SETTINGS            ║
-║  Location: electron/main.ts line 352-356                                  ║
-║                                                                            ║
-║  Historical incidents: 159f47b, 290ee59, 7575ba6                          ║
-║                                                                            ║
-╚════════════════════════════════════════════════════════════════════════════╝
-      `;
-      log.error(errorMsg);
-      throw new Error("CONFIGURATION ERROR: contextIsolation must be true (causes black screen)");
+    if (actual?.contextIsolation === false) {
+      throw new Error("BrowserWindow.webPreferences.contextIsolation must be true");
+    }
+    if (actual?.sandbox === false) {
+      throw new Error("BrowserWindow.webPreferences.sandbox must be true");
     }
 
     log.info("✅ Security validation passed - All settings correct");
     log.info("   - nodeIntegration: false ✓");
     log.info("   - contextIsolation: true ✓");
+    log.info("   - sandbox: true ✓");
   }
 }
 
@@ -1296,7 +1262,7 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle("process-document", async (...[, filePath]: [Electron.IpcMainInvokeEvent, string]) => {
+ipcMain.handle("process-document", async (_event, filePath: string) => {
   if (!filePath) {
     return { success: false, error: "No path provided" };
   }
@@ -1306,7 +1272,7 @@ ipcMain.handle("process-document", async (...[, filePath]: [Electron.IpcMainInvo
       mustBeFile: true,
       allowedExtensions: [".docx"],
     });
-    const stats = fs.statSync(validatedPath);
+    const stats = await fsPromises.stat(validatedPath);
     return {
       success: true,
       size: stats.size,

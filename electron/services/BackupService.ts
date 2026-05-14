@@ -19,10 +19,10 @@
  * ```
  */
 
-import { createHash } from "crypto";
-import * as path from "path";
-import * as fs from "fs/promises";
-import * as os from "os";
+import { createHash } from "node:crypto";
+import * as path from "node:path";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import { app } from "electron";
 import { logger } from "../../src/utils/logger";
 

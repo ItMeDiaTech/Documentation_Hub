@@ -11,7 +11,7 @@
  * @performance Supports chunked download with progress reporting
  */
 
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
 import { BrowserWindow } from "electron";
 import {
   ConfidentialClientApplication,

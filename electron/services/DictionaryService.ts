@@ -10,8 +10,8 @@
  * @performance SQLite with WAL mode for fast reads
  */
 
-import * as path from "path";
-import * as fs from "fs/promises";
+import * as path from "node:path";
+import * as fs from "node:fs/promises";
 import { app } from "electron";
 import Database from "better-sqlite3";
 import { logger } from "../../src/utils/logger";

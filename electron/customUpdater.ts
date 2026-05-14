@@ -1,7 +1,7 @@
 import { autoUpdater, UpdateInfo } from "electron-updater";
 import { app, shell } from "electron";
-import * as path from "path";
-import * as fs from "fs";
+import * as path from "node:path";
+import * as fs from "node:fs";
 import {
   PublicClientApplication,
   Configuration,
