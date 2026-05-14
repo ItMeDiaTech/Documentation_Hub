@@ -55,7 +55,7 @@ For each non-blank, non-list paragraph `N` with `formatting.indentation.left > 0
 
 | Case | Trigger | Action |
 |---|---|---|
-| **A** | The immediate previous element (`getBodyElementAt(i-1)` in body, `paras[ci-1]` in cell) is a non-blank Paragraph with `getNumbering()` truthy. | `N.setLeftIndent(getTextIndentForLevel(options, prev.numbering.level))`. If `getTextIndentForLevel` returns null, leave N alone. |
+| **A** | The immediate previous element (`getBodyElementAt(i-1)` in body, `paras[ci-1]` in cell) is a non-blank Paragraph with `getNumbering()` truthy. | `N.setLeftIndent(getTextIndentForLevel(options, prev.numbering.level))`. If `getTextIndentForLevel` returns null (level not configured), fall through to Case C — never leave the value indeterminate. |
 | **B** | The immediate previous element is a non-blank, non-list Paragraph with `formatting.indentation.left > 0`. | `N.setLeftIndent(prev.getFormatting()?.indentation?.left)`. Because we iterate forward, `prev` has already been normalized by an earlier loop pass. |
 | **C** | None of the above — prev is blank, prev is non-indented, prev is a `Table`, or `N` is the first element. | `N.setLeftIndent(getLevel0TextIndent(options) ?? FALLBACK_FIRST_INDENT_TWIPS)` where `FALLBACK_FIRST_INDENT_TWIPS = inchesToTwips(0.5)`. |
 
@@ -124,7 +124,7 @@ No new modules, no API changes outside the package.
 
 1. Case A: indented non-list paragraph after a level-0 list item → indent set to level-0 text indent.
 2. Case A: indented non-list paragraph after a level-2 list item → indent set to level-2 text indent.
-3. Case A: `getTextIndentForLevel` returns null for some reason → indent left unchanged.
+3. Case A fall-through: indented paragraph after a list item at a level not present in `indentationLevels` → falls through to Case C (level-0 or 0.5" fallback) rather than leaving indent indeterminate.
 4. Case B: indented non-list paragraph after another indented non-list paragraph → matches prev's indent.
 5. Case B cascade: three consecutive indented non-list paragraphs after non-indented prose → all settle at the level-0 value via C → B → B.
 6. Case C: first body element is indented → set to level-0 (or 0.5" fallback).
