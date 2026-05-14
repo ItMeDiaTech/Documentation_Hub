@@ -9,7 +9,7 @@
  * - Style definition management
  */
 
-import { Document, Hyperlink, Paragraph, Run, Style, pointsToTwips, isRevision } from "docxmlater";
+import { Document, Hyperlink, Paragraph, Run, Style, pointsToTwips } from "docxmlater";
 import { logger } from "@/utils/logger";
 
 const log = logger.namespace("StyleProcessor");
@@ -361,33 +361,6 @@ export class StyleProcessor {
     return config;
   }
 
-  /**
-   * Get all runs from a paragraph including those in revisions
-   */
-  getAllRunsFromParagraph(para: Paragraph): Run[] {
-    const runs: Run[] = [];
-
-    try {
-      // Get direct runs
-      const directRuns = para.getRuns();
-      runs.push(...directRuns);
-
-      // Try to get runs from revisions if available
-      const content = para.getContent();
-      for (const item of content) {
-        if (isRevision(item)) {
-          const type = item.getType();
-          if (type === "delete" || type === "moveFrom") continue;
-          const revisionRuns = item.getRuns();
-          runs.push(...revisionRuns);
-        }
-      }
-    } catch (error) {
-      log.debug(`Error getting runs from paragraph: ${error}`);
-    }
-
-    return runs;
-  }
 }
 
 export const styleProcessor = new StyleProcessor();

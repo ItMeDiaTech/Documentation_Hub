@@ -73,6 +73,7 @@ import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
 import { DocumentSnapshotService } from "./DocumentSnapshotService";
 import { tableProcessor } from "./processors/TableProcessor";
+import { getBodyRuns } from "./helpers/paragraphRuns";
 
 // ═══════════════════════════════════════════════════════════
 // Bullet Symbol to Font Mapping
@@ -105,6 +106,69 @@ function getBulletMapping(bulletChar: string): { char: string; font: string } {
 // Widens the gap between number/bullet and text from 0.25" to 0.30" so double-digit
 // numbers (10., 11., etc.) don't push text past the hanging indent position.
 const WIDE_HANGING_EXTRA_TWIPS = 72; // 0.05 inches * 1440 twips/inch
+
+// ═══════════════════════════════════════════════════════════
+// Extended Typed-Prefix Detection Patterns
+// Patterns NOT handled by DocXMLater's normalizeTableLists:
+//   - Parenthetical formats: (1), (a), (A), 1), a), A)
+//   - Roman numerals: i..xv, (i)..(xv) and uppercase variants
+// Hoisted to module scope so each RegExp compiles exactly once.
+// ═══════════════════════════════════════════════════════════
+interface ExtendedTypedPrefixPattern {
+  regex: RegExp;
+  getFormat: (match: RegExpMatchArray) => string;
+  getLevel: () => number;
+  description: string;
+}
+
+const EXTENDED_TYPED_PREFIX_PATTERNS: readonly ExtendedTypedPrefixPattern[] = [
+  // Parenthetical numbers: (1), (2), etc.
+  {
+    regex: /^\((\d+)\)\s*/,
+    getFormat: () => "decimal",
+    getLevel: () => 0,
+    description: "parenthetical decimal",
+  },
+  // Number with closing paren: 1), 2), etc.
+  {
+    regex: /^(\d+)\)\s*/,
+    getFormat: () => "decimal",
+    getLevel: () => 0,
+    description: "decimal with paren",
+  },
+  // Parenthetical letters: (a), (b), (A), (B), etc.
+  {
+    regex: /^\(([a-zA-Z])\)\s*/,
+    getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperLetter" : "lowerLetter"),
+    getLevel: () => 1,
+    description: "parenthetical letter",
+  },
+  // Letter with closing paren: a), b), A), B), etc.
+  {
+    regex: /^([a-zA-Z])\)\s*/,
+    getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperLetter" : "lowerLetter"),
+    getLevel: () => 1,
+    description: "letter with paren",
+  },
+  // Bounded to i. ... xv. (15 items). 16+ Roman lists fall through to generic
+  // paragraph detection — extending alternation is cheaper than a proper parser
+  // only if you actually need higher numerals.
+  {
+    regex: /^(i{1,3}|iv|vi{0,3}|ix|x|xi{1,3}|xiv|xv)\.\s*/i,
+    getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperRoman" : "lowerRoman"),
+    getLevel: () => 2,
+    description: "Roman numeral",
+  },
+  // Bounded to i. ... xv. (15 items). 16+ Roman lists fall through to generic
+  // paragraph detection — extending alternation is cheaper than a proper parser
+  // only if you actually need higher numerals.
+  {
+    regex: /^\((i{1,3}|iv|vi{0,3}|ix|x|xi{1,3}|xiv|xv)\)\s*/i,
+    getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperRoman" : "lowerRoman"),
+    getLevel: () => 2,
+    description: "parenthetical Roman",
+  },
+];
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
@@ -4066,7 +4130,7 @@ export class WordDocumentProcessor {
 
   /**
    * Apply text replacements across all paragraphs (body + table cells).
-   * Uses getAllRunsFromParagraph() to exclude hyperlink-child runs
+   * Uses getBodyRuns() to exclude hyperlink-child runs
    * (already handled by processCustomReplacements).
    * Skips TOC and complex-field paragraphs to avoid corrupting field instructions.
    */
@@ -4094,9 +4158,9 @@ export class WordDocumentProcessor {
         continue;
       }
 
-      // getAllRunsFromParagraph excludes hyperlink-child runs,
+      // getBodyRuns excludes hyperlink-child runs,
       // preventing double-replacement with processCustomReplacements
-      const runs = this.getAllRunsFromParagraph(para);
+      const runs = getBodyRuns(para);
       for (const run of runs) {
         let text = run.getText();
         if (!text) continue;
@@ -4659,7 +4723,7 @@ export class WordDocumentProcessor {
         continue;
       }
 
-      let runs = this.getAllRunsFromParagraph(para);
+      let runs = getBodyRuns(para);
 
       // Filter out field-marker runs instead of skipping the entire paragraph.
       // Always keep ImageRun and VML image runs — they have no field content
@@ -5125,7 +5189,7 @@ export class WordDocumentProcessor {
     const paragraphs = doc.getAllParagraphs();
 
     for (const para of paragraphs) {
-      const runs = this.getAllRunsFromParagraph(para);
+      const runs = getBodyRuns(para);
       for (const run of runs) {
         // Check if run has italic formatting
         const formatting = run.getFormatting();
@@ -5168,7 +5232,7 @@ export class WordDocumentProcessor {
         continue;
       }
 
-      const runs = this.getAllRunsFromParagraph(para);
+      const runs = getBodyRuns(para);
 
       for (const run of runs) {
         const text = run.getText();
@@ -5980,7 +6044,7 @@ export class WordDocumentProcessor {
       // Track if this paragraph has hidden text
       let paraHasHiddenText = false;
 
-      const runs = this.getAllRunsFromParagraph(para);
+      const runs = getBodyRuns(para);
       for (const run of runs) {
         const currentColor = run.getFormatting().color?.toUpperCase();
 
@@ -6457,9 +6521,9 @@ export class WordDocumentProcessor {
 
         // Apply text formatting to all runs in paragraph, including those inside revisions
         // This ensures runs inside w:ins, w:moveTo, etc. also get formatting applied
-        const runs = this.getAllRunsFromParagraph(para);
+        const runs = getBodyRuns(para);
         for (const run of runs) {
-          // getAllRunsFromParagraph() excludes runs inside real Hyperlink elements.
+          // getBodyRuns() excludes runs inside real Hyperlink elements.
           // If a run here has Hyperlink characterStyle, it is a FALSE hyperlink —
           // text that inherited "Hyperlink" character style without being inside a
           // w:hyperlink element. Strip the character style so it receives proper
@@ -6888,7 +6952,7 @@ export class WordDocumentProcessor {
           styleId === "List Paragraph" ||
           !styleId;
         if (isNormalOrList) {
-          const runs = this.getAllRunsFromParagraph(para);
+          const runs = getBodyRuns(para);
           for (const run of runs) {
             if (run.getFormatting().color?.toUpperCase() === "FF0000") {
               redFontRuns.add(run);
@@ -7142,7 +7206,7 @@ export class WordDocumentProcessor {
               tableHasHeader2 = true;
               let cellNeedsUpdate = false;
               const formatting = para.getFormatting();
-              const runs = this.getAllRunsFromParagraph(para);
+              const runs = getBodyRuns(para);
 
               // Validate and fix paragraph formatting
               // Preserve center alignment if paragraph is already centered
@@ -7357,7 +7421,7 @@ export class WordDocumentProcessor {
         continue;
       }
 
-      const runs = this.getAllRunsFromParagraph(para);
+      const runs = getBodyRuns(para);
       for (const run of runs) {
         let text = run.getText();
         if (!text) continue;
@@ -9052,7 +9116,7 @@ export class WordDocumentProcessor {
             para.setSpaceAfter(pointsToTwips(normalStyle.spaceAfter));
 
             // Format runs
-            for (const run of this.getAllRunsFromParagraph(para)) {
+            for (const run of getBodyRuns(para)) {
               run.setFont(normalStyle.fontFamily);
               run.setSize(normalStyle.fontSize);
               run.setColor("000000");
@@ -9214,7 +9278,7 @@ export class WordDocumentProcessor {
             para.setHangingIndent(0);
 
             // Format runs if any exist
-            for (const run of this.getAllRunsFromParagraph(para)) {
+            for (const run of getBodyRuns(para)) {
               run.setFont(normalStyle.fontFamily);
               run.setSize(normalStyle.fontSize);
               run.setColor("000000");
@@ -9252,58 +9316,6 @@ export class WordDocumentProcessor {
     let converted = 0;
 
     this.log.debug("=== PRE-PROCESSING EXTENDED TYPED PREFIXES ===");
-
-    // Extended patterns not handled by DocXMLater
-    // Each pattern maps to a Word numFmt and suggested level
-    const extendedPatterns: Array<{
-      regex: RegExp;
-      getFormat: (match: RegExpMatchArray) => string;
-      getLevel: () => number;
-      description: string;
-    }> = [
-      // Parenthetical numbers: (1), (2), etc.
-      {
-        regex: /^\((\d+)\)\s*/,
-        getFormat: () => "decimal",
-        getLevel: () => 0,
-        description: "parenthetical decimal",
-      },
-      // Number with closing paren: 1), 2), etc.
-      {
-        regex: /^(\d+)\)\s*/,
-        getFormat: () => "decimal",
-        getLevel: () => 0,
-        description: "decimal with paren",
-      },
-      // Parenthetical letters: (a), (b), (A), (B), etc.
-      {
-        regex: /^\(([a-zA-Z])\)\s*/,
-        getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperLetter" : "lowerLetter"),
-        getLevel: () => 1,
-        description: "parenthetical letter",
-      },
-      // Letter with closing paren: a), b), A), B), etc.
-      {
-        regex: /^([a-zA-Z])\)\s*/,
-        getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperLetter" : "lowerLetter"),
-        getLevel: () => 1,
-        description: "letter with paren",
-      },
-      // Lowercase Roman numerals with period: i., ii., iii., iv., v., vi., vii., viii., ix., x., xi., xii., xiii.
-      {
-        regex: /^(i{1,3}|iv|vi{0,3}|ix|x|xi{1,3}|xiv|xv)\.\s*/i,
-        getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperRoman" : "lowerRoman"),
-        getLevel: () => 2,
-        description: "Roman numeral",
-      },
-      // Parenthetical Roman: (i), (ii), (iii), (I), (II), etc.
-      {
-        regex: /^\((i{1,3}|iv|vi{0,3}|ix|x|xi{1,3}|xiv|xv)\)\s*/i,
-        getFormat: (m) => (m[1] === m[1].toUpperCase() ? "upperRoman" : "lowerRoman"),
-        getLevel: () => 2,
-        description: "parenthetical Roman",
-      },
-    ];
 
     // Cache for found numbering definitions by format
     const formatToNumId = new Map<string, number>();
@@ -9353,7 +9365,7 @@ export class WordDocumentProcessor {
             if (!text || text.trim().length === 0) continue;
 
             // Check each extended pattern
-            for (const pattern of extendedPatterns) {
+            for (const pattern of EXTENDED_TYPED_PREFIX_PATTERNS) {
               const match = text.match(pattern.regex);
               if (match) {
                 const format = pattern.getFormat(match);
@@ -10295,7 +10307,7 @@ export class WordDocumentProcessor {
 
               // Apply Heading 2 font/size and bold formatting
               for (const para of singleCell.getParagraphs()) {
-                for (const run of this.getAllRunsFromParagraph(para)) {
+                for (const run of getBodyRuns(para)) {
                   run.setFont(heading2FontFamily);
                   run.setSize(heading2FontSize);
                   if (!preserveBold) {
@@ -10351,7 +10363,7 @@ export class WordDocumentProcessor {
                 // Set all text in the header to bold (unless preserveBold is enabled)
                 for (const para of cell.getParagraphs()) {
                   if (!preserveBold) {
-                    for (const run of this.getAllRunsFromParagraph(para)) {
+                    for (const run of getBodyRuns(para)) {
                       run.setBold(true);
                     }
                   }
@@ -10370,7 +10382,7 @@ export class WordDocumentProcessor {
                 // Set all text in shaded data cells to bold (unless preserveBold is enabled)
                 for (const para of cell.getParagraphs()) {
                   if (!preserveBold) {
-                    for (const run of this.getAllRunsFromParagraph(para)) {
+                    for (const run of getBodyRuns(para)) {
                       run.setBold(true);
                     }
                   }
@@ -10545,7 +10557,7 @@ export class WordDocumentProcessor {
       // Fallback: extract text from runs inside revision elements (w:ins, w:del)
       // This handles paragraphs with unaccepted tracked changes where getText() returns empty
       if (para instanceof Paragraph) {
-        const runs = this.getAllRunsFromParagraph(para);
+        const runs = getBodyRuns(para);
         return runs.map((r) => r.getText() || "").join("");
       }
       return "";
@@ -11235,8 +11247,8 @@ export class WordDocumentProcessor {
     para1.setSpaceBefore(pointsToTwips(3));
     para1.setSpaceAfter(pointsToTwips(3));
 
-    // Format runs in first paragraph (use getAllRunsFromParagraph to reach runs inside w:ins revision wrappers)
-    const runs1 = this.getAllRunsFromParagraph(para1);
+    // Format runs in first paragraph (use getBodyRuns to reach runs inside w:ins revision wrappers)
+    const runs1 = getBodyRuns(para1);
     this.log.debug(`Warning line 1: ${runs1.length} runs to format`);
     for (const run of runs1) {
       run.setFont("Verdana");
@@ -11252,8 +11264,8 @@ export class WordDocumentProcessor {
     para2.setSpaceBefore(pointsToTwips(3));
     para2.setSpaceAfter(pointsToTwips(3));
 
-    // Format runs in second paragraph (bold) — use getAllRunsFromParagraph for w:ins revision wrappers
-    const runs2 = this.getAllRunsFromParagraph(para2);
+    // Format runs in second paragraph (bold) — use getBodyRuns for w:ins revision wrappers
+    const runs2 = getBodyRuns(para2);
     this.log.debug(`Warning line 2: ${runs2.length} runs to format`);
     for (const run of runs2) {
       run.setFont("Verdana");
@@ -12265,43 +12277,6 @@ export class WordDocumentProcessor {
     const changeDesc = changes.join(" and ");
     const reason = change.changeReason ? ` (${change.changeReason})` : "";
     return `Changed hyperlink ${changeDesc}${reason}`;
-  }
-
-  /**
-   * Gets all runs from a paragraph, including those inside revision elements.
-   *
-   * This is needed because para.getRuns() only returns direct Run children,
-   * but runs inside w:ins, w:moveTo, w:del, etc. are not returned.
-   * This method traverses into all content to find all runs.
-   *
-   * @param para - The paragraph to extract runs from
-   * @returns Array of all Run objects in the paragraph
-   */
-  private getAllRunsFromParagraph(para: Paragraph): Run[] {
-    const allRuns: Run[] = [];
-    const content = para.getContent();
-
-    for (const item of content) {
-      if (item instanceof Run) {
-        allRuns.push(item);
-      } else if (item instanceof Revision) {
-        const type = item.getType();
-        // Only include runs from insert/moveTo revisions.
-        // Runs inside w:del/w:moveFrom are deleted content — modifying them
-        // (e.g., setFont/setSize during style application) can corrupt the
-        // revision XML structure, causing deleted text to appear as normal text.
-        if (type === "delete" || type === "moveFrom") continue;
-        const revRuns = item.getRuns();
-        allRuns.push(...revRuns);
-      }
-      // NOTE: Hyperlink runs are intentionally NOT included here.
-      // Hyperlinks are formatted separately by standardizeHyperlinkFormatting() to ensure
-      // they retain their blue color (#0000FF) and underline. Including them here would
-      // cause the style application loop to overwrite their blue color with the Normal style color.
-      // Fields, Shapes, TextBoxes don't contain directly accessible runs for this purpose
-    }
-
-    return allRuns;
   }
 
   /**

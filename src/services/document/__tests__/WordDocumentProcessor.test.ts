@@ -836,7 +836,7 @@ function createMockRunWithHyperlinkStyle(text: string) {
     setUnderline: jest.fn(),
     setColor: jest.fn(),
   };
-  // Make it pass instanceof Run check in getAllRunsFromParagraph
+  // Make it pass instanceof Run check in getBodyRuns / paragraphRuns helper
   Object.setPrototypeOf(run, Run.prototype);
   return run;
 }

@@ -25,7 +25,7 @@ import {
   inchesToTwips,
 } from "docxmlater";
 import { logger } from "@/utils/logger";
-import { getVisibleRuns } from "@/services/document/helpers/revisionSafeRuns";
+import { getVisibleRuns } from "@/services/document/helpers/paragraphRuns";
 
 const log = logger.namespace("TableProcessor");
 
