@@ -8,7 +8,7 @@
  * from non-list paragraphs before blank line and indentation rules run.
  */
 
-import { Document, Paragraph, Table, TableCell } from "docxmlater";
+import { Document, Paragraph } from "docxmlater";
 import { isParagraphBlank } from "../helpers/paragraphChecks";
 import { detectTypedPrefix } from "@/services/document/list";
 import type { BlankLineProcessingOptions } from "./ruleTypes";
@@ -21,6 +21,9 @@ const TWIPS_PER_INCH = 1440;
 
 /** Threshold below which indentation is removed for non-list paragraphs (0.25 inch) */
 const SMALL_INDENT_THRESHOLD_TWIPS = 360; // 0.25 * 1440
+
+/** Fallback indent for Case C when no level-0 textIndent is configured (0.5"). */
+const FALLBACK_FIRST_INDENT_TWIPS = Math.round(0.5 * TWIPS_PER_INCH);
 
 function inchesToTwips(inches: number): number {
   return Math.round(inches * TWIPS_PER_INCH);
@@ -121,56 +124,6 @@ export function removeSmallIndents(doc: Document): number {
 }
 
 /**
- * Find the nearest preceding list item and return its level.
- * Scans backwards from the given index in the body.
- */
-function findPrecedingListItem(
-  doc: Document,
-  bodyIndex: number
-): { level: number; paragraph: Paragraph } | null {
-  for (let i = bodyIndex - 1; i >= 0; i--) {
-    const el = doc.getBodyElementAt(i);
-    if (el instanceof Table) return null; // Stop at table boundaries
-    if (!(el instanceof Paragraph)) continue;
-    if (isParagraphBlank(el)) continue;
-
-    const numbering = el.getNumbering();
-    if (numbering) {
-      return { level: numbering.level ?? 0, paragraph: el };
-    }
-
-    // If we hit non-indented, non-list text, stop looking
-    const indent = el.getFormatting()?.indentation?.left;
-    if (!indent || indent <= 0) return null;
-  }
-  return null;
-}
-
-/**
- * Find the nearest preceding list item in a cell.
- */
-function findPrecedingListItemInCell(
-  paragraphs: Paragraph[],
-  paraIndex: number
-): { level: number; paragraph: Paragraph } | null {
-  for (let i = paraIndex - 1; i >= 0; i--) {
-    const para = paragraphs[i];
-    if (!para) continue;
-    if (isParagraphBlank(para)) continue;
-
-    const numbering = para.getNumbering();
-    if (numbering) {
-      return { level: numbering.level ?? 0, paragraph: para };
-    }
-
-    // If we hit non-indented text, stop
-    const indent = para.getFormatting()?.indentation?.left;
-    if (!indent || indent <= 0) return null;
-  }
-  return null;
-}
-
-/**
  * Get the text indentation in twips for a given list level.
  */
 function getTextIndentForLevel(options: BlankLineProcessingOptions, level: number): number | null {
@@ -205,69 +158,69 @@ function getLevel0TextIndent(options: BlankLineProcessingOptions): number | null
 }
 
 /**
- * Applies indentation rules to the document body.
+ * Apply the indentation decision tree to every non-list, non-blank
+ * indented paragraph in the document body and inside each table cell.
  *
- * Rule 1: Indented text after a list item should match the text indentation
- *         of the list item's level.
+ * For each such paragraph N (indent > 0):
+ *   Case A: immediate prev is a list item              → match list level's text indent
+ *   Case B: immediate prev is indented non-list        → match prev's left indent
+ *   Case C: otherwise (blank, non-indented, Table, …)  → snap to level-0 text indent
+ *                                                        (fallback 0.5" if not configured)
  *
- * Rule 2: If consecutive indented lines exist and the line above is a list item,
- *         match the list item's text indentation. If not a list item, match
- *         the level-0 bullet text indentation.
+ * Forward iteration ensures Case B observes Case C's normalization
+ * from earlier iterations — three consecutive indented paragraphs all
+ * settle on the same value via C → B → B.
  */
 export function applyIndentationRules(doc: Document, options: BlankLineProcessingOptions): number {
-  if (!options.listBulletSettings?.indentationLevels) {
-    return 0;
-  }
-
   let fixed = 0;
 
-  // Process body-level paragraphs
+  const level0 = getLevel0TextIndent(options) ?? FALLBACK_FIRST_INDENT_TWIPS;
+
+  // Body
   for (let i = 0; i < doc.getBodyElementCount(); i++) {
     const element = doc.getBodyElementAt(i);
     if (!(element instanceof Paragraph)) continue;
     if (isParagraphBlank(element)) continue;
-    if (element.getNumbering()) continue; // Skip list items themselves
+    if (element.getNumbering()) continue;
 
     const indent = element.getFormatting()?.indentation?.left;
-    if (!indent || indent <= 0) continue; // Only process indented paragraphs
+    if (!indent || indent <= 0) continue;
 
-    // Find preceding list item
-    const listItem = findPrecedingListItem(doc, i);
+    const prev = i > 0 ? doc.getBodyElementAt(i - 1) : undefined;
 
-    if (listItem) {
-      // Rule 1: Match the list item's text indentation level
-      const targetIndent = getTextIndentForLevel(options, listItem.level);
-      if (targetIndent !== null && indent !== targetIndent) {
-        element.setLeftIndent(targetIndent);
-        fixed++;
-      }
-    } else {
-      // Rule 2: No preceding list item - check if previous line is indented
-      const prevElement = doc.getBodyElementAt(i - 1);
-      if (
-        prevElement instanceof Paragraph &&
-        !isParagraphBlank(prevElement) &&
-        !prevElement.getNumbering()
-      ) {
-        const prevIndent = prevElement.getFormatting()?.indentation?.left;
+    let target: number | null = null;
+
+    if (prev instanceof Paragraph && !isParagraphBlank(prev)) {
+      const prevNumbering = prev.getNumbering();
+      if (prevNumbering) {
+        // Case A
+        const levelTarget = getTextIndentForLevel(options, prevNumbering.level ?? 0);
+        if (levelTarget !== null) target = levelTarget;
+      } else {
+        const prevIndent = prev.getFormatting()?.indentation?.left;
         if (prevIndent && prevIndent > 0) {
-          // Consecutive indented lines - match level-0 text indent
-          const level0Indent = getLevel0TextIndent(options);
-          if (level0Indent !== null && indent !== level0Indent) {
-            element.setLeftIndent(level0Indent);
-            fixed++;
-          }
+          // Case B
+          target = prevIndent;
         }
       }
     }
+
+    if (target === null) {
+      // Case C
+      target = level0;
+    }
+
+    if (target !== indent) {
+      element.setLeftIndent(target);
+      fixed++;
+    }
   }
 
-  // Process table cell paragraphs
+  // Cells
   for (const table of doc.getAllTables()) {
     for (const row of table.getRows()) {
       for (const cell of row.getCells()) {
         const paras = cell.getParagraphs();
-
         for (let ci = 0; ci < paras.length; ci++) {
           const para = paras[ci];
           if (!para) continue;
@@ -277,27 +230,30 @@ export function applyIndentationRules(doc: Document, options: BlankLineProcessin
           const indent = para.getFormatting()?.indentation?.left;
           if (!indent || indent <= 0) continue;
 
-          const listItem = findPrecedingListItemInCell(paras, ci);
+          const prev = ci > 0 ? paras[ci - 1] : undefined;
 
-          if (listItem) {
-            const targetIndent = getTextIndentForLevel(options, listItem.level);
-            if (targetIndent !== null && indent !== targetIndent) {
-              para.setLeftIndent(targetIndent);
-              fixed++;
-            }
-          } else {
-            // Consecutive indented lines without a list item
-            const prevPara = paras[ci - 1];
-            if (prevPara && !isParagraphBlank(prevPara) && !prevPara.getNumbering()) {
-              const prevIndent = prevPara.getFormatting()?.indentation?.left;
+          let target: number | null = null;
+
+          if (prev && !isParagraphBlank(prev)) {
+            const prevNumbering = prev.getNumbering();
+            if (prevNumbering) {
+              const levelTarget = getTextIndentForLevel(options, prevNumbering.level ?? 0);
+              if (levelTarget !== null) target = levelTarget;
+            } else {
+              const prevIndent = prev.getFormatting()?.indentation?.left;
               if (prevIndent && prevIndent > 0) {
-                const level0Indent = getLevel0TextIndent(options);
-                if (level0Indent !== null && indent !== level0Indent) {
-                  para.setLeftIndent(level0Indent);
-                  fixed++;
-                }
+                target = prevIndent;
               }
             }
+          }
+
+          if (target === null) {
+            target = level0;
+          }
+
+          if (target !== indent) {
+            para.setLeftIndent(target);
+            fixed++;
           }
         }
       }
