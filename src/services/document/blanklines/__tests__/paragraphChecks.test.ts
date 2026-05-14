@@ -311,6 +311,14 @@ describe("isIndentedBoldColon", () => {
     const para = new Paragraph({ content: [], formatting: { indentation: { left: 720 } } });
     expect(isIndentedBoldColon(para)).toBe(false);
   });
+
+  it("returns false when numbering exists but numId is 0 (remove-list sentinel)", () => {
+    const para = new Paragraph({
+      content: [new Run("Note:", { bold: true })],
+      numbering: { numId: 0, level: 0 },
+    });
+    expect(isIndentedBoldColon(para)).toBe(false);
+  });
 });
 
 describe("isCenteredBoldText", () => {

@@ -133,10 +133,21 @@ export function startsWithBoldColon(para: Paragraph): boolean {
 
 /**
  * Checks if a paragraph is a bold-colon paragraph AND is indented.
- * "Indented" means it is a list item (has w:numId) OR has positive left indent.
- * Symmetric with isBoldColonNoIndent in rules/additionRules.ts.
+ * "Indented" means it is a list item (has w:numId with numId > 0) OR has positive left indent.
+ *
+ * Symmetric with isBoldColonNoIndent in rules/additionRules.ts, with two
+ * intentional refinements:
+ *   - explicitly excludes numId === 0 (the "remove list" sentinel) from
+ *     the list-item branch (additionRules.isBoldColonNoIndent uses a plain
+ *     truthy check, which would treat numId=0 as a list)
+ *   - the blank-paragraph short-circuit is identical (both return false)
+ *
+ * List-item membership counts as "indented" regardless of any explicit
+ * <w:ind w:left> value, because Word renders list items with the level's
+ * inherited indent.
  */
 export function isIndentedBoldColon(para: Paragraph): boolean {
+  if (isParagraphBlank(para)) return false;
   if (!startsWithBoldColon(para)) return false;
   const numbering = para.getNumbering();
   if (numbering && numbering.numId !== undefined && numbering.numId !== 0) return true;
