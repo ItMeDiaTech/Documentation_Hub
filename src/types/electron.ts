@@ -204,7 +204,7 @@ export interface ElectronAPI {
 
   // File handling
   selectDocuments: () => Promise<string[] | null>;
-  processDocument: (path: string) => Promise<unknown>;
+  getDocumentStats: (path: string) => Promise<unknown>;
   showInFolder: (path: string) => Promise<void>;
   openDocument: (path: string) => Promise<void>;
   getFileStats: (filePath: string) => Promise<unknown>;

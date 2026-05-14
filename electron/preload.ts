@@ -46,7 +46,7 @@ const electronAPI = {
 
   // File handling
   selectDocuments: () => ipcRenderer.invoke("select-documents"),
-  processDocument: (path: string) => ipcRenderer.invoke("process-document", path),
+  getDocumentStats: (path: string) => ipcRenderer.invoke("document:get-stats", path),
   showInFolder: (path: string) => ipcRenderer.invoke("show-in-folder", path),
   openDocument: (path: string) => ipcRenderer.invoke("open-document", path),
   getFileStats: (filePath: string) => ipcRenderer.invoke("get-file-stats", filePath),

@@ -66,7 +66,7 @@ export type ElectronAPI = {
 
   // File handling
   selectDocuments: () => Promise<string[]>;
-  processDocument: (path: string) => Promise<any>;
+  getDocumentStats: (path: string) => Promise<any>;
   showInFolder: (path: string) => Promise<void>;
   openDocument: (path: string) => Promise<void>;
   getFileStats: (filePath: string) => Promise<any>;

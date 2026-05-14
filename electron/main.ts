@@ -1265,7 +1265,7 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle("process-document", async (_event, filePath: string) => {
+ipcMain.handle("document:get-stats", async (_event, filePath: string) => {
   if (!filePath) {
     return { success: false, error: "No path provided" };
   }
