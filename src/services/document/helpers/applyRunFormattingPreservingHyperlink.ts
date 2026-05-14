@@ -16,13 +16,18 @@ import type { Run } from "docxmlater";
 
 export interface ApplyRunFmtOpts {
   bold?: boolean;
+  italic?: boolean;
 }
 
 /**
- * Applies font + size (and optional bold) to a run, preserving Hyperlink-style
- * coloring and underline. Hyperlink detection matches either the
- * `characterStyle === "Hyperlink"` direct style check or the canonical hex
+ * Applies font + size (and optional bold/italic) to a run, preserving
+ * Hyperlink-style coloring and underline. Hyperlink detection matches either
+ * the `characterStyle === "Hyperlink"` direct style check or the canonical hex
  * hyperlink colors written by earlier pipeline steps (0000FF, 0563C1).
+ *
+ * The hyperlink-restoration branch fires whenever the run is hyperlink-styled,
+ * regardless of which property changed — any of the setters (setFont, setSize,
+ * setBold, setItalic) can drop <w:color>/<w:u> per docxmlater gotchas.
  */
 export function applyRunFmtPreservingHyperlink(
   run: Run,
@@ -38,6 +43,7 @@ export function applyRunFmtPreservingHyperlink(
   if (fmt.font !== font) run.setFont(font);
   if (fmt.size !== size) run.setSize(size);
   if (opts.bold !== undefined && fmt.bold !== opts.bold) run.setBold(opts.bold);
+  if (opts.italic !== undefined && fmt.italic !== opts.italic) run.setItalic(opts.italic);
 
   if (isHyperlink) {
     if (color !== "0000FF") run.setColor("0000FF");

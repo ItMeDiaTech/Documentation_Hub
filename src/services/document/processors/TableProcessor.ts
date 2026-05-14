@@ -710,18 +710,17 @@ export class TableProcessor {
                 const needsUpdate = fontChanged || sizeChanged || boldChanged || italicChanged;
 
                 if (needsUpdate) {
-                  // Helper applies font/size/bold and restores hyperlink coloring
-                  // after setters that may drop <w:color>/<w:u>.
+                  // Helper applies font/size/bold/italic and restores hyperlink
+                  // coloring after any setter that may drop <w:color>/<w:u>.
                   applyRunFmtPreservingHyperlink(
                     run,
                     header2Style.fontFamily,
                     header2Style.fontSize,
-                    !header2Style.preserveBold ? { bold: header2Style.bold } : {}
+                    {
+                      ...(!header2Style.preserveBold ? { bold: header2Style.bold } : {}),
+                      ...(!header2Style.preserveItalic ? { italic: header2Style.italic } : {}),
+                    }
                   );
-
-                  if (italicChanged) {
-                    run.setItalic(header2Style.italic);
-                  }
 
                   cellsFixed++;
                   const cellText = para.getText();
