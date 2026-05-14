@@ -196,7 +196,7 @@ export const Analytics = memo(function Analytics() {
       bgColor: "bg-purple-500/10",
     },
     {
-      title: "Time Saved from Hyperlinks",
+      title: "Hyperlink Time Saved",
       value: `${stats.allTime.timeSaved}m`,
       icon: Clock,
       color: "text-orange-500",

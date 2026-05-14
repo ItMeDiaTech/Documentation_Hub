@@ -62,8 +62,8 @@ const defaultStyles: StyleDefinition[] = [
     italic: false,
     underline: false,
     alignment: "left",
-    spaceBefore: 6,
-    spaceAfter: 6,
+    spaceBefore: 9,
+    spaceAfter: 9,
     lineSpacing: 1.0, // Single spacing for headings
     color: "#000000",
   },
@@ -94,8 +94,8 @@ const defaultStyles: StyleDefinition[] = [
     preserveUnderline: false, // Apply underline setting (not preserved)
     preserveCenterAlignment: true, // Preserve center alignment if paragraph is already centered
     alignment: "left",
-    spaceBefore: 3,
-    spaceAfter: 3,
+    spaceBefore: 6,
+    spaceAfter: 6,
     lineSpacing: 1.0, // Changed from 1.15 to 1.0
     color: "#000000",
     noSpaceBetweenSame: false, // Allow spacing between Normal paragraphs (Requirement 5)

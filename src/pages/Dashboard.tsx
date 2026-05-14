@@ -89,7 +89,7 @@ export function Dashboard() {
       bgGradient: "from-purple-500/20 to-pink-500/10",
     },
     {
-      title: "Time Saved from Hyperlinks",
+      title: "Hyperlink Time Saved",
       value: `${globalStats.allTime.timeSaved}m`,
       todayValue: todayStats.timeSaved,
       change: todayChange.timeSaved || 0,

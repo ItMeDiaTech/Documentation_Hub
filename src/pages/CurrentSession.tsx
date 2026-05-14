@@ -669,7 +669,7 @@ export function CurrentSession() {
             <div className="flex items-center gap-3">
               <Timer className="w-8 h-8 text-orange-500" />
               <div>
-                <p className="text-xs text-muted-foreground leading-tight">Time Saved<br />from Hyperlinks</p>
+                <p className="text-xs text-muted-foreground leading-tight">Hyperlink<br />Time Saved</p>
                 <p className="text-2xl font-bold">
                   {Math.round((session.stats.hyperlinksChecked * 101) / 60)}m
                 </p>
