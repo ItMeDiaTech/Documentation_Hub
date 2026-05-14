@@ -27,6 +27,7 @@ import {
 import { logger, debugModes, isDebugEnabled, createDebugLogger } from "@/utils/logger";
 import { isPathSafe } from "@/utils/pathSecurity";
 import { safeJsonParse, safeJsonStringify } from "@/utils/safeJsonParse";
+import { withTimeout } from "@/utils/withTimeout";
 import {
   createContext,
   ReactNode,
@@ -39,25 +40,6 @@ import {
 import { useGlobalStats } from "./GlobalStatsContext";
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
-
-/**
- * Wraps a promise with a timeout to prevent hanging operations.
- * @param promise The promise to wrap
- * @param ms Timeout in milliseconds
- * @param operation Name of the operation for error messages
- */
-const withTimeout = <T,>(promise: Promise<T>, ms: number, operation: string): Promise<T> => {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  return Promise.race([
-    promise.then(
-      (result) => { clearTimeout(timeoutId); return result; },
-      (error) => { clearTimeout(timeoutId); throw error; }
-    ),
-    new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error(`${operation} timed out after ${ms}ms`)), ms);
-    }),
-  ]);
-};
 
 // Constants for IPC operations
 const IPC_TIMEOUT_MS = 12540000; // 209 minutes for document processing (large docs can take time)
@@ -907,21 +889,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deleteSession = (id: string) => {
+  const deleteSession = async (id: string): Promise<void> => {
     // Get session info for logging before deletion
     const session = sessions.find((s) => s.id === id);
 
-    // Permanently delete session from storage
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-    setActiveSessions((prev) => prev.filter((s) => s.id !== id));
-    if (currentSession?.id === id) {
-      setCurrentSession(null);
+    // Delete from IndexedDB FIRST; if it throws, in-memory state stays
+    // intact so the user can retry without losing track of the session.
+    try {
+      await deleteSessionFromDB(id);
+    } catch (err) {
+      log.error(`[Session] Failed to delete session ${id} from IndexedDB:`, err);
+      throw err;
     }
 
-    // Delete from IndexedDB so it doesn't reappear on next app start
-    deleteSessionFromDB(id).catch((err) =>
-      log.error(`[Session] Failed to delete session ${id} from IndexedDB:`, err)
-    );
+    // Permanently delete session from in-memory state
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    setActiveSessions((prev) => prev.filter((s) => s.id !== id));
+    setCurrentSession((prev) => (prev?.id === id ? null : prev));
 
     // Also remove individual session from localStorage if it exists
     localStorage.removeItem(`session_${id}`);
@@ -945,9 +929,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
 
   const addDocuments = async (sessionId: string, files: File[]) => {
-    // Convert files to documents with strict validation
-    const newDocuments: Document[] = [];
+    // Pre-validate files synchronously. Dedup against session state happens
+    // later inside the updateSessionById updater so it sees authoritative
+    // state (avoids a stale-closure race when two drops fire in quick
+    // succession).
     const invalidFiles: Array<{ name: string; reason: string }> = [];
+    const validatedFiles: Array<{ file: File; path: string }> = [];
 
     log.info(`[addDocuments] Processing ${files.length} file(s) for session ${sessionId}`);
 
@@ -981,57 +968,64 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         continue;
       }
 
-      // Skip files that are already pending or processing in the session
-      // Allow re-adding files that were already processed or errored (user wants to reprocess)
-      const session = sessions.find((s) => s.id === sessionId);
-      const pendingDuplicate =
-        session?.documents.some(
-          (d) => d.path === fileWithPath.path && (d.status === "pending" || d.status === "processing")
-        ) || newDocuments.some((d) => d.path === fileWithPath.path);
-      if (pendingDuplicate) {
-        log.warn(`[addDocuments] File "${file.name}" skipped: already pending in session`);
-        invalidFiles.push({ name: file.name, reason: "File is already queued for processing" });
-        continue;
-      }
-
-      // Create document with validated path
-      newDocuments.push({
-        id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-        name: file.name,
-        path: fileWithPath.path,
-        size: file.size || 0,
-        type: file.type,
-        status: "pending" as const,
-        // No fileData - will be read by backend using the path
-      });
+      validatedFiles.push({ file, path: fileWithPath.path });
     }
 
-    // Log detailed results
     if (invalidFiles.length > 0) {
       log.warn(`[addDocuments] Rejected ${invalidFiles.length} file(s):`);
       invalidFiles.forEach(({ name, reason }) => {
         log.warn(`  - ${name}: ${reason}`);
       });
     }
-    if (newDocuments.length > 0) {
-      log.info(`[addDocuments] ✅ Successfully added ${newDocuments.length} valid document(s)`);
-      newDocuments.forEach((doc) => {
-        log.debug(`  ✓ ${doc.name} (${doc.size} bytes)`);
-      });
-    }
 
-    // Only update state if we have valid documents
-    if (newDocuments.length === 0) {
+    if (validatedFiles.length === 0) {
       log.error("[addDocuments] ❌ No valid documents to add - all files were rejected");
       return;
     }
 
-    // Use updateSessionById to keep sessions, activeSessions, and currentSession in sync
-    updateSessionById(sessionId, (session) => ({
-      ...session,
-      documents: [...session.documents, ...newDocuments],
-      lastModified: new Date(),
-    }));
+    // Dedup + append inside the updater so we see authoritative session state.
+    // Set lookups replace the previous O(F * (S + D)) linear scans.
+    updateSessionById(sessionId, (session) => {
+      const existing = new Set(
+        session.documents
+          .filter((d) => d.status === "pending" || d.status === "processing")
+          .map((d) => d.path)
+      );
+      const seen = new Set<string>();
+      const newDocuments: Document[] = [];
+
+      for (const { file, path } of validatedFiles) {
+        if (existing.has(path) || seen.has(path)) {
+          log.warn(`[addDocuments] File "${file.name}" skipped: already pending in session`);
+          continue;
+        }
+        seen.add(path);
+        newDocuments.push({
+          id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+          name: file.name,
+          path,
+          size: file.size || 0,
+          type: file.type,
+          status: "pending" as const,
+          // No fileData - will be read by backend using the path
+        });
+      }
+
+      if (newDocuments.length === 0) {
+        return session;
+      }
+
+      log.info(`[addDocuments] ✅ Successfully added ${newDocuments.length} valid document(s)`);
+      newDocuments.forEach((doc) => {
+        log.debug(`  ✓ ${doc.name} (${doc.size} bytes)`);
+      });
+
+      return {
+        ...session,
+        documents: [...session.documents, ...newDocuments],
+        lastModified: new Date(),
+      };
+    });
   };
 
   const removeDocument = (sessionId: string, documentId: string) => {

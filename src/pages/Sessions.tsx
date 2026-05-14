@@ -53,7 +53,9 @@ export function Sessions() {
   };
 
   const confirmDelete = (sessionId: string) => {
-    deleteSession(sessionId);
+    void deleteSession(sessionId).catch((err) => {
+      console.error("[Sessions] Failed to delete session:", err);
+    });
     setShowDeleteConfirm(null);
   };
 

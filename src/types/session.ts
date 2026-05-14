@@ -374,7 +374,7 @@ export interface SessionContextType {
   loadSession: (id: string) => void;
   reopenSession: (id: string) => void;
   closeSession: (id: string) => void;
-  deleteSession: (id: string) => void;
+  deleteSession: (id: string) => Promise<void>;
   switchSession: (id: string) => void;
 
   // Document actions

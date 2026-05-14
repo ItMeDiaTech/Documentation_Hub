@@ -551,8 +551,9 @@ export function CurrentSession() {
   };
 
   const handleAutoAcceptRevisionsChange = (autoAccept: boolean) => {
-    // Update session auto-accept revisions setting
-    // Merge with existing options to preserve all other fields
+    // Update session auto-accept revisions setting.
+    // Existing options FIRST so they win over defaults; the named override
+    // (autoAcceptRevisions) goes LAST so it actually takes effect.
     updateSessionOptions(session.id, {
       validateUrls: true,
       createBackup: true,
