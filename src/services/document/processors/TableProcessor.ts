@@ -26,6 +26,7 @@ import {
 } from "docxmlater";
 import { logger } from "@/utils/logger";
 import { getVisibleRuns } from "@/services/document/helpers/paragraphRuns";
+import { applyRunFmtPreservingHyperlink } from "@/services/document/helpers/applyRunFormattingPreservingHyperlink";
 
 const log = logger.namespace("TableProcessor");
 
@@ -78,6 +79,15 @@ export interface HLPTableAnalysis {
   hasTipsColumn: boolean;
   headerText: string;
   headerCellSpan: number;
+}
+
+/**
+ * Per-table classification cache entry. Populated once per pipeline pass by
+ * classifyTables() so shouldSkipTable + isHLPTable do not re-execute per consumer.
+ */
+export interface TableClassification {
+  skip: boolean;
+  isHLP: boolean;
 }
 
 /**
@@ -490,24 +500,14 @@ export class TableProcessor {
                 for (const para of cell.getParagraphs()) {
                   const isListItem = !!para.getNumbering();
                   for (const run of getVisibleRuns(para)) {
-                    // Detect hyperlink runs before setFont/setSize which can drop color
-                    const fmt = run.getFormatting();
-                    const color = fmt.color?.toUpperCase();
-                    const isHyperlink =
-                      fmt.characterStyle === "Hyperlink" ||
-                      color === "0000FF" ||
-                      color === "0563C1";
-                    run.setFont(normalFontFamily);
-                    run.setSize(normalFontSize);
-                    // Don't force bold on list items - respect preserveBold setting
-                    if (!isListItem) {
-                      run.setBold(true);
-                    }
-                    // Restore blue color and underline for hyperlinks after setFont/setSize
-                    if (isHyperlink) {
-                      run.setColor("0000FF");
-                      run.setUnderline("single");
-                    }
+                    // Helper restores hyperlink color/underline after font/size writes
+                    // (per CLAUDE.md gotcha). Bold skipped for list items.
+                    applyRunFmtPreservingHyperlink(
+                      run,
+                      normalFontFamily,
+                      normalFontSize,
+                      isListItem ? {} : { bold: true }
+                    );
                   }
                   // Apply alignment (skip list items) - ALWAYS center for header row cells
                   if (!isListItem) {
@@ -538,24 +538,12 @@ export class TableProcessor {
                 for (const para of cell.getParagraphs()) {
                   const isListItem = !!para.getNumbering();
                   for (const run of getVisibleRuns(para)) {
-                    // Detect hyperlink runs before setFont/setSize which can drop color
-                    const fmt = run.getFormatting();
-                    const color = fmt.color?.toUpperCase();
-                    const isHyperlink =
-                      fmt.characterStyle === "Hyperlink" ||
-                      color === "0000FF" ||
-                      color === "0563C1";
-                    run.setFont(normalFontFamily);
-                    run.setSize(normalFontSize);
-                    // Don't force bold on list items - respect preserveBold setting
-                    if (!isListItem) {
-                      run.setBold(true);
-                    }
-                    // Restore blue color and underline for hyperlinks after setFont/setSize
-                    if (isHyperlink) {
-                      run.setColor("0000FF");
-                      run.setUnderline("single");
-                    }
+                    applyRunFmtPreservingHyperlink(
+                      run,
+                      normalFontFamily,
+                      normalFontSize,
+                      isListItem ? {} : { bold: true }
+                    );
                   }
                   // Apply alignment (skip list items) - ALWAYS center for shaded cells
                   if (!isListItem) {
@@ -579,21 +567,8 @@ export class TableProcessor {
                     );
                     if (!hasImage) {
                       for (const run of getVisibleRuns(para)) {
-                        // Detect hyperlink runs before setFont/setSize which can drop color
-                        const fmt = run.getFormatting();
-                        const color = fmt.color?.toUpperCase();
-                        const isHyperlink =
-                          fmt.characterStyle === "Hyperlink" ||
-                          color === "0000FF" ||
-                          color === "0563C1";
-                        run.setFont(normalFontFamily);
-                        run.setSize(normalFontSize);
-                        // Note: NOT setting bold here - preserves original
-                        // Restore blue color and underline for hyperlinks after setFont/setSize
-                        if (isHyperlink) {
-                          run.setColor("0000FF");
-                          run.setUnderline("single");
-                        }
+                        // Bold intentionally omitted — preserves original bold state.
+                        applyRunFmtPreservingHyperlink(run, normalFontFamily, normalFontSize);
                       }
                     }
                   }
@@ -722,42 +697,32 @@ export class TableProcessor {
 
               for (const run of runs) {
                 const runFormatting = run.getFormatting();
-                let needsUpdate = false;
 
-                // Detect hyperlink runs before setFont/setSize which can drop color
-                const runColor = runFormatting.color?.toUpperCase();
-                const isHyperlink =
-                  runFormatting.characterStyle === "Hyperlink" ||
-                  runColor === "0000FF" ||
-                  runColor === "0563C1";
-
-                if (runFormatting.font !== header2Style.fontFamily) {
-                  run.setFont(header2Style.fontFamily);
-                  needsUpdate = true;
-                }
-
-                if (runFormatting.size !== header2Style.fontSize) {
-                  run.setSize(header2Style.fontSize);
-                  needsUpdate = true;
-                }
-
-                if (!header2Style.preserveBold && runFormatting.bold !== header2Style.bold) {
-                  run.setBold(header2Style.bold);
-                  needsUpdate = true;
-                }
-
-                if (!header2Style.preserveItalic && runFormatting.italic !== header2Style.italic) {
-                  run.setItalic(header2Style.italic);
-                  needsUpdate = true;
-                }
-
-                // Restore blue color and underline for hyperlinks after setFont/setSize
-                if (needsUpdate && isHyperlink) {
-                  run.setColor("0000FF");
-                  run.setUnderline("single");
-                }
+                // Pre-compute change detection so cellsFixed accounting stays
+                // accurate — the helper itself elides redundant writes but
+                // does not return a "wrote anything" signal.
+                const fontChanged = runFormatting.font !== header2Style.fontFamily;
+                const sizeChanged = runFormatting.size !== header2Style.fontSize;
+                const boldChanged =
+                  !header2Style.preserveBold && runFormatting.bold !== header2Style.bold;
+                const italicChanged =
+                  !header2Style.preserveItalic && runFormatting.italic !== header2Style.italic;
+                const needsUpdate = fontChanged || sizeChanged || boldChanged || italicChanged;
 
                 if (needsUpdate) {
+                  // Helper applies font/size/bold and restores hyperlink coloring
+                  // after setters that may drop <w:color>/<w:u>.
+                  applyRunFmtPreservingHyperlink(
+                    run,
+                    header2Style.fontFamily,
+                    header2Style.fontSize,
+                    !header2Style.preserveBold ? { bold: header2Style.bold } : {}
+                  );
+
+                  if (italicChanged) {
+                    run.setItalic(header2Style.italic);
+                  }
+
                   cellsFixed++;
                   const cellText = para.getText();
                   if (cellText && !affectedCells.includes(cellText)) {
@@ -1430,21 +1395,10 @@ export class TableProcessor {
       for (const para of cell.getParagraphs()) {
         para.setAlignment("left");
         for (const run of getVisibleRuns(para)) {
-          // Detect hyperlink runs before setFont/setSize which can drop color
-          const fmt = run.getFormatting();
-          const color = fmt.color?.toUpperCase();
-          const isHyperlink =
-            fmt.characterStyle === "Hyperlink" ||
-            color === "0000FF" ||
-            color === "0563C1";
-          run.setFont(h2Font);
-          run.setSize(h2Size);
-          run.setBold(true);
-          // Restore blue color and underline for hyperlinks after setFont/setSize
-          if (isHyperlink) {
-            run.setColor("0000FF");
-            run.setUnderline("single");
-          }
+          // Helper restores hyperlink color/underline after font/size/bold writes.
+          // HLP-specific surrounding logic (header alignment, spacing, cell shading)
+          // is intentionally left untouched.
+          applyRunFmtPreservingHyperlink(run, h2Font, h2Size, { bold: true });
         }
         this.applyNormalSpacing(para, settings);
       }
@@ -2425,6 +2379,190 @@ export class TableProcessor {
     }
 
     return { tablesFound, headersStyled, singleColumnTables, twoColumnTables };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Classification cache + Column-width enforcement
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Build a per-table classification cache so shouldSkipTable + isHLPTable
+   * predicates run once per pass instead of once per consumer. Returned
+   * WeakMap is keyed on Table identity and is safe to reuse across multiple
+   * passes within a single pipeline invocation.
+   */
+  classifyTables(doc: Document): WeakMap<Table, TableClassification> {
+    const map = new WeakMap<Table, TableClassification>();
+    for (const table of doc.getTables()) {
+      map.set(table, {
+        skip: this.shouldSkipTable(table),
+        isHLP: this.isHLPTable(table),
+      });
+    }
+    return map;
+  }
+
+  /**
+   * Merged minimum-column-width + step-column pass.
+   *
+   * Combines the two previously-adjacent WordDocumentProcessor blocks:
+   *   1. Widen any column < 1" by taking proportional surplus from columns > 1",
+   *      bailing out if surplus < deficit.
+   *   2. Apply step-column fix to tables in `stepTables`: fix first column at 1",
+   *      rescale remaining columns to fit available page width, set tblW to pct.
+   *
+   * Each cell's tcW is written at most once per pass via the skip-cell guard
+   * (currentWidth === expectedWidth && currentType === "dxa") before any
+   * setWidthType call.
+   */
+  enforceMinimumColumnWidth(
+    doc: Document,
+    classification: WeakMap<Table, TableClassification>,
+    stepTables: Set<Table>
+  ): { minWidthTablesAdjusted: number } {
+    const MIN_COLUMN_WIDTH = inchesToTwips(1);
+    let minWidthTablesAdjusted = 0;
+
+    // Section page dimensions for step-column rescale
+    const section = doc.getSection();
+    const pageSize = section.getPageSize();
+    const sectionMargins = section.getMargins();
+    const availablePageWidth =
+      pageSize && sectionMargins
+        ? pageSize.width - (sectionMargins.left ?? MIN_COLUMN_WIDTH) - (sectionMargins.right ?? MIN_COLUMN_WIDTH)
+        : undefined;
+
+    for (const table of doc.getTables()) {
+      const cls = classification.get(table);
+      if (cls?.skip) continue;
+      if (cls?.isHLP) continue;
+
+      const grid = table.getTableGrid();
+      if (!grid || grid.length === 0) continue;
+
+      // Compute the final desired grid in one pass: start from min-width
+      // redistribution, then layer step-column rescale on top if applicable.
+      let finalGrid = grid;
+      let gridChanged = false;
+
+      // ── Min-column-width: widen narrow columns from wide-column surplus ──
+      let deficit = 0;
+      let surplus = 0;
+      for (const colWidth of grid) {
+        if (colWidth < MIN_COLUMN_WIDTH) {
+          deficit += MIN_COLUMN_WIDTH - colWidth;
+        } else if (colWidth > MIN_COLUMN_WIDTH) {
+          surplus += colWidth - MIN_COLUMN_WIDTH;
+        }
+      }
+
+      if (deficit > 0 && surplus < deficit) {
+        log.debug?.(
+          `[TableProcessor] Skipping min-column-width for table: surplus=${surplus} deficit=${deficit}`
+        );
+      } else if (deficit > 0) {
+        const widened: number[] = [];
+        for (const colWidth of grid) {
+          if (colWidth < MIN_COLUMN_WIDTH) {
+            widened.push(MIN_COLUMN_WIDTH);
+          } else if (colWidth > MIN_COLUMN_WIDTH) {
+            const contribution = ((colWidth - MIN_COLUMN_WIDTH) / surplus) * deficit;
+            widened.push(Math.round(colWidth - contribution));
+          } else {
+            widened.push(colWidth);
+          }
+        }
+        log.debug(
+          `Enforced min column width on table: ${grid.map((w) => Math.round(w / 14.4) / 100 + '"').join(", ")} → ${widened.map((w) => Math.round(w / 14.4) / 100 + '"').join(", ")}`
+        );
+        finalGrid = widened;
+        gridChanged = true;
+        minWidthTablesAdjusted++;
+      }
+
+      // ── Step-column rescale: only for detected step tables ──
+      const isStepTable = stepTables.has(table);
+      if (isStepTable) {
+        if (finalGrid.length < 2) {
+          // No grid to rescale — only the per-cell first-column fix applies.
+          for (const row of table.getRows()) {
+            const cell = row.getCells()[0];
+            if (!cell) continue;
+            const currentWidth = cell.getWidth();
+            const currentType = cell.getWidthType();
+            if (currentWidth === MIN_COLUMN_WIDTH && currentType === "dxa") continue;
+            cell.setWidthType(MIN_COLUMN_WIDTH, "dxa");
+          }
+          continue;
+        }
+
+        const currentTotal = finalGrid.reduce((sum, w) => sum + w, 0);
+        const targetTotal = availablePageWidth ?? currentTotal;
+        const remainingWidth = targetTotal - MIN_COLUMN_WIDTH;
+        const oldRemainingWidth = currentTotal - finalGrid[0];
+
+        const stepGrid: number[] = [MIN_COLUMN_WIDTH];
+        for (let i = 1; i < finalGrid.length; i++) {
+          const proportion =
+            oldRemainingWidth > 0 ? finalGrid[i] / oldRemainingWidth : 1 / (finalGrid.length - 1);
+          stepGrid.push(Math.round(proportion * remainingWidth));
+        }
+        finalGrid = stepGrid;
+        gridChanged = true;
+      }
+
+      if (gridChanged) {
+        table.setTableGrid(finalGrid);
+      }
+
+      if (isStepTable) {
+        // Step table: pct width + autofit layout; first column fixed, others auto.
+        table.setWidthType("pct");
+        table.setWidth(5000);
+
+        for (const row of table.getRows()) {
+          const cells = row.getCells();
+          if (cells.length > 0) {
+            const span = cells[0].getColumnSpan() || 1;
+            if (span === 1) {
+              const currentWidth = cells[0].getWidth();
+              const currentType = cells[0].getWidthType();
+              if (!(currentWidth === MIN_COLUMN_WIDTH && currentType === "dxa")) {
+                cells[0].setWidthType(MIN_COLUMN_WIDTH, "dxa");
+              }
+            }
+            for (let c = 1; c < cells.length; c++) {
+              const currentType = cells[c].getWidthType();
+              if (currentType !== "auto") {
+                cells[c].setWidthType(0, "auto");
+              }
+            }
+          }
+        }
+        table.setLayout("autofit");
+      } else if (gridChanged) {
+        // Min-width-only path: update each cell's tcW to match the new grid.
+        for (const row of table.getRows()) {
+          let gridIdx = 0;
+          for (const cell of row.getCells()) {
+            if (gridIdx >= finalGrid.length) break;
+            const span = cell.getColumnSpan() || 1;
+            let expectedWidth = 0;
+            for (let s = 0; s < span && gridIdx + s < finalGrid.length; s++) {
+              expectedWidth += finalGrid[gridIdx + s];
+            }
+            const currentWidth = cell.getWidth();
+            const currentType = cell.getWidthType();
+            if (!(currentWidth === expectedWidth && currentType === "dxa")) {
+              cell.setWidthType(expectedWidth, "dxa");
+            }
+            gridIdx += span;
+          }
+        }
+      }
+    }
+
+    return { minWidthTablesAdjusted };
   }
 
   // ═══════════════════════════════════════════════════════════

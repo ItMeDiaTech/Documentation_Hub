@@ -3094,11 +3094,15 @@ export class WordDocumentProcessor {
       // are preserved.
       // ═══════════════════════════════════════════════════════════
       const tables = doc.getTables();
+      // Cache shouldSkipTable + isHLPTable per table once so downstream passes
+      // (step detection, autofit, normalize, min-width/step-column merged pass)
+      // do not re-execute the predicates.
+      const tableClassification = tableProcessor.classifyTables(doc);
       const stepTableSet = new Set<(typeof tables)[0]>();
       let stepTablesFixed = 0;
 
       for (const table of tables) {
-        if (tableProcessor.shouldSkipTable(table)) continue;
+        if (tableClassification.get(table)?.skip) continue;
 
         const rows = table.getRows();
         if (rows.length < 2) continue;
@@ -3155,7 +3159,7 @@ export class WordDocumentProcessor {
       let autofitCount = 0;
 
       for (const table of tables) {
-        if (tableProcessor.shouldSkipTable(table)) continue;
+        if (tableClassification.get(table)?.skip) continue;
 
         const rows = table.getRows();
 
@@ -3215,7 +3219,7 @@ export class WordDocumentProcessor {
       // autofit from collapsing columns to near-zero width.
       // ═══════════════════════════════════════════════════════════
       for (const table of doc.getTables()) {
-        if (tableProcessor.shouldSkipTable(table)) continue;
+        if (tableClassification.get(table)?.skip) continue;
         const grid = table.getTableGrid();
         if (!grid || grid.length === 0) continue;
 
@@ -3242,69 +3246,16 @@ export class WordDocumentProcessor {
       }
 
       // ═══════════════════════════════════════════════════════════
-      // ENFORCE MINIMUM COLUMN WIDTH (1 inch = 1440 twips)
-      // Any column narrower than 1" is widened to 1". The extra
-      // width is taken proportionally from columns wider than 1".
-      // Skips if there isn't enough surplus to cover the deficit.
+      // ENFORCE MIN COLUMN WIDTH + STEP COLUMN FIX (MERGED PASS)
+      // Single consolidated pass in TableProcessor: widens narrow columns
+      // to 1" by redistributing surplus, then rescales step tables to
+      // available page width. Each cell's tcW is written at most once.
       // ═══════════════════════════════════════════════════════════
-      const MIN_COLUMN_WIDTH = 1440; // 1 inch in twips
-      let minWidthTablesAdjusted = 0;
-
-      for (const table of doc.getTables()) {
-        if (tableProcessor.shouldSkipTable(table)) continue;
-        if (tableProcessor.isHLPTable(table)) continue;
-
-        const grid = table.getTableGrid();
-        if (!grid || grid.length === 0) continue;
-
-        // Calculate deficit (total width needed) and surplus (total available to give)
-        let deficit = 0;
-        let surplus = 0;
-        for (const colWidth of grid) {
-          if (colWidth < MIN_COLUMN_WIDTH) {
-            deficit += MIN_COLUMN_WIDTH - colWidth;
-          } else if (colWidth > MIN_COLUMN_WIDTH) {
-            surplus += colWidth - MIN_COLUMN_WIDTH;
-          }
-        }
-
-        // Skip if no narrow columns, or not enough surplus to redistribute
-        if (deficit === 0 || surplus < deficit) continue;
-
-        // Build new grid: widen narrow columns, shrink wide ones proportionally
-        const newGrid: number[] = [];
-        for (const colWidth of grid) {
-          if (colWidth < MIN_COLUMN_WIDTH) {
-            newGrid.push(MIN_COLUMN_WIDTH);
-          } else if (colWidth > MIN_COLUMN_WIDTH) {
-            const contribution = ((colWidth - MIN_COLUMN_WIDTH) / surplus) * deficit;
-            newGrid.push(Math.round(colWidth - contribution));
-          } else {
-            newGrid.push(colWidth); // exactly 1" — leave as-is
-          }
-        }
-        table.setTableGrid(newGrid);
-
-        // Update cell widths (tcW) to match new grid
-        for (const row of table.getRows()) {
-          let gridIdx = 0;
-          for (const cell of row.getCells()) {
-            if (gridIdx >= newGrid.length) break;
-            const span = cell.getColumnSpan() || 1;
-            let expectedWidth = 0;
-            for (let s = 0; s < span && gridIdx + s < newGrid.length; s++) {
-              expectedWidth += newGrid[gridIdx + s];
-            }
-            cell.setWidthType(expectedWidth, "dxa");
-            gridIdx += span;
-          }
-        }
-
-        minWidthTablesAdjusted++;
-        this.log.debug(
-          `Enforced min column width on table: ${grid.map((w) => Math.round(w / 14.4) / 100 + '"').join(", ")} → ${newGrid.map((w) => Math.round(w / 14.4) / 100 + '"').join(", ")}`
-        );
-      }
+      const { minWidthTablesAdjusted } = tableProcessor.enforceMinimumColumnWidth(
+        doc,
+        tableClassification,
+        stepTableSet
+      );
 
       if (minWidthTablesAdjusted > 0) {
         this.log.info(
@@ -3316,81 +3267,6 @@ export class WordDocumentProcessor {
           description: "Enforced minimum 1\" column width",
           count: minWidthTablesAdjusted,
         });
-      }
-
-      // ═══════════════════════════════════════════════════════════
-      // STEP COLUMN WIDTH FIX (runs AFTER autofit + normalize)
-      // Sets step column to 1" and switches to fixed layout so Word
-      // uses gridCol values as exact widths instead of autofit hints.
-      // Also rescales tblGrid total to match available page width.
-      // ═══════════════════════════════════════════════════════════
-      const STEP_COLUMN_WIDTH = 1440; // 1 inch in twips
-
-      // Compute available page width for grid scaling
-      const section = doc.getSection();
-      const pageSize = section.getPageSize();
-      const sectionMargins = section.getMargins();
-      const availablePageWidth =
-        pageSize && sectionMargins
-          ? pageSize.width - (sectionMargins.left ?? 1440) - (sectionMargins.right ?? 1440)
-          : undefined;
-
-      for (const table of stepTableSet) {
-        const grid = table.getTableGrid();
-        if (!grid || grid.length < 2) {
-          // Fallback: just set cell widths if no grid
-          for (const row of table.getRows()) {
-            const cell = row.getCells()[0];
-            if (cell) cell.setWidthType(STEP_COLUMN_WIDTH, "dxa");
-          }
-          continue;
-        }
-
-        // Target total: use available page width so autofit scale factor = 1:1
-        // Fall back to current grid total if page dimensions unavailable
-        const currentTotal = grid.reduce((sum, w) => sum + w, 0);
-        const targetTotal = availablePageWidth ?? currentTotal;
-        const remainingWidth = targetTotal - STEP_COLUMN_WIDTH;
-        const oldRemainingWidth = currentTotal - grid[0];
-
-        const newGrid = [STEP_COLUMN_WIDTH];
-        for (let i = 1; i < grid.length; i++) {
-          const proportion =
-            oldRemainingWidth > 0 ? grid[i] / oldRemainingWidth : 1 / (grid.length - 1);
-          newGrid.push(Math.round(proportion * remainingWidth));
-        }
-        table.setTableGrid(newGrid);
-
-        // Table fills available width in any view (Print or Web Layout)
-        table.setWidthType("pct");
-        table.setWidth(5000);
-
-        // Step column: explicit preferred width; action cells: auto (fill remaining)
-        // In autofit mode, dxa preferred widths are honored first, then auto
-        // columns expand to absorb excess table width — preventing step column
-        // inflation in Web Layout.
-        for (const row of table.getRows()) {
-          const cells = row.getCells();
-          if (cells.length > 0) {
-            const span = cells[0].getColumnSpan() || 1;
-            if (span === 1) {
-              // Step column: exact preferred width
-              cells[0].setWidthType(STEP_COLUMN_WIDTH, "dxa");
-            }
-            // Non-step cells: auto width — Word sizes based on content
-            // and fills remaining table width, preventing step column inflation
-            for (let c = 1; c < cells.length; c++) {
-              cells[c].setWidthType(0, "auto");
-            }
-          }
-        }
-
-        // Autofit layout: gridCol + cell widths are preferred widths.
-        // Step column content is minimal ("Step","1","2"…) so Word keeps it
-        // near 1440 while expanding the content-heavy action column to fill
-        // the table.  Fixed layout would scale ALL columns proportionally
-        // when tblW is pct, inflating the step column in Web Layout.
-        table.setLayout("autofit");
       }
 
       // ═══════════════════════════════════════════════════════════
