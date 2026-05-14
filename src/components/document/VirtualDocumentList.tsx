@@ -1,5 +1,5 @@
-import { memo, useCallback, CSSProperties } from "react";
-// @ts-ignore - react-window exports these despite TypeScript not recognizing them
+import { memo, useCallback, useMemo, CSSProperties } from "react";
+// @ts-expect-error react-window v2 types lag the runtime exports
 import { VariableSizeList as List } from "react-window";
 import { motion } from "framer-motion";
 import { FileText, CheckCircle, Clock, AlertCircle, ExternalLink, Download } from "lucide-react";
@@ -16,41 +16,41 @@ interface VirtualDocumentListProps {
   showActions?: boolean;
 }
 
+interface DocumentRowData {
+  documents: Document[];
+  onDocumentClick?: (document: Document) => void;
+  onProcessDocument?: (document: Document) => void;
+  selectedDocumentId?: string;
+  showActions?: boolean;
+}
+
 interface DocumentRowProps {
   index: number;
   style: CSSProperties;
-  data: {
-    documents: Document[];
-    onDocumentClick?: (document: Document) => void;
-    onProcessDocument?: (document: Document) => void;
-    selectedDocumentId?: string;
-    showActions?: boolean;
-    getItemSize: (index: number) => number;
-  };
+  data: DocumentRowData;
 }
 
 /**
  * Individual document row component
- * Memoized to prevent unnecessary re-renders
+ * Memoized to prevent unnecessary re-renders. Handlers depend on the destructured
+ * leaf callbacks rather than the whole `data` object, so a new itemData reference
+ * for unrelated changes doesn't bust the inner useCallback identity.
  */
 const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
-  const document = data.documents[index];
-  const isSelected = document.id === data.selectedDocumentId;
+  const { documents, onDocumentClick, onProcessDocument, selectedDocumentId, showActions } = data;
+  const document = documents[index];
+  const isSelected = document.id === selectedDocumentId;
 
   const handleClick = useCallback(() => {
-    if (data.onDocumentClick) {
-      data.onDocumentClick(document);
-    }
-  }, [document, data]);
+    onDocumentClick?.(document);
+  }, [document, onDocumentClick]);
 
   const handleProcess = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (data.onProcessDocument) {
-        data.onProcessDocument(document);
-      }
+      onProcessDocument?.(document);
     },
-    [document, data]
+    [document, onProcessDocument]
   );
 
   const getStatusIcon = () => {
@@ -122,9 +122,9 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
                     <span>{changeCount} changes</span>
                   </div>
 
-                  {document.processingResult?.hyperlinksModified && (
+                  {typeof document.processingResult?.timeSavedMinutes === "number" && (
                     <div className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs">
-                      {Math.round((document.processingResult.hyperlinksModified * 101) / 60)}m saved
+                      {document.processingResult.timeSavedMinutes}m saved
                     </div>
                   )}
                 </div>
@@ -140,7 +140,7 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
           </div>
 
           {/* Actions */}
-          {data.showActions && (
+          {showActions && (
             <div className="flex items-center gap-1">
               {document.status === "pending" && (
                 <Button size="sm" variant="ghost" onClick={handleProcess} className="h-7 px-2">
@@ -180,6 +180,31 @@ DocumentRow.displayName = "DocumentRow";
  * Virtual scrolling document list component
  * Uses variable size list to handle different content heights
  */
+/**
+ * Pure height computation per document — kept out of the component so the memo
+ * below has a stable callee and can be regenerated only when `documents` changes.
+ */
+const computeRowHeight = (document: Document): number => {
+  let baseHeight = 80; // Base height for minimal content
+
+  // Add height for error messages
+  if (document.status === "error" && document.errors && document.errors.length > 0) {
+    baseHeight += 20;
+  }
+
+  // Add height for processing results
+  if (document.processingResult?.changes?.length) {
+    baseHeight += 30;
+  }
+
+  // Add height for progress bar
+  if (document.status === "processing") {
+    baseHeight += 20;
+  }
+
+  return baseHeight;
+};
+
 export const VirtualDocumentList = memo(function VirtualDocumentList({
   documents,
   height,
@@ -188,41 +213,24 @@ export const VirtualDocumentList = memo(function VirtualDocumentList({
   selectedDocumentId,
   showActions = true,
 }: VirtualDocumentListProps) {
-  // Calculate item size based on content
-  const getItemSize = useCallback(
-    (index: number) => {
-      const document = documents[index];
-      let baseHeight = 80; // Base height for minimal content
+  // Pre-compute heights array; react-window calls itemSize on every render so we
+  // want index lookup to be O(1) and the callback identity to stay stable.
+  const heights = useMemo(() => documents.map((doc) => computeRowHeight(doc)), [documents]);
 
-      // Add height for error messages
-      if (document.status === "error" && document.errors && document.errors.length > 0) {
-        baseHeight += 20;
-      }
+  const getItemSize = useCallback((index: number) => heights[index] ?? 80, [heights]);
 
-      // Add height for processing results
-      if (document.processingResult?.changes?.length) {
-        baseHeight += 30;
-      }
-
-      // Add height for progress bar
-      if (document.status === "processing") {
-        baseHeight += 20;
-      }
-
-      return baseHeight;
-    },
-    [documents]
+  // Data passed to each row — memoized with explicit deps so react-window doesn't
+  // see a new itemData reference on unrelated parent re-renders.
+  const itemData = useMemo<DocumentRowData>(
+    () => ({
+      documents,
+      onDocumentClick,
+      onProcessDocument,
+      selectedDocumentId,
+      showActions,
+    }),
+    [documents, onDocumentClick, onProcessDocument, selectedDocumentId, showActions]
   );
-
-  // Data passed to each row
-  const itemData = {
-    documents,
-    onDocumentClick,
-    onProcessDocument,
-    selectedDocumentId,
-    showActions,
-    getItemSize,
-  };
 
   return (
     <List

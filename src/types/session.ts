@@ -166,6 +166,9 @@ export interface Document {
     changes?: DocumentChange[];
     optionsUsed?: string[]; // IDs of processing options that were enabled during processing
     warnings?: string[]; // Any warnings or issues encountered (e.g., "Header 2 spacing could not be applied")
+    /** Persisted time-saved estimate in whole minutes. Computed once at processDocument
+     * finalization (totalHyperlinks * 101s / 60s); read by UI rather than recomputed each render. */
+    timeSavedMinutes?: number;
   };
 }
 

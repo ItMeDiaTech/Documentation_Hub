@@ -1,5 +1,5 @@
-import { memo, useCallback, CSSProperties } from "react";
-// @ts-ignore - react-window exports these despite TypeScript not recognizing them
+import { memo, useCallback, useMemo, CSSProperties } from "react";
+// @ts-expect-error react-window v2 types lag the runtime exports
 import { FixedSizeList as List } from "react-window";
 import { motion } from "framer-motion";
 import { FolderOpen, FileText, Clock, CheckCircle, AlertCircle } from "lucide-react";
@@ -14,31 +14,34 @@ interface VirtualSessionListProps {
   selectedSessionId?: string;
 }
 
+interface SessionRowData {
+  sessions: Session[];
+  onSessionClick?: (session: Session) => void;
+  selectedSessionId?: string;
+  navigate: ReturnType<typeof useNavigate>;
+}
+
 interface SessionRowProps {
   index: number;
   style: CSSProperties;
-  data: {
-    sessions: Session[];
-    onSessionClick?: (session: Session) => void;
-    selectedSessionId?: string;
-    navigate: ReturnType<typeof useNavigate>;
-  };
+  data: SessionRowData;
 }
 
 /**
  * Individual session row component
- * Memoized to prevent unnecessary re-renders
+ * Memoized to prevent unnecessary re-renders. Handler depends on destructured
+ * leaf callbacks so an itemData identity change for unrelated reasons doesn't
+ * bust the inner useCallback identity.
  */
 const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
-  const session = data.sessions[index];
-  const isSelected = session.id === data.selectedSessionId;
+  const { sessions, onSessionClick, selectedSessionId, navigate } = data;
+  const session = sessions[index];
+  const isSelected = session.id === selectedSessionId;
 
   const handleClick = useCallback(() => {
-    if (data.onSessionClick) {
-      data.onSessionClick(session);
-    }
-    data.navigate(`/session/${session.id}`);
-  }, [session, data]);
+    onSessionClick?.(session);
+    navigate(`/session/${session.id}`);
+  }, [session, onSessionClick, navigate]);
 
   const getStatusIcon = () => {
     switch (session.status) {
@@ -134,13 +137,17 @@ export const VirtualSessionList = memo(function VirtualSessionList({
 }: VirtualSessionListProps) {
   const navigate = useNavigate();
 
-  // Data passed to each row
-  const itemData = {
-    sessions,
-    onSessionClick,
-    selectedSessionId,
-    navigate,
-  };
+  // Data passed to each row — memoized with explicit deps so react-window doesn't
+  // see a new itemData reference on unrelated parent re-renders.
+  const itemData = useMemo<SessionRowData>(
+    () => ({
+      sessions,
+      onSessionClick,
+      selectedSessionId,
+      navigate,
+    }),
+    [sessions, onSessionClick, selectedSessionId, navigate]
+  );
 
   return (
     <List

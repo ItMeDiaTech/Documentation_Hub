@@ -928,6 +928,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // UNIFIED STATE UPDATE HELPER
+  // Prevents state synchronization issues by updating all three state variables atomically.
+  // Declared up-front so consumers below (addDocuments, processDocument, the update*
+  // family) can list it in useCallback deps without hitting the TDZ on render.
+  const updateSessionById = useCallback(
+    (sessionId: string, updater: (session: Session) => Session) => {
+      const updateFn = (sessions: Session[]) =>
+        sessions.map((s) => (s.id === sessionId ? updater(s) : s));
+
+      setSessions(updateFn);
+      setActiveSessions(updateFn);
+      setCurrentSession((prev) => (prev?.id === sessionId ? updater(prev) : prev));
+    },
+    []
+  );
+
   const addDocuments = async (sessionId: string, files: File[]) => {
     // Pre-validate files synchronously. Dedup against session state happens
     // later inside the updateSessionById updater so it sees authoritative
@@ -1088,34 +1104,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         log.info(
           "[Session] Backfilled session with missing styles or list settings during processing"
         );
-        // Update the session in state with the backfilled data
-        setSessions((prev) => prev.map((s) => (s.id === sessionId ? ensuredSession : s)));
       }
 
       // Use the ensured session for processing
       const sessionToProcess = ensuredSession;
 
-      // PERFORMANCE: Update document status to processing (first setState)
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === sessionId
+      // PERFORMANCE: Single state update covers (a) any backfilled styles/list settings
+      // and (b) flipping the target document to status=processing. Routed through
+      // updateSessionById so sessions/activeSessions/currentSession stay in lock-step.
+      updateSessionById(sessionId, (s) => ({
+        ...s,
+        // Carry backfilled styles/listBulletSettings forward (no-op if unchanged).
+        styles: ensuredSession.styles,
+        listBulletSettings: ensuredSession.listBulletSettings,
+        documents: s.documents.map((d) =>
+          d.id === documentId
             ? {
-                ...s,
-                documents: s.documents.map((d) =>
-                  d.id === documentId
-                    ? {
-                        ...d,
-                        status: "processing" as const,
-                        errors: undefined,
-                        errorType: undefined,
-                      }
-                    : d
-                ),
-                lastModified: new Date(),
+                ...d,
+                status: "processing" as const,
+                errors: undefined,
+                errorType: undefined,
               }
-            : s
-        )
-      );
+            : d
+        ),
+        lastModified: new Date(),
+      }));
 
       try {
         // Get user settings from localStorage
@@ -1726,71 +1739,66 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           wordRevisions?: import("@/types/session").WordRevisionState;
         };
 
-        // PERFORMANCE: Update document status AND stats in single setState (batched)
-        // This reduces re-renders from 2 to 1 per document
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === sessionId
-              ? {
-                  ...s,
-                  documents: s.documents.map((d) =>
-                    d.id === documentId
-                      ? {
-                          ...d,
-                          status: result.success ? ("completed" as const) : ("error" as const),
-                          processedAt: new Date(),
-                          errors: result.errorMessages,
-                          errorType: !result.success
-                            ? result.errorMessages?.some((msg) =>
-                                msg.toLowerCase().includes("close the file")
-                              )
-                              ? "file_locked"
-                              : result.errorMessages?.some((msg) =>
-                                    msg.toLowerCase().includes("timeout")
-                                  )
-                                ? "api_timeout"
-                                : result.errorMessages?.some(
-                                      (msg) =>
-                                        msg.toLowerCase().includes("compatibility_mode") ||
-                                        msg.toLowerCase().includes("outdated functions")
-                                    )
-                                  ? "word_compatibility"
-                                  : "general"
-                            : undefined,
-                          // Store pre-existing revisions (from before DocHub processing)
-                          previousRevisions: result.previousRevisions,
-                          // Store Word revisions state from DocHub processing
-                          wordRevisions: result.wordRevisions,
-                          processingResult: {
-                            hyperlinksProcessed: result.processedHyperlinks,
-                            hyperlinksModified: result.modifiedHyperlinks,
-                            contentIdsAppended:
-                              result.appendedContentIds || result.processedHyperlinks,
-                            backupPath: result.backupPath,
-                            duration: result.duration,
-                            // Use the enhanced changes array from processor with full context
-                            changes: result.changes || [],
-                          },
-                        }
-                      : d
-                  ),
-                  stats: {
-                    ...s.stats,
-                    documentsProcessed: s.stats.documentsProcessed + (result.success ? 1 : 0),
-                    hyperlinksChecked: s.stats.hyperlinksChecked + result.totalHyperlinks,
-                    feedbackImported: s.stats.feedbackImported,
-                    timeSaved:
-                      s.stats.timeSaved +
-                      Math.round(
-                        (result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) /
-                          SECONDS_PER_MINUTE
-                      ),
-                  },
-                  lastModified: new Date(),
-                }
-              : s
-          )
+        // PERFORMANCE: Single finalization update covers document status, processing result,
+        // and session-level stats. Routed through updateSessionById so
+        // sessions/activeSessions/currentSession stay in lock-step.
+        const docTimeSavedMinutes = Math.round(
+          (result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) / SECONDS_PER_MINUTE
         );
+        updateSessionById(sessionId, (s) => ({
+          ...s,
+          documents: s.documents.map((d) =>
+            d.id === documentId
+              ? {
+                  ...d,
+                  status: result.success ? ("completed" as const) : ("error" as const),
+                  processedAt: new Date(),
+                  errors: result.errorMessages,
+                  errorType: !result.success
+                    ? result.errorMessages?.some((msg) =>
+                        msg.toLowerCase().includes("close the file")
+                      )
+                      ? "file_locked"
+                      : result.errorMessages?.some((msg) =>
+                            msg.toLowerCase().includes("timeout")
+                          )
+                        ? "api_timeout"
+                        : result.errorMessages?.some(
+                              (msg) =>
+                                msg.toLowerCase().includes("compatibility_mode") ||
+                                msg.toLowerCase().includes("outdated functions")
+                            )
+                          ? "word_compatibility"
+                          : "general"
+                    : undefined,
+                  // Store pre-existing revisions (from before DocHub processing)
+                  previousRevisions: result.previousRevisions,
+                  // Store Word revisions state from DocHub processing
+                  wordRevisions: result.wordRevisions,
+                  processingResult: {
+                    hyperlinksProcessed: result.processedHyperlinks,
+                    hyperlinksModified: result.modifiedHyperlinks,
+                    contentIdsAppended:
+                      result.appendedContentIds || result.processedHyperlinks,
+                    backupPath: result.backupPath,
+                    duration: result.duration,
+                    // Use the enhanced changes array from processor with full context
+                    changes: result.changes || [],
+                    // Persisted once here so UI sites can read instead of recomputing.
+                    timeSavedMinutes: docTimeSavedMinutes,
+                  },
+                }
+              : d
+          ),
+          stats: {
+            ...s.stats,
+            documentsProcessed: s.stats.documentsProcessed + (result.success ? 1 : 0),
+            hyperlinksChecked: s.stats.hyperlinksChecked + result.totalHyperlinks,
+            feedbackImported: s.stats.feedbackImported,
+            timeSaved: s.stats.timeSaved + docTimeSavedMinutes,
+          },
+          lastModified: new Date(),
+        }));
 
         // Update global stats if processing was successful
         if (result.success) {
@@ -1850,42 +1858,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         log.error("═══════════════════════════════════════════════════════════════════════");
         log.error("Error processing document:", error);
 
-        // Update document status to error
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === sessionId
+        // Update document status to error (single update via helper keeps
+        // sessions/activeSessions/currentSession in sync).
+        updateSessionById(sessionId, (s) => ({
+          ...s,
+          documents: s.documents.map((d) =>
+            d.id === documentId
               ? {
-                  ...s,
-                  documents: s.documents.map((d) =>
-                    d.id === documentId
-                      ? {
-                          ...d,
-                          status: "error" as const,
-                          errors: [error instanceof Error ? error.message : "Processing failed"],
-                          errorType:
-                            error instanceof Error &&
-                            error.message.toLowerCase().includes("close the file")
-                              ? "file_locked"
-                              : error instanceof Error &&
-                                  error.message.toLowerCase().includes("timeout")
-                                ? "api_timeout"
-                                : error instanceof Error &&
-                                    (error.message.toLowerCase().includes("compatibility_mode") ||
-                                      error.message.toLowerCase().includes("outdated functions"))
-                                  ? "word_compatibility"
-                                  : "general",
-                        }
-                      : d
-                  ),
-                  lastModified: new Date(),
+                  ...d,
+                  status: "error" as const,
+                  errors: [error instanceof Error ? error.message : "Processing failed"],
+                  errorType:
+                    error instanceof Error &&
+                    error.message.toLowerCase().includes("close the file")
+                      ? "file_locked"
+                      : error instanceof Error &&
+                          error.message.toLowerCase().includes("timeout")
+                        ? "api_timeout"
+                        : error instanceof Error &&
+                            (error.message.toLowerCase().includes("compatibility_mode") ||
+                              error.message.toLowerCase().includes("outdated functions"))
+                          ? "word_compatibility"
+                          : "general",
                 }
-              : s
-          )
-        );
+              : d
+          ),
+          lastModified: new Date(),
+        }));
       }
     },
-    [sessions, log, updateGlobalStats]
-  ); // Dependencies: sessions for finding docs, log for logging, updateGlobalStats for stats
+    [sessions, log, updateGlobalStats, updateSessionById]
+  ); // Dependencies: sessions for finding docs, log for logging, updateGlobalStats for stats, updateSessionById for atomic state writes
 
   const revertChange = async (
     sessionId: string,
@@ -1967,21 +1970,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       throw error;
     }
   };
-
-  // UNIFIED STATE UPDATE HELPER
-  // Prevents state synchronization issues by updating all three state variables atomically
-  // This replaces the previous pattern of updating sessions, activeSessions, and currentSession separately
-  const updateSessionById = useCallback(
-    (sessionId: string, updater: (session: Session) => Session) => {
-      const updateFn = (sessions: Session[]) =>
-        sessions.map((s) => (s.id === sessionId ? updater(s) : s));
-
-      setSessions(updateFn);
-      setActiveSessions(updateFn);
-      setCurrentSession((prev) => (prev?.id === sessionId ? updater(prev) : prev));
-    },
-    []
-  );
 
   const updateSessionStats = useCallback(
     (sessionId: string, stats: Partial<SessionStats>) => {
