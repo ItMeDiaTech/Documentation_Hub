@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# TODO: add `npm run lint` once the pre-existing @eslint/js config resolution
+# issue is fixed. Until then, lint failures would block every commit even
+# though the codebase itself is clean.
+npm run typecheck

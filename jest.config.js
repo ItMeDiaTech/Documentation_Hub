@@ -2,7 +2,7 @@
 const config = {
   preset: "ts-jest",
   testEnvironment: "jsdom",
-  roots: ["<rootDir>/src"],
+  roots: ["<rootDir>/src", "<rootDir>/electron", "<rootDir>/scripts"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^@components/(.*)$": "<rootDir>/src/components/$1",
@@ -15,7 +15,7 @@ const config = {
     "^p-limit$": "<rootDir>/src/__mocks__/p-limit.js",
   },
   setupFilesAfterEnv: ["<rootDir>/src/setupTests.ts"],
-  testMatch: ["**/__tests__/**/*.test.{ts,tsx}", "**/*.test.{ts,tsx}"],
+  testMatch: ["**/__tests__/**/*.test.{ts,tsx,js}", "**/*.test.{ts,tsx,js}"],
   transform: {
     "^.+\\.tsx?$": [
       "ts-jest",
@@ -46,6 +46,18 @@ const config = {
       functions: 50,
       lines: 50,
       statements: 50,
+    },
+    "./src/services/**/*.ts": {
+      branches: 70,
+      functions: 70,
+      lines: 70,
+      statements: 70,
+    },
+    "./electron/services/**/*.ts": {
+      branches: 60,
+      functions: 60,
+      lines: 60,
+      statements: 60,
     },
   },
 };

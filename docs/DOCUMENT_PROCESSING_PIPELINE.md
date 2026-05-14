@@ -161,7 +161,6 @@ PHASE 9: LIST PROCESSING (largest phase)
   |-- Apply list indentation uniformity (optional)
   |-- Apply bullet uniformity (optional)
   |-- Apply numbered uniformity
-  |-- Convert mixed list formats (consistent per abstractNum)
   |-- Remove numbering tab stops
   |-- Remove small indents (< 0.25" from non-list)
   |-- Apply list continuation indentation
@@ -189,6 +188,7 @@ PHASE 11: PAGE LAYOUT & TABLE FORMATTING
   |-- Step table detection
   |-- Autofit tables to window
   |-- Normalize cell widths (tcW matches tblGrid)
+  |-- Enforce minimum column widths (surplus redistribution into deficit columns)
   |-- Step column width fix (1 inch)
   |-- Standardize table borders (optional)
   |

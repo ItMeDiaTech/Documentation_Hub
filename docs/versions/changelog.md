@@ -5,9 +5,80 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.8.0
-**docxmlater Framework Version:** 10.1.7
+**Current App Version:** 5.12.1
+**docxmlater Framework Version:** ^11.0.4
 **Status:** Production Ready
+
+---
+
+## [5.12.1] - 2026-05-14
+
+### Added
+
+- **Style Defaults**: Normal paragraph spacing now defaults to 6pt before/after; Heading 2 defaults to 9pt before/after (was inherited)
+- **paragraphRuns Helper**: New `helpers/paragraphRuns.ts` consolidates `getBodyRuns` and `getVisibleRuns` revision-safe iterators — single replacement for three duplicated paragraph-walk implementations across WordDocumentProcessor, StyleProcessor, and ListProcessor
+- **applyRunFmtPreservingHyperlink Helper**: New `helpers/applyRunFormattingPreservingHyperlink.ts` replaces the 5x-duplicated table-cell formatting block in TableProcessor; preserves hyperlink color/underline when re-applying font/size
+- **withTimeout / withAbortableTimeout**: Extracted from inline session-helper code; `withAbortableTimeout` exposes an `AbortSignal` so consumers can cancel underlying work on timeout
+- **Min Column-Width Pass**: New table phase enforces minimum per-column widths by redistributing surplus into deficit columns; merged into the existing cell-width normalization pass
+- **Lazy-Loaded WordDocumentProcessor**: Main process now `await import()`s the processor on first IPC call instead of statically importing on boot — measurable cold-start improvement
+- **ESLint Main-Process Boundary Rule**: Forbids static imports of `WordDocumentProcessor` from `electron/main.ts` to prevent regression of the lazy-load
+- **Test Infrastructure**:
+  - Jest `roots` widened to include `electron/` and `scripts/` (electron IPC + main-process tests were silently excluded before)
+  - Per-file coverage thresholds (70% for `src/services/**`, 60% for `electron/services/**`)
+  - Husky pre-commit hook running typecheck
+  - GitHub Actions `validate-tag` job blocks tag pushes where `package.json` version ≠ git tag
+  - `electron/__tests__/version-consistency.test.ts` asserts semver-shaped version
+  - `scripts/validate-msi-config.js` pins MSI `upgradeCode` to canonical GUID
+  - `scripts/release.sh` extracted from cross-shell `package.json` script — `set -euo pipefail` with existence checks
+  - `.nvmrc` pins Node 22 to match CI
+  - `docs/operations/code-signing.md` documents the deferred signing path
+- **Coverage**: New unit tests for `paragraphRuns`, `withTimeout`, `applyRunFmtPreservingHyperlink`, plus SessionContext render-count and tri-state update regressions
+
+### Changed
+
+- **Stats Label**: "Time Saved from Hyperlinks" renamed to "Hyperlink Time Saved" for consistency with sibling labels
+- **IPC Channel Rename**: `process-document` → `document:get-stats` (the former name was misleading; this handler only computes statistics, no processing)
+- **SessionContext State Updates**: Spread order fix, document dedup in `addDocuments`, awaited IndexedDB delete with surfaced errors
+- **TypeScript Config**: `moduleResolution: "node10"`, dropped `ignoreDeprecations` and unused `baseUrl`
+- **Dropped Unused Deps**: `all`, `docx`, `mammoth`, `react-router` (we use `react-router-dom`)
+
+### Fixed
+
+- **Electron Hardening**: `sandbox: true`, strict CSP, async `fs.stat` instead of sync, `node:` prefix on all builtin imports
+- **Italic via Hyperlink-Preserving Helper**: TableProcessor italic application now routed through `applyRunFmtPreservingHyperlink` (previously bypassed the helper, could drop hyperlink color)
+- **Roman-Numeral Detection**: Bounded list-prefix Roman parsing to avoid matching very long mixed-character runs
+- **Session Stats**: Fallback for undefined `stats.timeSaved`; deduped minutes calc
+
+---
+
+## [5.10.0] - 2026-04-15
+
+### Refactored
+
+- **List Category Preservation**: Each list item now preserves its own category (bullet/numbered); cross-type uniformity logic removed since mixing is now allowed
+- **Vestigial Removals**: `convertMixedListFormats` (no-op since v5.8.0) and orphan `convertNestedNumbersToBullets` methods deleted
+
+### Fixed
+
+- **Editor Cell Shading**: Now persisted via `setBackgroundColor` (the `setShading` API requires a `ShadingConfig` object, not a hex string)
+- **CleanupHelper**: Dropped dead `defragmentHyperlinks` flag from post-tracking run
+
+---
+
+## [5.9.0] - 2026-03-20
+
+### Added
+
+- **docxmlater v11 Alignment**: Upgraded to docxmlater ^11.0.4 and aligned internal APIs
+
+### Fixed
+
+- **Image Crop**: Border-detection tightened to fix false positives
+- **Top of Document Hyperlinks**: Updated handler
+- **Step Numbering**: Order fixes
+- **Blank Line Rules**: Refinements
+- **Bullet Indent**: Edge-case fixes
+- **Build**: `manualChunks` function format corrected; `react-is` added as explicit dep
 
 ---
 

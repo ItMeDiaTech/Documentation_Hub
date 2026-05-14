@@ -12,7 +12,7 @@
     "electron": "electron .",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "dist": "npm run build && npm run build:electron",
-    "release": "npm run build && npx electron-builder && node scripts/generate-latest-yml.js && npx electron-builder --publish always -c.publish.releaseType=release && gh release upload v%npm_package_version% release/latest.yml --clobber",
+    "release": "bash scripts/release.sh",
     "update-server": "node scripts/local-update-server.js",
     "test:update": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5173 && node -e \\\"require('child_process').spawn(require('electron'), ['.'], {stdio:'inherit', env:{...process.env, FORCE_DEV_UPDATE_CONFIG:'true'}})\\\"\"",
     "postinstall": "electron-builder install-app-deps",
@@ -41,6 +41,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.2",
     "@tailwindcss/vite": "4.2.2",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/adm-zip": "^0.5.8",
