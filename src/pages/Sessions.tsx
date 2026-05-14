@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/common/Ca
 import { Input } from "@/components/common/Input";
 import { SessionManager } from "@/components/sessions/SessionManager";
 import { useSession } from "@/contexts/SessionContext";
+import { useToast } from "@/hooks/useToast";
 import { cn } from "@/utils/cn";
 import { motion } from "framer-motion";
 import { Calendar, Clock, FileText, FolderOpen, Grid, List, Plus, Trash2 } from "lucide-react";
@@ -33,6 +34,7 @@ const itemVariants = {
 export function Sessions() {
   const navigate = useNavigate();
   const { sessions, loadSession, deleteSession } = useSession();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [showSessionManager, setShowSessionManager] = useState(false);
@@ -52,10 +54,17 @@ export function Sessions() {
     setShowDeleteConfirm(sessionId);
   };
 
-  const confirmDelete = (sessionId: string) => {
-    void deleteSession(sessionId).catch((err) => {
+  const confirmDelete = async (sessionId: string) => {
+    try {
+      await deleteSession(sessionId);
+    } catch (err) {
+      toast({
+        title: "Failed to delete session",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
       console.error("[Sessions] Failed to delete session:", err);
-    });
+    }
     setShowDeleteConfirm(null);
   };
 

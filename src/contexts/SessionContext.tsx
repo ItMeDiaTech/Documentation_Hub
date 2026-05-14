@@ -983,6 +983,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Pre-compute doc objects (including ids) outside the updater so the
+    // updater is a pure function — StrictMode's double-invocation in dev
+    // would otherwise produce different Date.now()/Math.random() values per
+    // pass, making the updater impure (no observable difference since only
+    // the second result commits, but it flags static analyzers).
+    const candidates: Array<Document & { path: string }> = validatedFiles.map(({ file, path }) => ({
+      id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      name: file.name,
+      path,
+      size: file.size || 0,
+      type: file.type,
+      status: "pending" as const,
+      // No fileData - will be read by backend using the path
+    }));
+
     // Dedup + append inside the updater so we see authoritative session state.
     // Set lookups replace the previous O(F * (S + D)) linear scans.
     updateSessionById(sessionId, (session) => {
@@ -994,21 +1009,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const seen = new Set<string>();
       const newDocuments: Document[] = [];
 
-      for (const { file, path } of validatedFiles) {
-        if (existing.has(path) || seen.has(path)) {
-          log.warn(`[addDocuments] File "${file.name}" skipped: already pending in session`);
+      for (const candidate of candidates) {
+        if (existing.has(candidate.path) || seen.has(candidate.path)) {
+          log.warn(`[addDocuments] File "${candidate.name}" skipped: already pending in session`);
           continue;
         }
-        seen.add(path);
-        newDocuments.push({
-          id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-          name: file.name,
-          path,
-          size: file.size || 0,
-          type: file.type,
-          status: "pending" as const,
-          // No fileData - will be read by backend using the path
-        });
+        seen.add(candidate.path);
+        newDocuments.push(candidate);
       }
 
       if (newDocuments.length === 0) {
