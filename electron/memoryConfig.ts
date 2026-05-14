@@ -5,7 +5,7 @@
  */
 
 import { app } from "electron";
-import * as os from "os";
+import * as os from "node:os";
 import { logger } from "../src/utils/logger";
 
 const log = logger.namespace("MemoryConfig");

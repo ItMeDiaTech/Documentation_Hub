@@ -332,12 +332,15 @@ async function createWindow() {
     // actually got (e.g., command-line flag override, fork that diverges).
     const actual = mainWindow.webContents.getLastWebPreferences();
     if (actual?.nodeIntegration === true) {
+      log.error("[main] BrowserWindow.webPreferences.nodeIntegration must be false");
       throw new Error("BrowserWindow.webPreferences.nodeIntegration must be false");
     }
     if (actual?.contextIsolation === false) {
+      log.error("[main] BrowserWindow.webPreferences.contextIsolation must be true");
       throw new Error("BrowserWindow.webPreferences.contextIsolation must be true");
     }
     if (actual?.sandbox === false) {
+      log.error("[main] BrowserWindow.webPreferences.sandbox must be true");
       throw new Error("BrowserWindow.webPreferences.sandbox must be true");
     }
 

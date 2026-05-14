@@ -1,5 +1,5 @@
 import { app, session } from "electron";
-import * as os from "os";
+import * as os from "node:os";
 import { zscalerConfig } from "./zscalerConfig";
 import { logger } from "../src/utils/logger";
 

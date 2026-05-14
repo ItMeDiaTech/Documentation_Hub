@@ -1,9 +1,9 @@
 import { app } from "electron";
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-import { exec } from "child_process";
-import { promisify } from "util";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import { logger } from "../src/utils/logger";
 
 const execAsync = promisify(exec);
