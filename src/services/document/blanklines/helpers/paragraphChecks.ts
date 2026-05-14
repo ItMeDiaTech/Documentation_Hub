@@ -132,6 +132,20 @@ export function startsWithBoldColon(para: Paragraph): boolean {
 }
 
 /**
+ * Checks if a paragraph is a bold-colon paragraph AND is indented.
+ * "Indented" means it is a list item (has w:numId) OR has positive left indent.
+ * Symmetric with isBoldColonNoIndent in rules/additionRules.ts.
+ */
+export function isIndentedBoldColon(para: Paragraph): boolean {
+  if (!startsWithBoldColon(para)) return false;
+  const numbering = para.getNumbering();
+  if (numbering && numbering.numId !== undefined && numbering.numId !== 0) return true;
+  const leftIndent = para.getFormatting()?.indentation?.left;
+  if (leftIndent && leftIndent > 0) return true;
+  return false;
+}
+
+/**
  * Checks if a paragraph is centered bold text (all text runs are bold and centered).
  * Ported from Document.ts:8499-8523
  */

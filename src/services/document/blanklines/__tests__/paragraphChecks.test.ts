@@ -10,6 +10,7 @@ import {
   isCenteredBoldText,
   isTextOnlyParagraph,
   isTocParagraph,
+  isIndentedBoldColon,
 } from "../helpers/paragraphChecks";
 
 // Mock docxmlater classes
@@ -71,6 +72,8 @@ jest.mock("docxmlater", () => {
     private alignment: string;
     private bookmarksStart: any[];
     private bookmarksEnd: any[];
+    private numbering: any;
+    private formatting: any;
 
     constructor(
       opts: {
@@ -79,6 +82,8 @@ jest.mock("docxmlater", () => {
         alignment?: string;
         bookmarksStart?: any[];
         bookmarksEnd?: any[];
+        numbering?: any;
+        formatting?: any;
       } = {}
     ) {
       this.content = opts.content ?? [];
@@ -86,6 +91,8 @@ jest.mock("docxmlater", () => {
       this.alignment = opts.alignment ?? "left";
       this.bookmarksStart = opts.bookmarksStart ?? [];
       this.bookmarksEnd = opts.bookmarksEnd ?? [];
+      this.numbering = opts.numbering ?? null;
+      this.formatting = opts.formatting ?? {};
     }
 
     getContent() {
@@ -111,6 +118,12 @@ jest.mock("docxmlater", () => {
     }
     getRuns() {
       return this.content.filter((c: any) => c instanceof MockRun && !(c instanceof MockImageRun));
+    }
+    getNumbering() {
+      return this.numbering;
+    }
+    getFormatting() {
+      return this.formatting;
     }
   }
 
@@ -250,6 +263,53 @@ describe("startsWithBoldColon", () => {
       content: [new ImageRun(), new Run(" For FEP mail tag and credit scenarios")],
     });
     expect(startsWithBoldColon(para)).toBe(false);
+  });
+});
+
+describe("isIndentedBoldColon", () => {
+  it("returns true when bold-colon AND has positive left indent", () => {
+    const para = new Paragraph({
+      content: [new Run("Note:", { bold: true })],
+      formatting: { indentation: { left: 720 } },
+    });
+    expect(isIndentedBoldColon(para)).toBe(true);
+  });
+
+  it("returns true when bold-colon AND is a list item (numbering set)", () => {
+    const para = new Paragraph({
+      content: [new Run("Note:", { bold: true })],
+      numbering: { numId: 5, level: 0 },
+    });
+    expect(isIndentedBoldColon(para)).toBe(true);
+  });
+
+  it("returns false when bold-colon but no indent and not a list item", () => {
+    const para = new Paragraph({
+      content: [new Run("Note:", { bold: true })],
+      formatting: { indentation: { left: 0 } },
+    });
+    expect(isIndentedBoldColon(para)).toBe(false);
+  });
+
+  it("returns false when indented but not bold-colon (no colon)", () => {
+    const para = new Paragraph({
+      content: [new Run("Note", { bold: true })],
+      formatting: { indentation: { left: 720 } },
+    });
+    expect(isIndentedBoldColon(para)).toBe(false);
+  });
+
+  it("returns false when indented but first run is not bold", () => {
+    const para = new Paragraph({
+      content: [new Run("Note:", { bold: false })],
+      formatting: { indentation: { left: 720 } },
+    });
+    expect(isIndentedBoldColon(para)).toBe(false);
+  });
+
+  it("returns false for a blank paragraph (no content)", () => {
+    const para = new Paragraph({ content: [], formatting: { indentation: { left: 720 } } });
+    expect(isIndentedBoldColon(para)).toBe(false);
   });
 });
 
