@@ -127,10 +127,14 @@ describe("getPixelLuminance", () => {
     expect(getPixelLuminance(px, W, H, "right", 3, 2)).toBe(0);
   });
 
-  it("clamps out-of-bounds coordinates", () => {
+  it("clamps out-of-bounds coordinates and returns the clamped pixel luminance", () => {
     const px = makePixels(W, H, WHITE);
-    // Should not throw even with extreme lineIndex/depth
-    expect(() => getPixelLuminance(px, W, H, "top", 999, 999)).not.toThrow();
+    // Mark the bottom-right corner so we can verify the clamp lands there.
+    setPixel(px, W, W - 1, H - 1, DARK);
+    // Top edge: x=lineIndex, y=depth. Both 999 → clamped to (W-1, H-1).
+    const value = getPixelLuminance(px, W, H, "top", 999, 999);
+    // Clamped target is the dark pixel → luminance 0.
+    expect(value).toBe(0);
   });
 });
 
@@ -509,6 +513,60 @@ describe("cropEmbeddedImageBorders with Word crop metadata", () => {
     expect(result.wordCroppedImages.size).toBe(0);
     expect(img.updateImageData).toHaveBeenCalled();
     expect(img.setCrop).not.toHaveBeenCalled();
+  });
+
+  // ─── MIN_DIMENSION_PX guard (Task 11) ────────────────────────────
+  // Images smaller than MIN_DIMENSION_PX (80px) on either axis must be
+  // skipped entirely — they're too small to host a meaningful border.
+  it("skips analysis for images below MIN_DIMENSION_PX on width", async () => {
+    // Width < MIN_DIMENSION_PX (80) → skip
+    const undersizeW = MIN_DIMENSION_PX - 1;
+    const pixels = buildBorderedPixels(undersizeW, 200);
+    setupCanvasMock(pixels, undersizeW, 200);
+
+    const img = makeMockImage();
+    const doc = makeMockDoc([img]);
+
+    const result = await cropEmbeddedImageBorders(doc, log);
+
+    expect(result.skippedCount).toBe(1);
+    expect(result.croppedCount).toBe(0);
+    expect(img.updateImageData).not.toHaveBeenCalled();
+  });
+
+  it("skips analysis for images below MIN_DIMENSION_PX on height", async () => {
+    const undersizeH = MIN_DIMENSION_PX - 1;
+    const pixels = buildBorderedPixels(200, undersizeH);
+    setupCanvasMock(pixels, 200, undersizeH);
+
+    const img = makeMockImage();
+    const doc = makeMockDoc([img]);
+
+    const result = await cropEmbeddedImageBorders(doc, log);
+
+    expect(result.skippedCount).toBe(1);
+    expect(result.croppedCount).toBe(0);
+    expect(img.updateImageData).not.toHaveBeenCalled();
+  });
+
+  it("processes images at exactly MIN_DIMENSION_PX (boundary inclusive)", async () => {
+    // The check is `w < MIN_DIMENSION_PX` — exactly equal must NOT be skipped.
+    const pixels = buildBorderedPixels(MIN_DIMENSION_PX, MIN_DIMENSION_PX);
+    setupCanvasMock(pixels, MIN_DIMENSION_PX, MIN_DIMENSION_PX);
+
+    const img = makeMockImage();
+    const doc = makeMockDoc([img]);
+
+    const result = await cropEmbeddedImageBorders(doc, log);
+
+    // Either it crops (border found) or it skips for a different reason (e.g.,
+    // crop fraction). What it must NOT do is short-circuit on the dimension
+    // guard — that would set skippedCount=1 + croppedCount=0 + never call
+    // updateImageData. The boundary case should reach the analysis path.
+    expect(result.croppedCount + result.skippedCount).toBe(1);
+    // Confirmation: the small-image MIN_DIMENSION_PX guard is NOT what
+    // skipped it (it would otherwise skip before reaching loadImage).
+    expect((loadImage as jest.Mock)).toHaveBeenCalled();
   });
 });
 

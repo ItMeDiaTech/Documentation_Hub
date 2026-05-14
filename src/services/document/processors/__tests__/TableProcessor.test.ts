@@ -111,6 +111,120 @@ describe("TableProcessor", () => {
       expect(result.tablesProcessed).toBe(0);
       expect(result.cellsRecolored).toBe(0);
     });
+
+    // ─── Hyperlink-restore at applyTableUniformity call sites (Task 8) ───
+    // Each test exercises one of the three previously-uncovered call sites
+    // that now route through applyRunFmtPreservingHyperlink:
+    //   1. HEADER row (line 505 in TableProcessor.ts)
+    //   2. DATA row WITH shading (line 541)
+    //   3. DATA row WITHOUT shading (line 571)
+    // Each must restore 0000FF + single underline on a hyperlink-styled run.
+
+    it("HEADER row: restores hyperlink color/underline after font/size writes", async () => {
+      const hyperlinkRun = createHyperlinkStyledRun({
+        bold: false,
+        color: "000000",
+        underline: "none",
+      });
+      const headerPara = createMockParagraphWithRuns([hyperlinkRun], "Normal");
+      const headerCell = createCellWithParagraphs([headerPara], "FFFFFF");
+
+      const dataCell = createCellWithParagraphs([createMockParagraph("Normal")], "FFFFFF");
+      const headerRow = createMockRow([headerCell]);
+      const dataRow = createMockRow([dataCell]);
+      const table = createMockTable([headerRow, dataRow]);
+
+      mockDoc.getTables.mockReturnValue([table]);
+      await processor.applyTableUniformity(mockDoc);
+
+      // Helper restored the canonical hyperlink coloring after the font/size
+      // setters that would otherwise have dropped <w:color>/<w:u>.
+      expect(hyperlinkRun.setColor).toHaveBeenCalledWith("0000FF");
+      expect(hyperlinkRun.setUnderline).toHaveBeenCalledWith("single");
+    });
+
+    it("DATA row WITH shading: restores hyperlink color/underline", async () => {
+      const hyperlinkRun = createHyperlinkStyledRun({
+        bold: false,
+        color: "000000",
+        underline: "none",
+      });
+      const dataPara = createMockParagraphWithRuns([hyperlinkRun], "Normal");
+      const shadedDataCell = createCellWithParagraphs([dataPara], "DDDDDD");
+
+      const benignHeaderCell = createCellWithParagraphs(
+        [createMockParagraph("Normal")],
+        "FFFFFF"
+      );
+      const headerRow = createMockRow([benignHeaderCell]);
+      const dataRow = createMockRow([shadedDataCell]);
+      const table = createMockTable([headerRow, dataRow]);
+
+      mockDoc.getTables.mockReturnValue([table]);
+      await processor.applyTableUniformity(mockDoc);
+
+      expect(hyperlinkRun.setColor).toHaveBeenCalledWith("0000FF");
+      expect(hyperlinkRun.setUnderline).toHaveBeenCalledWith("single");
+    });
+
+    it("DATA row WITHOUT shading: restores hyperlink color/underline", async () => {
+      const hyperlinkRun = createHyperlinkStyledRun({
+        bold: false,
+        color: "000000",
+        underline: "none",
+      });
+      const dataPara = createMockParagraphWithRuns([hyperlinkRun], "Normal");
+      // Important: para.getNumbering() must be falsy so the WITHOUT-shading
+      // branch enters the run-loop (it skips list items).
+      dataPara.getNumbering.mockReturnValue(null);
+      const unshadedDataCell = createCellWithParagraphs([dataPara], "FFFFFF");
+
+      const benignHeaderCell = createCellWithParagraphs(
+        [createMockParagraph("Normal")],
+        "FFFFFF"
+      );
+      const headerRow = createMockRow([benignHeaderCell]);
+      const dataRow = createMockRow([unshadedDataCell]);
+      const table = createMockTable([headerRow, dataRow]);
+
+      mockDoc.getTables.mockReturnValue([table]);
+      await processor.applyTableUniformity(mockDoc);
+
+      expect(hyperlinkRun.setColor).toHaveBeenCalledWith("0000FF");
+      expect(hyperlinkRun.setUnderline).toHaveBeenCalledWith("single");
+    });
+  });
+
+  // ─── Hyperlink-restore at validateHeader2Tables call site (Task 8) ───
+  describe("validateHeader2Tables hyperlink-restore", () => {
+    it("restores hyperlink color/underline on Heading2 paragraphs in tables", async () => {
+      const hyperlinkRun = createHyperlinkStyledRun({
+        bold: false,
+        color: "000000",
+        underline: "none",
+        font: "Calibri",
+        size: 11,
+      });
+      const h2Para = createMockParagraphWithRuns([hyperlinkRun], "Heading2");
+      const cell = createCellWithParagraphs([h2Para], "FFFFFF");
+      const row = createMockRow([cell]);
+      const table = createMockTable([row]);
+
+      mockDoc.getTables.mockReturnValue([table]);
+
+      await processor.validateHeader2Tables(mockDoc, {
+        fontFamily: "Verdana",
+        fontSize: 14,
+        bold: true,
+        italic: false,
+        alignment: "left",
+        spaceBefore: 9,
+        spaceAfter: 9,
+      });
+
+      expect(hyperlinkRun.setColor).toHaveBeenCalledWith("0000FF");
+      expect(hyperlinkRun.setUnderline).toHaveBeenCalledWith("single");
+    });
   });
 
   describe("detect1x1Tables", () => {
@@ -293,6 +407,57 @@ function createMockRun(bold: boolean, characterStyle?: string): jest.Mocked<Run>
     setUnderline: jest.fn(),
     setCharacterStyle: jest.fn(),
   } as unknown as jest.Mocked<Run>;
+}
+
+// ─── Hyperlink-restore test helpers (Task 8/11) ──────────────────
+// Build a run whose getFormatting() reports the Hyperlink characterStyle
+// so applyRunFmtPreservingHyperlink fires its restoration branch.
+function createHyperlinkStyledRun(fmt: {
+  bold?: boolean;
+  color?: string;
+  underline?: string;
+  font?: string;
+  size?: number;
+}): jest.Mocked<Run> {
+  return {
+    getText: jest.fn().mockReturnValue("Link text"),
+    getFormatting: jest.fn().mockReturnValue({
+      characterStyle: "Hyperlink",
+      bold: fmt.bold ?? false,
+      color: fmt.color ?? "000000",
+      underline: fmt.underline ?? "none",
+      font: fmt.font ?? "Calibri",
+      size: fmt.size ?? 11,
+    }),
+    setFont: jest.fn(),
+    setSize: jest.fn(),
+    setBold: jest.fn(),
+    setItalic: jest.fn(),
+    setColor: jest.fn(),
+    setUnderline: jest.fn(),
+    setCharacterStyle: jest.fn(),
+  } as unknown as jest.Mocked<Run>;
+}
+
+function createCellWithParagraphs(
+  paragraphs: any[],
+  shading: string
+): jest.Mocked<TableCell> {
+  const fillForFormatting =
+    shading && shading.toUpperCase() !== "FFFFFF" ? { shading: { fill: shading } } : { shading: undefined };
+  return {
+    getShading: jest.fn().mockReturnValue(shading),
+    setShading: jest.fn(),
+    setBorders: jest.fn(),
+    setMargins: jest.fn(),
+    getParagraphs: jest.fn().mockReturnValue(paragraphs),
+    getFormatting: jest.fn().mockReturnValue(fillForFormatting),
+    getColumnSpan: jest.fn().mockReturnValue(1),
+    setAllRunsFont: jest.fn(),
+    setAllRunsSize: jest.fn(),
+    getText: jest.fn().mockReturnValue("Cell text"),
+    hasNestedTables: jest.fn().mockReturnValue(false),
+  } as unknown as jest.Mocked<TableCell>;
 }
 
 // ═══════════════════════════════════════════════════════════
