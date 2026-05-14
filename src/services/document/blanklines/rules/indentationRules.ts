@@ -158,6 +158,44 @@ function getLevel0TextIndent(options: BlankLineProcessingOptions): number | null
 }
 
 /**
+ * Apply the three-case decision tree once for a single candidate paragraph
+ * and return the target left-indent it should snap to.
+ *
+ *   Case A: prev is a non-blank list-item paragraph             → list level's text indent
+ *   Case B: prev is a non-blank, non-list, indented paragraph    → prev's current left indent
+ *   Case C: anything else (blank prev, non-indented prev, Table,
+ *           absent prev, list-item prev with unconfigured level) → level0
+ *
+ * Case A falls through to Case C when getTextIndentForLevel returns null,
+ * so the return value is always a concrete twip count.
+ */
+function decideTarget(
+  prev: Paragraph | undefined,
+  options: BlankLineProcessingOptions,
+  level0: number
+): number {
+  if (!(prev instanceof Paragraph)) return level0;
+  if (isParagraphBlank(prev)) return level0;
+
+  const prevNumbering = prev.getNumbering();
+  if (prevNumbering) {
+    // Case A
+    const levelTarget = getTextIndentForLevel(options, prevNumbering.level ?? 0);
+    if (levelTarget !== null) return levelTarget;
+    return level0; // Case A fall-through to Case C
+  }
+
+  const prevIndent = prev.getFormatting()?.indentation?.left;
+  if (prevIndent && prevIndent > 0) {
+    // Case B
+    return prevIndent;
+  }
+
+  // Case C
+  return level0;
+}
+
+/**
  * Apply the indentation decision tree to every non-list, non-blank
  * indented paragraph in the document body and inside each table cell.
  *
@@ -170,13 +208,19 @@ function getLevel0TextIndent(options: BlankLineProcessingOptions): number | null
  * Forward iteration ensures Case B observes Case C's normalization
  * from earlier iterations — three consecutive indented paragraphs all
  * settle on the same value via C → B → B.
+ *
+ * Precondition: removeSmallIndents (also in this file) must have run
+ * earlier in the pipeline so that any surviving indent > 0 is treated
+ * as intentional. WordDocumentProcessor calls removeSmallIndents before
+ * BlankLineManager, which in turn calls applyIndentationRules — this
+ * ordering is required for correct cascade behavior.
  */
 export function applyIndentationRules(doc: Document, options: BlankLineProcessingOptions): number {
   let fixed = 0;
 
   const level0 = getLevel0TextIndent(options) ?? FALLBACK_FIRST_INDENT_TWIPS;
 
-  // Body
+  // Body — forward iteration so Case B sees prev's already-normalized indent.
   for (let i = 0; i < doc.getBodyElementCount(); i++) {
     const element = doc.getBodyElementAt(i);
     if (!(element instanceof Paragraph)) continue;
@@ -187,28 +231,7 @@ export function applyIndentationRules(doc: Document, options: BlankLineProcessin
     if (!indent || indent <= 0) continue;
 
     const prev = i > 0 ? doc.getBodyElementAt(i - 1) : undefined;
-
-    let target: number | null = null;
-
-    if (prev instanceof Paragraph && !isParagraphBlank(prev)) {
-      const prevNumbering = prev.getNumbering();
-      if (prevNumbering) {
-        // Case A
-        const levelTarget = getTextIndentForLevel(options, prevNumbering.level ?? 0);
-        if (levelTarget !== null) target = levelTarget;
-      } else {
-        const prevIndent = prev.getFormatting()?.indentation?.left;
-        if (prevIndent && prevIndent > 0) {
-          // Case B
-          target = prevIndent;
-        }
-      }
-    }
-
-    if (target === null) {
-      // Case C
-      target = level0;
-    }
+    const target = decideTarget(prev instanceof Paragraph ? prev : undefined, options, level0);
 
     if (target !== indent) {
       element.setLeftIndent(target);
@@ -216,7 +239,8 @@ export function applyIndentationRules(doc: Document, options: BlankLineProcessin
     }
   }
 
-  // Cells
+  // Cells — same forward iteration; paras snapshot is safe because setLeftIndent
+  // mutates the paragraph in place rather than replacing it in the array.
   for (const table of doc.getAllTables()) {
     for (const row of table.getRows()) {
       for (const cell of row.getCells()) {
@@ -231,25 +255,7 @@ export function applyIndentationRules(doc: Document, options: BlankLineProcessin
           if (!indent || indent <= 0) continue;
 
           const prev = ci > 0 ? paras[ci - 1] : undefined;
-
-          let target: number | null = null;
-
-          if (prev && !isParagraphBlank(prev)) {
-            const prevNumbering = prev.getNumbering();
-            if (prevNumbering) {
-              const levelTarget = getTextIndentForLevel(options, prevNumbering.level ?? 0);
-              if (levelTarget !== null) target = levelTarget;
-            } else {
-              const prevIndent = prev.getFormatting()?.indentation?.left;
-              if (prevIndent && prevIndent > 0) {
-                target = prevIndent;
-              }
-            }
-          }
-
-          if (target === null) {
-            target = level0;
-          }
+          const target = decideTarget(prev, options, level0);
 
           if (target !== indent) {
             para.setLeftIndent(target);
