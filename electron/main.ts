@@ -3,7 +3,6 @@ import * as fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import * as path from "node:path";
 import { join } from "node:path";
-import { WordDocumentProcessor } from "../src/services/document/WordDocumentProcessor";
 import type { SharePointConfig } from "../src/types/dictionary";
 import type { BatchProcessingResult, HyperlinkProcessingResult } from "../src/types/hyperlink";
 import { initializeLogging, logger } from "../src/utils/logger";
@@ -560,6 +559,9 @@ ipcMain.handle("open-comparison-window", async (event, data) => {
   // NOTE: Dynamic import here is intentional for lazy-loading (used only when opening comparison windows)
   // Rollup warning about "dynamically imported by main.ts but statically imported by WordDocumentProcessor.ts"
   // is expected and acceptable - see docs/architecture/bundling-strategy.md
+  // Dynamic import keeps DocumentProcessingComparison and its transitive deps
+  // out of the main-process cold-start parse path. Do not convert to a static
+  // import at the top of this file.
   const { documentProcessingComparison } =
     await import("../src/services/document/DocumentProcessingComparison");
   const htmlContent = documentProcessingComparison.generateHTMLReport(comparisonData);
@@ -580,14 +582,31 @@ ipcMain.handle("open-comparison-window", async (event, data) => {
   return { success: true };
 });
 
+// Lazy singleton for WordDocumentProcessor. The processor pulls in DocXMLater,
+// p-limit, and the full processors/ tree (~thousands of lines parsed). Loading
+// it on the first processDocument IPC instead of at main-process cold start
+// trims startup time when the user never opens a document this session.
+// The cached Promise also serializes concurrent first-call races for free.
+type WordDocumentProcessorInstance = InstanceType<
+  typeof import("../src/services/document/WordDocumentProcessor").WordDocumentProcessor
+>;
+let processorPromise: Promise<WordDocumentProcessorInstance> | null = null;
+const getProcessor = (): Promise<WordDocumentProcessorInstance> => {
+  if (!processorPromise) {
+    processorPromise = import("../src/services/document/WordDocumentProcessor").then(
+      (m) => new m.WordDocumentProcessor()
+    );
+  }
+  return processorPromise;
+};
+
 // Hyperlink processing IPC handlers with security validation
 class HyperlinkIPCHandler {
-  private processor: WordDocumentProcessor;
+  private processor: WordDocumentProcessorInstance | null = null;
   private processingQueue: Map<string, AbortController> = new Map();
   private readonly ALLOWED_BASE_PATH: string;
 
   constructor() {
-    this.processor = new WordDocumentProcessor();
     this.ALLOWED_BASE_PATH = app.getPath("documents");
     this.setupHandlers();
   }
@@ -603,6 +622,7 @@ class HyperlinkIPCHandler {
         const controller = new AbortController();
         this.processingQueue.set(safePath, controller);
 
+        this.processor ??= await getProcessor();
         const result = await this.processWithTimeout(
           this.processor.processDocument(safePath, request.options),
           controller.signal,
@@ -645,6 +665,7 @@ class HyperlinkIPCHandler {
         );
 
         // Process files with controlled concurrency
+        this.processor ??= await getProcessor();
         const processedResults = await this.processor.batchProcess(validPaths, request.options);
 
         // Aggregate results

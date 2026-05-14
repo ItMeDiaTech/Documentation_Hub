@@ -89,4 +89,33 @@ export default [
       },
     },
   },
+  // Renderer boundary: keep the heavy main-process processor and its
+  // transitive deps out of the renderer bundle. Renderer code may still
+  // 'import type' from these paths.
+  {
+    files: [
+      "src/contexts/**/*.{ts,tsx}",
+      "src/pages/**/*.{ts,tsx}",
+      "src/components/**/*.{ts,tsx}",
+      "src/hooks/**/*.{ts,tsx}",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@/services/document/WordDocumentProcessor",
+                "@/services/document/processors/*",
+              ],
+              message:
+                "Renderer code must not import @/services/document/WordDocumentProcessor or processors/* values (main-process-only). Use 'import type' for types-only imports, or invoke via the hyperlink:* IPC channels.",
+              allowTypeImports: true,
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
