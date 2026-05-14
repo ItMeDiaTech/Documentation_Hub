@@ -1,7 +1,6 @@
 {
   "_comment": "Force TypeScript reload",
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "target": "ES2022",
     "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
@@ -20,7 +19,6 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@components/*": ["./src/components/*"],
