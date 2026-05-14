@@ -1805,9 +1805,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           await updateGlobalStats({
             documentsProcessed: 1,
             hyperlinksChecked: result.totalHyperlinks,
-            timeSaved: Math.round(
-              (result.totalHyperlinks * TIME_SAVED_SECONDS_PER_HYPERLINK) / SECONDS_PER_MINUTE
-            ),
+            timeSaved: docTimeSavedMinutes,
           });
 
           const totalDuration = Date.now() - processingStartTime;

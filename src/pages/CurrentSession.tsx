@@ -672,7 +672,7 @@ export function CurrentSession() {
               <div>
                 <p className="text-xs text-muted-foreground leading-tight">Hyperlink<br />Time Saved</p>
                 <p className="text-2xl font-bold">
-                  {session.stats.timeSaved}m
+                  {session.stats.timeSaved ?? 0}m
                 </p>
                 <p className="text-xs text-muted-foreground">101 seconds per hyperlink</p>
               </div>

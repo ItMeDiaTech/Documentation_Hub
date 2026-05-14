@@ -187,7 +187,7 @@ export function Sessions() {
                     </div>
                     <div className="flex items-center gap-1 text-foreground">
                       <Clock className="w-3 h-3" />
-                      <span>{session.stats.timeSaved}m saved</span>
+                      <span>{session.stats.timeSaved ?? 0}m saved</span>
                     </div>
                   </div>
 
@@ -219,7 +219,7 @@ export function Sessions() {
                       </div>
                       <div>
                         <p className="text-muted-foreground">Time</p>
-                        <p className="font-medium">{session.stats.timeSaved}m</p>
+                        <p className="font-medium">{session.stats.timeSaved ?? 0}m</p>
                       </div>
                     </div>
                   )}
