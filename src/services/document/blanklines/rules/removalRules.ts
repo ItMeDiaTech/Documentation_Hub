@@ -11,6 +11,7 @@ import {
   isParagraphBlank,
   getEffectiveLeftIndent,
   hasNavigationHyperlink,
+  isIndentedBoldColon,
 } from "../helpers/paragraphChecks";
 import {
   isSmallImageParagraph,
@@ -226,6 +227,43 @@ export const boldColonToIndentedRule: BlankLineRule = {
 };
 
 /**
+ * Remove blank line ABOVE an indented bold-colon paragraph.
+ *
+ * Mirror of additionRules.aboveBoldColonNoIndentRule, which targets the
+ * NON-indented case. Indented bold-colon paragraphs (list items or paragraphs
+ * with positive left-indent) should sit tight against the line above them.
+ */
+export const aboveIndentedBoldColonRule: BlankLineRule = {
+  id: "remove-above-indented-bold-colon",
+  action: "remove",
+  scope: "both",
+  matches(ctx: RuleContext): boolean {
+    if (!(ctx.currentElement instanceof Paragraph)) return false;
+    if (!isParagraphBlank(ctx.currentElement)) return false;
+    if (!(ctx.nextElement instanceof Paragraph)) return false;
+    return isIndentedBoldColon(ctx.nextElement);
+  },
+};
+
+/**
+ * Remove blank line BETWEEN an indented bold-colon paragraph and a
+ * directly-following list item.
+ */
+export const indentedBoldColonToListItemRule: BlankLineRule = {
+  id: "remove-indented-bold-colon-to-list-item",
+  action: "remove",
+  scope: "both",
+  matches(ctx: RuleContext): boolean {
+    if (!(ctx.currentElement instanceof Paragraph)) return false;
+    if (!isParagraphBlank(ctx.currentElement)) return false;
+    if (!(ctx.prevElement instanceof Paragraph)) return false;
+    if (!isIndentedBoldColon(ctx.prevElement)) return false;
+    if (!(ctx.nextElement instanceof Paragraph)) return false;
+    return !!ctx.nextElement.getNumbering();
+  },
+};
+
+/**
  * Remove blank line BELOW navigation hyperlinks (text starts with "Top of" or "Return to").
  */
 export const afterTopOfDocHyperlinkRule: BlankLineRule = {
@@ -381,6 +419,8 @@ export const removalRules: BlankLineRule[] = [
   listItemToIndentedContentRule,
   beforeFirstListItemRule,
   boldColonToIndentedRule,
+  aboveIndentedBoldColonRule,
+  indentedBoldColonToListItemRule,
   afterTopOfDocHyperlinkRule,
   lastLineInCellRule,
   largeImageLastInCellRule,
