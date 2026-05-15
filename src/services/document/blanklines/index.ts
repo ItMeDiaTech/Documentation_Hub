@@ -55,6 +55,8 @@ export {
   createBlankParagraph,
   insertOrMarkBlankAfter,
   insertOrMarkBlankBefore,
+  insertBlankAtBodyIfSafe,
+  addBlankToCellIfSafe,
 } from "./helpers/blankLineInsertion";
 
 export { clearCustom } from "./helpers/clearCustom";
