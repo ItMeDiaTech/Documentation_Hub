@@ -236,6 +236,19 @@ export const boldColonNoIndentAfterRule: BlankLineRule = {
     if (!(ctx.currentElement instanceof Paragraph)) return false;
     if (!isBoldColonNoIndent(ctx.currentElement)) return false;
 
+    // Centered bold-colon + centered next = visually-grouped pair (e.g. a
+    // centered "Example:" label above a centered figure). The blank above
+    // the centered next is already suppressed by aboveAndBelowLargeImagesRule's
+    // centered-prev guard, but this rule would otherwise insert the blank
+    // first and steal that suppression.
+    if (
+      ctx.currentElement.getAlignment() === "center" &&
+      ctx.nextElement instanceof Paragraph &&
+      ctx.nextElement.getAlignment() === "center"
+    ) {
+      return false;
+    }
+
     // Next line must NOT be indented and NOT be a list item
     if (ctx.nextElement instanceof Paragraph) {
       if (ctx.nextElement.getNumbering()) return false;

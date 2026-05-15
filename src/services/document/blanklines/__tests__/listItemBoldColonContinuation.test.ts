@@ -22,6 +22,7 @@
 import {
   aboveBoldColonNoIndentRule,
   afterListItemsRule,
+  boldColonNoIndentAfterRule,
 } from "../rules/additionRules";
 
 jest.mock("docxmlater", () => {
@@ -191,5 +192,36 @@ describe("aboveBoldColonNoIndentRule — list-item prev guard", () => {
   it("still adds a blank above a bold-colon paragraph when prev is plain prose", () => {
     const doc = makeDoc([plainProse(), boldColonNoIndent()]);
     expect(aboveBoldColonNoIndentRule.matches(ctxBody(doc, 0))).toBe(true);
+  });
+});
+
+describe("boldColonNoIndentAfterRule — centered-pair guard", () => {
+  const centeredBoldColon = () =>
+    new Paragraph({
+      content: [new Run("Example:", { bold: true })],
+      alignment: "center",
+      formatting: { indentation: { left: 0 } },
+    });
+  const centeredProse = () =>
+    new Paragraph({ content: [new Run("Centered next")], alignment: "center" });
+
+  it("does NOT add a blank after a centered bold-colon when next is also centered", () => {
+    const doc = makeDoc([centeredBoldColon(), centeredProse()]);
+    expect(boldColonNoIndentAfterRule.matches(ctxBody(doc, 0))).toBe(false);
+  });
+
+  it("still adds a blank after a centered bold-colon when next is left-aligned prose", () => {
+    const doc = makeDoc([centeredBoldColon(), plainProse()]);
+    expect(boldColonNoIndentAfterRule.matches(ctxBody(doc, 0))).toBe(true);
+  });
+
+  it("still adds a blank after a left-aligned bold-colon when next happens to be centered", () => {
+    // Asymmetric pair — only suppress when BOTH are centered (visual group).
+    const leftBoldColon = new Paragraph({
+      content: [new Run("Note:", { bold: true })],
+      formatting: { indentation: { left: 0 } },
+    });
+    const doc = makeDoc([leftBoldColon, centeredProse()]);
+    expect(boldColonNoIndentAfterRule.matches(ctxBody(doc, 0))).toBe(true);
   });
 });
