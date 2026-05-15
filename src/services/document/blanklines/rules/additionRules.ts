@@ -200,6 +200,15 @@ export const aboveBoldColonNoIndentRule: BlankLineRule = {
     if (!(ctx.nextElement instanceof Paragraph)) return false;
     if (!isBoldColonNoIndent(ctx.nextElement)) return false;
 
+    // If prev (current) is a list item, the bold-colon paragraph is a
+    // continuation/callout under that list item and should stay tight.
+    // Suppress blank even when isBoldColonNoIndent returns true — the
+    // indentation decision tree will indent this paragraph in a later step,
+    // but by then the blank would already be inserted.
+    if (ctx.currentElement instanceof Paragraph && ctx.currentElement.getNumbering()) {
+      return false;
+    }
+
     // Near Related Documents: suppress blank between consecutive bold-colon entries
     if (hasRelatedDocumentTableNearby(ctx)) {
       // If current element is also bold-colon non-indented, suppress blank between them
@@ -277,6 +286,12 @@ export const afterListItemsRule: BlankLineRule = {
     if (ctx.nextElement instanceof Paragraph) {
       // If next is also a list item, don't add blank
       if (ctx.nextElement.getNumbering()) return false;
+
+      // If next starts with bold + colon, treat it as a continuation/callout
+      // ("Example:", "Note:", "Tip:", etc.) and keep it tight against the
+      // list item. The indentation decision tree may set its left-indent
+      // in a later step, but the blank would already be inserted here.
+      if (startsWithBoldColon(ctx.nextElement)) return false;
 
       // If next is a centered image, always add blank
       if (ctx.nextElement.getAlignment() === "center") {
