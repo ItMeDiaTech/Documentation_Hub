@@ -109,6 +109,9 @@ jest.mock("docxmlater", () => {
     setSpaceBefore(_n: number) {}
     setLineSpacing(_n: number) {}
     setLeftIndent(_n: number) {}
+    isParagraphMarkDeleted() {
+      return false;
+    }
 
     static create() {
       return new MockParagraph({ content: [] });

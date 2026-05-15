@@ -19,7 +19,11 @@ import { Document, Paragraph, Table, TableCell } from "docxmlater";
 import { logger } from "@/utils/logger";
 import { clearCustom } from "./helpers/clearCustom";
 import { isParagraphBlank } from "./helpers/paragraphChecks";
-import { createBlankParagraph } from "./helpers/blankLineInsertion";
+import {
+  createBlankParagraph,
+  insertBlankAtBodyIfSafe,
+  addBlankToCellIfSafe,
+} from "./helpers/blankLineInsertion";
 import { getImageRunFromParagraph, isImageSmall } from "./helpers/imageChecks";
 import type { BlankLineSnapshot } from "./helpers/blankLineSnapshot";
 import { wasOriginallyBlankAtBody, wasOriginallyBlankInCell } from "./helpers/blankLineSnapshot";
@@ -220,10 +224,17 @@ export class BlankLineManager {
             if (nextEl instanceof Paragraph && isParagraphBlank(nextEl)) {
               continue; // Already a blank
             }
-            const blankPara = createBlankParagraph(blankOpts);
-            doc.insertBodyElementAt(nextIdx, blankPara);
-            added++;
-            i++; // Skip past inserted blank
+            const outcome = insertBlankAtBodyIfSafe(doc, nextIdx, blankOpts);
+            if (outcome === "added") {
+              added++;
+              i++; // Skip past inserted blank
+            } else {
+              log.debug(
+                `Skipped "before-next" insertion at body index ${nextIdx}: ` +
+                  `preceding paragraph has a tracked paragraph-mark deletion ` +
+                  `(rule: ${matchedRule.id})`
+              );
+            }
           }
         } else {
           // Standard "after" rules - ensure blank after current element
@@ -234,10 +245,17 @@ export class BlankLineManager {
               continue; // Already a blank
             }
           }
-          const blankPara = createBlankParagraph(blankOpts);
-          doc.insertBodyElementAt(i + 1, blankPara);
-          added++;
-          i++; // Skip past inserted blank
+          const outcome = insertBlankAtBodyIfSafe(doc, i + 1, blankOpts);
+          if (outcome === "added") {
+            added++;
+            i++; // Skip past inserted blank
+          } else {
+            log.debug(
+              `Skipped "after-current" insertion at body index ${i + 1}: ` +
+                `preceding paragraph has a tracked paragraph-mark deletion ` +
+                `(rule: ${matchedRule.id})`
+            );
+          }
         }
       }
 
@@ -255,10 +273,16 @@ export class BlankLineManager {
                 prevEl.getAlignment() === "center" &&
                 !!prevEl.getText()?.trim();
               if (!isCenteredText) {
-                const blankPara = createBlankParagraph(blankOpts);
-                doc.insertBodyElementAt(originalIndex, blankPara);
-                added++;
-                i++; // Skip past inserted blank
+                const outcome = insertBlankAtBodyIfSafe(doc, originalIndex, blankOpts);
+                if (outcome === "added") {
+                  added++;
+                  i++; // Skip past inserted blank
+                } else {
+                  log.debug(
+                    `Skipped large-image "above" insertion at body index ${originalIndex}: ` +
+                      `preceding paragraph has a tracked paragraph-mark deletion`
+                  );
+                }
               }
             }
           }
@@ -303,11 +327,18 @@ export class BlankLineManager {
               const nextPara = paras[ci + 1];
               if (nextPara && isParagraphBlank(nextPara)) continue; // Already has blank
 
-              const blankPara = createBlankParagraph(blankOpts);
-              cell.addParagraphAt(ci + 1, blankPara);
-              added++;
-              ci++; // Skip past inserted blank
-              paras = cell.getParagraphs();
+              const outcome = addBlankToCellIfSafe(cell, ci + 1, blankOpts);
+              if (outcome === "added") {
+                added++;
+                ci++; // Skip past inserted blank
+                paras = cell.getParagraphs();
+              } else {
+                log.debug(
+                  `Skipped cell-scope insertion at cell index ${ci + 1}: ` +
+                    `preceding paragraph has a tracked paragraph-mark deletion ` +
+                    `(rule: ${matchedRule.id})`
+                );
+              }
             }
           }
         }

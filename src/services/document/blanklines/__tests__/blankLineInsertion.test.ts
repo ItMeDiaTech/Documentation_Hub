@@ -202,6 +202,26 @@ describe("insertOrMarkBlankAfter — guard on the added branch", () => {
   });
 });
 
+describe("insertBlankAtBodyIfSafe — sequence of insertions across a list", () => {
+  it('returns "skipped" for the slot after a paragraph-mark-deleted list item, then "added" for a later safe slot', () => {
+    const item1 = new (Paragraph as any)({ text: "item 1", markDeleted: true, tag: "i1" });
+    const item2 = new (Paragraph as any)({ text: "item 2", tag: "i2" });
+    const item3 = new (Paragraph as any)({ text: "item 3", tag: "i3" });
+    const doc = makeDoc([item1, item2, item3]);
+
+    // Site analogous to BlankLineManager.ts:259 — inserting a blank ABOVE item2.
+    // Insertion index = position of item2 = 1. Preceding element is item1 (mark-deleted).
+    expect(insertBlankAtBodyIfSafe(doc, 1, opts)).toBe("skipped");
+    expect(doc._body.length).toBe(3);
+
+    // Site analogous to BlankLineManager.ts:238 — inserting a blank AFTER item2.
+    // Insertion index = position of item2 + 1 = 2. Preceding element is item2 (not mark-deleted).
+    expect(insertBlankAtBodyIfSafe(doc, 2, opts)).toBe("added");
+    expect(doc._body.length).toBe(4);
+    expect(doc._body[3]).toBe(item3);
+  });
+});
+
 describe("insertOrMarkBlankBefore — guard on the added branch", () => {
   it('returns "skipped" when the element immediately before the insertion point is paragraph-mark-deleted', () => {
     // Inserting before element at index 2 means the new blank lands at index 2,
