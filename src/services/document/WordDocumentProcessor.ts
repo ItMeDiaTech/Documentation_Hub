@@ -71,6 +71,7 @@ import { normalizeRunWhitespace } from "./helpers/whitespace";
 import { cropEmbeddedImageBorders, collectParagraphImages } from "./helpers/ImageBorderCropper";
 import { normalizeVmlImagesInBuffer } from "./helpers/vmlImageNormalizer";
 import { clearAllImageShadows } from "./helpers/imageShadow";
+import { leftAlignListItems } from "./helpers/listItemAlignment";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
 import { DocumentSnapshotService } from "./DocumentSnapshotService";
@@ -2766,6 +2767,20 @@ export class WordDocumentProcessor {
         this.log.info(
           `Removed small indentation (< 0.25") from ${smallIndentsRemoved} non-list paragraphs`
         );
+      }
+
+      // Force every real list-item paragraph to left alignment. Center / right /
+      // justify on a list item leaves the bullet in an unexpected spot relative
+      // to its text and is almost never intentional.
+      const listItemsAligned = leftAlignListItems(doc);
+      if (listItemsAligned > 0) {
+        this.log.info(`Left-aligned ${listItemsAligned} list-item paragraph(s)`);
+        result.changes?.push({
+          type: "structure",
+          category: "structure",
+          description: "Left-aligned list-item paragraphs",
+          count: listItemsAligned,
+        });
       }
 
       // Apply list continuation indentation to non-list paragraphs that follow list items
