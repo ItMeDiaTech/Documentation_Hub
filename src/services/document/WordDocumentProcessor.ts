@@ -69,6 +69,8 @@ import { DocXMLaterProcessor, type ExtractedHyperlink } from "./DocXMLaterProces
 import { blankLineManager, removeSmallIndents } from "./blanklines";
 import { normalizeRunWhitespace } from "./helpers/whitespace";
 import { cropEmbeddedImageBorders, collectParagraphImages } from "./helpers/ImageBorderCropper";
+import { normalizeVmlImagesInBuffer } from "./helpers/vmlImageNormalizer";
+import { clearAllImageShadows } from "./helpers/imageShadow";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
 import { DocumentSnapshotService } from "./DocumentSnapshotService";
@@ -875,7 +877,18 @@ export class WordDocumentProcessor {
       this.log.debug(
         `autoAcceptRevisions=${options.autoAcceptRevisions} (will be applied after processing)`
       );
-      doc = await Document.load(filePath, {
+      // Normalize legacy VML pictures (<w:pict><v:imagedata>) to modern
+      // DrawingML so the border/center/crop pipeline can see them.
+      // DocXMLater's Paragraph.getContent() only exposes <w:drawing>-based
+      // pictures; VML images would otherwise be invisible to it.
+      const rawBuffer = await fs.readFile(filePath);
+      const vmlNormalized = normalizeVmlImagesInBuffer(rawBuffer);
+      if (vmlNormalized.converted > 0) {
+        this.log.info(
+          `Converted ${vmlNormalized.converted} legacy VML image(s) to DrawingML in [${vmlNormalized.modifiedParts.join(", ")}]`
+        );
+      }
+      doc = await Document.loadFromBuffer(vmlNormalized.buffer, {
         strictParsing: false,
         revisionHandling: "preserve", // Always preserve to capture pre-existing changes
       });
@@ -2365,6 +2378,20 @@ export class WordDocumentProcessor {
       }
 
       if (options.centerAndBorderImages) {
+        // Strip shape-level effects (shadow / reflection / glow) from every
+        // image before applying borders or centering. Equivalent to Word's
+        // "Format Picture → Effects → No Effects".
+        const shadowsCleared = clearAllImageShadows(doc);
+        if (shadowsCleared > 0) {
+          this.log.info(`Cleared shape effects (shadow/reflection/glow) from ${shadowsCleared} images`);
+          result.changes?.push({
+            type: "structure",
+            category: "structure",
+            description: "Removed shadow / shape effects from images",
+            count: shadowsCleared,
+          });
+        }
+
         // Detect and crop embedded borders from screen captures before applying new borders
         this.log.debug("=== CROPPING EMBEDDED IMAGE BORDERS ===");
         const cropResult = await cropEmbeddedImageBorders(doc, this.log);
