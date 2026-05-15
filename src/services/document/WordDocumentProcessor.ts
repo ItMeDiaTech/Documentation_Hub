@@ -72,6 +72,7 @@ import { cropEmbeddedImageBorders, collectParagraphImages } from "./helpers/Imag
 import { normalizeVmlImagesInBuffer } from "./helpers/vmlImageNormalizer";
 import { clearAllImageShadows } from "./helpers/imageShadow";
 import { leftAlignListItems } from "./helpers/listItemAlignment";
+import { flattenSingleLevelToc } from "./helpers/tocFlatten";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
 import { DocumentSnapshotService } from "./DocumentSnapshotService";
@@ -2780,6 +2781,22 @@ export class WordDocumentProcessor {
           category: "structure",
           description: "Left-aligned list-item paragraphs",
           count: listItemsAligned,
+        });
+      }
+
+      // Flatten a single-level TOC's inherited left-indent. When every TOC
+      // entry uses the same TOC style (e.g. only Heading 2 was included),
+      // the built-in style indent makes the whole TOC look shifted right.
+      const tocFlatten = flattenSingleLevelToc(doc);
+      if (tocFlatten.flattened) {
+        this.log.info(
+          `Flattened single-level TOC: zeroed left-indent on ${tocFlatten.paragraphs} ${tocFlatten.flattenedStyle} paragraphs`
+        );
+        result.changes?.push({
+          type: "structure",
+          category: "structure",
+          description: "Removed inherited indent from single-level TOC entries",
+          count: tocFlatten.paragraphs,
         });
       }
 
