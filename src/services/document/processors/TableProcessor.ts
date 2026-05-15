@@ -516,10 +516,7 @@ export class TableProcessor {
                   this.applyNormalSpacing(para, shadingSettings);
                 }
               } else if (hasShading) {
-                // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold
-                // (alignment is preserved — shaded data cells often contain
-                // long-form content that should keep its source alignment;
-                // forced centering belongs to header rows only)
+                // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
                 // EXCEPTION: Preserve HLP table shading colors (orange/yellow)
                 const shouldPreserveShading =
                   existingFill &&
@@ -548,9 +545,10 @@ export class TableProcessor {
                       isListItem ? {} : { bold: true }
                     );
                   }
-                  // NOTE: Alignment intentionally NOT touched here. Header
-                  // rows still force-center above; this branch preserves
-                  // the source alignment for shaded data cells.
+                  // Apply alignment (skip list items) - ALWAYS center for shaded cells
+                  if (!isListItem) {
+                    para.setAlignment("center");
+                  }
                   this.applyNormalSpacing(para, shadingSettings);
                 }
               } else {

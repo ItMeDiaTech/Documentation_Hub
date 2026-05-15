@@ -73,6 +73,7 @@ import { normalizeVmlImagesInBuffer } from "./helpers/vmlImageNormalizer";
 import { clearAllImageShadows } from "./helpers/imageShadow";
 import { leftAlignListItems } from "./helpers/listItemAlignment";
 import { flattenSingleLevelToc } from "./helpers/tocFlatten";
+import { stripCenterAfterDeletedParaMark } from "./helpers/paragraphMarkDeletionAlignment";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
 import { DocumentSnapshotService } from "./DocumentSnapshotService";
@@ -2781,6 +2782,25 @@ export class WordDocumentProcessor {
           category: "structure",
           description: "Left-aligned list-item paragraphs",
           count: listItemsAligned,
+        });
+      }
+
+      // Normalize alignment on paragraphs whose preceding paragraph has a
+      // deletion-marked paragraph mark — Word merges those at render time
+      // and adopts the trailing paragraph's alignment, surprising the user
+      // when the leading content was never authored as centered. Run this
+      // BEFORE table uniformity so shaded data/header cells can re-center
+      // afterward and stay centered as expected.
+      const deletedMarkFixed = stripCenterAfterDeletedParaMark(doc);
+      if (deletedMarkFixed > 0) {
+        this.log.info(
+          `Normalized alignment on ${deletedMarkFixed} paragraph(s) after deleted paragraph marks`
+        );
+        result.changes?.push({
+          type: "structure",
+          category: "structure",
+          description: "Normalized alignment after tracked paragraph-mark deletions",
+          count: deletedMarkFixed,
         });
       }
 
@@ -10308,10 +10328,7 @@ export class WordDocumentProcessor {
                   }
                 }
               } else if (hasShading) {
-                // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold
-                // (alignment NOT forced — shaded data cells often contain
-                // long-form content; forced centering belongs to header rows
-                // only, matching the behavior in TableProcessor)
+                // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
                 this.log.debug(
                   `  → Shading DATA cell (${rowIndex},${cellIndex}) with #${otherColor} (original: ${originalColor || "pattern/style"})`
                 );
@@ -10324,9 +10341,10 @@ export class WordDocumentProcessor {
                       run.setBold(true);
                     }
                   }
-                  // NOTE: Alignment intentionally NOT touched. Header rows
-                  // (handled above) still force-center; this branch preserves
-                  // the source alignment for shaded data cells.
+                  // Center text in shaded cells (skip list paragraphs)
+                  if (!para.getNumbering()) {
+                    para.setAlignment("center");
+                  }
                 }
               } else {
                 // DATA ROW WITHOUT SHADING: Preserve original formatting
