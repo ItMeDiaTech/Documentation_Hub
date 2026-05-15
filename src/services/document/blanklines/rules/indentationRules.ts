@@ -233,8 +233,21 @@ export function applyIndentationRules(doc: Document, options: BlankLineProcessin
     const prev = i > 0 ? doc.getBodyElementAt(i - 1) : undefined;
     const target = decideTarget(prev instanceof Paragraph ? prev : undefined, options, level0);
 
-    if (target !== indent) {
+    // Continuation paragraphs must be a flat block at `target` — no hanging
+    // or first-line offset. Otherwise an inherited negative first-line indent
+    // makes line 1 stick out leftward to the bullet-symbol column, even when
+    // leftIndent itself is the correct bullet-text position.
+    const fmt = element.getFormatting();
+    const firstLine = fmt?.indentation?.firstLine;
+    const hanging = fmt?.indentation?.hanging;
+    const needsFlatten = (firstLine && firstLine !== 0) || (hanging && hanging !== 0);
+
+    if (target !== indent || needsFlatten) {
       element.setLeftIndent(target);
+      if (needsFlatten) {
+        element.setFirstLineIndent(0);
+        element.setHangingIndent(0);
+      }
       fixed++;
     }
   }
@@ -257,8 +270,18 @@ export function applyIndentationRules(doc: Document, options: BlankLineProcessin
           const prev = ci > 0 ? paras[ci - 1] : undefined;
           const target = decideTarget(prev, options, level0);
 
-          if (target !== indent) {
+          // See body loop for why we also flatten firstLine / hanging here.
+          const fmt = para.getFormatting();
+          const firstLine = fmt?.indentation?.firstLine;
+          const hanging = fmt?.indentation?.hanging;
+          const needsFlatten = (firstLine && firstLine !== 0) || (hanging && hanging !== 0);
+
+          if (target !== indent || needsFlatten) {
             para.setLeftIndent(target);
+            if (needsFlatten) {
+              para.setFirstLineIndent(0);
+              para.setHangingIndent(0);
+            }
             fixed++;
           }
         }

@@ -12,23 +12,47 @@ jest.mock("docxmlater", () => {
   class MockParagraph {
     private numbering: any;
     private indentLeft: number;
+    private firstLine: number;
+    private hanging: number;
     private text: string;
-    constructor(opts: { numbering?: any; indentLeft?: number; text?: string } = {}) {
+    constructor(opts: {
+      numbering?: any;
+      indentLeft?: number;
+      firstLine?: number;
+      hanging?: number;
+      text?: string;
+    } = {}) {
       this.numbering = opts.numbering ?? null;
       this.indentLeft = opts.indentLeft ?? 0;
+      this.firstLine = opts.firstLine ?? 0;
+      this.hanging = opts.hanging ?? 0;
       this.text = opts.text ?? "";
     }
     getNumbering() {
       return this.numbering;
     }
     getFormatting() {
-      return { indentation: { left: this.indentLeft } };
+      return {
+        indentation: {
+          left: this.indentLeft,
+          firstLine: this.firstLine,
+          hanging: this.hanging,
+        },
+      };
     }
     getText() {
       return this.text;
     }
     setLeftIndent(v: number) {
       this.indentLeft = v;
+      return this;
+    }
+    setFirstLineIndent(v: number) {
+      this.firstLine = v;
+      return this;
+    }
+    setHangingIndent(v: number) {
+      this.hanging = v;
       return this;
     }
     // isParagraphBlank reads getContent; we model blank-ness via text === "".
@@ -210,5 +234,65 @@ describe("applyIndentationRules — cells", () => {
     const doc = makeDoc([table], [table]);
     applyIndentationRules(doc, listSettings as any);
     expect(indented.getFormatting().indentation.left).toBe(Math.round(0.5 * TWIPS_PER_INCH));
+  });
+});
+
+describe("applyIndentationRules — flatten firstLine/hanging on continuations", () => {
+  // Regression for the "continuation aligns to the bullet symbol, not to the
+  // bullet text" bug: when the source paragraph had a hanging indent inherited
+  // from a list style, setLeftIndent alone wasn't enough — the negative
+  // firstLine kept line 1 stuck at the bullet column.
+  it("clears a hanging indent on a continuation after a list item", () => {
+    const listPara = new Paragraph({
+      numbering: { numId: 5, level: 0 },
+      indentLeft: 720,
+      hanging: 360,
+      text: "Bullet item",
+    });
+    const continuation = new Paragraph({
+      indentLeft: 720,
+      hanging: 360, // stuck inherited hanging; first line would sit at 360
+      text: "Continuation text",
+    });
+    const doc = makeDoc([listPara, continuation]);
+    applyIndentationRules(doc, listSettings as any);
+    expect(continuation.getFormatting().indentation.left).toBe(Math.round(0.5 * TWIPS_PER_INCH));
+    expect(continuation.getFormatting().indentation.hanging).toBe(0);
+    expect(continuation.getFormatting().indentation.firstLine).toBe(0);
+  });
+
+  it("clears a positive firstLine offset on a continuation after a list item", () => {
+    const listPara = new Paragraph({
+      numbering: { numId: 5, level: 0 },
+      indentLeft: 720,
+      text: "Bullet item",
+    });
+    const continuation = new Paragraph({
+      indentLeft: 720,
+      firstLine: 360,
+      text: "Continuation text",
+    });
+    const doc = makeDoc([listPara, continuation]);
+    applyIndentationRules(doc, listSettings as any);
+    expect(continuation.getFormatting().indentation.firstLine).toBe(0);
+  });
+
+  it("leaves firstLine and hanging at 0 when there's nothing to flatten", () => {
+    const listPara = new Paragraph({
+      numbering: { numId: 5, level: 0 },
+      indentLeft: 720,
+      text: "Bullet item",
+    });
+    // Continuation already has the right indent and no first-line/hanging offset.
+    const continuation = new Paragraph({
+      indentLeft: 720,
+      text: "Continuation text",
+    });
+    const doc = makeDoc([listPara, continuation]);
+    const fixed = applyIndentationRules(doc, listSettings as any);
+    expect(fixed).toBe(0);
+    expect(continuation.getFormatting().indentation.left).toBe(720);
+    expect(continuation.getFormatting().indentation.hanging).toBe(0);
+    expect(continuation.getFormatting().indentation.firstLine).toBe(0);
   });
 });
