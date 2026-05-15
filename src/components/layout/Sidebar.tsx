@@ -38,10 +38,15 @@ interface NavSection {
 export const Sidebar = memo(function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [logoClickCount, setLogoClickCount] = useState(0);
+  const [appVersion, setAppVersion] = useState<string>("");
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { sessions, activeSessions, closeSession } = useSession();
+
+  useEffect(() => {
+    window.electronAPI.getAppVersion().then(setAppVersion).catch(() => setAppVersion(""));
+  }, []);
 
   // Reset click count after 2 seconds of inactivity
   useEffect(() => {
@@ -267,6 +272,11 @@ export const Sidebar = memo(function Sidebar() {
                 <img src={iconPng} alt="DocHub" className="w-full h-full" />
               </motion.div>
               <span className="font-semibold text-sm">DocHub</span>
+              {appVersion && (
+                <span className="text-[10px] text-muted-foreground font-normal leading-none">
+                  v{appVersion}
+                </span>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
