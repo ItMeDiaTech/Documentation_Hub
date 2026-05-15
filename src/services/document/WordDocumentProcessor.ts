@@ -10308,7 +10308,10 @@ export class WordDocumentProcessor {
                   }
                 }
               } else if (hasShading) {
-                // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold + center
+                // DATA ROW WITH SHADING: Apply "Other Table Shading" + bold
+                // (alignment NOT forced — shaded data cells often contain
+                // long-form content; forced centering belongs to header rows
+                // only, matching the behavior in TableProcessor)
                 this.log.debug(
                   `  → Shading DATA cell (${rowIndex},${cellIndex}) with #${otherColor} (original: ${originalColor || "pattern/style"})`
                 );
@@ -10321,10 +10324,9 @@ export class WordDocumentProcessor {
                       run.setBold(true);
                     }
                   }
-                  // Center text in shaded cells (skip list paragraphs)
-                  if (!para.getNumbering()) {
-                    para.setAlignment("center");
-                  }
+                  // NOTE: Alignment intentionally NOT touched. Header rows
+                  // (handled above) still force-center; this branch preserves
+                  // the source alignment for shaded data cells.
                 }
               } else {
                 // DATA ROW WITHOUT SHADING: Preserve original formatting
