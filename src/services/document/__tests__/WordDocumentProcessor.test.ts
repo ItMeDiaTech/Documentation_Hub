@@ -20,6 +20,15 @@ import * as path from "path";
 jest.mock("docxmlater");
 jest.mock("../DocXMLaterProcessor");
 jest.mock("../../HyperlinkService");
+// VML normalizer runs `new AdmZip(buffer)` on the raw file buffer before load —
+// a real Buffer.from("test") is not a valid zip, so mock it to pass the buffer through.
+jest.mock("../helpers/vmlImageNormalizer", () => ({
+  normalizeVmlImagesInBuffer: jest.fn((buffer: Buffer) => ({
+    buffer,
+    converted: 0,
+    modifiedParts: [],
+  })),
+}));
 jest.mock("fs", () => ({
   promises: {
     stat: jest.fn(),
@@ -174,8 +183,10 @@ describe("WordDocumentProcessor", () => {
       getZipHandler: jest.fn().mockReturnValue(mockZipHandler),
     } as unknown as jest.Mocked<Document>;
 
-    // Setup Document.load mock
+    // Setup Document load mocks — production loads via loadFromBuffer (VML pre-load
+    // buffer pass); load is kept mocked for any legacy/reload-verification path.
     (Document.load as ReturnType<typeof jest.fn>).mockResolvedValue(mockDoc);
+    (Document.loadFromBuffer as ReturnType<typeof jest.fn>).mockResolvedValue(mockDoc);
 
     // Setup DocXMLaterProcessor mock
     mockDocXMLater = (processor as any).docXMLater;
@@ -204,7 +215,7 @@ describe("WordDocumentProcessor", () => {
       // Show actual errors in assertion diff if processing fails
       expect(result.errorMessages).toEqual([]);
       expect(result.success).toBe(true);
-      expect(Document.load).toHaveBeenCalledWith(filePath, {
+      expect(Document.loadFromBuffer).toHaveBeenCalledWith(expect.any(Buffer), {
         strictParsing: false,
         revisionHandling: "preserve",
       });
@@ -578,7 +589,7 @@ describe("WordDocumentProcessor", () => {
       const filePaths = ["/test/doc1.docx", "/test/doc2.docx", "/test/doc3.docx"];
 
       // Make second document fail
-      (Document.load as ReturnType<typeof jest.fn>)
+      (Document.loadFromBuffer as ReturnType<typeof jest.fn>)
         .mockResolvedValueOnce(mockDoc)
         .mockRejectedValueOnce(new Error("Load failed"))
         .mockResolvedValueOnce(mockDoc);
@@ -633,7 +644,9 @@ describe("WordDocumentProcessor", () => {
     it("should handle document load errors gracefully", async () => {
       const filePath = "/test/invalid.docx";
 
-      (Document.load as ReturnType<typeof jest.fn>).mockRejectedValue(new Error("Invalid format"));
+      (Document.loadFromBuffer as ReturnType<typeof jest.fn>).mockRejectedValue(
+        new Error("Invalid format")
+      );
 
       const result = await processor.processDocument(filePath);
 

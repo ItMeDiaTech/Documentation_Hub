@@ -319,10 +319,17 @@ describe("GlobalStatsContext - Issue #3: Memory Leak Prevention", () => {
         await result.current?.updateStats({ documentsProcessed: 3 });
       });
 
-      // saveGlobalStats should be called with updated stats
-      expect(indexedDB.saveGlobalStats).toHaveBeenCalled();
-      const savedStats = (indexedDB.saveGlobalStats as jest.Mock).mock.calls[0][0];
-      expect(savedStats.allTime.documentsProcessed).toBeGreaterThan(0);
+      // updateStats persists via a 1000ms debounced save. The first
+      // saveGlobalStats call is the mount-time init save (still zero docs);
+      // wait for the debounced save that carries the updated totals.
+      await waitFor(
+        () => {
+          const calls = (indexedDB.saveGlobalStats as jest.Mock).mock.calls;
+          const persisted = calls.find((c) => c[0]?.allTime?.documentsProcessed > 0);
+          expect(persisted).toBeDefined();
+        },
+        { timeout: 3000 }
+      );
     });
 
     it("should reset stats correctly", async () => {

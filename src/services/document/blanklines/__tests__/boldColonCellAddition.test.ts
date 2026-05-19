@@ -238,6 +238,16 @@ jest.mock("docxmlater", () => {
     Field: MockField,
     Revision: MockRevision,
     StructuredDocumentTag: MockStructuredDocumentTag,
+    // ListNormalizer (pulled in via indentationRules → list/index) reads
+    // WORD_NATIVE_BULLETS at module-load time and calls isRun/inchesToTwips
+    // inside functions. Stub them so the import chain resolves.
+    WORD_NATIVE_BULLETS: {
+      FILLED_BULLET: { char: "", font: "Symbol" },
+      OPEN_CIRCLE: { char: "o", font: "Courier New" },
+      FILLED_SQUARE: { char: "", font: "Wingdings" },
+    },
+    isRun: (x: any) => x instanceof MockRun,
+    inchesToTwips: (inches: number) => Math.round(inches * 1440),
     // Export Row under a test-only alias
     __MockRow: MockRow,
   };
@@ -441,6 +451,99 @@ describe("Test B: Rule matching in cell context", () => {
     };
 
     expect(aboveBoldColonNoIndentRule.matches(ctx)).toBe(false);
+  });
+});
+
+// ─── Test F: list-continuation suppression in cells ──────────────────────
+
+describe("Test F: bold-colon list-continuation suppression (cell scope)", () => {
+  /** Create a numbered list item paragraph. */
+  function makeListItem(text: string, numId = 54): any {
+    return new (Paragraph as any)({
+      content: [new (Run as any)(text)],
+      numbering: { numId, level: 0 },
+    });
+  }
+
+  it("does NOT add a blank above a 'Note:' that directly follows a list item", () => {
+    // Mirrors Examples.docx table 76 r3c1: a numbered step followed by a
+    // bold-colon "Note:" continuation. The Note must stay tight against the list.
+    const listItemPara = makeListItem("From the Payment Method 2 drop-down menu, select...");
+    const notePara = makeBoldColonPara(
+      "Note:",
+      " The original payment method cannot be added."
+    );
+    const paras = [listItemPara, notePara];
+
+    const doc = new (Document as any)();
+    const cell = new (TableCell as any)(paras);
+    const table = new (Table as any)([new MockRow([cell])]);
+
+    const ctx: RuleContext = {
+      doc: doc as any,
+      currentIndex: 0,
+      currentElement: listItemPara,
+      prevElement: undefined,
+      nextElement: notePara,
+      scope: "cell",
+      cell,
+      cellParagraphs: paras,
+      cellParaIndex: 0,
+      parentTable: table,
+    };
+
+    expect(aboveBoldColonNoIndentRule.matches(ctx)).toBe(false);
+  });
+
+  it("does NOT add a blank above a 'Note:' separated from the list item by a blank", () => {
+    const listItemPara = makeListItem("Click the Submit Support Task button.");
+    const blank = new (Paragraph as any)({ content: [] });
+    const notePara = makeBoldColonPara("Note:", " After clicking Submit Support Task.");
+    const paras = [listItemPara, blank, notePara];
+
+    const doc = new (Document as any)();
+    const cell = new (TableCell as any)(paras);
+    const table = new (Table as any)([new MockRow([cell])]);
+
+    const ctx: RuleContext = {
+      doc: doc as any,
+      currentIndex: 1,
+      currentElement: blank,
+      prevElement: listItemPara,
+      nextElement: notePara,
+      scope: "cell",
+      cell,
+      cellParagraphs: paras,
+      cellParaIndex: 1,
+      parentTable: table,
+    };
+
+    expect(aboveBoldColonNoIndentRule.matches(ctx)).toBe(false);
+  });
+
+  it("still adds a blank above a 'Note:' that follows plain text (not a list item)", () => {
+    const plainPara = makePlainPara("Locate the Order Number.");
+    const notePara = makeBoldColonPara("Note:", " Use the chevron arrow.");
+    const paras = [plainPara, notePara];
+
+    const doc = new (Document as any)();
+    const cell = new (TableCell as any)(paras);
+    const table = new (Table as any)([new MockRow([cell])]);
+
+    const ctx: RuleContext = {
+      doc: doc as any,
+      currentIndex: 0,
+      currentElement: plainPara,
+      prevElement: undefined,
+      nextElement: notePara,
+      scope: "cell",
+      cell,
+      cellParagraphs: paras,
+      cellParaIndex: 0,
+      parentTable: table,
+    };
+
+    expect(aboveBoldColonNoIndentRule.matches(ctx)).toBe(true);
   });
 });
 

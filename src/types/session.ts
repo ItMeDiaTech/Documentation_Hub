@@ -148,6 +148,9 @@ export interface Document {
   size: number;
   type?: string;
   status: "pending" | "processing" | "completed" | "error";
+  /** Timestamp when the document was added to the session. Documents added in the
+   * same batch share an identical value, used as a deterministic sort key. */
+  addedAt?: Date;
   processedAt?: Date;
   errors?: string[];
   errorType?: "file_locked" | "api_timeout" | "word_compatibility" | "general";
@@ -323,7 +326,7 @@ export interface TableOfContentsSettings {
 
 export interface TableShadingSettings {
   header2Shading: string; // Hex color for Header 2 / 1x1 table cells (default: #BFBFBF)
-  otherShading: string; // Hex color for other table cells (default: #DFDFDF)
+  otherShading: string; // Hex color for other table cells (default: #D9D9D9)
   imageBorderWidth?: number; // Border width in points for images (default: 1.0)
   preserveBold?: boolean; // If true, preserve original bold formatting in table cells (default: use Normal style's preserveBold)
   heading2FontFamily?: string; // Font family for Heading 2 / 1x1 table cells (default: from Heading 2 style config)

@@ -56,6 +56,18 @@ export interface DisplaySettings {
   comparisonMonitorId: number; // Index of selected monitor (0 = primary)
 }
 
+/**
+ * A named hyperlink the user pins for quick access from the sidebar.
+ * Used by both the Feedback and Document Managers features.
+ * `id` is a stable per-row identity used as the React key, so reordering
+ * rows does not re-key controlled inputs.
+ */
+export interface QuickLink {
+  id: string;
+  name: string;
+  url: string;
+}
+
 export interface UserSettings {
   profile: UserProfile;
   notifications: NotificationSettings;
@@ -67,6 +79,8 @@ export interface UserSettings {
   localDictionary: LocalDictionarySettings;
   backupSettings: BackupSettings;
   displaySettings: DisplaySettings;
+  feedbackLinks: QuickLink[];
+  documentManagerLinks: QuickLink[];
 }
 
 export const defaultUserSettings: UserSettings = {
@@ -109,4 +123,6 @@ export const defaultUserSettings: UserSettings = {
   displaySettings: {
     comparisonMonitorId: 0, // Default to primary monitor
   },
+  feedbackLinks: [],
+  documentManagerLinks: [],
 };

@@ -1,21 +1,21 @@
 /**
- * Regression tests for the "blank inserted between list-item and indented
- * bold-colon continuation" bug.
+ * Regression tests for blank-line behavior between list items and bold-colon
+ * paragraphs.
  *
- * Reproduces the Image #1 → Image #2 scenario from the user's report:
- *   • When processing Prior Authorizations requests offline: ...   (list item)
- *     Example: if the MDO is requesting Adderall XR 30 mg, ...     (indented bold-colon continuation)
+ * Contract:
+ *   • list item → bold-colon paragraph ("Note:", "Result:", …)
+ *       → keep tight, NO blank inserted. A bold-colon paragraph that directly
+ *         follows a list item is inline commentary belonging to that list
+ *         item (e.g. a "Note:" after a numbered procedure step).
+ *   • list item → another list item
+ *       → NO blank (handled by a separate guard in afterListItemsRule).
+ *   • plain prose → bold-colon paragraph
+ *       → INSERT blank. With no list item before it, a zero-indent bold-colon
+ *         is separate body content and still needs visual separation.
  *
- * The processor was inserting a blank line between the bullet's wrapped
- * text and the "Example:" continuation. The fix:
- *   - afterListItemsRule must NOT add a blank when next starts with bold-colon
- *     (treat as continuation/callout under the list item)
- *   - aboveBoldColonNoIndentRule must NOT add a blank when prev is a list item
- *     (same intent, from the other direction)
- *
- * Both guards fire regardless of whether the bold-colon paragraph has an
- * explicit indent at addition time — the indentation decision tree may set
- * the indent later, but by then the blank would already be inserted.
+ * The suppression is scoped narrowly to the list-continuation case: only a
+ * bold-colon paragraph whose nearest non-blank predecessor is a list item is
+ * kept tight. Bold-colon paragraphs in ordinary body prose are untouched.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* globals jest, describe, it, expect */
@@ -128,13 +128,20 @@ const listItem = (text = "List item body") =>
     numbering: { numId: 5, level: 0 },
   });
 
-const boldColonNoIndent = (text = "Example:") =>
+const boldColonNoIndent = (text = "Note:") =>
   new Paragraph({
     content: [new Run(text, { bold: true })],
-    // No indent and no numbering — looks like a standalone bold-colon line
-    // at addition time, even though the indentation decision tree may
-    // promote it to indented later.
+    // Zero indent + non-list = separate body content (e.g. "Note:" at the
+    // left margin). Per the post-Image-#6 contract, this gets a blank above.
     formatting: { indentation: { left: 0 } },
+  });
+
+const boldColonIndented = (text = "Example:", leftTwips = 720) =>
+  new Paragraph({
+    content: [new Run(text, { bold: true })],
+    // Real callout — explicit indent aligns with the list's text indent
+    // (0.5" = 720 twips). Per the post-Image-#6 contract, this stays tight.
+    formatting: { indentation: { left: leftTwips } },
   });
 
 const plainProse = (text = "Some plain prose") =>
@@ -166,8 +173,13 @@ function ctxBody(doc: any, currentIndex: number) {
   };
 }
 
-describe("afterListItemsRule — bold-colon continuation guard", () => {
-  it("does NOT add a blank when the list item is followed by a bold-colon paragraph", () => {
+describe("afterListItemsRule — bold-colon continuation contract", () => {
+  it("does NOT add a blank when list item is followed by an INDENTED bold-colon callout", () => {
+    const doc = makeDoc([listItem(), boldColonIndented()]);
+    expect(afterListItemsRule.matches(ctxBody(doc, 0))).toBe(false);
+  });
+
+  it("does NOT add a blank when list item is followed by a zero-indent bold-colon (list-item continuation)", () => {
     const doc = makeDoc([listItem(), boldColonNoIndent()]);
     expect(afterListItemsRule.matches(ctxBody(doc, 0))).toBe(false);
   });
@@ -183,15 +195,26 @@ describe("afterListItemsRule — bold-colon continuation guard", () => {
   });
 });
 
-describe("aboveBoldColonNoIndentRule — list-item prev guard", () => {
-  it("does NOT add a blank above a bold-colon paragraph when prev is a list item", () => {
+describe("aboveBoldColonNoIndentRule — list-continuation contract", () => {
+  it("does NOT add a blank above a zero-indent bold-colon when prev is a list item", () => {
     const doc = makeDoc([listItem(), boldColonNoIndent()]);
     expect(aboveBoldColonNoIndentRule.matches(ctxBody(doc, 0))).toBe(false);
   });
 
-  it("still adds a blank above a bold-colon paragraph when prev is plain prose", () => {
+  it("does NOT add a blank above a bold-colon when a list item precedes it across a blank", () => {
+    const blank = new Paragraph({ content: [] });
+    const doc = makeDoc([listItem(), blank, boldColonNoIndent()]);
+    expect(aboveBoldColonNoIndentRule.matches(ctxBody(doc, 1))).toBe(false);
+  });
+
+  it("still adds a blank above a zero-indent bold-colon when prev is plain prose", () => {
     const doc = makeDoc([plainProse(), boldColonNoIndent()]);
     expect(aboveBoldColonNoIndentRule.matches(ctxBody(doc, 0))).toBe(true);
+  });
+
+  it("does NOT fire for an indented bold-colon (isBoldColonNoIndent gates on zero indent)", () => {
+    const doc = makeDoc([listItem(), boldColonIndented()]);
+    expect(aboveBoldColonNoIndentRule.matches(ctxBody(doc, 0))).toBe(false);
   });
 });
 

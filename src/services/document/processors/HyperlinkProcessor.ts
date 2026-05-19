@@ -398,14 +398,9 @@ export class HyperlinkProcessor {
    * Create bookmark for heading
    */
   private createBookmarkForHeading(doc: Document, heading: unknown, bookmarkName: string): boolean {
-    try {
-      // Implementation depends on docxmlater API
-      // This is a placeholder for the actual implementation
-      return false;
-    } catch (error) {
-      log.warn(`Failed to create bookmark: ${error}`);
-      return false;
-    }
+    // Implementation depends on docxmlater API
+    // This is a placeholder for the actual implementation
+    return false;
   }
 }
 

@@ -145,7 +145,13 @@ export function Toaster({ toasts, onDismiss }: ToasterProps) {
   return (
     <ToastProvider swipeDirection="right">
       {visibleToasts.map((toast) => (
-        <Toast key={toast.id} variant={toast.variant} duration={toast.duration}>
+        <Toast
+          key={toast.id}
+          variant={toast.variant}
+          duration={toast.duration}
+          // Errors interrupt (assertive); success/info wait their turn (polite).
+          type={toast.variant === "destructive" ? "foreground" : "background"}
+        >
           <ToastIcon variant={toast.variant} />
           <div className="flex-1 min-w-0">
             <ToastTitle className="truncate">{toast.title}</ToastTitle>

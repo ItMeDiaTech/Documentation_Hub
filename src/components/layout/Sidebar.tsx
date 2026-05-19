@@ -11,11 +11,17 @@ import {
   Circle,
   Keyboard,
   Mail,
+  MessageSquare,
+  FolderKanban,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useSession } from "@/contexts/SessionContext";
+import { useUserSettings } from "@/contexts/UserSettingsContext";
 import { SimpleTooltip } from "@/components/common/Tooltip";
+import { Toaster } from "@/components/common/Toast";
+import { useToast } from "@/hooks/useToast";
+import { isOpenableExternalUrl, normalizeExternalUrl } from "@/utils/urlHelpers";
 import iconPng from "/icon.png";
 
 interface NavItem {
@@ -28,6 +34,8 @@ interface NavItem {
   closeable?: boolean;
   onClose?: () => void;
   shortcut?: string;
+  // When set, overrides default path navigation (e.g. open an external link).
+  onSelect?: () => void;
 }
 
 interface NavSection {
@@ -43,6 +51,8 @@ export const Sidebar = memo(function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { sessions, activeSessions, closeSession } = useSession();
+  const { settings } = useUserSettings();
+  const { toasts, toast, dismiss } = useToast();
 
   useEffect(() => {
     window.electronAPI.getAppVersion().then(setAppVersion).catch(() => setAppVersion(""));
@@ -93,6 +103,30 @@ export const Sidebar = memo(function Sidebar() {
       navigate(path);
     },
     [navigate]
+  );
+
+  // Open a saved quick link externally. The URL is normalized first (auto-fix
+  // for a missing scheme); a failure surfaces a toast instead of failing
+  // silently with an uncaught promise rejection.
+  const openQuickLink = useCallback(
+    (rawUrl: string) => {
+      const url = normalizeExternalUrl(rawUrl);
+      const failed = () =>
+        toast({
+          title: "Couldn't open link",
+          description: rawUrl,
+          variant: "destructive",
+        });
+      // Reject disallowed schemes here too — the main-process handler is the
+      // real trust boundary, but this avoids a needless IPC round-trip and
+      // surfaces the failure consistently.
+      if (!isOpenableExternalUrl(url)) {
+        failed();
+        return;
+      }
+      window.electronAPI.openExternal(url).catch(failed);
+    },
+    [toast]
   );
 
   // Build navigation sections with dynamic sessions
@@ -148,8 +182,58 @@ export const Sidebar = memo(function Sidebar() {
       ],
     });
 
+    // Quick Links section: Feedback and Document Managers, each with one
+    // indented sub-item per saved link. Clicking a parent opens the matching
+    // Settings section; clicking a sub-item opens that link externally.
+    const quickLinkItems: NavItem[] = [];
+
+    quickLinkItems.push({
+      id: "feedback",
+      label: "Feedback",
+      icon: MessageSquare,
+      path: "/settings",
+      onSelect: () => navigate("/settings?section=feedback"),
+    });
+    settings.feedbackLinks.forEach((link) => {
+      quickLinkItems.push({
+        id: `feedback-link-${link.id}`,
+        label: link.name || link.url,
+        icon: Circle,
+        path: "/settings",
+        indented: true,
+        onSelect: () => openQuickLink(link.url),
+      });
+    });
+
+    quickLinkItems.push({
+      id: "document-managers",
+      label: "Document Managers",
+      icon: FolderKanban,
+      path: "/settings",
+      onSelect: () => navigate("/settings?section=documentManagers"),
+    });
+    settings.documentManagerLinks.forEach((link) => {
+      quickLinkItems.push({
+        id: `document-manager-link-${link.id}`,
+        label: link.name || link.url,
+        icon: Circle,
+        path: "/settings",
+        indented: true,
+        onSelect: () => openQuickLink(link.url),
+      });
+    });
+
+    sections.push({ title: "Quick Links", items: quickLinkItems });
+
     return sections;
-  }, [activeSessions, closeSession]);
+  }, [
+    activeSessions,
+    closeSession,
+    settings.feedbackLinks,
+    settings.documentManagerLinks,
+    navigate,
+    openQuickLink,
+  ]);
 
   const bottomItems = useMemo<NavItem[]>(
     () => [
@@ -160,7 +244,9 @@ export const Sidebar = memo(function Sidebar() {
 
   const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;
-    const isActive = location.pathname === item.path;
+    // Items with an onSelect override (external links, query-param nav) are
+    // actions rather than routes, so they never take the route-active style.
+    const isActive = !item.onSelect && location.pathname === item.path;
 
     const buttonElement = (
       <div
@@ -172,7 +258,7 @@ export const Sidebar = memo(function Sidebar() {
       >
         <button
           type="button"
-          onClick={() => handleNavClick(item.path)}
+          onClick={() => (item.onSelect ? item.onSelect() : handleNavClick(item.path))}
           className={cn(
             "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
             "hover:bg-accent hover:text-accent-foreground",
@@ -337,6 +423,8 @@ export const Sidebar = memo(function Sidebar() {
           </motion.div>
         </motion.button>
       </SimpleTooltip>
+
+      <Toaster toasts={toasts} onDismiss={dismiss} />
     </motion.aside>
   );
 });

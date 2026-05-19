@@ -746,7 +746,7 @@ export class HyperlinkService {
       }
 
       // Try cache first for performance
-      let apiResult = null;
+      let apiResult;
       if (urlContentId && resultsCache.has(urlContentId)) {
         apiResult = resultsCache.get(urlContentId);
       } else if (urlDocumentId && resultsCache.has(urlDocumentId)) {

@@ -77,7 +77,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <motion.button
         className={cn(
           buttonVariants({ variant, size, className }),
-          isSuccess && "bg-green-500 hover:bg-green-500 text-green-50"
+          isSuccess && "bg-green-700 hover:bg-green-700 text-white"
         )}
         ref={ref}
         disabled={disabled || loading || isSuccess}
@@ -91,6 +91,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
+            role="status"
             className="flex items-center gap-2"
           >
             <svg

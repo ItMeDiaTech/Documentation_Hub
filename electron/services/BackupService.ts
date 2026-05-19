@@ -89,7 +89,7 @@ export class BackupService {
     } catch (error) {
       const message = `Failed to create backup: ${error instanceof Error ? error.message : "Unknown error"}`;
       log.error("Create backup failed", { error: message, documentPath });
-      throw new Error(message);
+      throw new Error(message, { cause: error });
     }
   }
 
@@ -129,7 +129,7 @@ export class BackupService {
     } catch (error) {
       const message = `Failed to restore backup: ${error instanceof Error ? error.message : "Unknown error"}`;
       log.error("Restore backup failed", { error: message, backupPath, targetPath });
-      throw new Error(message);
+      throw new Error(message, { cause: error });
     }
   }
 
@@ -195,7 +195,7 @@ export class BackupService {
     } catch (error) {
       const message = `Failed to delete backup: ${error instanceof Error ? error.message : "Unknown error"}`;
       log.error("Delete backup failed", { error: message, backupPath });
-      throw new Error(message);
+      throw new Error(message, { cause: error });
     }
   }
 

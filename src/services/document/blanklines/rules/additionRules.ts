@@ -22,6 +22,7 @@ import {
   isImageSmall,
   isSmallImageParagraph,
 } from "../helpers/imageChecks";
+import { isWithinListContext } from "../helpers/contextChecks";
 
 /**
  * Add blank line after Heading 1 style text.
@@ -154,7 +155,59 @@ function isBoldColonNoIndent(para: Paragraph): boolean {
 }
 
 /**
- * Check if a "Related Document(s)" 1x1 table exists within 15 body elements above.
+ * Check if the upcoming bold-colon paragraph (ctx.nextElement) is a continuation
+ * of a list — i.e. it directly follows a list item, or it sits within a list
+ * context (a list item before AND after it sharing the same numId).
+ *
+ * Such a bold-colon paragraph ("Note:", "Result:") belongs to the preceding
+ * list item as inline commentary and must NOT get a blank line above it. This
+ * is scoped narrowly: a bold-colon paragraph in plain body prose (no list item
+ * directly before it) still receives its blank.
+ */
+function boldColonFollowsListItem(ctx: RuleContext): boolean {
+  // Direct predecessor is a list item.
+  if (ctx.currentElement instanceof Paragraph && ctx.currentElement.getNumbering()) {
+    return true;
+  }
+
+  // Predecessor is a blank but the element before that is a list item, or the
+  // bold-colon paragraph is sandwiched between two list items of the same list.
+  if (ctx.scope === "cell" && ctx.cellParagraphs && ctx.cellParaIndex !== undefined) {
+    const nextParaIndex = ctx.cellParaIndex + 1;
+    const paras = ctx.cellParagraphs;
+    for (let i = nextParaIndex - 1; i >= 0; i--) {
+      const p = paras[i];
+      if (!p) continue;
+      if (isParagraphBlank(p)) continue;
+      return !!p.getNumbering();
+    }
+    return false;
+  }
+
+  if (ctx.scope === "body") {
+    const nextIndex = ctx.currentIndex + 1;
+    for (let i = nextIndex - 1; i >= 0; i--) {
+      const el = ctx.doc.getBodyElementAt(i);
+      if (el instanceof Table) return false;
+      if (!(el instanceof Paragraph)) continue;
+      if (isParagraphBlank(el)) continue;
+      if (el.getNumbering()) return true;
+      // First non-blank, non-list predecessor — also accept within-list-context.
+      return isWithinListContext(ctx.doc, nextIndex);
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if the position is inside a "Related Documents" section — i.e. within
+ * 15 body elements below either:
+ *   • a 1x1 table whose cell text contains "related document", or
+ *   • a Heading-2 styled paragraph whose text is "Related Documents".
+ *
+ * The "Related Documents" section lists reference links and a parent-document
+ * line; those entries are kept tight (no blank lines between them).
  */
 function hasRelatedDocumentTableNearby(ctx: RuleContext): boolean {
   if (ctx.scope !== "body") return false;
@@ -181,9 +234,32 @@ function hasRelatedDocumentTableNearby(ctx: RuleContext): boolean {
           // Skip if cell access fails
         }
       }
+    } else if (el instanceof Paragraph) {
+      // A Heading-2 "Related Documents" paragraph also opens the section.
+      const style = el.getStyle() || "";
+      if (style === "Heading2" && el.getText().trim().toLowerCase() === "related documents") {
+        return true;
+      }
     }
   }
   return false;
+}
+
+/**
+ * Within the Related Documents section, a paragraph counts as a section "item"
+ * (a reference link, the parent-document line, etc.) unless it is the
+ * end-of-document disclaimer or a "Top of the Document" navigation hyperlink —
+ * those two still get a blank line above them.
+ */
+function isRelatedDocumentsItem(para: Paragraph): boolean {
+  if (isParagraphBlank(para)) return false;
+  if (hasNavigationHyperlink(para)) return false;
+  const text = para.getText().trim().toLowerCase();
+  const isDisclaimer =
+    text.includes("not to be reproduced") ||
+    text.includes("electronic data") ||
+    text.includes("paper copy = informational only");
+  return !isDisclaimer;
 }
 
 /**
@@ -200,22 +276,22 @@ export const aboveBoldColonNoIndentRule: BlankLineRule = {
     if (!(ctx.nextElement instanceof Paragraph)) return false;
     if (!isBoldColonNoIndent(ctx.nextElement)) return false;
 
-    // If prev (current) is a list item, the bold-colon paragraph is a
-    // continuation/callout under that list item and should stay tight.
-    // Suppress blank even when isBoldColonNoIndent returns true — the
-    // indentation decision tree will indent this paragraph in a later step,
-    // but by then the blank would already be inserted.
-    if (ctx.currentElement instanceof Paragraph && ctx.currentElement.getNumbering()) {
-      return false;
-    }
+    // A bold-colon paragraph that directly follows a list item (or sits within
+    // a list context) is inline commentary belonging to that list item — e.g.
+    // a "Note:" after a numbered procedure step. It must stay tight against the
+    // list, with no blank above it. Bold-colon paragraphs in plain body prose
+    // (no list item before them) still receive their blank for separation.
+    if (boldColonFollowsListItem(ctx)) return false;
 
-    // Near Related Documents: suppress blank between consecutive bold-colon entries
+    // Inside the Related Documents section: suppress the blank above a
+    // bold-colon entry (e.g. "Parent Document: ...") when the element above it
+    // is another section item (a reference link or another bold-colon line).
+    // The disclaimer and the "Top of the Document" hyperlink still get their
+    // blanks via aboveWarningRule / aboveTopOfDocHyperlinkRule.
     if (hasRelatedDocumentTableNearby(ctx)) {
-      // If current element is also bold-colon non-indented, suppress blank between them
-      if (ctx.currentElement instanceof Paragraph && isBoldColonNoIndent(ctx.currentElement)) {
+      if (ctx.currentElement instanceof Paragraph && isRelatedDocumentsItem(ctx.currentElement)) {
         return false;
       }
-      // Otherwise allow blank above the first entry
       return true;
     }
 
@@ -256,13 +332,14 @@ export const boldColonNoIndentAfterRule: BlankLineRule = {
       if (nextIndent > 0) return false;
     }
 
-    // Near Related Documents: only add blank after the last bold-colon entry
+    // Inside the Related Documents section: suppress the blank after a
+    // bold-colon entry when the next element is another section item. The
+    // disclaimer and "Top of the Document" hyperlink still get their blank
+    // above via aboveWarningRule / aboveTopOfDocHyperlinkRule.
     if (hasRelatedDocumentTableNearby(ctx)) {
-      // If next is also a bold-colon non-indented paragraph, suppress blank between entries
-      if (ctx.nextElement instanceof Paragraph && isBoldColonNoIndent(ctx.nextElement)) {
+      if (ctx.nextElement instanceof Paragraph && isRelatedDocumentsItem(ctx.nextElement)) {
         return false;
       }
-      // Next is NOT bold-colon — this is the last entry, add blank after it
       return true;
     }
 
@@ -300,10 +377,11 @@ export const afterListItemsRule: BlankLineRule = {
       // If next is also a list item, don't add blank
       if (ctx.nextElement.getNumbering()) return false;
 
-      // If next starts with bold + colon, treat it as a continuation/callout
-      // ("Example:", "Note:", "Tip:", etc.) and keep it tight against the
-      // list item. The indentation decision tree may set its left-indent
-      // in a later step, but the blank would already be inserted here.
+      // Bold + colon paragraphs ("Note:", "Result:", "Example:") that directly
+      // follow a list item are inline commentary belonging to that list item.
+      // They stay tight against the list — no blank between the list item and
+      // the callout — regardless of the callout's own indentation/style. This
+      // mirrors the suppression in aboveBoldColonNoIndentRule.
       if (startsWithBoldColon(ctx.nextElement)) return false;
 
       // If next is a centered image, always add blank
@@ -477,6 +555,17 @@ export const betweenBodyParagraphsRule: BlankLineRule = {
         lower.includes("paper copy = informational only");
     };
     if (isDisclaimer(current.getText()) || isDisclaimer(next.getText())) return false;
+
+    // Inside the Related Documents section: reference-link lines are kept tight
+    // (no blank between section items). The blank above the "Top of the
+    // Document" hyperlink and the disclaimer is handled by their own rules.
+    if (
+      hasRelatedDocumentTableNearby(ctx) &&
+      isRelatedDocumentsItem(current) &&
+      isRelatedDocumentsItem(next)
+    ) {
+      return false;
+    }
 
     return true;
   },

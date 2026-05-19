@@ -86,7 +86,7 @@ export function CurrentSession() {
   const isMountedRef = useRef(true);
   const dragCounterRef = useRef(0);
   const prevDocCountRef = useRef<number | null>(null);
-  const docListEndRef = useRef<HTMLDivElement>(null);
+  const docListTopRef = useRef<HTMLDivElement>(null);
 
   // STALE CLOSURE FIX: Track latest sessions for async operations
   // This ref always holds the current sessions value, even inside async callbacks
@@ -116,7 +116,7 @@ export function CurrentSession() {
     if (prevDocCountRef.current !== null && currentCount > prevDocCountRef.current) {
       // Only scroll if the user is already viewing the document list
       const timerId = setTimeout(() => {
-        docListEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        docListTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 350);
       prevDocCountRef.current = currentCount;
       return () => clearTimeout(timerId);
@@ -589,6 +589,19 @@ export function CurrentSession() {
     (d) => d.status === "completed" && d.path
   ).length;
 
+  // Render order for the session file list: newest-added document at the top,
+  // oldest at the bottom. Documents added in the same batch share an identical
+  // addedAt timestamp, so the alphabetical name tiebreaker decides their order.
+  // Shallow copy so the context array is never mutated.
+  const sortedDocuments = [...session.documents].sort((a, b) => {
+    const aAdded = a.addedAt ? a.addedAt.getTime() : a.processedAt ? a.processedAt.getTime() : 0;
+    const bAdded = b.addedAt ? b.addedAt.getTime() : b.processedAt ? b.processedAt.getTime() : 0;
+    if (aAdded !== bAdded) {
+      return bAdded - aAdded; // newest first
+    }
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+
   // Create session content for the Session tab
   const sessionContent = (
     <div className="space-y-6">
@@ -724,8 +737,9 @@ export function CurrentSession() {
               )}
 
               <div className="space-y-2">
+                <div ref={docListTopRef} />
                 <AnimatePresence>
-                  {session.documents.map((doc) => (
+                  {sortedDocuments.map((doc) => (
                     <motion.div
                       key={doc.id}
                       initial={{ opacity: 0, y: 20 }}
@@ -901,11 +915,17 @@ export function CurrentSession() {
                                   );
 
                                   const targetDisplay = displays[monitorIndex];
+                                  // Pass the full display geometry (bounds + workArea +
+                                  // scaleFactor) so the IPC handler can position the
+                                  // comparison windows correctly on the target monitor.
                                   const result = await window.electronAPI.display.openComparison(
                                     doc.processingResult!.backupPath!,
                                     doc.path!,
-                                    targetDisplay.workArea,
-                                    targetDisplay.scaleFactor
+                                    {
+                                      bounds: targetDisplay.bounds,
+                                      workArea: targetDisplay.workArea,
+                                      scaleFactor: targetDisplay.scaleFactor,
+                                    }
                                   );
                                   if (result.success) {
                                     toast({
@@ -963,7 +983,6 @@ export function CurrentSession() {
                     </motion.div>
                   ))}
                 </AnimatePresence>
-                <div ref={docListEndRef} />
               </div>
 
             </>
@@ -1058,7 +1077,7 @@ export function CurrentSession() {
             updateSessionListBulletSettings(session.id, settings);
           }}
           tableHeader2Shading={session.tableShadingSettings?.header2Shading || "#BFBFBF"}
-          tableOtherShading={session.tableShadingSettings?.otherShading || "#DFDFDF"}
+          tableOtherShading={session.tableShadingSettings?.otherShading || "#D9D9D9"}
           imageBorderWidth={session.tableShadingSettings?.imageBorderWidth ?? 1.0}
           padding1x1Top={session.tableShadingSettings?.padding1x1Top ?? 0}
           padding1x1Bottom={session.tableShadingSettings?.padding1x1Bottom ?? 0}
@@ -1166,7 +1185,9 @@ export function CurrentSession() {
             <div className="flex items-center gap-2 flex-shrink-0">
               <Button
                 onClick={() => {
-                  const pendingDocs = session.documents
+                  // Queue in the same top-to-bottom order the list is shown in
+                  // (sortedDocuments), not raw insertion order.
+                  const pendingDocs = sortedDocuments
                     .filter((doc) => doc.status === "pending")
                     .map((doc) => doc.id);
                   addManyToQueue(session.id, pendingDocs);

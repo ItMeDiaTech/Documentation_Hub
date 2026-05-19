@@ -37,6 +37,42 @@ function hasGapInRange(gapAfter: Set<number> | undefined, from: number, to: numb
 }
 
 /**
+ * Check whether an inline image (ImageRun or VML image run) sits strictly
+ * between two text-run indices `from` and `to` (exclusive). When an image
+ * separates two text runs, a trailing space on the first and a leading space
+ * on the second are NOT a cross-run double space — they are the spaces that
+ * visually flank the image. Trimming them collides the text with the image.
+ */
+function hasImageInRange(runs: Run[], from: number, to: number): boolean {
+  for (let k = from + 1; k < to; k++) {
+    const r = runs[k];
+    if (r instanceof ImageRun) return true;
+    if (hasVmlContent(r)) return true;
+  }
+  return false;
+}
+
+/** Leading regular space + all Unicode space variants (NOT tabs or newlines). */
+const LEADING_SPACES_RE = /^[   -   　]+/;
+
+/**
+ * Scanning forward from `fromIndex`, returns true when an inline image
+ * (ImageRun or VML) is reached before any run carrying genuine (non-space)
+ * text. When true, the runs after the current image flank a SECOND image and
+ * must be left untouched — the space after that second image is normalized
+ * when the outer loop reaches it.
+ */
+function imageReachedBeforeText(runs: Run[], fromIndex: number): boolean {
+  for (let j = fromIndex; j < runs.length; j++) {
+    const r = runs[j];
+    if (r instanceof ImageRun || hasVmlContent(r)) return true;
+    const t = r.getText();
+    if (t && t.replace(LEADING_SPACES_RE, "").length > 0) return false;
+  }
+  return false;
+}
+
+/**
  * Normalize whitespace within a single paragraph's runs.
  *
  * - Collapses multiple consecutive spaces to one
@@ -134,7 +170,13 @@ export function normalizeRunWhitespace(runs: Run[], gapAfter?: Set<number>): num
           // Matches regular space + all Unicode space variants (NOT tabs or newlines)
           const LEADING_SPACES = /^[ \u00A0\u2002-\u200A\u202F\u205F\u3000]+/;
 
+          // Skip normalization entirely when the run(s) after this image
+          // flank a SECOND image (see imageReachedBeforeText) — consuming the
+          // space between two images collides them.
+          const imageBeforeText = imageReachedBeforeText(runs, i + 1);
+
           for (let j = i + 1; j < runs.length; j++) {
+            if (imageBeforeText) break;
             const nextRun = runs[j];
             const nextText = nextRun.getText();
             if (!nextText) continue; // Skip non-text runs (e.g., another ImageRun)
@@ -197,7 +239,8 @@ export function normalizeRunWhitespace(runs: Run[], gapAfter?: Set<number>): num
       if (
         /[ \u00A0]$/.test(cleaned) &&
         /^[ \u00A0]/.test(nextText) &&
-        !hasGapInRange(gapAfter, i, nextJ)
+        !hasGapInRange(gapAfter, i, nextJ) &&
+        !hasImageInRange(runs, i, nextJ)
       ) {
         cleaned = cleaned.trimEnd();
       }
@@ -219,7 +262,8 @@ export function normalizeRunWhitespace(runs: Run[], gapAfter?: Set<number>): num
       if (
         /^[ \u00A0]/.test(cleaned) &&
         /[ \u00A0]$/.test(prevText) &&
-        !hasGapInRange(gapAfter, prevJ, i)
+        !hasGapInRange(gapAfter, prevJ, i) &&
+        !hasImageInRange(runs, prevJ, i)
       ) {
         cleaned = cleaned.trimStart();
       }

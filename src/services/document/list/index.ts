@@ -42,4 +42,10 @@ export {
   normalizeOrphanListLevelsInCell,
   normalizeOrphanListLevelsInTable,
   stripTypedPrefix,
+  createMixedListNumId,
+  restampMixedListBulletFonts,
 } from "./ListNormalizer";
+
+// Body-level orphan-level computation (pure)
+export type { OrphanLevelEvent } from "./orphanLevels";
+export { computeOrphanBodyListShifts } from "./orphanLevels";

@@ -1096,7 +1096,7 @@ class HyperlinkIPCHandler {
         throw new Error("Path is not a file");
       }
     } catch (error) {
-      throw new Error(`Invalid file path: ${filePath}`);
+      throw new Error(`Invalid file path: ${filePath}`, { cause: error });
     }
 
     // Validate file extension
@@ -2064,19 +2064,24 @@ ipcMain.handle(
   "display:open-comparison",
   async (
     _event,
-    {
-      backupPath,
-      processedPath,
-      workArea,
-      scaleFactor,
-    }: {
+    payload: {
       backupPath: string;
       processedPath: string;
-      workArea: { x: number; y: number; width: number; height: number };
-      scaleFactor: number;
+      // Legacy shape, retained as a defensive fallback only — no current caller
+      // emits it (preload sends `display`). Safe to drop once that is certain.
+      workArea?: { x: number; y: number; width: number; height: number };
+      scaleFactor?: number;
+      // Current shape: the full selected display object.
+      display?: {
+        bounds?: { x: number; y: number; width: number; height: number };
+        workArea: { x: number; y: number; width: number; height: number };
+        scaleFactor: number;
+      };
     }
   ) => {
     try {
+      const { backupPath, processedPath } = payload;
+
       // Validate files exist
       if (!fs.existsSync(backupPath)) {
         return { success: false, error: `Backup file not found: ${backupPath}` };
@@ -2085,13 +2090,69 @@ ipcMain.handle(
         return { success: false, error: `Processed file not found: ${processedPath}` };
       }
 
+      // Accept both the new `display` shape and the legacy `workArea`/`scaleFactor` shape.
+      const workArea = payload.display?.workArea ?? payload.workArea;
+      const scaleFactor = payload.display?.scaleFactor ?? payload.scaleFactor ?? 1;
+      if (!workArea) {
+        return { success: false, error: "No display work area provided for comparison" };
+      }
+
       const { x, y, width, height } = workArea;
+
+      // Build the two side-by-side rectangles in DIP from the selected monitor's
+      // work area. Electron reports `bounds`/`workArea` in DIP points; integer
+      // division keeps the split exact and gap-free.
+      // Left rect:  x, y, floor(width/2), height
+      // Right rect: x + floor(width/2), y, width - floor(width/2), height
+      const halfWidthDip = Math.floor(width / 2);
+      const leftRectDip = { x, y, width: halfWidthDip, height };
+      const rightRectDip = {
+        x: x + halfWidthDip,
+        y,
+        width: width - halfWidthDip,
+        height,
+      };
+
+      // Convert each DIP rect to physical screen pixels. `screen.dipToScreenRect`
+      // (Windows only) scales relative to the display nearest the rect, so it
+      // applies the SELECTED monitor's scaleFactor consistently to x/y/width/height
+      // AND anchors off that monitor's physical origin -- correct for non-primary
+      // monitors where `dipX * scaleFactor` would be wrong. On non-Windows it is a
+      // no-op identity and the values below are unused (no PowerShell path runs).
+      let leftRect = leftRectDip;
+      let rightRect = rightRectDip;
+      if (process.platform === "win32") {
+        try {
+          leftRect = screen.dipToScreenRect(null, leftRectDip);
+          rightRect = screen.dipToScreenRect(null, rightRectDip);
+        } catch (convErr) {
+          // Fallback: multiply ALL of x/y/width/height by scaleFactor consistently.
+          // Less accurate for non-primary monitors but never worse than the old
+          // mixed (size-scaled, coordinate-unscaled) math.
+          log.warn("[Display] dipToScreenRect failed, using scaleFactor fallback:", convErr);
+          const scale = (v: number) => Math.round(v * scaleFactor);
+          leftRect = {
+            x: scale(leftRectDip.x),
+            y: scale(leftRectDip.y),
+            width: scale(leftRectDip.width),
+            height: scale(leftRectDip.height),
+          };
+          rightRect = {
+            x: scale(rightRectDip.x),
+            y: scale(rightRectDip.y),
+            width: scale(rightRectDip.width),
+            height: scale(rightRectDip.height),
+          };
+        }
+      }
 
       log.info("[Display] Opening comparison", {
         backupPath,
         processedPath,
-        workArea: { x, y, width, height },
+        workAreaDip: { x, y, width, height },
         scaleFactor,
+        leftRectPhysical: leftRect,
+        rightRectPhysical: rightRect,
       });
 
       // Open both documents - they will open in Word
@@ -2133,12 +2194,16 @@ ipcMain.handle(
           processedBase: processedBaseName,
         });
 
-        // PowerShell script to find and position Word windows BY FILENAME
+        // PowerShell script to find and position Word windows BY FILENAME.
+        // The script receives the two target rectangles ALREADY in physical
+        // pixels (converted in the main process via screen.dipToScreenRect).
+        // It must not do any DPI scaling itself -- it simply applies the rects.
         // Fixes applied:
         //  - SW_RESTORE before SetWindowPos (maximized windows ignore positioning)
         //  - baseName fallback for Word title bar without extension
-        //  - workArea coordinates from Electron (avoids .NET monitor order mismatch)
+        //  - rectangles pre-converted to physical pixels for the selected monitor
         //  - SWP_FRAMECHANGED flag for proper DWM frame recalculation
+        //  - Per-Monitor-V2 DPI awareness so SetWindowPos treats coords as physical
         const psScript = `
 Add-Type @"
 using System;
@@ -2148,6 +2213,10 @@ public class DpiHelper {
   public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll", EntryPoint = "SetProcessDpiAwarenessContext")]
   static extern int SetDpiAwarenessCtx(IntPtr value);
+  // Make this PowerShell process Per-Monitor-DPI-Aware V2 so that SetWindowPos
+  // coordinates are interpreted as PHYSICAL pixels (matching the pre-converted
+  // rects). DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == -4 (Win10 1703+);
+  // fall back to system-DPI-aware on older builds.
   public static void SetBestDpiAwareness() {
     try {
       SetDpiAwarenessCtx(new IntPtr(-4));
@@ -2194,32 +2263,18 @@ public class Win32 {
 }
 "@
 
-# Read work area coordinates passed from Electron (physical pixels, correct monitor)
-$x = [int]$env:DOCHUB_WA_X
-$y = [int]$env:DOCHUB_WA_Y
-$width = [int]$env:DOCHUB_WA_WIDTH
-$height = [int]$env:DOCHUB_WA_HEIGHT
-$scaleFactor = [double]$env:DOCHUB_SCALE_FACTOR
+# Target rectangles, ALREADY in physical pixels for the selected monitor.
+# The main process derived these from the monitor's DIP workArea (left/right
+# halves) and converted them via screen.dipToScreenRect. No scaling here.
+$leftX = [int]$env:DOCHUB_LEFT_X
+$leftY = [int]$env:DOCHUB_LEFT_Y
+$leftW = [int]$env:DOCHUB_LEFT_W
+$leftH = [int]$env:DOCHUB_LEFT_H
 
-# Scale sizing constants from logical (96 DPI) values to physical pixels
-$halfWidth = [Math]::Floor($width / 2)
-$optimalWidth = [Math]::Round(960 * $scaleFactor)
-$maxWindowWidth = [Math]::Round(1200 * $scaleFactor)
-$minWindowWidth = [Math]::Round(700 * $scaleFactor)
-
-if ($halfWidth -lt $minWindowWidth) {
-  $windowWidth = $halfWidth
-} elseif ($halfWidth -gt $maxWindowWidth) {
-  $windowWidth = $maxWindowWidth
-} else {
-  $windowWidth = [Math]::Min($optimalWidth, $halfWidth)
-}
-
-# Center the two windows on the display
-$totalWidth = $windowWidth * 2
-$startX = $x + [Math]::Floor(($width - $totalWidth) / 2)
-$leftX = $startX
-$rightX = $startX + $windowWidth
+$rightX = [int]$env:DOCHUB_RIGHT_X
+$rightY = [int]$env:DOCHUB_RIGHT_Y
+$rightW = [int]$env:DOCHUB_RIGHT_W
+$rightH = [int]$env:DOCHUB_RIGHT_H
 
 $backupFilename = $env:DOCHUB_BACKUP_FILENAME
 $processedFilename = $env:DOCHUB_PROCESSED_FILENAME
@@ -2244,14 +2299,15 @@ for ($i = 0; $i -lt 8; $i++) {
 
 # SW_RESTORE (9) unmaximizes windows so SetWindowPos can reposition them
 # SWP_SHOWWINDOW | SWP_FRAMECHANGED (0x0060) ensures proper DWM frame recalculation
+# Backup -> left half, Processed -> right half (physical-pixel rects).
 if ($backupHwnd -ne [IntPtr]::Zero) {
   [Win32]::ShowWindow($backupHwnd, 9) | Out-Null
-  [Win32]::SetWindowPos($backupHwnd, [IntPtr]::Zero, $leftX, $y, $windowWidth, $height, 0x0060) | Out-Null
+  [Win32]::SetWindowPos($backupHwnd, [IntPtr]::Zero, $leftX, $leftY, $leftW, $leftH, 0x0060) | Out-Null
 }
 
 if ($processedHwnd -ne [IntPtr]::Zero) {
   [Win32]::ShowWindow($processedHwnd, 9) | Out-Null
-  [Win32]::SetWindowPos($processedHwnd, [IntPtr]::Zero, $rightX, $y, $windowWidth, $height, 0x0060) | Out-Null
+  [Win32]::SetWindowPos($processedHwnd, [IntPtr]::Zero, $rightX, $rightY, $rightW, $rightH, 0x0060) | Out-Null
 }
 `;
 
@@ -2263,11 +2319,14 @@ if ($processedHwnd -ne [IntPtr]::Zero) {
             windowsHide: true,
             env: {
               ...process.env,
-              DOCHUB_WA_X: x.toString(),
-              DOCHUB_WA_Y: y.toString(),
-              DOCHUB_WA_WIDTH: width.toString(),
-              DOCHUB_WA_HEIGHT: height.toString(),
-              DOCHUB_SCALE_FACTOR: scaleFactor.toString(),
+              DOCHUB_LEFT_X: Math.round(leftRect.x).toString(),
+              DOCHUB_LEFT_Y: Math.round(leftRect.y).toString(),
+              DOCHUB_LEFT_W: Math.round(leftRect.width).toString(),
+              DOCHUB_LEFT_H: Math.round(leftRect.height).toString(),
+              DOCHUB_RIGHT_X: Math.round(rightRect.x).toString(),
+              DOCHUB_RIGHT_Y: Math.round(rightRect.y).toString(),
+              DOCHUB_RIGHT_W: Math.round(rightRect.width).toString(),
+              DOCHUB_RIGHT_H: Math.round(rightRect.height).toString(),
               DOCHUB_BACKUP_FILENAME: backupFilename,
               DOCHUB_PROCESSED_FILENAME: processedFilename,
               DOCHUB_BACKUP_BASENAME: backupBaseName,

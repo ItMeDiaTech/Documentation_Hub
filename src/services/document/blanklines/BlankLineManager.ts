@@ -99,6 +99,10 @@ export class BlankLineManager {
     const dedupRemoved = this.dedup(doc);
     result.removed += dedupRemoved;
 
+    // Step 6.5: Give the first paragraph of a cell 6pt space-above when it is a
+    // list item, so the list does not sit flush against the cell's top edge.
+    this.applyFirstCellListItemSpacing(doc);
+
     // Step 7: Normalize all blank line styles to Normal
     this.normalizeBlankLineStyles(doc, blankOpts);
 
@@ -311,8 +315,37 @@ export class BlankLineManager {
 
           for (let ci = 0; ci < paras.length; ci++) {
             paras = cell.getParagraphs();
-            const para = paras[ci];
+            let para = paras[ci];
             if (!para) continue;
+
+            // Large images need a blank ABOVE as well as below. The cell
+            // addition loop only inserts blanks AFTER a matched element, so the
+            // "below" blank comes from aboveAndBelowLargeImagesRule but the
+            // "above" blank must be inserted explicitly here (mirrors the
+            // body-scope handling in applyAdditionRulesBody).
+            if (ci > 0 && para instanceof Paragraph && !isParagraphBlank(para)) {
+              const imageRun = getImageRunFromParagraph(para);
+              if (imageRun && !isImageSmall(imageRun.getImageElement())) {
+                const prevPara = paras[ci - 1];
+                if (!(prevPara instanceof Paragraph && isParagraphBlank(prevPara))) {
+                  // Don't add a blank above the image if the previous paragraph
+                  // is centered text (a figure caption stays tight to its image).
+                  const isCenteredText =
+                    prevPara instanceof Paragraph &&
+                    prevPara.getAlignment() === "center" &&
+                    !!prevPara.getText()?.trim();
+                  if (!isCenteredText) {
+                    const outcome = addBlankToCellIfSafe(cell, ci, blankOpts);
+                    if (outcome === "added") {
+                      added++;
+                      ci++; // Skip past inserted blank (image is now at ci)
+                      paras = cell.getParagraphs();
+                      para = paras[ci]; // Keep `para` aligned with the advanced ci
+                    }
+                  }
+                }
+              }
+            }
 
             const ctx = this.buildCellContext(doc, cell, ci, paras, table);
             const matchedRule = this.findMatchingRule(additionRules, ctx, "cell");
@@ -569,6 +602,30 @@ export class BlankLineManager {
     }
 
     return removed;
+  }
+
+  /**
+   * When the FIRST paragraph of a table cell is a list item, give it 6pt
+   * (120 twips) of space-above. This separates the list from the cell's top
+   * border so the first bullet/number does not sit flush against the edge.
+   *
+   * Applies only to the first paragraph of each cell, and only when that
+   * paragraph carries list numbering.
+   */
+  private applyFirstCellListItemSpacing(doc: Document): void {
+    const SIX_PT_TWIPS = 120;
+
+    for (const table of doc.getAllTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          const paras = cell.getParagraphs();
+          const first = paras[0];
+          if (!(first instanceof Paragraph)) continue;
+          if (!first.getNumbering()) continue;
+          first.setSpaceBefore(SIX_PT_TWIPS);
+        }
+      }
+    }
   }
 
   /**

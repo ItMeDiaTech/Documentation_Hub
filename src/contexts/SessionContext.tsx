@@ -46,8 +46,9 @@ const IPC_TIMEOUT_MS = 12540000; // 209 minutes for document processing (large d
 const TIME_SAVED_SECONDS_PER_HYPERLINK = 101;
 const SECONDS_PER_MINUTE = 60;
 
-type SerializedDocument = Omit<Document, "processedAt"> & {
+type SerializedDocument = Omit<Document, "processedAt" | "addedAt"> & {
   processedAt?: string;
+  addedAt?: string;
 };
 
 type SerializedSession = Omit<Session, "createdAt" | "lastModified" | "closedAt" | "documents"> & {
@@ -118,8 +119,8 @@ const DEFAULT_SESSION_STYLES: SessionStyle[] = [
     italic: false,
     underline: false,
     alignment: "left",
-    spaceBefore: 3,
-    spaceAfter: 3,
+    spaceBefore: 6,
+    spaceAfter: 6,
     lineSpacing: 1.0,
     color: "#000000",
   },
@@ -158,7 +159,7 @@ const DEFAULT_SESSION_STYLES: SessionStyle[] = [
     spaceAfter: 6,
     lineSpacing: 1.0,
     color: "#000000",
-    noSpaceBetweenSame: true,
+    noSpaceBetweenSame: false,
     // Indentation removed: numbering level definitions (symbolIndent/textIndent sliders)
     // control list indentation via numbering.xml. Adding style-level indentation here
     // creates conflicting w:ind in styles.xml that can produce negative bullet positions.
@@ -206,7 +207,7 @@ const DEFAULT_PROCESSING_OPTIONS = {
  */
 const DEFAULT_TABLE_SHADING_SETTINGS: TableShadingSettings = {
   header2Shading: "#BFBFBF",
-  otherShading: "#DFDFDF",
+  otherShading: "#D9D9D9",
   imageBorderWidth: 1.0,
   // 1x1 Tables padding (in inches)
   padding1x1Top: 0,
@@ -463,6 +464,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           documents: s.documents.map((d) => ({
             ...d,
             processedAt: d.processedAt ? new Date(d.processedAt) : undefined,
+            // Legacy docs predate addedAt: fall back to processedAt, then epoch
+            // so they sink to the bottom of the newest-first session file list.
+            addedAt: d.addedAt
+              ? new Date(d.addedAt)
+              : d.processedAt
+                ? new Date(d.processedAt)
+                : new Date(0),
           })),
         }));
 
@@ -594,6 +602,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         documents: s.documents.map((d) => ({
           ...d,
           processedAt: d.processedAt ? d.processedAt.toISOString() : undefined,
+          addedAt: d.addedAt ? d.addedAt.toISOString() : undefined,
         })),
       }));
 
@@ -694,6 +703,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             documents: session.documents.map((doc) => ({
               ...doc,
               processedAt: doc.processedAt?.toISOString(),
+              addedAt: doc.addedAt?.toISOString(),
             })),
           });
 
@@ -1004,6 +1014,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // would otherwise produce different Date.now()/Math.random() values per
     // pass, making the updater impure (no observable difference since only
     // the second result commits, but it flags static analyzers).
+    // One batch timestamp shared by every document added in this call, so the
+    // alphabetical name tiebreaker in the session file list stays deterministic.
+    const batchAddedAt = new Date();
     const candidates: Array<Document & { path: string }> = validatedFiles.map(({ file, path }) => ({
       id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       name: file.name,
@@ -1011,6 +1024,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       size: file.size || 0,
       type: file.type,
       status: "pending" as const,
+      addedAt: batchAddedAt,
       // No fileData - will be read by backend using the path
     }));
 

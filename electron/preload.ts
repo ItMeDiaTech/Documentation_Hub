@@ -214,10 +214,13 @@ const electronAPI = {
     openComparison: (
       backupPath: string,
       processedPath: string,
-      workArea: { x: number; y: number; width: number; height: number },
-      scaleFactor: number
+      display: {
+        bounds: { x: number; y: number; width: number; height: number };
+        workArea: { x: number; y: number; width: number; height: number };
+        scaleFactor: number;
+      }
     ) =>
-      ipcRenderer.invoke("display:open-comparison", { backupPath, processedPath, workArea, scaleFactor }),
+      ipcRenderer.invoke("display:open-comparison", { backupPath, processedPath, display }),
   },
 
   // Auto-updater

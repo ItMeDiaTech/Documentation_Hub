@@ -135,6 +135,22 @@ export interface ListNormalizationOptions {
    * Typically 72 twips (0.05 inches) to go from 0.25" to 0.30" hanging indent.
    */
   extraHangingIndentTwips?: number;
+
+  /**
+   * Within a contiguous list group, subordinate items whose category differs
+   * from the group's lead category (first item) by promoting them one level
+   * deeper. Produces visual sub-items when authors interleave bullets inside
+   * a numbered list (or numbers inside a bullet list). Default: true.
+   */
+  subordinateMinorityCategory?: boolean;
+
+  /**
+   * Optional Set the normalizer adds to whenever it creates a mixed-list
+   * abstract numbering (NUMBERED_LEAD or BULLET_LEAD pattern). Callers pass
+   * a shared Set so downstream passes (e.g., bullet/numbered uniformity)
+   * can skip these definitions and preserve the mixed pattern.
+   */
+  trackMixedListAbstractNumIds?: Set<number>;
 }
 
 /**

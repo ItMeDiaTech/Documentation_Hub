@@ -17,8 +17,9 @@ interface DBConfig {
 }
 
 // Serialized session type for IndexedDB (dates as ISO strings)
-type SerializedDocument = Omit<SessionDocument, "processedAt"> & {
+type SerializedDocument = Omit<SessionDocument, "processedAt" | "addedAt"> & {
   processedAt?: string;
+  addedAt?: string;
 };
 
 type SerializedSession = Omit<Session, "createdAt" | "lastModified" | "closedAt" | "documents"> & {

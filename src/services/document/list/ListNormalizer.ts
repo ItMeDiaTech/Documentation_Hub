@@ -6,8 +6,16 @@
  * Integrates with NumberingManager for numId resolution.
  */
 
-import type { Paragraph, Run, Table, TableCell, NumberingManager } from "docxmlater";
-import { isRun, inchesToTwips } from "docxmlater";
+import type {
+  Document,
+  Paragraph,
+  Run,
+  Table,
+  TableCell,
+  NumberingManager,
+  NumberFormat as DocxNumberFormat,
+} from "docxmlater";
+import { isRun, inchesToTwips, WORD_NATIVE_BULLETS } from "docxmlater";
 import { logger } from "@/utils/logger";
 import type {
   ListCategory,
@@ -59,6 +67,243 @@ function applyIndentationSettings(
       }
     }
   }
+}
+
+// =============================================================================
+// MIXED-LIST DEFINITIONS
+// =============================================================================
+//
+// Two multi-level abstract numbering patterns used when a contiguous list
+// group contains both bullets and numbers. Within a mixed group every item
+// (lead and subordinated) shares ONE numId, with each item placed at the
+// appropriate level. This matches how Word natively represents mixed
+// multi-level lists.
+//
+// NUMBERED_LEAD: top-level is decimal, sub-levels alternate filled/open
+// circles (no filled squares — explicitly skipped per the spec).
+//
+// BULLET_LEAD: top-level is the filled bullet, sub-levels cycle through
+// decimal → lowerLetter → lowerRoman → upperLetter → upperRoman, then
+// repeat the cycle.
+
+type MixedLevelSpec = {
+  format: DocxNumberFormat;
+  text: string;
+  font?: string;
+};
+
+// Bullet character + font use docxmlater's WORD_NATIVE_BULLETS encoding:
+// - Filled bullet:  U+F0B7 in Symbol      (matches createBulletLevel(0,3,6))
+// - Open circle:    U+006F in Courier New (matches createBulletLevel(1,4,7))
+// This is Word's native PUA encoding — what docxmlater stamps when you call
+// `manager.createBulletList()`. We use the same so that downstream
+// uniformity passes that compare against `WORD_NATIVE_BULLETS.*.char` see
+// matches and don't try to "fix" our mixed bullets into something else.
+//
+// IMPORTANT: docxmlater's `doc.standardizeNumberedListPrefixes` framework
+// call overwrites the font of every level of every numbered abstract
+// (including mixed numbered-lead abstracts) to Verdana, which has no glyph
+// for U+F0B7 (rendered as .notdef rectangle). WordDocumentProcessor MUST
+// call `restampMixedListBulletFonts(doc, mixedAbstractNumIds)` immediately
+// after that framework call to restore Symbol/Courier-New on bullet levels.
+const FILLED = WORD_NATIVE_BULLETS.FILLED_BULLET; // { char: '', font: 'Symbol' }
+const OPEN = WORD_NATIVE_BULLETS.OPEN_CIRCLE;     // { char: 'o', font: 'Courier New' }
+
+// Mixed-list pattern is DYNAMIC and BIDIRECTIONAL, built per-group from:
+//   • lead: the category at level 0 ("bullet" or "numbered")
+//   • switchLevel: the source ilvl where the OTHER category first appears
+//     (null when no cross-category exists)
+//
+// Rule:
+//   • Levels 0..switchLevel-1: follow the LEAD pattern
+//       - lead "bullet"   → alternating closed/open bullets
+//       - lead "numbered" → decimal (level 0) + letter/roman cascade
+//   • Level switchLevel: the switching format
+//       - lead "bullet"   → decimal "1."     (bullet → number transition)
+//       - lead "numbered" → closed bullet ●  (number → bullet transition)
+//   • Levels switchLevel+1..8: continue in the CROSS-CATEGORY mode
+//       - lead "bullet"   → letter/roman cascade (a., i., A., I., …)
+//       - lead "numbered" → alternating open/closed bullets (○, ●, ○, ●, …)
+//
+// Examples:
+//   lead=numbered, switchLevel=null: 1., a., i., A., I., a., i., A., I.
+//   lead=bullet, switchLevel=null:   ●, ○, ●, ○, ●, ○, ●, ○, ●
+//   lead=numbered, switchLevel=2:    1., a., ●, ○, ●, ○, ●, ○, ●   (Image #14)
+//   lead=bullet,   switchLevel=2:    ●, ○, 1., a., i., A., I., a., i. (List.docx)
+//   lead=numbered, switchLevel=1 (same-level conflict): 1., ●, ○, ●, ○, ●, ○, ●, ○
+//   lead=bullet,   switchLevel=1 (same-level conflict): ●, 1., a., i., A., I., a., i., A.
+export function buildMixedPattern(
+  lead: "bullet" | "numbered",
+  switchLevel: number | null
+): MixedLevelSpec[] {
+  const pattern: MixedLevelSpec[] = [];
+  const NUMERIC_CASCADE: DocxNumberFormat[] = [
+    "lowerLetter",
+    "lowerRoman",
+    "upperLetter",
+    "upperRoman",
+  ];
+  // Non-bullet levels MUST explicitly set a font, otherwise they inherit
+  // Symbol from the underlying createBulletList() template (mapping "1" → 📁,
+  // "a" → α, "b" → β). Pinning Verdana matches DocHub's standard typography.
+  const NUMERIC_FONT = "Verdana";
+
+  // Lead-style format at a given offset from level 0.
+  const leadFormat = (offset: number): MixedLevelSpec => {
+    if (lead === "bullet") {
+      return offset % 2 === 0
+        ? { format: "bullet", text: FILLED.char, font: FILLED.font }
+        : { format: "bullet", text: OPEN.char, font: OPEN.font };
+    }
+    // numbered lead: level 0 = decimal, then letter/roman cascade
+    if (offset === 0) {
+      return { format: "decimal", text: "%1.", font: NUMERIC_FONT };
+    }
+    const fmt = NUMERIC_CASCADE[(offset - 1) % NUMERIC_CASCADE.length]!;
+    return { format: fmt, text: `%${offset + 1}.`, font: NUMERIC_FONT };
+  };
+
+  // Cross-style format after a switch (offset 0 = at the switch).
+  const crossFormat = (offsetFromSwitch: number, absoluteLevel: number): MixedLevelSpec => {
+    if (lead === "bullet") {
+      // After bullet→number switch: decimal at offset 0, then letter/roman cascade.
+      if (offsetFromSwitch === 0) {
+        return { format: "decimal", text: `%${absoluteLevel + 1}.`, font: NUMERIC_FONT };
+      }
+      const fmt = NUMERIC_CASCADE[(offsetFromSwitch - 1) % NUMERIC_CASCADE.length]!;
+      return { format: fmt, text: `%${absoluteLevel + 1}.`, font: NUMERIC_FONT };
+    }
+    // After number→bullet switch: closed at offset 0, open/closed alternating.
+    return offsetFromSwitch % 2 === 0
+      ? { format: "bullet", text: FILLED.char, font: FILLED.font }
+      : { format: "bullet", text: OPEN.char, font: OPEN.font };
+  };
+
+  for (let i = 0; i < 9; i++) {
+    if (switchLevel === null || i < switchLevel) {
+      pattern.push(leadFormat(i));
+    } else {
+      pattern.push(crossFormat(i - switchLevel, i));
+    }
+  }
+  return pattern;
+}
+
+/**
+ * Restore bullet-level font on mixed-list abstracts that may have been
+ * clobbered by `doc.standardizeNumberedListPrefixes()` (which sets font=Verdana
+ * on every level of every non-bullet-lead abstract — including the bullet
+ * sub-levels of our numbered-lead mixed abstracts).
+ *
+ * Detects lead from level-0 format (`bullet` → BULLET_LEAD, else NUMBERED_LEAD)
+ * and re-stamps font + text on every bullet level matching that pattern.
+ * Re-registers the abstractNum so the manager picks up the changes during save.
+ */
+export function restampMixedListBulletFonts(
+  doc: Document,
+  mixedAbstractNumIds: Set<number>
+): number {
+  if (!mixedAbstractNumIds || mixedAbstractNumIds.size === 0) return 0;
+  const manager = doc.getNumberingManager();
+  let restored = 0;
+  for (const absId of mixedAbstractNumIds) {
+    const abstractNum = manager.getAbstractNumbering(absId);
+    if (!abstractNum) continue;
+    // Pattern-agnostic restamp: for each level currently marked as bullet,
+    // re-pin the font based on the level's text char (Symbol for filled disc,
+    // Courier New for open). Works for any dynamic pattern shape — including
+    // the bidirectional bullet/number switching introduced in v5.12.22.
+    let changed = false;
+    for (let i = 0; i < 9; i++) {
+      const lvl = abstractNum.getLevel(i);
+      if (!lvl) continue;
+      if (lvl.getFormat() !== "bullet") continue;
+      const txt = lvl.getProperties().text ?? "";
+      if (txt === FILLED.char) {
+        lvl.setFont(FILLED.font);
+        changed = true;
+      } else if (txt === OPEN.char) {
+        lvl.setFont(OPEN.font);
+        changed = true;
+      }
+    }
+    if (changed) {
+      manager.addAbstractNumbering(abstractNum);
+      restored++;
+    }
+  }
+  return restored;
+}
+
+/**
+ * Create a multi-level abstract numbering for a mixed (bullet+numbered) group.
+ * Returns the numId. The abstractNum has 9 levels formatted per the lead's
+ * pattern. User indentation settings (left/hanging indent) are applied if
+ * provided; bullet character and number format come exclusively from the
+ * pattern so a mixed list looks consistent regardless of user preferences.
+ */
+export function createMixedListNumId(
+  manager: NumberingManager,
+  lead: "numbered" | "bullet",
+  switchLevel: number | null,
+  indentationLevels?: IndentationLevel[],
+  extraHangingIndentTwips: number = 0
+): number {
+  // Clamp switchLevel to [0, 8] or pass null (no cross-category in source).
+  // If lead=="numbered" with switchLevel=0, the cross would collide with lead
+  // at level 0 — push to 1. Similarly for bullet-lead at switchLevel=0.
+  const S =
+    switchLevel === null
+      ? null
+      : Math.min(8, Math.max(1, switchLevel));
+  const pattern = buildMixedPattern(lead, S);
+
+  // Use the matching base list so multiLevelType is correct.
+  let numId =
+    lead === "numbered" ? manager.createNumberedList() : manager.createBulletList();
+
+  const instance = manager.getInstance(numId);
+  if (!instance) return numId;
+  const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+  if (!abstractNum) return numId;
+
+  // Apply user's indents per level (left + hanging only — not format/char).
+  if (indentationLevels?.length) {
+    for (const levelConfig of indentationLevels) {
+      const lvl = abstractNum.getLevel(levelConfig.level);
+      if (!lvl) continue;
+      const isBulletAtLevel = pattern[levelConfig.level]?.format === "bullet";
+      const extra = isBulletAtLevel ? 0 : extraHangingIndentTwips;
+      const textIndentTwips = inchesToTwips(levelConfig.textIndent) + extra;
+      const symbolIndentTwips = inchesToTwips(levelConfig.symbolIndent);
+      lvl.setLeftIndent(textIndentTwips);
+      lvl.setHangingIndent(textIndentTwips - symbolIndentTwips);
+    }
+  }
+
+  // Stamp the pattern's format/text/font onto every level. This overrides
+  // anything applied by createNumberedList/createBulletList defaults and
+  // (for numbered-lead) the decimal/letter/roman rotation that Word ships.
+  for (let i = 0; i < pattern.length; i++) {
+    const lvl = abstractNum.getLevel(i);
+    if (!lvl) continue;
+    const spec = pattern[i]!;
+    lvl.setFormat(spec.format);
+    lvl.setText(spec.text);
+    if (spec.font) lvl.setFont(spec.font);
+  }
+
+  // CRITICAL: re-register so the manager marks this abstractNum as modified.
+  // NumberingLevel setters (setFormat / setText / setFont / setLeftIndent /
+  // etc.) mutate the in-memory model but do NOT notify the manager, so the
+  // changes get dropped during save unless we re-add. Same pattern used by
+  // applyBulletUniformity:8660.
+  manager.addAbstractNumbering(abstractNum);
+
+  // Restart so a fresh mixed list begins at 1 rather than continuing a
+  // previous list's counter.
+  numId = manager.restartNumbering(numId);
+  return numId;
 }
 
 // =============================================================================
@@ -371,50 +616,227 @@ export function normalizeListsInCell(
   }
   if (baselineIndent === Infinity) baselineIndent = 0;
 
-  // Calculate level shifts PER LIST GROUP based on ALL list items (majority + minority).
-  // Including minority items prevents shifting when low-level minority items exist
-  // (e.g., numbered items at ilvl=0 among bullet sub-items at ilvl=1+).
-  // A "list group" is a contiguous sequence of list items separated by non-list items.
+  // Calculate level shifts PER LEVEL-SHIFT GROUP based on ALL list items
+  // (majority + minority). Including minority items prevents shifting when
+  // low-level minority items exist (e.g., numbered items at ilvl=0 among
+  // bullet sub-items at ilvl=1+).
+  //
+  // NOTE: a "level-shift group" here is a SEPARATE partition from the
+  // subordination "group" (`groupInfoByIndex` / `groupRecords`) computed
+  // further below — different rules, different purpose. Do not conflate them.
+  //
+  // A level-shift group is a run of list items. Physically contiguous list
+  // items always share a group. A non-list paragraph (e.g. an interjected
+  // "Note:" line) only ENDS the group if the list does NOT resume with the
+  // same numId afterwards: a same-numId item across the gap is the same Word
+  // list and must keep one shared level baseline. Otherwise a sub-item
+  // stranded after the gap forms its own group and is wrongly flattened to
+  // level 0.
   const levelShiftByIndex = new Map<number, number>();
-  let currentGroupStart = -1;
-  let currentGroupMinLevel = Infinity;
+  let groupIndices: number[] = [];
+  let groupMinLevel = Infinity;
+  // numIds of the CURRENT contiguous segment (a run of list items with no
+  // interleaved non-list paragraph). When the list resumes after a gap the
+  // resuming item is matched against ONLY the segment that immediately
+  // preceded the gap (`numIdsBeforeGap`), never a cumulative set — so an
+  // unrelated list interleaved between two same-numId segments cannot
+  // transitively keep them merged.
+  let segmentNumIds = new Set<number>();
+  let numIdsBeforeGap: Set<number> | null = null;
+
+  const finalizeLevelShiftGroup = () => {
+    if (groupIndices.length > 0) {
+      const shift = groupMinLevel === Infinity ? 0 : groupMinLevel;
+      for (const j of groupIndices) {
+        levelShiftByIndex.set(j, shift);
+      }
+    }
+    groupIndices = [];
+    groupMinLevel = Infinity;
+    segmentNumIds = new Set<number>();
+    numIdsBeforeGap = null;
+  };
 
   for (let i = 0; i < analysis.paragraphs.length; i++) {
     const item = analysis.paragraphs[i]!;
 
-    // Consider ALL list items for level shift calculation
-    if (item.detection.category !== "none") {
-      if (currentGroupStart === -1) {
-        currentGroupStart = i; // Start new group
-        currentGroupMinLevel = Infinity;
+    if (item.detection.category === "none") {
+      // Non-list paragraph: freeze the just-ended segment's numIds (only the
+      // first gap paragraph after a segment freezes) so the resuming item can
+      // be matched against it.
+      if (groupIndices.length > 0 && numIdsBeforeGap === null) {
+        numIdsBeforeGap = segmentNumIds;
       }
-      // Track minimum level in current group across all categories
-      currentGroupMinLevel = Math.min(currentGroupMinLevel, item.detection.inferredLevel);
-    } else {
-      // Non-list item - end current group if any
-      if (currentGroupStart !== -1) {
-        // Apply the group's level shift to ALL non-"none" items in the group
-        const shift = currentGroupMinLevel === Infinity ? 0 : currentGroupMinLevel;
-        for (let j = currentGroupStart; j < i; j++) {
-          if (analysis.paragraphs[j]!.detection.category !== "none") {
-            levelShiftByIndex.set(j, shift);
-          }
+      continue;
+    }
+
+    const numId = item.detection.numId;
+    if (numIdsBeforeGap !== null) {
+      // Resuming after a gap: continue the group only when this item shares a
+      // numId with the segment immediately before the gap (same Word list).
+      const sameList = numId !== null && numIdsBeforeGap.has(numId);
+      if (!sameList) finalizeLevelShiftGroup();
+      // A new contiguous segment starts here regardless.
+      segmentNumIds = new Set<number>();
+      numIdsBeforeGap = null;
+    }
+
+    groupIndices.push(i);
+    groupMinLevel = Math.min(groupMinLevel, item.detection.inferredLevel);
+    if (numId !== null) segmentNumIds.add(numId);
+  }
+
+  // Handle the trailing group.
+  finalizeLevelShiftGroup();
+
+  // Per-item group info for minority subordination.
+  // A "group" is a contiguous run of list items. Items keep stay in the same
+  // group while same-category or while cross-category within
+  // SUBORDINATION_MAX_LINES non-list paragraphs. A cross-category item that
+  // appears > SUBORDINATION_MAX_LINES later starts a new group.
+  //
+  // A group becomes "mixed" the moment a second category appears within
+  // proximity. Items in a mixed group all share ONE multi-level "mixed list"
+  // numId (lead items at level 0, subordinated items at level 1+). Items in
+  // a non-mixed group use the regular per-category numIds.
+  type GroupRecord = {
+    lead: "numbered" | "bullet";
+    isMixed: boolean;
+    switchLevel: number | null;
+  };
+  type GroupInfo = {
+    groupId: number;
+    lead: "numbered" | "bullet";
+    isMixed: boolean;
+    switchLevel: number | null;
+  };
+  const subordinateEnabled = options.subordinateMinorityCategory !== false;
+  const SUBORDINATION_MAX_LINES = 2;
+  const groupInfoByIndex = new Map<number, GroupInfo>();
+  const groupRecords: GroupRecord[] = [];
+  // Per-group source levels per category, used to compute switchLevel —
+  // the first cross-category source level not occupied by the lead category.
+  const bulletLevelsByGroup = new Map<number, Set<number>>();
+  const numberedLevelsByGroup = new Map<number, Set<number>>();
+  // Per-group category presence (any group with >1 category is mixed).
+  const groupCategories = new Map<number, Set<"bullet" | "numbered">>();
+  if (subordinateEnabled) {
+    let currentGroupId = -1;
+    let linesSinceLastListItem = 0;
+    for (let i = 0; i < analysis.paragraphs.length; i++) {
+      const item = analysis.paragraphs[i]!;
+      if (item.detection.category !== "none") {
+        const cat = item.detection.category as "numbered" | "bullet";
+        const level = item.detection.ilvl ?? item.detection.inferredLevel ?? 0;
+        if (currentGroupId === -1) {
+          currentGroupId = groupRecords.length;
+          groupRecords.push({ lead: cat, isMixed: false, switchLevel: null });
+        } else if (
+          cat !== groupRecords[currentGroupId]!.lead &&
+          linesSinceLastListItem > SUBORDINATION_MAX_LINES
+        ) {
+          // Cross-category and too far → new group with this item as new lead.
+          currentGroupId = groupRecords.length;
+          groupRecords.push({ lead: cat, isMixed: false, switchLevel: null });
         }
-        currentGroupStart = -1;
-        currentGroupMinLevel = Infinity;
+        // Track categories present in this group.
+        let cats = groupCategories.get(currentGroupId);
+        if (!cats) {
+          cats = new Set();
+          groupCategories.set(currentGroupId, cats);
+        }
+        cats.add(cat);
+        // Track source levels per category for switchLevel computation.
+        if (cat === "numbered") {
+          let lvls = numberedLevelsByGroup.get(currentGroupId);
+          if (!lvls) {
+            lvls = new Set();
+            numberedLevelsByGroup.set(currentGroupId, lvls);
+          }
+          lvls.add(level);
+        } else {
+          let lvls = bulletLevelsByGroup.get(currentGroupId);
+          if (!lvls) {
+            lvls = new Set();
+            bulletLevelsByGroup.set(currentGroupId, lvls);
+          }
+          lvls.add(level);
+        }
+        // Snapshot the lead now; isMixed + switchLevel patched after loop.
+        groupInfoByIndex.set(i, {
+          groupId: currentGroupId,
+          lead: groupRecords[currentGroupId]!.lead,
+          isMixed: false,
+          switchLevel: null,
+        });
+        linesSinceLastListItem = 0;
+      } else {
+        linesSinceLastListItem++;
       }
+    }
+    // Finalize per-group state.
+    // switchLevel = source ilvl where the dynamic pattern transitions from
+    // lead-mode to cross-mode. It's the shallowest cross-category source
+    // level that's not occupied by the lead category (a same-level conflict
+    // bumps the switch one level deeper).
+    for (let gid = 0; gid < groupRecords.length; gid++) {
+      const cats = groupCategories.get(gid) ?? new Set();
+      const rec = groupRecords[gid]!;
+      rec.isMixed = cats.size > 1;
+      if (!rec.isMixed) {
+        rec.switchLevel = null;
+        continue;
+      }
+      const bulletLevels = bulletLevelsByGroup.get(gid) ?? new Set<number>();
+      const numberedLevels = numberedLevelsByGroup.get(gid) ?? new Set<number>();
+      let candidate: number;
+      let leadLevels: Set<number>;
+      if (rec.lead === "numbered") {
+        candidate = bulletLevels.size > 0 ? Math.min(...bulletLevels) : 1;
+        leadLevels = numberedLevels;
+      } else {
+        candidate = numberedLevels.size > 0 ? Math.min(...numberedLevels) : 1;
+        leadLevels = bulletLevels;
+      }
+      candidate = Math.max(1, candidate);
+      while (leadLevels.has(candidate) && candidate < 8) candidate++;
+      rec.switchLevel = candidate;
+    }
+    for (const info of groupInfoByIndex.values()) {
+      const rec = groupRecords[info.groupId]!;
+      info.isMixed = rec.isMixed;
+      info.switchLevel = rec.switchLevel;
     }
   }
 
-  // Handle last group if cell ends with list items
-  if (currentGroupStart !== -1) {
-    const shift = currentGroupMinLevel === Infinity ? 0 : currentGroupMinLevel;
-    for (let j = currentGroupStart; j < analysis.paragraphs.length; j++) {
-      if (analysis.paragraphs[j]!.detection.category !== "none") {
-        levelShiftByIndex.set(j, shift);
+  // Lazy cache of mixed-list numIds, one per mixed group. Created on first
+  // access by any item belonging to that group. The abstractNumId is also
+  // registered in the optional tracking Set so downstream passes (bullet /
+  // numbered uniformity) can skip these definitions and preserve the
+  // mixed-list pattern.
+  const mixedNumIdByGroupId = new Map<number, number>();
+  const getMixedNumIdForGroup = (
+    groupId: number,
+    lead: "numbered" | "bullet",
+    switchLevel: number | null
+  ): number => {
+    let id = mixedNumIdByGroupId.get(groupId);
+    if (id === undefined) {
+      id = createMixedListNumId(
+        numberingManager,
+        lead,
+        switchLevel,
+        options.indentationLevels,
+        options.extraHangingIndentTwips ?? 0
+      );
+      if (options.trackMixedListAbstractNumIds) {
+        const inst = numberingManager.getInstance(id);
+        if (inst) options.trackMixedListAbstractNumIds.add(inst.getAbstractNumId());
       }
+      mixedNumIdByGroupId.set(groupId, id);
     }
-  }
+    return id;
+  };
 
   // Track numId per level - will be reset when parent level appears
   const numIdByLevel = new Map<number, number>();
@@ -562,6 +984,41 @@ export function normalizeListsInCell(
         targetLevel = Math.max(0, detection.inferredLevel - levelShift);
       }
 
+      // For items in a mixed group, route to the group's shared multi-level
+      // numId and SNAP the level to 0 (lead) or 1 (cross-category). The snap
+      // matters when the source document already nested the cross-category
+      // item — e.g., Word's autoformat puts bullets that follow "1." at
+      // ilvl=1 of a multi-level numbered list. Without the snap, my old
+      // `targetLevel + 1` logic would push them to ilvl=2, which the
+      // numbered-lead pattern renders as the open circle (○) — exactly the
+      // bug visible in the screenshot. Lead items snap to 0 likewise so a
+      // natural sub-numbered "(a)" inside a numbered-lead group doesn't
+      // accidentally land at level 1 and steal the bullet's slot.
+      const groupInfo = subordinateEnabled ? groupInfoByIndex.get(index) : undefined;
+      const useMixedNumId = !!(groupInfo && groupInfo.isMixed);
+      let wasSubordinated = false;
+      if (useMixedNumId) {
+        // Dynamic-pattern routing using bidirectional switchLevel:
+        //   lead-cat items: preserve source ilvl. The pattern format at the
+        //     source level matches the lead-mode (or cross-mode if deeper
+        //     than switchLevel, which is intended behavior).
+        //   cross-cat items: snap to max(switchLevel, sourceIlvl). Items
+        //     below the switch land at the switch slot; deeper cross items
+        //     keep their source ilvl and render via the cross-mode cascade.
+        const S = groupInfo!.switchLevel ?? 8;
+        const sourceIlvl = detection.ilvl ?? detection.inferredLevel ?? targetLevel;
+        const isLead = detection.category === groupInfo!.lead;
+        if (isLead) {
+          targetLevel = Math.max(0, Math.min(sourceIlvl, 8));
+        } else {
+          targetLevel = Math.max(S, Math.min(sourceIlvl, 8));
+        }
+        wasSubordinated = !isLead;
+      }
+      // Non-mixed groups CAN contain cross-category items when each category
+      // occupies its own distinct level — that's a properly-nested multi-level
+      // list. Preserve the source's targetLevel without bumping.
+
       // Process based on what type of item this is
       if (hasTypedPrefix && detection.typedPrefix) {
         // Typed prefix: strip prefix and apply new formatting
@@ -584,23 +1041,34 @@ export function normalizeListsInCell(
           detection.format === "bullet" ||
           detection.format === "dash" ||
           detection.format === "arrow";
-        const typedNumId = isBulletTypedPrefix
-          ? getBulletNumId(targetLevel)
-          : getNumberedNumId(targetLevel);
+        const typedNumId = useMixedNumId
+          ? getMixedNumIdForGroup(
+              groupInfo!.groupId,
+              groupInfo!.lead,
+              groupInfo!.switchLevel
+            )
+          : isBulletTypedPrefix
+            ? getBulletNumId(targetLevel)
+            : getNumberedNumId(targetLevel);
         para.setNumbering(typedNumId, targetLevel);
         report.normalized++;
         report.details.push({
           originalText: text.substring(0, 50),
           action: "normalized",
-          reason: `Typed prefix → level ${targetLevel}`,
+          reason: `Typed prefix → level ${targetLevel}${useMixedNumId ? ` (mixed-${groupInfo!.lead})` : wasSubordinated ? " (subordinated)" : ""}`,
         });
       } else if (isWordList) {
         // Preserve the item's existing category. Cross-type conversion to a
         // "majority" is no longer performed — mixed bullet+numbered lists
         // within a single cell are allowed.
         lastTypedFormatByLevel.set(targetLevel, null);
-        const numId =
-          detection.category === "bullet"
+        const numId = useMixedNumId
+          ? getMixedNumIdForGroup(
+              groupInfo!.groupId,
+              groupInfo!.lead,
+              groupInfo!.switchLevel
+            )
+          : detection.category === "bullet"
             ? getBulletNumId(targetLevel)
             : getNumberedNumId(targetLevel);
         para.setNumbering(numId, targetLevel);
@@ -608,7 +1076,7 @@ export function normalizeListsInCell(
         report.details.push({
           originalText: text.substring(0, 50),
           action: "normalized",
-          reason: `Preserved ${detection.category} category at level ${targetLevel}`,
+          reason: `Preserved ${detection.category} at level ${targetLevel}${useMixedNumId ? ` (mixed-${groupInfo!.lead})` : wasSubordinated ? " (subordinated)" : ""}`,
         });
       }
     } catch (err: unknown) {
@@ -843,6 +1311,13 @@ export class ListNormalizer {
       forceMajority: partial.forceMajority ?? false,
       preserveIndentation: partial.preserveIndentation ?? false,
       indentationLevels: partial.indentationLevels,
+      extraHangingIndentTwips: partial.extraHangingIndentTwips,
+      subordinateMinorityCategory: partial.subordinateMinorityCategory ?? true,
+      // Pass-through: the tracking Set is shared with the caller so
+      // downstream passes (applyBulletUniformity etc.) can skip mixed-list
+      // definitions. Dropping it here is the same bug as omitting any of
+      // the fields above — silently breaks the protection contract.
+      trackMixedListAbstractNumIds: partial.trackMixedListAbstractNumIds,
     };
   }
 }

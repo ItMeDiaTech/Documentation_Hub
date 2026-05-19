@@ -269,7 +269,7 @@ export const StylesEditor = memo(function StylesEditor({
     tableHeader2Shading || "#BFBFBF"
   );
   const [localTableOtherShading, setLocalTableOtherShading] = useState<string>(
-    tableOtherShading || "#DFDFDF"
+    tableOtherShading || "#D9D9D9"
   );
   const [localImageBorderWidth, setLocalImageBorderWidth] = useState<number>(
     imageBorderWidth ?? 1.0
@@ -1166,7 +1166,7 @@ export const StylesEditor = memo(function StylesEditor({
                 value={localTableOtherShading}
                 onChange={(e) => handleOtherShadingChange(e.target.value)}
                 className="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background"
-                placeholder="#DFDFDF"
+                placeholder="#D9D9D9"
               />
             </div>
           </div>

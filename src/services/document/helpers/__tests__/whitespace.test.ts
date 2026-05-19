@@ -355,6 +355,22 @@ describe("normalizeRunWhitespace", () => {
       expect(textRun.setText).toHaveBeenCalledWith(" text");
     });
 
+    it("should preserve a space-only run between two small images", () => {
+      // "[img] [img]" — the space run flanks image #2. Collapsing it (as the
+      // forward space-normalization scan from image #1 would) collides the
+      // two images.
+      const img1 = createImageRun(true);
+      const spaceRun = createTextRun(" ");
+      const img2 = createImageRun(true);
+      const textRun = createTextRun("text");
+      mockIsImageSmall.mockReturnValue(true); // both images are small
+      const runs = [img1, spaceRun, img2, textRun] as unknown as Run[];
+      normalizeRunWhitespace(runs);
+      // The space between the images survives; image #2 still gets its space.
+      expect(spaceRun.setText).not.toHaveBeenCalled();
+      expect(textRun.setText).toHaveBeenCalledWith(" text");
+    });
+
     it("should NOT insert space after small image when text starts with tab", () => {
       const imgRun = createImageRun(true);
       const textRun = createTextRun("\tsome text");
@@ -562,16 +578,104 @@ describe("normalizeRunWhitespace", () => {
     });
 
     it("should protect gap across empty runs in lookahead (Step 2 range check)", () => {
-      // run0="word " emptyRun="" run2=" next" with gap spanning the range
-      const run0 = createTextRun("word ");
-      const emptyRun = createTextRun("");
-      const run2 = createTextRun(" next");
-      // Gap at index 1 (between emptyRun and run2)
-      const gapAfter = new Set([1]);
-      normalizeRunWhitespace([run0, emptyRun, run2], gapAfter);
-      // Step 2 lookahead from run0 finds run2 at j=2 — hasGapInRange(0,2) checks indices 0,1
-      // Gap at 1 is in range → trailing space preserved
-      expect(run0.setText).not.toHaveBeenCalled();
+      const run0Local = createTextRun("word ");
+      const emptyRunLocal = createTextRun("");
+      const run2Local = createTextRun(" next");
+      const gapAfterLocal = new Set([1]);
+      normalizeRunWhitespace([run0Local, emptyRunLocal, run2Local], gapAfterLocal);
+      expect(run0Local.setText).not.toHaveBeenCalled();
     });
   });
+
+  // ── Inline-image-flanked spaces (Task 2 regression) ──
+
+  describe("inline image flanking spaces", () => {
+    it("should NOT trim the trailing space before an inline image (Step 2)", () => {
+      // "...preview of the order " [img][img] " ."
+      // The trailing space on run0 and leading space on the last run
+      // flank the images — they are not a cross-run double space.
+      const run0 = createTextRun("Use the chevron arrow to collapse and expand a preview of the order ");
+      const img1 = createImageRun(false);
+      const img2 = createImageRun(false);
+      const run3 = createTextRun(" .");
+      const count = normalizeRunWhitespace([run0, img1 as unknown as Run, img2 as unknown as Run, run3]);
+      expect(count).toBe(0);
+      expect(run0.setText).not.toHaveBeenCalled();
+      expect(run3.setText).not.toHaveBeenCalled();
+    });
+
+    it("should NOT trim the leading space after an inline image (Step 3)", () => {
+      // "text " [img] " more" — leading space on the run after the image
+      // must survive even though the run before the image ends with a space.
+      const run0 = createTextRun("text ");
+      const img = createImageRun(false);
+      const run2 = createTextRun(" more");
+      const count = normalizeRunWhitespace([run0, img as unknown as Run, run2]);
+      expect(count).toBe(0);
+      expect(run0.setText).not.toHaveBeenCalled();
+      expect(run2.setText).not.toHaveBeenCalled();
+    });
+
+    it("should still trim a genuine cross-run double space when no image sits between", () => {
+      const run0 = createTextRun("hello ");
+      const run1 = createTextRun(" world");
+      const count = normalizeRunWhitespace([run0, run1]);
+      expect(count).toBe(1);
+      expect(run0.setText).toHaveBeenCalledWith("hello");
+    });
+  });
+
+  // ── Multiple inline images ──
+
+  describe("multiple inline images", () => {
+    it("should preserve a space-only run between a small image and a VML image", () => {
+      // [img] [vml-img] — the second image is the legacy VML kind; the
+      // forward scan must still recognise it and leave the flanking space.
+      const img1 = createImageRun(true);
+      const spaceRun = createTextRun(" ");
+      const vml = createVmlImageRun();
+      normalizeRunWhitespace([img1, spaceRun, vml] as unknown as Run[]);
+      expect(spaceRun.setText).not.toHaveBeenCalled();
+    });
+
+    it("should preserve every space-only run across three consecutive small images", () => {
+      const img1 = createImageRun(true);
+      const space1 = createTextRun(" ");
+      const img2 = createImageRun(true);
+      const space2 = createTextRun(" ");
+      const img3 = createImageRun(true);
+      const textRun = createTextRun("end");
+      mockIsImageSmall.mockReturnValue(true); // all three images are small
+      normalizeRunWhitespace([img1, space1, img2, space2, img3, textRun] as unknown as Run[]);
+      // Both inter-image spaces survive; only the last image gets a trailing space.
+      expect(space1.setText).not.toHaveBeenCalled();
+      expect(space2.setText).not.toHaveBeenCalled();
+      expect(textRun.setText).toHaveBeenCalledWith(" end");
+    });
+
+    it("should preserve a variant-space (NBSP) run between two small images", () => {
+      const img1 = createImageRun(true);
+      const nbspRun = createTextRun(" ");
+      const img2 = createImageRun(true);
+      const textRun = createTextRun("text");
+      mockIsImageSmall.mockReturnValue(true);
+      normalizeRunWhitespace([img1, nbspRun, img2, textRun] as unknown as Run[]);
+      expect(nbspRun.setText).not.toHaveBeenCalled();
+      expect(textRun.setText).toHaveBeenCalledWith(" text");
+    });
+
+    it("should preserve the inter-image space and not insert before a tab-leading run", () => {
+      // [img] [img] [\ttext] — the space between the images survives, and the
+      // tab after the second image is left intact (not treated as a space).
+      const img1 = createImageRun(true);
+      const spaceRun = createTextRun(" ");
+      const img2 = createImageRun(true);
+      const tabRun = createTextRun("\tsome text");
+      mockIsImageSmall.mockReturnValue(true);
+      normalizeRunWhitespace([img1, spaceRun, img2, tabRun] as unknown as Run[]);
+      expect(spaceRun.setText).not.toHaveBeenCalled();
+      expect(tabRun.setText).not.toHaveBeenCalled();
+    });
+  });
+
 });

@@ -226,6 +226,44 @@ export function hasEncodingIssues(url: string): boolean {
 }
 
 /**
+ * Repair a user-entered external link by supplying a missing scheme.
+ *
+ * Quick-link fields let users paste bare addresses like `www.example.com`,
+ * which `new URL()` (and the `open-external` IPC handler) reject. This adds a
+ * best-guess scheme — `mailto:` for bare email addresses, `https://`
+ * otherwise — so the value becomes openable. Input that already declares a
+ * scheme, and empty strings, are returned untouched (trimmed).
+ *
+ * @param raw - The user-entered link text
+ * @returns The link with a scheme, trimmed
+ */
+export function normalizeExternalUrl(raw: string): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return trimmed;
+  // Leave anything that already declares a scheme (https:, mailto:, ...).
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) return trimmed;
+  // Bare email address → mailto:; bare domain/path → https://.
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return `mailto:${trimmed}`;
+  return `https://${trimmed}`;
+}
+
+/**
+ * Whether `url` parses and uses a protocol the `open-external` IPC handler
+ * will actually open (`https:` or `mailto:`). Pass an already-normalized
+ * value — see {@link normalizeExternalUrl}.
+ *
+ * @param url - A normalized URL string
+ * @returns True when the URL can be opened externally
+ */
+export function isOpenableExternalUrl(url: string): boolean {
+  try {
+    return ["https:", "mailto:"].includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * SECURITY: Validate URL scheme for user-controlled hyperlink replacements
  *
  * Prevents XSS-like attacks by rejecting dangerous URL schemes that could:

@@ -2,6 +2,7 @@ import { Button } from "@/components/common/Button";
 import { ColorPickerDialog } from "@/components/common/ColorPickerDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Input } from "@/components/common/Input";
+import { QuickLinksEditor } from "@/components/settings/QuickLinksEditor";
 import { SegmentedControl } from "@/components/settings/SegmentedControl";
 import { SettingRow } from "@/components/settings/SettingRow";
 import * as Switch from "@radix-ui/react-switch";
@@ -12,7 +13,14 @@ import { useUserSettings } from "@/contexts/UserSettingsContext";
 import { cn } from "@/utils/cn";
 import { getContrastTextColor } from "@/utils/colorConvert";
 import logger from "@/utils/logger";
-import { hasEncodingIssues, sanitizeUrl, validatePowerAutomateUrl } from "@/utils/urlHelpers";
+import {
+  hasEncodingIssues,
+  isOpenableExternalUrl,
+  normalizeExternalUrl,
+  sanitizeUrl,
+  validatePowerAutomateUrl,
+} from "@/utils/urlHelpers";
+import type { QuickLink } from "@/types/settings";
 import { motion } from "framer-motion";
 import {
   Accessibility,
@@ -23,12 +31,14 @@ import {
   ChevronDown,
   Cloud,
   Download,
+  FolderKanban,
   Globe,
   HardDrive,
   Laptop,
   Lightbulb,
   Link2,
   LogOut,
+  MessageSquare,
   Monitor,
   Moon,
   Palette,
@@ -45,6 +55,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 const settingsSections = [
   {
@@ -90,6 +101,23 @@ const settingsSections = [
       },
     ],
   },
+  {
+    group: "Quick Links",
+    items: [
+      {
+        id: "feedback",
+        label: "Feedback",
+        icon: MessageSquare,
+        description: "Feedback form links",
+      },
+      {
+        id: "documentManagers",
+        label: "Document Managers",
+        icon: FolderKanban,
+        description: "Document-manager tool links",
+      },
+    ],
+  },
 ];
 
 export function Settings() {
@@ -125,6 +153,8 @@ export function Settings() {
     updateLocalDictionary,
     updateBackupSettings,
     updateDisplaySettings,
+    updateFeedbackLinks,
+    updateDocumentManagerLinks,
     updateSettings,
     saveSettings,
   } = useUserSettings();
@@ -142,6 +172,16 @@ export function Settings() {
   const [localDictionaryForm, setLocalDictionaryForm] = useState(settings.localDictionary);
   const [backupSettingsForm, setBackupSettingsForm] = useState(settings.backupSettings);
   const [displaySettingsForm, setDisplaySettingsForm] = useState(settings.displaySettings);
+  const [feedbackLinksForm, setFeedbackLinksForm] = useState(settings.feedbackLinks);
+  const [documentManagerLinksForm, setDocumentManagerLinksForm] = useState(
+    settings.documentManagerLinks
+  );
+  // Per-row quick-link validation messages keyed by link id. Kept separate per
+  // editor so editing one section never clears the other's flagged errors.
+  const [feedbackLinkErrors, setFeedbackLinkErrors] = useState<Record<string, string>>({});
+  const [documentManagerLinkErrors, setDocumentManagerLinkErrors] = useState<
+    Record<string, string>
+  >({});
 
   // Display settings states
   const [availableDisplays, setAvailableDisplays] = useState<
@@ -172,6 +212,25 @@ export function Settings() {
   const [credentialsSaved, setCredentialsSaved] = useState(false);
   const [showResetStatsDialog, setShowResetStatsDialog] = useState(false);
   const [isResettingStats, setIsResettingStats] = useState(false);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Select the section requested via ?section=... (used by sidebar nav).
+  // Validated against known section ids so a bad param leaves the default intact.
+  // The param is cleared once consumed so that re-clicking the same sidebar item
+  // (after the user manually navigated elsewhere within Settings) registers as a
+  // fresh change and switches the section again.
+  useEffect(() => {
+    const requested = searchParams.get("section");
+    if (!requested) return;
+    const isKnown = settingsSections.some((group) =>
+      group.items.some((item) => item.id === requested)
+    );
+    if (isKnown) {
+      setActiveSection(requested);
+    }
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Timeout refs for cleanup
   const urlWarningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -266,6 +325,8 @@ export function Settings() {
     setLocalDictionaryForm(settings.localDictionary);
     setBackupSettingsForm(settings.backupSettings);
     setDisplaySettingsForm(settings.displaySettings);
+    setFeedbackLinksForm(settings.feedbackLinks);
+    setDocumentManagerLinksForm(settings.documentManagerLinks);
   }, [settings]);
 
   // Fetch available displays when display section is active
@@ -597,6 +658,92 @@ export function Settings() {
 
   const handleSaveBackupSettings = () => {
     updateBackupSettings(backupSettingsForm);
+    setSaveSuccess(true);
+    if (saveSuccessTimeoutRef.current) {
+      clearTimeout(saveSuccessTimeoutRef.current);
+    }
+    saveSuccessTimeoutRef.current = setTimeout(() => {
+      setSaveSuccess(false);
+      saveSuccessTimeoutRef.current = null;
+    }, 2000);
+  };
+
+  // Normalize quick-link rows (auto-fix a missing scheme) and collect a
+  // per-row error for any URL that is still not openable afterwards.
+  const normalizeAndValidateLinks = (
+    rows: QuickLink[]
+  ): { normalized: QuickLink[]; errors: Record<string, string> } => {
+    const normalized = rows.map((link) => ({
+      ...link,
+      name: link.name.trim(),
+      url: normalizeExternalUrl(link.url),
+    }));
+    const errors: Record<string, string> = {};
+    for (const link of normalized) {
+      if (link.url && !isOpenableExternalUrl(link.url)) {
+        errors[link.id] = "Enter a valid web address (https://…) or email address";
+      }
+    }
+    return { normalized, errors };
+  };
+
+  // Move keyboard focus to the first row flagged invalid, so a blocked save
+  // is navigable (the row's aria-describedby error is then read out).
+  const focusFirstInvalidLink = (rows: QuickLink[], errors: Record<string, string>) => {
+    const firstInvalid = rows.find((link) => errors[link.id]);
+    if (!firstInvalid) return;
+    requestAnimationFrame(() => {
+      document.getElementById(`quicklink-url-${firstInvalid.id}`)?.focus();
+    });
+  };
+
+  // Clearing stale errors as soon as the user edits a row in that editor.
+  const handleFeedbackLinksChange = (rows: QuickLink[]) => {
+    setFeedbackLinksForm(rows);
+    setFeedbackLinkErrors((prev) => (Object.keys(prev).length > 0 ? {} : prev));
+  };
+
+  const handleDocumentManagerLinksChange = (rows: QuickLink[]) => {
+    setDocumentManagerLinksForm(rows);
+    setDocumentManagerLinkErrors((prev) => (Object.keys(prev).length > 0 ? {} : prev));
+  };
+
+  const handleSaveFeedbackLinks = () => {
+    const { normalized, errors } = normalizeAndValidateLinks(feedbackLinksForm);
+    if (Object.keys(errors).length > 0) {
+      // Reflect the auto-fix back into the inputs; keep rows so the user can
+      // correct the flagged ones, and block the save until they are valid.
+      setFeedbackLinksForm(normalized);
+      setFeedbackLinkErrors(errors);
+      focusFirstInvalidLink(normalized, errors);
+      return;
+    }
+    setFeedbackLinkErrors({});
+    const cleaned = normalized.filter((link) => link.url !== "");
+    setFeedbackLinksForm(cleaned);
+    updateFeedbackLinks(cleaned);
+    setSaveSuccess(true);
+    if (saveSuccessTimeoutRef.current) {
+      clearTimeout(saveSuccessTimeoutRef.current);
+    }
+    saveSuccessTimeoutRef.current = setTimeout(() => {
+      setSaveSuccess(false);
+      saveSuccessTimeoutRef.current = null;
+    }, 2000);
+  };
+
+  const handleSaveDocumentManagerLinks = () => {
+    const { normalized, errors } = normalizeAndValidateLinks(documentManagerLinksForm);
+    if (Object.keys(errors).length > 0) {
+      setDocumentManagerLinksForm(normalized);
+      setDocumentManagerLinkErrors(errors);
+      focusFirstInvalidLink(normalized, errors);
+      return;
+    }
+    setDocumentManagerLinkErrors({});
+    const cleaned = normalized.filter((link) => link.url !== "");
+    setDocumentManagerLinksForm(cleaned);
+    updateDocumentManagerLinks(cleaned);
     setSaveSuccess(true);
     if (saveSuccessTimeoutRef.current) {
       clearTimeout(saveSuccessTimeoutRef.current);
@@ -2677,6 +2824,30 @@ Submitted: ${new Date().toLocaleString()}
                 </div>
               </div>
             </div>
+          )}
+
+          {activeSection === "feedback" && (
+            <QuickLinksEditor
+              title="Feedback"
+              description="Add quick links to feedback forms or pages. Saved links appear under Feedback in the sidebar."
+              links={feedbackLinksForm}
+              onChange={handleFeedbackLinksChange}
+              onSave={handleSaveFeedbackLinks}
+              saveSuccess={saveSuccess}
+              errors={feedbackLinkErrors}
+            />
+          )}
+
+          {activeSection === "documentManagers" && (
+            <QuickLinksEditor
+              title="Document Managers"
+              description="Add quick links to document-manager tools or sites. Saved links appear under Document Managers in the sidebar."
+              links={documentManagerLinksForm}
+              onChange={handleDocumentManagerLinksChange}
+              onSave={handleSaveDocumentManagerLinks}
+              saveSuccess={saveSuccess}
+              errors={documentManagerLinkErrors}
+            />
           )}
         </motion.main>
       </div>

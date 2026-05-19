@@ -38,6 +38,10 @@ import {
   detectTypedPrefix,
   detectListType,
   getParagraphIndentation,
+  createMixedListNumId,
+  restampMixedListBulletFonts,
+  computeOrphanBodyListShifts,
+  type OrphanLevelEvent,
 } from "@/services/document/list";
 import type { ParagraphContent, RunFormatting, TableCell } from "docxmlater";
 import type { RevisionHandlingMode } from "@/types/session";
@@ -402,6 +406,13 @@ export class WordDocumentProcessor {
 
   // AbstractNumIds used in HLP tables — protected from format/indentation overrides
   private _hlpAbstractNumIds = new Set<number>();
+
+  // AbstractNumIds for mixed-list definitions (NUMBERED_LEAD_PATTERN /
+  // BULLET_LEAD_PATTERN). Protected from applyBulletUniformity and
+  // applyNumberedUniformity overwriting the level-by-level format/text/font;
+  // their per-level rendering is dictated by the mixed-list pattern, not the
+  // user's flat bullet/numbered UI config.
+  private _mixedListAbstractNumIds = new Set<number>();
 
   // Per-paragraph numbering snapshot taken BEFORE applyStyles() — restored in processHLPTables()
   // to undo any ilvl/numId corruption caused by list processing or style application.
@@ -1061,6 +1072,25 @@ export class WordDocumentProcessor {
         }
       }
 
+      // Bake table-style conditional bold (e.g. a GridTable `firstCol`) into
+      // direct run formatting so the preserve-bold setting keeps it. Preserve-
+      // bold only leaves DIRECT run bold untouched; the later tblLook reset
+      // drops the conditional, so the bold must be captured first. Runs here,
+      // PRE-TRACKING, so making already-rendered bold explicit is not surfaced
+      // as a tracked formatting change. Gated on the Normal style's
+      // preserveBold — when that setting is off, conditional bold is not
+      // preserved, consistent with direct bold.
+      const normalPreserveBold =
+        options.styles?.find((s: { id: string }) => s.id === "normal")?.preserveBold ?? true;
+      if (normalPreserveBold) {
+        const boldBaked = this.bakeConditionalTableBold(doc);
+        if (boldBaked > 0) {
+          this.log.info(
+            `Baked table-style conditional bold into ${boldBaked} runs (preserve-bold)`
+          );
+        }
+      }
+
       // ═══════════════════════════════════════════════════════════
       // Word Tracked Changes - Enable Tracking Mode
       // All DocHub modifications will become Word tracked changes
@@ -1411,7 +1441,7 @@ export class WordDocumentProcessor {
 
                               // If the text doesn't look like a content ID fragment, stop looking
                               if (
-                                !/^[\s\d\(\)]+$/.test(combinedText) &&
+                                !/^[\s\d()]+$/.test(combinedText) &&
                                 !/^\s*\([\w-]*$/.test(combinedText)
                               ) {
                                 break;
@@ -1595,7 +1625,7 @@ export class WordDocumentProcessor {
                             }
 
                             if (
-                              !/^[\s\d\(\)]+$/.test(combinedText) &&
+                              !/^[\s\d()]+$/.test(combinedText) &&
                               !/^\s*\([\w-]*$/.test(combinedText)
                             ) {
                               break;
@@ -1810,7 +1840,8 @@ export class WordDocumentProcessor {
             // This prevents saving documents with incorrect/unchanged hyperlinks
             if (options.operations?.fixContentIds || options.operations?.updateTitles) {
               throw new Error(
-                `API Error: ${errorMessage}. Document not saved to prevent incorrect hyperlink data.`
+                `API Error: ${errorMessage}. Document not saved to prevent incorrect hyperlink data.`,
+                { cause: error }
               );
             }
 
@@ -1941,6 +1972,7 @@ export class WordDocumentProcessor {
       // Also cache HLP table detection before applyStyles() overwrites FFC000 shading.
       this._hlpAbstractNumIds.clear();
       this._hlpSavedNumbering.clear();
+      this._mixedListAbstractNumIds.clear();
       tableProcessor.cacheHLPTables(doc.getTables());
       {
         const manager = doc.getNumberingManager();
@@ -2536,7 +2568,26 @@ export class WordDocumentProcessor {
       // LISTS & TABLES GROUP
       // First, normalize typed list prefixes to proper Word lists
       // This converts manually typed prefixes like "1.", "a.", "•" to proper <w:numPr> formatting
-      if (options.normalizeTableLists) {
+      //
+      // Tracking is disabled for the entire list/bullet config pass below.
+      // List normalization re-levels and re-numbers paragraphs en masse (minority
+      // subordination, orphan level shifts, bullet/numbered uniformity, indentation
+      // uniformity, numbering colors, prefix formatting). Surfacing each of those
+      // as a tracked revision pollutes Word's change log with noise the user
+      // didn't author. Re-enabled at the end of the section.
+      doc.disableTrackChanges();
+      // List normalization runs when normalizeTableLists is on OR any list
+      // processing option (bullet uniformity / list bullet settings) is
+      // enabled. Without this broader gate, the body-path mixed-list pattern
+      // detection never fires for users who haven't explicitly toggled
+      // "Normalize Table Lists" — leaving mixed bullet/numbered lists at the
+      // mercy of consolidateNumbering, which merges input abstracts and
+      // strips the dynamic cascade pattern. See List.docx regression.
+      if (
+        options.normalizeTableLists ||
+        options.listBulletSettings?.enabled ||
+        options.bulletUniformity
+      ) {
         // First, pre-process extended typed prefixes that DocXMLater doesn't handle
         // (parenthetical numbers, Roman numerals, etc.)
         this.debugCaptureListState(doc, "BEFORE preProcessExtendedTypedPrefixes");
@@ -2563,6 +2614,7 @@ export class WordDocumentProcessor {
           {
             indentationLevels: options.listBulletSettings?.indentationLevels,
             extraHangingIndentTwips: this.getExtraHangingTwips(),
+            trackMixedListAbstractNumIds: this._mixedListAbstractNumIds,
           }
         );
         if (normReport.normalized > 0) {
@@ -2885,6 +2937,16 @@ export class WordDocumentProcessor {
           });
         }
       }
+
+      // Re-enable tracking now that the list/bullet config pass is complete.
+      // Subsequent operations (bold colons, blank lines, etc.) are user-visible
+      // edits that should be tracked normally.
+      doc.enableTrackChanges({
+        author: authorName,
+        trackFormatting: true,
+        showInsertionsAndDeletions: true,
+        clearExistingPropertyChanges: false,
+      });
 
       // Bold colon formatting (before blank lines so startsWithBoldColon detects correctly)
       const boldColonsFixed = this.standardizeBoldColonFormatting(doc);
@@ -3893,8 +3955,17 @@ export class WordDocumentProcessor {
         );
 
         // Phase 2: Consolidate duplicate abstractNums with identical fingerprints
-        // Protect HLP and row-number abstractNums from consolidation
-        const protectedIds = new Set([...this._hlpAbstractNumIds, ...this._rowNumberAbstractNumIds]);
+        // Protect HLP, row-number, AND mixed-list abstractNums from consolidation.
+        // Without the mixed-list guard, consolidateNumbering's fingerprint-dedup
+        // can collapse a freshly-created NUMBERED_LEAD / BULLET_LEAD abstract
+        // onto a pre-existing input abstract whose level definitions were never
+        // stamped with the FILLED/OPEN alternation, silently regressing the
+        // mixed-list pattern back to Word's default level-1 open circle "o".
+        const protectedIds = new Set([
+          ...this._hlpAbstractNumIds,
+          ...this._rowNumberAbstractNumIds,
+          ...this._mixedListAbstractNumIds,
+        ]);
         const consolidateResult = doc.consolidateNumbering({
           protectedAbstractNumIds: protectedIds,
         });
@@ -4010,6 +4081,7 @@ export class WordDocumentProcessor {
       this._rowNumberAbstractNumIds.clear();
       this._hlpAbstractNumIds.clear();
       this._hlpSavedNumbering.clear();
+      this._mixedListAbstractNumIds.clear();
       tableProcessor.clearHLPTableCache();
 
       // Clean up resources
@@ -4042,7 +4114,7 @@ export class WordDocumentProcessor {
     for (const entry of hyperlinks) {
       const { hyperlink, isComplexField, paragraph, url, text } = entry;
       for (const rule of replacements) {
-        let shouldApply = false;
+        let shouldApply: boolean;
 
         if (rule.applyTo === "url" || rule.applyTo === "both") {
           if (url) {
@@ -6027,6 +6099,55 @@ export class WordDocumentProcessor {
   }
 
   /**
+   * Bake table-style conditional bold into direct run formatting.
+   *
+   * Some Word table styles (e.g. GridTable4-Accent3) bold an entire row or
+   * column via `firstRow` / `firstCol` conditional formatting rather than a
+   * direct `<w:b/>` on each run. The preserve-bold feature only leaves DIRECT
+   * run formatting untouched, and `standardizeTableBorders` later resets
+   * `tblLook` (dropping the conditional) — so conditional-only bold would
+   * silently disappear from the output.
+   *
+   * This makes that bold explicit: for every table-cell run that RENDERS bold
+   * (`getEffectiveBold()`, which resolves table-style conditional formatting
+   * and honours explicit `<w:b w:val="0"/>` opt-outs) but carries no direct
+   * bold attribute, it writes a direct bold. Runs that are not already
+   * effectively bold are left untouched — nothing is bolded that was not
+   * already bold before processing.
+   *
+   * Runs inside hyperlinks are skipped (`getBodyRuns`): `setBold()` can drop a
+   * hyperlink run's color/underline, and a conditional-bold hyperlink is a
+   * rare edge case.
+   *
+   * MUST run before track changes is enabled (the run already renders bold,
+   * so making it explicit is not a user-visible change) and before the
+   * `tblLook` reset in `standardizeTableBorders`.
+   *
+   * @param doc - Document to process
+   * @returns Number of runs given an explicit bold attribute
+   */
+  private bakeConditionalTableBold(doc: Document): number {
+    let baked = 0;
+    for (const table of doc.getTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          for (const para of cell.getParagraphs()) {
+            for (const run of getBodyRuns(para)) {
+              // Leave runs that already carry a direct bold attribute.
+              if (run.getFormatting().bold !== undefined) continue;
+              if (run.getEffectiveBold() === true) {
+                run.setBold(true);
+                baked++;
+              }
+            }
+          }
+        }
+      }
+    }
+    return baked;
+  }
+
+  /**
    * Standardize table border thickness and color across all tables
    *
    * This method sets all table borders (outer, internal gridlines, and cell borders)
@@ -6140,6 +6261,11 @@ export class WordDocumentProcessor {
         if (this._hlpAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
         // Skip row-number column numbering — intentionally bold (set by formatStepNumberColumns)
         if (this._rowNumberAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
+        // Skip mixed-list definitions — their per-level format/text/font is set
+        // by createMixedListNumId and must not be disturbed by post-list passes
+        // (matches the protection applied in applyBulletUniformity and
+        // applyNumberedUniformity).
+        if (this._mixedListAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
 
         const levels = abstractNum.getAllLevels();
 
@@ -7708,7 +7834,13 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Helper: Check if a numbering ID represents a bullet list
+   * Helper: Check if a numbering ID represents a bullet list (by level 0).
+   *
+   * IMPORTANT: this only inspects level 0. For multi-level abstracts that
+   * mix categories across levels (e.g. bullets at 0/1, decimal at 2,
+   * bullets at 3+), this returns the LEVEL-0 verdict which may not match
+   * the paragraph's actual visual category. For per-paragraph category
+   * detection use `isBulletListAtLevel(doc, numId, ilvl)`.
    */
   private isBulletList(doc: Document, numId: number): boolean {
     try {
@@ -7723,6 +7855,37 @@ export class WordDocumentProcessor {
       return level?.getFormat() === "bullet";
     } catch (error) {
       this.log.warn(`Error checking if numId ${numId} is bullet list: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Helper: Check whether a paragraph at (numId, ilvl) renders as a bullet.
+   * Looks up the SPECIFIC level's format rather than level 0 — necessary for
+   * multi-level abstracts that have bullets at some levels and numeric format
+   * at others (e.g. List.docx where numId=2 has bullets at 0/1, decimal at 2,
+   * and bullets at 3+). Falls back to the level-0 verdict if the requested
+   * level isn't defined.
+   */
+  private isBulletListAtLevel(doc: Document, numId: number, ilvl: number): boolean {
+    try {
+      const manager = doc.getNumberingManager();
+      const instance = manager.getInstance(numId);
+      if (!instance) return false;
+
+      const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+      if (!abstractNum) return false;
+
+      const level = abstractNum.getLevel(ilvl);
+      if (level) return level.getFormat() === "bullet";
+
+      // Fallback when the requested level isn't defined: use level 0.
+      const level0 = abstractNum.getLevel(0);
+      return level0?.getFormat() === "bullet";
+    } catch (error) {
+      this.log.warn(
+        `Error checking if numId ${numId} ilvl ${ilvl} is bullet: ${error}`
+      );
       return false;
     }
   }
@@ -8197,78 +8360,33 @@ export class WordDocumentProcessor {
    * are never incorrectly flattened.
    */
   private normalizeOrphanBodyListLevels(doc: Document): number {
-    let normalized = 0;
     const manager = doc.getNumberingManager();
 
     // Use getBodyElements() to get ONLY body-level elements (not table cell paragraphs)
     const bodyElements = doc.getBodyElements();
 
-    // Build contiguous runs of same-numId list paragraphs
-    type ListItem = { para: Paragraph; numId: number; level: number };
-    let currentRun: ListItem[] = [];
-    let currentNumId: number | null = null;
-
-    // Track the level of the last list paragraph before the current run,
-    // so we can detect intentional nesting across numId boundaries
-    let previousListLevel: number | null = null;
-    let blankGapCount = 0;
-
-    const flushRun = () => {
-      if (currentRun.length === 0) return;
-
-      let minLevel = Infinity;
-      for (const item of currentRun) {
-        minLevel = Math.min(minLevel, item.level);
-      }
-
-      if (minLevel > 0 && minLevel !== Infinity) {
-        // Don't shift if preceded by a list item at a lower level —
-        // the nesting is intentional (sub-items of the preceding list)
-        if (previousListLevel !== null && previousListLevel < minLevel) {
-          previousListLevel = currentRun[currentRun.length - 1].level;
-          currentRun = [];
-          currentNumId = null;
-          return;
-        }
-
-        for (const item of currentRun) {
-          const newLevel = item.level - minLevel;
-          item.para.setNumbering(item.numId, newLevel);
-          normalized++;
-        }
-      }
-
-      // Update previousListLevel from the last item in the flushed run
-      previousListLevel = currentRun[currentRun.length - 1].level;
-      blankGapCount = 0;
-      currentRun = [];
-      currentNumId = null;
-    };
+    // Classify each body element into an OrphanLevelEvent. The orphan-shift
+    // algorithm itself lives in the pure `computeOrphanBodyListShifts` helper
+    // (list/orphanLevels.ts) so it is unit-testable without a Document.
+    const events: OrphanLevelEvent[] = [];
+    const paraByIndex: (Paragraph | null)[] = [];
 
     for (const element of bodyElements) {
       if (!(element instanceof Paragraph)) {
-        flushRun();
-        previousListLevel = null;
-        blankGapCount = 0;
+        events.push({ kind: "break" });
+        paraByIndex.push(null);
         continue;
       }
 
       const numbering = element.getNumbering();
       if (!numbering) {
-        flushRun();
-        if (element.getText().trim().length > 0) {
-          previousListLevel = null;
-          blankGapCount = 0;
-        } else {
-          blankGapCount++;
-          if (blankGapCount > 1) {
-            previousListLevel = null;
-          }
-        }
+        events.push(element.getText().trim().length > 0 ? { kind: "text" } : { kind: "blank" });
+        paraByIndex.push(null);
         continue;
       }
 
-      // Skip HLP and row-number protected items
+      // HLP and row-number protected items must not participate in shifting —
+      // treat them as a structural boundary.
       let isProtected = false;
       try {
         const instance = manager.getInstance(numbering.numId);
@@ -8281,22 +8399,25 @@ export class WordDocumentProcessor {
       }
 
       if (isProtected) {
-        flushRun();
-        previousListLevel = null;
-        blankGapCount = 0;
+        events.push({ kind: "break" });
+        paraByIndex.push(null);
         continue;
       }
 
-      // Same numId continues the run; different numId starts a new run
-      if (numbering.numId !== currentNumId) {
-        flushRun();
-        currentNumId = numbering.numId;
-      }
-
-      currentRun.push({ para: element, numId: numbering.numId, level: numbering.level });
+      events.push({ kind: "list", numId: numbering.numId, level: numbering.level });
+      paraByIndex.push(element);
     }
 
-    flushRun(); // Process final run
+    // Apply the computed shifts.
+    let normalized = 0;
+    for (const [index, newLevel] of computeOrphanBodyListShifts(events)) {
+      const event = events[index];
+      const para = paraByIndex[index];
+      if (para && event && event.kind === "list") {
+        para.setNumbering(event.numId, newLevel);
+        normalized++;
+      }
+    }
 
     return normalized;
   }
@@ -8585,6 +8706,10 @@ export class WordDocumentProcessor {
       for (const abstractNum of abstractNums) {
         // Skip HLP table lists — their numbering structure must be preserved
         if (this._hlpAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
+        // Skip mixed-list definitions — their per-level pattern (filled/open
+        // alternation for numbered-lead, decimal/letter/roman cycle for
+        // bullet-lead) must not be flattened to the user's flat bullet config.
+        if (this._mixedListAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
 
         let isModified = false;
 
@@ -8913,6 +9038,19 @@ export class WordDocumentProcessor {
       `Framework standardized ${result.listsUpdated} numbered lists, ${result.levelsModified} levels modified`
     );
 
+    // standardizeNumberedListPrefixes sets font=Verdana on EVERY level of every
+    // non-bullet-lead numbered abstract. For our numbered-lead mixed abstracts,
+    // that clobbers the Symbol/Courier-New font on the bullet sub-levels, so
+    // U+F0B7 / U+006F render as .notdef rectangles. Re-stamp the bullet font
+    // (matches docxmlater's WORD_NATIVE_BULLETS encoding) on every mixed
+    // abstract immediately after the framework call.
+    const restored = restampMixedListBulletFonts(doc, this._mixedListAbstractNumIds);
+    if (restored > 0) {
+      this.log.debug(
+        `Restored Symbol/Courier-New bullet font on ${restored} mixed-list abstract(s) after standardizeNumberedListPrefixes`
+      );
+    }
+
     // NEW: Also convert numbering FORMATS (e.g., lowerLetter -> decimal) based on UI settings
     // This ensures existing lists adopt the user's configured numbering format
     let formatsConverted = 0;
@@ -8930,6 +9068,11 @@ export class WordDocumentProcessor {
 
         // Skip HLP table lists — their numbering structure must be preserved
         if (this._hlpAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
+
+        // Skip mixed-list definitions — bullet-lead's decimal/letter/roman
+        // cycle at levels 1+ must not be flattened to the user's flat
+        // numbered-format config.
+        if (this._mixedListAbstractNumIds.has(abstractNum.getAbstractNumId())) continue;
 
         // Update each level's format and indentation based on UI settings
         for (let levelIndex = 0; levelIndex < 9; levelIndex++) {
@@ -9437,6 +9580,185 @@ export class WordDocumentProcessor {
 
     // Process a sequence of paragraphs (used for both body and cell scopes)
     const processSequence = (paragraphs: Paragraph[]): number => {
+      // linesSinceLastListItem counts BOTH blanks and non-list text paragraphs since
+      // the last list item, used to gate cross-category subordination at ≤ 2 lines.
+      // Distinct from gapSinceLastList (text only, MAX_GAP=5) which gates same-category
+      // continuation. Reset on every list item or heading.
+      const SUBORDINATION_MAX_LINES = 2;
+
+      // ---- PRE-PASS: detect contiguous list groups and which ones are mixed ----
+      // A mixed group contains items of BOTH categories within
+      // SUBORDINATION_MAX_LINES of each other. Items in a mixed group all
+      // share ONE multi-level "mixed list" numId (lead at level 0, the other
+      // category subordinated to level 1). This matches the cell-path behavior
+      // implemented in ListNormalizer.
+      type GroupRecord = {
+        lead: "numbered" | "bullet";
+        isMixed: boolean;
+        switchLevel: number | null;
+      };
+      type GroupInfo = {
+        groupId: number;
+        lead: "numbered" | "bullet";
+        isMixed: boolean;
+        switchLevel: number | null;
+      };
+      const groupRecords: GroupRecord[] = [];
+      const groupInfoByPara = new Map<Paragraph, GroupInfo>();
+      // Per-group source levels per category, used to compute switchLevel —
+      // the first cross-category source level not occupied by the lead category.
+      // Any group with both bullet and numbered items is "mixed."
+      const groupCategories = new Map<number, Set<"bullet" | "numbered">>();
+      const bulletLevelsByGroup = new Map<number, Set<number>>();
+      const numberedLevelsByGroup = new Map<number, Set<number>>();
+      {
+        let currentGroupId = -1;
+        let preLinesSinceLastListItem = 0;
+        for (const para of paragraphs) {
+          const style = para.getStyle?.();
+          if (style && /^Heading\s?\d/i.test(style)) {
+            currentGroupId = -1;
+            preLinesSinceLastListItem = 0;
+            continue;
+          }
+          let category: "numbered" | "bullet" | null = null;
+          let level = 0;
+          const num = para.getNumbering();
+          if (num && num.numId !== undefined && num.numId !== 0) {
+            level = num.level ?? 0;
+            // Use the paragraph's SPECIFIC level format, not the abstract's
+            // level-0 format. Word docs can encode bullets + numbers into a
+            // single multi-level abstract (e.g. List.docx has numId=2 with
+            // bullets at 0/1, decimal at 2, bullets at 3+). Checking only
+            // level 0 mis-classifies every paragraph using that abstract.
+            category = this.isBulletListAtLevel(doc, num.numId, level)
+              ? "bullet"
+              : "numbered";
+          } else {
+            const text = para.getText();
+            if (text && text.trim().length > 0) {
+              const det = detectTypedPrefix(text);
+              if (det.prefix) {
+                category = det.category === "bullet" ? "bullet" : "numbered";
+                // Typed prefixes default to level 0.
+              }
+            }
+          }
+          if (category) {
+            if (currentGroupId === -1) {
+              currentGroupId = groupRecords.length;
+              groupRecords.push({
+                lead: category,
+                isMixed: false,
+                switchLevel: null,
+              });
+            } else if (
+              category !== groupRecords[currentGroupId]!.lead &&
+              preLinesSinceLastListItem > SUBORDINATION_MAX_LINES
+            ) {
+              currentGroupId = groupRecords.length;
+              groupRecords.push({
+                lead: category,
+                isMixed: false,
+                switchLevel: null,
+              });
+            }
+            let cats = groupCategories.get(currentGroupId);
+            if (!cats) {
+              cats = new Set();
+              groupCategories.set(currentGroupId, cats);
+            }
+            cats.add(category);
+            if (category === "numbered") {
+              let lvls = numberedLevelsByGroup.get(currentGroupId);
+              if (!lvls) {
+                lvls = new Set();
+                numberedLevelsByGroup.set(currentGroupId, lvls);
+              }
+              lvls.add(level);
+            } else {
+              let lvls = bulletLevelsByGroup.get(currentGroupId);
+              if (!lvls) {
+                lvls = new Set();
+                bulletLevelsByGroup.set(currentGroupId, lvls);
+              }
+              lvls.add(level);
+            }
+            groupInfoByPara.set(para, {
+              groupId: currentGroupId,
+              lead: groupRecords[currentGroupId]!.lead,
+              isMixed: false,
+              switchLevel: null,
+            });
+            preLinesSinceLastListItem = 0;
+          } else {
+            preLinesSinceLastListItem++;
+          }
+        }
+        // Finalize per-group state.
+        // switchLevel = source ilvl where the dynamic pattern transitions
+        // from lead-mode to cross-mode. It's the shallowest cross-category
+        // source level that's not occupied by the lead category (a same-
+        // level conflict bumps the switch one level deeper). Bidirectional:
+        // works whether the lead is bullet or numbered.
+        for (let gid = 0; gid < groupRecords.length; gid++) {
+          const cats = groupCategories.get(gid) ?? new Set();
+          const rec = groupRecords[gid]!;
+          rec.isMixed = cats.size > 1;
+          if (!rec.isMixed) {
+            rec.switchLevel = null;
+            continue;
+          }
+          const bulletLevels = bulletLevelsByGroup.get(gid) ?? new Set<number>();
+          const numberedLevels = numberedLevelsByGroup.get(gid) ?? new Set<number>();
+          let candidate: number;
+          let leadLevels: Set<number>;
+          if (rec.lead === "numbered") {
+            candidate = bulletLevels.size > 0 ? Math.min(...bulletLevels) : 1;
+            leadLevels = numberedLevels;
+          } else {
+            candidate = numberedLevels.size > 0 ? Math.min(...numberedLevels) : 1;
+            leadLevels = bulletLevels;
+          }
+          candidate = Math.max(1, candidate);
+          while (leadLevels.has(candidate) && candidate < 8) candidate++;
+          rec.switchLevel = candidate;
+        }
+        for (const info of groupInfoByPara.values()) {
+          const rec = groupRecords[info.groupId]!;
+          info.isMixed = rec.isMixed;
+          info.switchLevel = rec.switchLevel;
+        }
+      }
+
+      // Lazy cache of mixed-list numIds, one per mixed group.
+      const mixedNumIdByGroupId = new Map<number, number>();
+      const getMixedNumIdForGroup = (
+        groupId: number,
+        lead: "numbered" | "bullet",
+        switchLevel: number | null
+      ): number => {
+        let id = mixedNumIdByGroupId.get(groupId);
+        if (id === undefined) {
+          id = createMixedListNumId(
+            manager,
+            lead,
+            switchLevel,
+            settings?.indentationLevels as Parameters<typeof createMixedListNumId>[3],
+            this.getExtraHangingTwips()
+          );
+          // Record the abstractNumId so applyBulletUniformity /
+          // applyNumberedUniformity skip it. Without this guard, those passes
+          // overwrite the mixed pattern's level-by-level format/text/font with
+          // the user's flat UI config — turning level-1 filled bullets into
+          // open circles, etc.
+          const inst = manager.getInstance(id);
+          if (inst) this._mixedListAbstractNumIds.add(inst.getAbstractNumId());
+          mixedNumIdByGroupId.set(groupId, id);
+        }
+        return id;
+      };
+
       let localConverted = 0;
       let lastListContext: { isBullet: boolean; level: number; numId: number } | null = null;
       // parentListContext tracks the original Word list item that triggers sub-item conversion.
@@ -9451,41 +9773,92 @@ export class WordDocumentProcessor {
         indentTwips: number;
       } | null = null;
       let gapSinceLastList = 0;
-      // Sequence tracking: reuse numId for consecutive typed-prefix conversions at same type/level
+      let linesSinceLastListItem = 0;
+      // Sequence tracking: reuse numId for consecutive typed-prefix conversions at same
+      // type/level/subordination state. subordination state is part of the key because
+      // subordinated numIds carry overridden level formatting (filled disc for bullets,
+      // decimal for numbers) that must NOT be inherited by adjacent non-subordinated items.
       let seqNumId: number | null = null;
       let seqType: "bullet" | "numbered" | null = null;
       let seqLevel: number | null = null;
+      let seqWasSubordinated: boolean | null = null;
 
       for (const para of paragraphs) {
-        // 1. Already has Word numbering? Update context and continue.
+        const paraGroupInfo = groupInfoByPara.get(para);
+        // 1. Already has Word numbering? Either reassign (mixed group) or just
+        // update context and continue.
         const numbering = para.getNumbering();
         if (numbering && numbering.numId !== undefined && numbering.numId !== 0) {
-          // Get indentation: paragraph-level first, then fall back to numbering definition
+          // Per-level format check — must match the pre-pass categorization
+          // logic above so cross-cat items get routed correctly.
+          const currentIsBullet = this.isBulletListAtLevel(
+            doc,
+            numbering.numId,
+            numbering.level ?? 0
+          );
+          let effectiveNumId = numbering.numId;
+          let effectiveLevel = numbering.level ?? 0;
+
+          if (paraGroupInfo && paraGroupInfo.isMixed) {
+            // Reassign this Word list item to the group's shared mixed numId
+            // using the bidirectional switchLevel pattern:
+            //   • Lead-cat items: keep source ilvl (lead-mode covers
+            //     levels 0..switchLevel-1, cross-mode covers switchLevel..8
+            //     and renders deeper lead items in cross format — intended).
+            //   • Cross-cat items: snap to max(switchLevel, sourceIlvl) so
+            //     they land at the switch slot or deeper if the source had
+            //     them nested further.
+            const currentCategory = currentIsBullet ? "bullet" : "numbered";
+            const sourceIlvl = numbering.level ?? 0;
+            const S = paraGroupInfo.switchLevel ?? 8;
+            const isLead = currentCategory === paraGroupInfo.lead;
+            if (isLead) {
+              effectiveLevel = Math.max(0, Math.min(sourceIlvl, 8));
+            } else {
+              effectiveLevel = Math.max(S, Math.min(sourceIlvl, 8));
+            }
+            effectiveNumId = getMixedNumIdForGroup(
+              paraGroupInfo.groupId,
+              paraGroupInfo.lead,
+              paraGroupInfo.switchLevel
+            );
+            para.setNumbering(effectiveNumId, effectiveLevel);
+            localConverted++;
+            this.log.debug(
+              `  Mixed-group reassign (existing Word list): "${para.getText().substring(0, 40)}..." -> ` +
+                `${paraGroupInfo.lead}-lead mixed (S=${S}), level ${effectiveLevel} (numId=${effectiveNumId})`
+            );
+          }
+
+          // Update context with the (possibly reassigned) numId/level.
           const paraIndent = getParagraphIndentation(para);
           const numDefIndent =
             paraIndent > 0
               ? paraIndent
-              : (this.getListTextIndent(doc, numbering.numId, numbering.level ?? 0) ?? 0);
+              : (this.getListTextIndent(doc, effectiveNumId, effectiveLevel) ?? 0);
           const ctx = {
-            isBullet: this.isBulletList(doc, numbering.numId),
-            level: numbering.level ?? 0,
-            numId: numbering.numId,
+            isBullet: this.isBulletList(doc, effectiveNumId),
+            level: effectiveLevel,
+            numId: effectiveNumId,
             indentTwips: numDefIndent,
           };
           lastListContext = ctx;
-          parentListContext = ctx; // Real Word list item becomes the parent for subsequent typed prefixes
+          parentListContext = ctx;
           gapSinceLastList = 0;
-          // Reset sequence tracking -- existing Word list items break typed-prefix sequences
+          linesSinceLastListItem = 0;
           seqNumId = null;
           seqType = null;
           seqLevel = null;
+          seqWasSubordinated = null;
           continue;
         }
 
         const text = para.getText();
 
-        // 2. Empty/blank paragraph? Skip without resetting context or incrementing gap.
+        // 2. Empty/blank paragraph? Counts as a "line" for subordination proximity,
+        // but does NOT increment gapSinceLastList or reset same-category context.
         if (!text || text.trim().length === 0) {
+          linesSinceLastListItem++;
           continue;
         }
 
@@ -9495,17 +9868,20 @@ export class WordDocumentProcessor {
           lastListContext = null;
           parentListContext = null;
           gapSinceLastList = 0;
+          linesSinceLastListItem = 0;
           seqNumId = null;
           seqType = null;
           seqLevel = null;
+          seqWasSubordinated = null;
           continue;
         }
 
         // 4. Check for typed prefix
         const detection = detectTypedPrefix(text);
         if (!detection.prefix) {
-          // Non-list, non-blank, non-heading paragraph: increment gap counter
+          // Non-list, non-blank, non-heading paragraph: increment both counters
           gapSinceLastList++;
+          linesSinceLastListItem++;
           if (gapSinceLastList > MAX_GAP) {
             lastListContext = null;
             parentListContext = null;
@@ -9514,6 +9890,7 @@ export class WordDocumentProcessor {
           seqNumId = null;
           seqType = null;
           seqLevel = null;
+          seqWasSubordinated = null;
           continue;
         }
 
@@ -9523,19 +9900,43 @@ export class WordDocumentProcessor {
         // This ensures all siblings in a typed-prefix group get the SAME level.
         let targetType: "bullet" | "numbered";
         let targetLevel: number;
+        // True when this item was bumped to a deeper level because its category
+        // differs from the group's lead. Subordinated items render with the
+        // lead's visual format (filled disc for bullets, decimal for numbers)
+        // instead of Word's default level-1+ format.
+        let wasSubordinated = false;
 
         if (parentListContext) {
           // After a list item: compare typed prefix indent vs parent indent
           const typedPrefixIndent = getParagraphIndentation(para);
           const INDENT_THRESHOLD = 200; // twips
+          const typedIsBullet = detection.category === "bullet";
+          const categoryDiffersFromParent = typedIsBullet !== parentListContext.isBullet;
+          const withinSubordinationRange = linesSinceLastListItem <= SUBORDINATION_MAX_LINES;
 
           if (typedPrefixIndent > parentListContext.indentTwips + INDENT_THRESHOLD) {
-            // Genuinely deeper indentation → sub-item
+            // Genuinely deeper indentation → sub-item, inheriting parent category
             targetType = parentListContext.isBullet ? "bullet" : "numbered";
             targetLevel = Math.min(parentListContext.level + 1, 8);
+          } else if (categoryDiffersFromParent && withinSubordinationRange) {
+            // Same/less indent, different category, AND within 2 lines of the last
+            // list item → minority subordination. Keep the typed prefix's own
+            // category but subordinate one level deeper so a bullet interrupting
+            // a numbered list renders as a sub-bullet (and vice versa).
+            targetType = typedIsBullet ? "bullet" : "numbered";
+            targetLevel = Math.min(parentListContext.level + 1, 8);
+            wasSubordinated = true;
+          } else if (categoryDiffersFromParent) {
+            // Cross-category but TOO FAR from the previous list item (> 2 lines).
+            // Treat as a fresh list — drop the parent context and start over at
+            // level 0. The "first typed prefix becomes lead" block below will
+            // promote this item to the new group's lead.
+            parentListContext = null;
+            targetType = typedIsBullet ? "bullet" : "numbered";
+            targetLevel = 0;
           } else {
-            // Same or less indent → same level as parent
-            targetType = detection.category === "bullet" ? "bullet" : "numbered";
+            // Same category, no extra indent → same level as parent
+            targetType = typedIsBullet ? "bullet" : "numbered";
             targetLevel = parentListContext.level;
           }
         } else {
@@ -9544,20 +9945,54 @@ export class WordDocumentProcessor {
           targetLevel = 0;
         }
 
-        // 6. Get or create numId (reuse within consecutive sequences at same type/level)
-        // Also track the detected format so we can apply the correct numbering format
+        // 6. Get or create numId.
+        // If this typed prefix is in a mixed group, override to the shared
+        // mixed-list numId and use level 0 (lead) or level 1 (subordinated).
+        // Otherwise reuse a sequence numId for consecutive same-type/level
+        // typed-prefix conversions.
         const detectedFormat = detection.format; // e.g., 'upperLetter', 'lowerLetter', 'lowerRoman', 'decimal'
         let numId: number;
-        if (seqType === targetType && seqLevel === targetLevel && seqNumId !== null) {
+        if (paraGroupInfo && paraGroupInfo.isMixed) {
+          numId = getMixedNumIdForGroup(
+            paraGroupInfo.groupId,
+            paraGroupInfo.lead,
+            paraGroupInfo.switchLevel
+          );
+          // Bidirectional dynamic-pattern routing. Lead-cat keeps inferred
+          // source level; cross-cat snaps to max(switchLevel, sourceIlvl)
+          // so it lands at the switch slot (or deeper if natively nested).
+          // For typed prefixes, the previously-inferred targetLevel is the
+          // source-equivalent.
+          const S = paraGroupInfo.switchLevel ?? 8;
+          const sourceIlvl = targetLevel;
+          const isLead = targetType === paraGroupInfo.lead;
+          if (isLead) {
+            targetLevel = Math.max(0, Math.min(sourceIlvl, 8));
+          } else {
+            targetLevel = Math.max(S, Math.min(sourceIlvl, 8));
+          }
+          // Sequence reuse doesn't apply: each item routes directly to the
+          // shared mixed numId. Reset seq tracking so a non-mixed group
+          // immediately after gets a fresh sequence.
+          seqNumId = null;
+          seqType = null;
+          seqLevel = null;
+          seqWasSubordinated = null;
+        } else if (
+          seqType === targetType &&
+          seqLevel === targetLevel &&
+          seqWasSubordinated === wasSubordinated &&
+          seqNumId !== null
+        ) {
           numId = seqNumId;
         } else {
           if (targetType === "bullet") {
             numId = manager.createBulletList();
-          } else {
-            numId = manager.createNumberedList();
-            // Apply the correct numbering format from the detected prefix type
-            // This ensures "A." creates an upperLetter list, not a decimal list
-            if (detectedFormat && detectedFormat !== "decimal") {
+            // For subordinated bullets, override the level's character to
+            // Word's native filled bullet (Symbol U+F0B7) so a bullet sub-item
+            // of a numbered list renders identically to a top-level bullet
+            // rather than Word's default level-1 open circle.
+            if (wasSubordinated) {
               try {
                 const instance = manager.getInstance(numId);
                 if (instance) {
@@ -9565,21 +10000,57 @@ export class WordDocumentProcessor {
                   if (abstractNum) {
                     const level = abstractNum.getLevel(targetLevel);
                     if (level) {
-                      const format = this.parseNumberedFormat(
-                        detectedFormat === "upperLetter"
-                          ? "A"
-                          : detectedFormat === "lowerLetter"
-                            ? "a"
-                            : detectedFormat === "lowerRoman"
-                              ? "i"
-                              : detectedFormat === "upperRoman"
-                                ? "I"
-                                : "1"
-                      );
-                      level.setFormat(format);
-                      // Set text template: %1. for level 0, %2. for level 1, etc.
-                      const separator = detection.prefix?.includes(")") ? ")" : ".";
-                      level.setText(`%${targetLevel + 1}${separator}`);
+                      level.setFormat("bullet");
+                      level.setText(WORD_NATIVE_BULLETS.FILLED_BULLET.char);
+                      level.setFont(WORD_NATIVE_BULLETS.FILLED_BULLET.font);
+                    }
+                  }
+                }
+              } catch (fmtError) {
+                this.log.warn(
+                  `Failed to apply subordinated bullet format to numId ${numId}: ${fmtError}`
+                );
+              }
+            }
+          } else {
+            numId = manager.createNumberedList();
+            // Decide the format to write at targetLevel:
+            // - Subordinated → force decimal (overrides any typed format) so a
+            //   numbered sub-item of a bullet list renders as "1.", "2." rather
+            //   than Word's default level-1 lowerLetter.
+            // - Non-subordinated with non-decimal detected format → use the
+            //   detected format so "A." creates an upperLetter list, etc.
+            // - Non-subordinated decimal → no override; default decimal applies.
+            const shouldOverrideFormat =
+              wasSubordinated || (!!detectedFormat && detectedFormat !== "decimal");
+            if (shouldOverrideFormat) {
+              try {
+                const instance = manager.getInstance(numId);
+                if (instance) {
+                  const abstractNum = manager.getAbstractNumbering(instance.getAbstractNumId());
+                  if (abstractNum) {
+                    const level = abstractNum.getLevel(targetLevel);
+                    if (level) {
+                      if (wasSubordinated) {
+                        level.setFormat("decimal");
+                        level.setText(`%${targetLevel + 1}.`);
+                      } else {
+                        const format = this.parseNumberedFormat(
+                          detectedFormat === "upperLetter"
+                            ? "A"
+                            : detectedFormat === "lowerLetter"
+                              ? "a"
+                              : detectedFormat === "lowerRoman"
+                                ? "i"
+                                : detectedFormat === "upperRoman"
+                                  ? "I"
+                                  : "1"
+                        );
+                        level.setFormat(format);
+                        // Set text template: %1. for level 0, %2. for level 1, etc.
+                        const separator = detection.prefix?.includes(")") ? ")" : ".";
+                        level.setText(`%${targetLevel + 1}${separator}`);
+                      }
                     }
                   }
                 }
@@ -9599,6 +10070,7 @@ export class WordDocumentProcessor {
           seqNumId = numId;
           seqType = targetType;
           seqLevel = targetLevel;
+          seqWasSubordinated = wasSubordinated;
         }
 
         // 7. Strip prefix and apply numbering
@@ -9614,15 +10086,27 @@ export class WordDocumentProcessor {
               : " [no prior context]")
         );
 
-        // Update lastListContext to track the converted item for downstream uses,
-        // but do NOT update parentListContext — all siblings in this typed-prefix
+        // Update lastListContext to track the converted item for downstream uses.
+        // parentListContext is normally NOT updated here — siblings in a typed-prefix
         // group must reference the same original parent to get the same level.
+        // EXCEPTION: when no parent existed yet (first typed prefix of a group with
+        // no prior Word list), promote this item to be the group's lead so that
+        // subsequent items of a different category can be subordinated against it.
         lastListContext = {
           isBullet: targetType === "bullet",
           level: targetLevel,
           numId: numId,
         };
+        if (parentListContext === null) {
+          parentListContext = {
+            isBullet: targetType === "bullet",
+            level: targetLevel,
+            numId: numId,
+            indentTwips: getParagraphIndentation(para),
+          };
+        }
         gapSinceLastList = 0;
+        linesSinceLastListItem = 0;
       }
 
       return localConverted;
@@ -10076,7 +10560,7 @@ export class WordDocumentProcessor {
     // Bullet characters (including dash variants)
     if (/^[•●○◦▪▫‣⁃\-–—]\s/.test(text)) return true;
     // Numbered: "1.", "1)", "(1)", "a.", "a)", "(a)", "i.", etc.
-    if (/^(\d+[\.\):]|\(\d+\)|[a-zA-Z][\.\):]|\([a-zA-Z]\)|[ivxIVX]+[\.\):])/.test(text))
+    if (/^(\d+[.):]|\(\d+\)|[a-zA-Z][.):]|\([a-zA-Z]\)|[ivxIVX]+[.):])/.test(text))
       return true;
     return false;
   }

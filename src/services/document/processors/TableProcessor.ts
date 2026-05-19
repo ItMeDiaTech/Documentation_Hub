@@ -301,7 +301,7 @@ export class TableProcessor {
     // Bullet characters (including dash variants)
     if (/^[•●○◦▪▫‣⁃\-–—]\s/.test(text)) return true;
     // Numbered: "1.", "1)", "(1)", "a.", "a)", "(a)", "i.", etc.
-    if (/^(\d+[\.\):]|\(\d+\)|[a-zA-Z][\.\):]|\([a-zA-Z]\)|[ivxIVX]+[\.\):])/.test(text))
+    if (/^(\d+[.):]|\(\d+\)|[a-zA-Z][.):]|\([a-zA-Z]\)|[ivxIVX]+[.):])/.test(text))
       return true;
     return false;
   }

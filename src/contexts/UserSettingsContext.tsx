@@ -7,9 +7,22 @@ import {
   useCallback,
   useMemo,
 } from "react";
-import { UserSettings, defaultUserSettings } from "@/types/settings";
+import { UserSettings, QuickLink, defaultUserSettings } from "@/types/settings";
 import { logger } from "@/utils/logger";
 import { safeJsonParse, safeJsonStringify } from "@/utils/safeJsonParse";
+
+/**
+ * Backfill a stable `id` on quick links persisted before `id` existed.
+ * Older localStorage entries only have `{ name, url }`.
+ */
+function withQuickLinkIds(links: Partial<QuickLink>[] | undefined): QuickLink[] {
+  if (!links) return [];
+  return links.map((link) => ({
+    id: link.id ?? crypto.randomUUID(),
+    name: link.name ?? "",
+    url: link.url ?? "",
+  }));
+}
 
 interface UserSettingsContextType {
   settings: UserSettings;
@@ -22,6 +35,8 @@ interface UserSettingsContextType {
   updateLocalDictionary: (updates: Partial<UserSettings["localDictionary"]>) => void;
   updateBackupSettings: (updates: Partial<UserSettings["backupSettings"]>) => void;
   updateDisplaySettings: (updates: Partial<UserSettings["displaySettings"]>) => void;
+  updateFeedbackLinks: (links: UserSettings["feedbackLinks"]) => void;
+  updateDocumentManagerLinks: (links: UserSettings["documentManagerLinks"]) => void;
   saveSettings: () => Promise<boolean>;
   loadSettings: () => void;
   resetSettings: () => void;
@@ -59,6 +74,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         localDictionary: { ...defaultUserSettings.localDictionary, ...parsed.localDictionary },
         backupSettings: { ...defaultUserSettings.backupSettings, ...parsed.backupSettings },
         displaySettings: { ...defaultUserSettings.displaySettings, ...parsed.displaySettings },
+        feedbackLinks: withQuickLinkIds(parsed.feedbackLinks),
+        documentManagerLinks: withQuickLinkIds(parsed.documentManagerLinks),
       });
     } finally {
       setIsLoading(false);
@@ -252,6 +269,49 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const updateFeedbackLinks = useCallback((links: UserSettings["feedbackLinks"]) => {
+    setSettings((prev) => {
+      const newSettings = { ...prev, feedbackLinks: links };
+      // Auto-save feedback links to localStorage
+      const jsonString = safeJsonStringify(
+        newSettings,
+        undefined,
+        "UserSettings.updateFeedbackLinks"
+      );
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          // Silent fail - logged elsewhere
+        }
+      }
+      return newSettings;
+    });
+  }, []);
+
+  const updateDocumentManagerLinks = useCallback(
+    (links: UserSettings["documentManagerLinks"]) => {
+      setSettings((prev) => {
+        const newSettings = { ...prev, documentManagerLinks: links };
+        // Auto-save document manager links to localStorage
+        const jsonString = safeJsonStringify(
+          newSettings,
+          undefined,
+          "UserSettings.updateDocumentManagerLinks"
+        );
+        if (jsonString) {
+          try {
+            localStorage.setItem(STORAGE_KEY, jsonString);
+          } catch (error) {
+            // Silent fail - logged elsewhere
+          }
+        }
+        return newSettings;
+      });
+    },
+    []
+  );
+
   const resetSettings = useCallback(() => {
     setSettings(defaultUserSettings);
     localStorage.removeItem(STORAGE_KEY);
@@ -275,6 +335,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       updateLocalDictionary,
       updateBackupSettings,
       updateDisplaySettings,
+      updateFeedbackLinks,
+      updateDocumentManagerLinks,
       saveSettings,
       loadSettings,
       resetSettings,
@@ -290,6 +352,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       updateLocalDictionary,
       updateBackupSettings,
       updateDisplaySettings,
+      updateFeedbackLinks,
+      updateDocumentManagerLinks,
       saveSettings,
       loadSettings,
       resetSettings,

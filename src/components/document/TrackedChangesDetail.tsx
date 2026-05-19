@@ -422,7 +422,7 @@ function groupChangesByCategory(changes: DocumentChange[]): GroupedChange[] {
     const expiredCount = hyperlinksFailed.filter((c) => c.hyperlinkStatus === "expired").length;
     const notFoundCount = hyperlinksFailed.filter((c) => c.hyperlinkStatus === "not_found").length;
 
-    let summary = "";
+    let summary: string;
     if (expiredCount > 0 && notFoundCount > 0) {
       summary = `${expiredCount} expired, ${notFoundCount} not found`;
     } else if (expiredCount > 0) {
