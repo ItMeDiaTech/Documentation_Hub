@@ -106,9 +106,9 @@ const settingsSections = [
     items: [
       {
         id: "feedback",
-        label: "Feedback",
+        label: "Nuxeo Feedback",
         icon: MessageSquare,
-        description: "Feedback form links",
+        description: "Nuxeo Feedback form links",
       },
       {
         id: "documentManagers",
@@ -706,6 +706,15 @@ export function Settings() {
   const handleDocumentManagerLinksChange = (rows: QuickLink[]) => {
     setDocumentManagerLinksForm(rows);
     setDocumentManagerLinkErrors((prev) => (Object.keys(prev).length > 0 ? {} : prev));
+  };
+
+  // Deleting a quick link autosaves immediately — no Save click needed.
+  const handleFeedbackLinksDelete = (rows: QuickLink[]) => {
+    updateFeedbackLinks(rows.filter((link) => link.url.trim() !== ""));
+  };
+
+  const handleDocumentManagerLinksDelete = (rows: QuickLink[]) => {
+    updateDocumentManagerLinks(rows.filter((link) => link.url.trim() !== ""));
   };
 
   const handleSaveFeedbackLinks = () => {
@@ -2828,10 +2837,11 @@ Submitted: ${new Date().toLocaleString()}
 
           {activeSection === "feedback" && (
             <QuickLinksEditor
-              title="Feedback"
-              description="Add quick links to feedback forms or pages. Saved links appear under Feedback in the sidebar."
+              title="Nuxeo Feedback"
+              description="Add quick links to feedback forms or pages. Saved links appear under Nuxeo Feedback in the sidebar."
               links={feedbackLinksForm}
               onChange={handleFeedbackLinksChange}
+              onDelete={handleFeedbackLinksDelete}
               onSave={handleSaveFeedbackLinks}
               saveSuccess={saveSuccess}
               errors={feedbackLinkErrors}
@@ -2844,6 +2854,7 @@ Submitted: ${new Date().toLocaleString()}
               description="Add quick links to document-manager tools or sites. Saved links appear under Document Managers in the sidebar."
               links={documentManagerLinksForm}
               onChange={handleDocumentManagerLinksChange}
+              onDelete={handleDocumentManagerLinksDelete}
               onSave={handleSaveDocumentManagerLinks}
               saveSuccess={saveSuccess}
               errors={documentManagerLinkErrors}

@@ -171,6 +171,7 @@ Track your productivity with comprehensive statistics:
 
 - Custom frameless window with native controls
 - Collapsible sidebar with icon-only mode
+- Quick Links in the sidebar (Nuxeo Feedback and Document Managers) for one-click access to saved web links
 - Clickable breadcrumb navigation
 - Real-time clock display
 - Command palette (Ctrl/Cmd+K) for quick actions

@@ -18,7 +18,12 @@ import { Document, Image, ImageRun, Paragraph, Revision } from "docxmlater";
 export const DARK_THRESHOLD = 80; // luminance <= this = border pixel
 export const EDGE_CONSENSUS = 0.65; // 65 % of scan lines must detect border
 export const MIN_BORDERED_EDGES = 4; // all 4 edges must have border pattern for cropping
-export const MIN_BORDER_SKIP_EDGES = 3; // 3+ edges with border pattern → skip adding pipeline border
+// All 4 edges must show a border pattern before we skip the pipeline border.
+// A 3-edge detection is an INCOMPLETE baked border (e.g. a screenshot whose top
+// edge blends into surrounding content): such an image is neither cropped
+// (cropping needs 4 edges) nor would it look correct without the pipeline
+// border, so the pipeline border must still be applied.
+export const MIN_BORDER_SKIP_EDGES = 4; // edges with border pattern → skip adding pipeline border
 export const MAX_BORDER_THICKNESS = 4; // border line max 4 px
 export const SAMPLE_INTERVAL = 5; // sample every 5th column / row
 export const MAX_CROP_FRACTION = 0.20; // never crop > 20 % from one edge

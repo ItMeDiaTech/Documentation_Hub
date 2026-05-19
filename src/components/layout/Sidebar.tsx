@@ -189,7 +189,7 @@ export const Sidebar = memo(function Sidebar() {
 
     quickLinkItems.push({
       id: "feedback",
-      label: "Feedback",
+      label: "Nuxeo Feedback",
       icon: MessageSquare,
       path: "/settings",
       onSelect: () => navigate("/settings?section=feedback"),

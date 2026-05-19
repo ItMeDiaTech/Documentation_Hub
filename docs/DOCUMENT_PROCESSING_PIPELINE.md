@@ -99,6 +99,10 @@ PHASE 2: PRE-TRACKING OPERATIONS (changes NOT tracked)
   |-- Capture pre-processing text snapshot
   |-- Remove em/en variants (optional)
   |-- Defragment hyperlinks (merge splits from Google Docs)
+  |-- Bake table-style conditional bold into direct run bold
+  |     (gated on Normal style preserveBold; keeps rendered bold
+  |      that the later tblLook reset would otherwise drop, without
+  |      surfacing it as a tracked formatting change)
   |
   v
 PHASE 3: ENABLE TRACKING
@@ -153,7 +157,8 @@ PHASE 9: LIST PROCESSING (largest phase)
   |-- Pre-process extended typed prefixes (Roman numerals, etc.)
   |-- Normalize typed list prefixes in tables ("1.", "bullet" -> Word numbering)
   |-- Context-aware typed prefix conversion (body + tables)
-  |-- Normalize orphan list levels (tables, then body)
+  |-- Normalize orphan list levels (tables, then body —
+  |     body orphans detected per-numId across the whole body)
   |-- Collapse level gaps (0->1->3->4 becomes 0->1->2->3)
   |-- Normalize list levels from visual indentation
   |-- Format Step number columns
@@ -202,8 +207,15 @@ PHASE 12: LATE-STAGE TEXT
   |-- Final whitespace pass
   |
   v
-PHASE 13: TABLE OF CONTENTS
-  |-- Rebuild TOC with styled hyperlinks
+PHASE 13: TABLE OF CONTENTS (buildProperTOC, optional)
+  |-- Ensure heading bookmarks
+  |-- Modify TOC field instruction to exclude Heading 1 (optional)
+  |-- Rebuild TOC with styled hyperlinks (rebuildTOCs)
+  |-- Format TOC styles (Verdana 12pt blue underlined)
+  |-- Clean TOC entries (strip dotted-leader tab stops + PAGEREF
+  |     page numbers — covers plain field-based TOCs that
+  |     rebuildTOCs() leaves untouched)
+  |-- Re-flatten single-level TOC left-indent after rebuild
   |
   v
 PHASE 14: TRACKED CHANGES EXTRACTION
@@ -229,7 +241,8 @@ PHASE 16: NUMBERING & SAVE
   |-- Clean up unused numbering definitions
   |-- Consolidate duplicate abstractNums (protect HLP)
   |-- Validate numbering references
-  |-- Rebuild TOCs (preserve field structure)
+  |-- Rebuild TOCs (preserve field structure) —
+  |     skipped when Phase 13 buildProperTOC already ran
   |-- SAVE DOCUMENT TO DISK
   |
   v

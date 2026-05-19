@@ -148,6 +148,7 @@ The session workspace features multiple tabs for different aspects of your work:
 - Drag and drop Word documents (.docx files) into the designated area
 - Or click **Select Files** to browse and choose documents
 - Multiple files can be added at once
+- Newly added files appear at the top of the list, and the list scrolls to show them
 
 **Document List:**
 Each document in your session displays:
@@ -161,7 +162,7 @@ Each document in your session displays:
   - Red alert = Error (processing failed)
 - Action buttons:
   - **Process** - Start processing the document (only for pending documents)
-  - **Process Documents** - Process all pending documents at once
+  - **Process Documents** - Process all pending documents in the order shown, from top to bottom
   - **Open in Word** - Opens the processed document in Microsoft Word (only for completed documents)
   - **X** - Remove document from session
 
@@ -372,6 +373,8 @@ Once processing is complete (green checkmark):
 2. The document opens in Microsoft Word
 3. Review the changes and save as needed
 4. The original file remains untouched (backups are created automatically)
+
+The **Compare** option opens the backup and the processed document side-by-side in Word, positioned reliably across multiple monitors and display-scaling setups.
 
 ---
 
@@ -739,6 +742,7 @@ The left sidebar provides quick access to all setting categories:
 - **Account** - Profile information
 - **Customization** - Appearance and Typography
 - **System** - Language, Updates, API Connections, Storage, Submit Idea
+- **Quick Links** - Nuxeo Feedback and Document Managers links
 
 Use the search box at the top to quickly find specific settings.
 
@@ -899,6 +903,30 @@ Share your feature ideas with the development team:
 3. Click **Submit Idea** to send
 
 Your idea is sent via the configured API or email. Confirmation appears when successful.
+
+### Quick Links Settings
+
+Quick Links let you save named web links that appear in the sidebar for one-click access. There are two sections:
+
+- **Nuxeo Feedback** - Links to feedback forms or pages
+- **Document Managers** - Links to document-manager tools or sites
+
+**Adding a Link:**
+
+1. Open the section (Nuxeo Feedback or Document Managers) in Settings
+2. Click **Add Link**
+3. Enter a **URL Name** (the display name shown in the sidebar)
+4. Enter the **Hyperlink** (the web address)
+5. Click **Save Settings** to save your additions and edits
+
+**Link Behavior:**
+
+- Saved links appear in the left sidebar under their section heading
+- Click a link in the sidebar to open it in your default browser
+- A URL typed without a scheme (for example, `example.com`) is automatically corrected to `https://example.com`
+- Invalid URLs are flagged inline with an error message
+- Use the up/down arrows to reorder links
+- **Deleting a link saves immediately** - no Save click is needed. Adding or editing a link still requires clicking Save Settings.
 
 ### Storage Settings
 

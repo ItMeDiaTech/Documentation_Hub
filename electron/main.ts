@@ -2126,22 +2126,35 @@ ipcMain.handle(
           leftRect = screen.dipToScreenRect(null, leftRectDip);
           rightRect = screen.dipToScreenRect(null, rightRectDip);
         } catch (convErr) {
-          // Fallback: multiply ALL of x/y/width/height by scaleFactor consistently.
-          // Less accurate for non-primary monitors but never worse than the old
-          // mixed (size-scaled, coordinate-unscaled) math.
-          log.warn("[Display] dipToScreenRect failed, using scaleFactor fallback:", convErr);
-          const scale = (v: number) => Math.round(v * scaleFactor);
+          // Fallback when dipToScreenRect is unavailable. Convert the work-area
+          // origin via dipToScreenPoint (a separate API; resolves the correct
+          // physical origin for non-primary monitors, including negative coords)
+          // and scale only the in-monitor offset + size by scaleFactor. This is
+          // correct for non-primary monitors -- `dipX * scaleFactor` is not,
+          // because the DIP origin offset does not scale by one monitor's factor.
+          log.warn("[Display] dipToScreenRect failed, using dipToScreenPoint fallback:", convErr);
+          let physOrigin = { x: Math.round(x * scaleFactor), y: Math.round(y * scaleFactor) };
+          try {
+            physOrigin = screen.dipToScreenPoint({ x, y });
+          } catch (pointErr) {
+            log.warn(
+              "[Display] dipToScreenPoint also failed, using scaleFactor for origin:",
+              pointErr
+            );
+          }
+          const size = (v: number) => Math.round(v * scaleFactor);
+          // Offset of each half-rect within the work area (DIP), scaled to physical.
           leftRect = {
-            x: scale(leftRectDip.x),
-            y: scale(leftRectDip.y),
-            width: scale(leftRectDip.width),
-            height: scale(leftRectDip.height),
+            x: physOrigin.x,
+            y: physOrigin.y,
+            width: size(leftRectDip.width),
+            height: size(leftRectDip.height),
           };
           rightRect = {
-            x: scale(rightRectDip.x),
-            y: scale(rightRectDip.y),
-            width: scale(rightRectDip.width),
-            height: scale(rightRectDip.height),
+            x: physOrigin.x + size(rightRectDip.x - x),
+            y: physOrigin.y,
+            width: size(rightRectDip.width),
+            height: size(rightRectDip.height),
           };
         }
       }

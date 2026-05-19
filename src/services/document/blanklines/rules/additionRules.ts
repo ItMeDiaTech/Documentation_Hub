@@ -8,7 +8,7 @@
  * should exist at the position AFTER the current element.
  */
 
-import { Paragraph, Table, ImageRun } from "docxmlater";
+import { Paragraph, Table } from "docxmlater";
 import type { BlankLineRule, RuleContext } from "./ruleTypes";
 import {
   isParagraphBlank,
@@ -21,6 +21,7 @@ import {
   getImageRunFromParagraph,
   isImageSmall,
   isSmallImageParagraph,
+  isSmallImageTextCalloutParagraph,
 } from "../helpers/imageChecks";
 import { isWithinListContext } from "../helpers/contextChecks";
 
@@ -444,23 +445,33 @@ export const aboveSmallImageTextRule: BlankLineRule = {
   matches(ctx: RuleContext): boolean {
     if (!(ctx.nextElement instanceof Paragraph)) return false;
     if (isParagraphBlank(ctx.nextElement)) return false;
-    if (ctx.nextElement.getNumbering()) return false;
+    return isSmallImageTextCalloutParagraph(ctx.nextElement);
+  },
+};
 
-    const indent = ctx.nextElement.getFormatting()?.indentation?.left;
-    if (indent && indent > 0) return false;
+/**
+ * Add blank line BELOW a small-image text callout paragraph when the element
+ * directly after it is a list item.
+ *
+ * Symmetric with aboveSmallImageTextRule. A leading-icon callout paragraph
+ * (e.g. a warning icon followed by "Do NOT ..." text) is a standalone notice;
+ * it must not sit flush against the list that follows it. The other addition
+ * rules do not cover this boundary: afterListItemsRule only fires when the
+ * CURRENT element is a list item, and boldColonNoIndentAfterRule explicitly
+ * suppresses its blank when the next element is a list item.
+ */
+export const belowSmallImageTextRule: BlankLineRule = {
+  id: "add-below-small-image-text",
+  action: "add",
+  scope: "both",
+  matches(ctx: RuleContext): boolean {
+    if (!(ctx.currentElement instanceof Paragraph)) return false;
+    if (isParagraphBlank(ctx.currentElement)) return false;
+    if (!isSmallImageTextCalloutParagraph(ctx.currentElement)) return false;
 
-    // First content item must be a small ImageRun
-    const content = ctx.nextElement.getContent();
-    if (!content || content.length === 0) return false;
-    if (!(content[0] instanceof ImageRun)) return false;
-    const image = content[0].getImageElement();
-    if (!isImageSmall(image)) return false;
-
-    // Must also have text content (not image-only)
-    const text = ctx.nextElement.getText()?.trim();
-    if (!text) return false;
-
-    return true;
+    // Only insert a blank when the next element is a list item.
+    if (!(ctx.nextElement instanceof Paragraph)) return false;
+    return !!ctx.nextElement.getNumbering();
   },
 };
 
@@ -582,6 +593,7 @@ export const additionRules: BlankLineRule[] = [
   afterLargeTablesRule,
   aboveBoldColonNoIndentRule,
   aboveSmallImageTextRule,
+  belowSmallImageTextRule,
   boldColonNoIndentAfterRule,
   aboveTopOfDocHyperlinkRule,
   afterListItemsRule,

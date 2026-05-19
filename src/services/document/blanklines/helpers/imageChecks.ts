@@ -29,6 +29,31 @@ export function isSmallImageParagraph(para: Paragraph): boolean {
 }
 
 /**
+ * Checks if a paragraph is a "small-image text callout": its FIRST content
+ * item is a small ImageRun (<100x100), it also has text, it is not a list
+ * item, and it has no positive left indentation.
+ *
+ * These are leading-icon notice/callout paragraphs (e.g. a warning-icon
+ * followed by "Do NOT ..." text). They must be visually separated from the
+ * content directly above AND below them. Shared by aboveSmallImageTextRule
+ * and belowSmallImageTextRule in rules/additionRules.ts.
+ */
+export function isSmallImageTextCalloutParagraph(para: Paragraph): boolean {
+  if (para.getNumbering()) return false;
+
+  const indent = para.getFormatting()?.indentation?.left;
+  if (indent && indent > 0) return false;
+
+  const content = para.getContent();
+  if (!content || content.length === 0) return false;
+  if (!(content[0] instanceof ImageRun)) return false;
+  if (!isImageSmall(content[0].getImageElement())) return false;
+
+  const text = para.getText()?.trim();
+  return !!text;
+}
+
+/**
  * Extracts the first ImageRun from a paragraph, including from Revision elements.
  * Ported from Document.ts:8474-8491
  */

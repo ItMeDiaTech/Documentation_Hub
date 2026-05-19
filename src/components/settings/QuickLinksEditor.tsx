@@ -18,6 +18,9 @@ interface QuickLinksEditorProps {
   saveSuccess: boolean;
   /** Per-row validation messages keyed by link id; shown under the URL field. */
   errors?: Record<string, string>;
+  /** Called when a row is deleted, with the post-delete list — the parent
+   *  persists it immediately (delete autosaves; no Save click needed). */
+  onDelete?: (links: QuickLink[]) => void;
 }
 
 /**
@@ -33,6 +36,7 @@ export function QuickLinksEditor({
   onSave,
   saveSuccess,
   errors,
+  onDelete,
 }: QuickLinksEditorProps) {
   const updateRow = (index: number, patch: Partial<QuickLink>) => {
     onChange(links.map((link, i) => (i === index ? { ...link, ...patch } : link)));
@@ -43,7 +47,10 @@ export function QuickLinksEditor({
   };
 
   const removeRow = (index: number) => {
-    onChange(links.filter((_, i) => i !== index));
+    const next = links.filter((_, i) => i !== index);
+    onChange(next);
+    // Deleting a row autosaves immediately — no Save click required.
+    onDelete?.(next);
   };
 
   const moveRow = (index: number, direction: -1 | 1) => {

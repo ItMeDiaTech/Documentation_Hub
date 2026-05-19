@@ -77,6 +77,7 @@ import { normalizeVmlImagesInBuffer } from "./helpers/vmlImageNormalizer";
 import { clearAllImageShadows } from "./helpers/imageShadow";
 import { leftAlignListItems } from "./helpers/listItemAlignment";
 import { flattenSingleLevelToc } from "./helpers/tocFlatten";
+import { cleanTocEntries } from "./helpers/tocCleanEntries";
 import { stripCenterAfterDeletedParaMark } from "./helpers/paragraphMarkDeletionAlignment";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
@@ -3582,6 +3583,19 @@ export class WordDocumentProcessor {
             count: tocResult.count,
             affectedItems: tocResult.headings,
           });
+        }
+
+        // buildProperTOC() recreates TOC entries as fresh TOC{n}-styled
+        // paragraphs with no direct indent — so a single-level TOC re-inherits
+        // the TOC style's baked-in left indent. Re-flatten after the rebuild
+        // (the earlier flattenSingleLevelToc pass acted on paragraphs this
+        // rebuild has since deleted).
+        const rebuiltTocFlatten = flattenSingleLevelToc(doc);
+        if (rebuiltTocFlatten.flattened) {
+          this.log.info(
+            `Flattened rebuilt single-level TOC: zeroed left-indent on ` +
+              `${rebuiltTocFlatten.paragraphs} ${rebuiltTocFlatten.flattenedStyle} paragraphs`
+          );
         }
       }
 
@@ -12081,6 +12095,18 @@ export class WordDocumentProcessor {
     });
     this.log.debug(
       `✓ Step 4: formatTOCStyles() formatted levels: [${formatResult.formatted.join(", ")}]`
+    );
+
+    // Step 5: Strip dotted leaders and page numbers from TOC entries.
+    // rebuildTOCs() only regenerates clean hyperlink entries for SDT-wrapped
+    // TOCs; a plain field-based TOC (no <w:sdt>) is left untouched, so its
+    // entries keep their `<w:tab w:leader="dot"/>` stop, `<w:tab/>` run, and
+    // PAGEREF page number. DocHub's intended TOC is clickable hyperlinks with
+    // no page numbers, so clean every TOC{n} entry explicitly.
+    const tocClean = cleanTocEntries(doc);
+    this.log.debug(
+      `✓ Step 5: cleanTocEntries() cleared leaders on ${tocClean.paragraphs} TOC paragraph(s), ` +
+        `stripped page numbers from ${tocClean.runsCleaned} entry run(s)`
     );
 
     // Extract heading counts from results

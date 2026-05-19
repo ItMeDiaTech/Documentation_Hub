@@ -906,6 +906,14 @@ export function CurrentSession() {
                                   // Get available displays to validate monitor index
                                   const displays =
                                     await window.electronAPI.display.getAllDisplays();
+                                  if (!displays || displays.length === 0) {
+                                    toast({
+                                      title: "Compare failed",
+                                      description: "No monitors detected",
+                                      variant: "destructive",
+                                    });
+                                    return;
+                                  }
                                   const savedMonitorIndex =
                                     settings.displaySettings?.comparisonMonitorId ?? 0;
                                   // Ensure monitor index is within bounds (fallback to primary if saved monitor no longer exists)

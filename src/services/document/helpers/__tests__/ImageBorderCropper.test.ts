@@ -515,6 +515,28 @@ describe("cropEmbeddedImageBorders with Word crop metadata", () => {
     expect(img.setCrop).not.toHaveBeenCalled();
   });
 
+  it("image with only 3 dark edges is NOT marked as baked-border (pipeline border still applies)", async () => {
+    // Screenshot artifact: bottom/left/right have a clean dark border, top edge
+    // blends into surrounding content. detectedEdges = 3 → not enough to crop
+    // (needs 4) and not a complete baked border → must NOT skip pipeline border.
+    const w = 200, h = 200;
+    const px = makePixels(w, h, 200);
+    fillRow(px, w, h - 1, DARK); // bottom
+    fillCol(px, w, h, 0, DARK); // left
+    fillCol(px, w, h, w - 1, DARK); // right
+    // top edge left as gray content — no border
+    setupCanvasMock(px, w, h);
+
+    const img = makeMockImage();
+    const doc = makeMockDoc([img]);
+
+    const result = await cropEmbeddedImageBorders(doc, log);
+
+    expect(result.croppedCount).toBe(0); // 3 edges < MIN_BORDERED_EDGES (4)
+    expect(result.allSideBakedBorderImages.has(img)).toBe(false);
+    expect(img.updateImageData).not.toHaveBeenCalled();
+  });
+
   // ─── MIN_DIMENSION_PX guard (Task 11) ────────────────────────────
   // Images smaller than MIN_DIMENSION_PX (80px) on either axis must be
   // skipped entirely — they're too small to host a meaningful border.
