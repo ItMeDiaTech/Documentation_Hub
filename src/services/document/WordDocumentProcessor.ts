@@ -78,6 +78,7 @@ import { clearAllImageShadows } from "./helpers/imageShadow";
 import { leftAlignListItems } from "./helpers/listItemAlignment";
 import { flattenSingleLevelToc } from "./helpers/tocFlatten";
 import { cleanTocEntries } from "./helpers/tocCleanEntries";
+import { collectTocHeadings, populateTocInModel } from "./helpers/tocPopulate";
 import { stripCenterAfterDeletedParaMark } from "./helpers/paragraphMarkDeletionAlignment";
 import { captureBlankLineSnapshot } from "./blanklines/helpers/blankLineSnapshot";
 import { documentProcessingComparison } from "./DocumentProcessingComparison";
@@ -3859,8 +3860,13 @@ export class WordDocumentProcessor {
         doc.stripOrphanRSIDs();
 
         // Clear direct spacing from styled paragraphs at the raw XML level.
-        // Model-based clearing (finalizeParagraphSpacing) is ineffective when
-        // flattenFieldCodes() sets skipDocumentXmlRegeneration = true.
+        // Runs as a post-processing pass (_postProcessDocumentXml) AFTER
+        // document.xml has been regenerated from the model. NOTE: contrary to a
+        // prior assumption, flattenFieldCodes() does NOT set
+        // skipDocumentXmlRegeneration in docxmlater 11.0.8 — it only defers an
+        // INCLUDEPICTURE strip to post-processing. The model is regenerated
+        // normally, so model-based clearing (finalizeParagraphSpacing) is also
+        // effective; this raw pass is a belt-and-suspenders catch-all.
         doc.clearDirectSpacingForStyles([
           "Normal",
           "Heading1",
@@ -12063,14 +12069,33 @@ export class WordDocumentProcessor {
       this.log.debug("✓ Step 2: Modified TOC field instruction to exclude Heading 1");
     }
 
-    // Step 3: Use docxmlater's rebuildTOCs() which preserves field structure
-    // This generates TOC entries with:
-    // - SDT wrapper with docPartGallery="Table of Contents"
-    // - Field structure: fldChar begin → instrText → fldChar separate → entries → fldChar end
-    // - Hyperlinked entries between separator and end
-    // This allows Word's "Update Field" right-click option to work
+    // Step 3a: Run rebuildTOCs() for its model-safe side effects ONLY — it
+    // ensures the `_top` bookmark exists and unwraps stray table SDTs. Its
+    // actual entry population writes to the raw zip XML, which save's
+    // updateDocumentXml() then discards (it regenerates document.xml from the
+    // in-memory bodyElements). We capture the result for level reporting but do
+    // NOT rely on it for persistence.
     const results = doc.rebuildTOCs();
-    this.log.debug(`✓ Step 3: rebuildTOCs() returned ${results.length} TOC(s)`);
+    this.log.debug(`✓ Step 3a: rebuildTOCs() returned ${results.length} TOC(s) (side effects only)`);
+
+    // Step 3b: Populate the TOC IN THE MODEL so the entries survive save.
+    // An SDT-wrapped TOC parses to a TableOfContentsElement whose toXML() emits
+    // only a placeholder run — there is nowhere in that model to store entry
+    // paragraphs. So we replace it with a field-based TOC built from real model
+    // paragraphs (begin/instr/separate + TOC{n} hyperlink entries + end). These
+    // persist through bodyElements regeneration AND keep Word's live, updatable
+    // field (right-click → Update Field still works).
+    const tocHeadings = collectTocHeadings(doc, excludeHeading1);
+    const populateResult = populateTocInModel(doc, tocHeadings, {
+      font: "Verdana",
+      size: 12,
+      color: "0000FF",
+      underline: "single",
+    });
+    this.log.debug(
+      `✓ Step 3b: populateTocInModel() inserted ${populateResult.entries} model entries ` +
+        `at body index ${populateResult.insertIndex} (instruction: "${populateResult.instruction}")`
+    );
 
     // Step 4: Format TOC styles using docxmlater 9.1.0's formatTOCStyles()
     // Apply consistent formatting: Verdana 12pt, blue, underlined
@@ -12109,32 +12134,21 @@ export class WordDocumentProcessor {
         `stripped page numbers from ${tocClean.runsCleaned} entry run(s)`
     );
 
-    // Extract heading counts from results
-    let totalCount = 0;
-    const headings: string[] = [];
+    // Count + heading names come from the model-population result (the entries
+    // that actually persist), not rebuildTOCs()'s discarded XML count.
+    const totalCount = populateResult.entries;
+    const headings = tocHeadings.map((h) => h.text);
 
+    // Log rebuildTOCs()'s level breakdown for diagnostics only.
     for (const [instruction, counts] of results) {
       const entryCount = counts.reduce((sum, c) => sum + c, 0);
-      totalCount += entryCount;
-      this.log.debug(`TOC "${instruction.substring(0, 30)}...": ${entryCount} entries`);
-    }
-
-    // Get heading names from document for reporting
-    const allParagraphs = doc.getAllParagraphs();
-    for (const para of allParagraphs) {
-      const style = para.getStyle();
-      const match = style?.match(/^Heading\s*(\d+)$/i);
-      if (match && match[1]) {
-        const level = parseInt(match[1], 10);
-        // Apply excludeHeading1 filter for reporting
-        if (!excludeHeading1 || level !== 1) {
-          headings.push(para.getText().trim());
-        }
-      }
+      this.log.debug(
+        `rebuildTOCs scan "${instruction.substring(0, 30)}...": ${entryCount} headings`
+      );
     }
 
     this.log.info(
-      `✓ Built proper TOC with ${totalCount} entries (field structure preserved, Update Field enabled)`
+      `✓ Built proper TOC with ${totalCount} model entries (field structure preserved, Update Field enabled)`
     );
     return { count: totalCount, headings };
   }
