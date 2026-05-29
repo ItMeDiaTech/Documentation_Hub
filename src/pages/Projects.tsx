@@ -196,7 +196,7 @@ export function Projects() {
                       </span>
                     </div>
                   </div>
-                  <button className="p-1 hover:bg-muted rounded">
+                  <button className="p-2 hover:bg-muted rounded">
                     <MoreVertical className="w-4 h-4 text-muted-foreground" />
                   </button>
                 </div>

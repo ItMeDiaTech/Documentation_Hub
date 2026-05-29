@@ -317,7 +317,7 @@ export const Search = memo(function Search() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     {getStatusIcon(doc.status)}
-                    <h3 className="font-medium truncate">{doc.name}</h3>
+                    <h3 className="font-medium truncate" title={doc.name}>{doc.name}</h3>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-foreground">
                     <span className="flex items-center gap-1">
@@ -331,7 +331,7 @@ export const Search = memo(function Search() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">{doc.path}</p>
+                  <p className="text-xs text-muted-foreground mt-1 truncate" title={doc.path}>{doc.path}</p>
                 </div>
                 <ChevronRight
                   className={cn(

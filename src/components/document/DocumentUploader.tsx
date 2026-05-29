@@ -248,7 +248,7 @@ export function DocumentUploader({
                   {doc.status !== "processing" && onDocumentRemove && (
                     <button
                       onClick={() => handleRemoveDocument(doc.id)}
-                      className="p-1 hover:bg-destructive/10 rounded-md transition-colors"
+                      className="p-2 hover:bg-destructive/10 rounded-md transition-colors"
                     >
                       <X className="w-4 h-4 text-muted-foreground hover:text-destructive" />
                     </button>

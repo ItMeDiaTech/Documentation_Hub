@@ -238,10 +238,10 @@ export const Analytics = memo(function Analytics() {
               <div className="text-base font-medium flex items-center gap-4">
                 <span className="text-muted-foreground">{hoveredData.date}:</span>
                 {hoveredData.Documents !== undefined && (
-                  <span className="text-green-500">Docs: {hoveredData.Documents}</span>
+                  <span className="text-green-600 dark:text-green-400">Docs: {hoveredData.Documents}</span>
                 )}
                 {hoveredData.Hyperlinks !== undefined && (
-                  <span className="text-blue-500">Links: {hoveredData.Hyperlinks}</span>
+                  <span className="text-blue-600 dark:text-blue-400">Links: {hoveredData.Hyperlinks}</span>
                 )}
                 {hoveredData.Feedback !== undefined && (
                   <span className="text-purple-500">Feedback: {hoveredData.Feedback}</span>

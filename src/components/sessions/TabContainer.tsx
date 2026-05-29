@@ -79,7 +79,7 @@ export function TabContainer({
         {showLeftArrow && (
           <button
             onClick={scrollLeft}
-            className="flex-shrink-0 px-2 py-2.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex-shrink-0 px-2 py-2.5 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
             aria-label="Scroll tabs left"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -101,8 +101,8 @@ export function TabContainer({
               onClick={() => handleTabChange(tab.id)}
               className={cn(
                 "relative px-4 py-2.5 text-sm font-medium transition-all whitespace-nowrap",
-                "hover:text-foreground",
-                activeTab === tab.id ? "text-foreground" : "text-muted-foreground"
+                "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
+                activeTab === tab.id ? "text-foreground font-semibold" : "text-muted-foreground"
               )}
             >
               {tab.label}
@@ -126,7 +126,7 @@ export function TabContainer({
         {showRightArrow && (
           <button
             onClick={scrollRight}
-            className="flex-shrink-0 px-2 py-2.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex-shrink-0 px-2 py-2.5 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
             aria-label="Scroll tabs right"
           >
             <ChevronRight className="w-4 h-4" />

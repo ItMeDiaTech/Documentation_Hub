@@ -189,6 +189,8 @@ export function Dashboard() {
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.95 }}
                       className="p-2 rounded-lg hover:bg-muted transition-colors"
+                      title={`View ${stat.title} details`}
+                      aria-label={`View ${stat.title} details`}
                     >
                       <ArrowUpRight className="w-4 h-4 text-muted-foreground" />
                     </motion.button>

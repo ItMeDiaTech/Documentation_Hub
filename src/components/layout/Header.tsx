@@ -173,6 +173,7 @@ export const Header = memo(function Header({ onCommandPalette }: { onCommandPale
                         className={cn(
                           "w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm",
                           "hover:bg-accent hover:text-accent-foreground transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           theme === value && "bg-accent text-accent-foreground"
                         )}
                       >

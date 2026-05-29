@@ -101,7 +101,7 @@ export function HyperlinkPreview({
       case "append":
         return (
           <span className="inline-flex items-center gap-1" title="Append Content ID">
-            <Hash className="w-4 h-4 text-blue-500" aria-hidden="true" />
+            <Hash className="w-4 h-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />
             <span className="sr-only">Append</span>
           </span>
         );
@@ -289,7 +289,9 @@ export function HyperlinkPreview({
                     <div className="flex-1 min-w-0">
                       {/* Display Text and Status */}
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium truncate">{change.displayText}</span>
+                        <span className="font-medium truncate" title={change.displayText}>
+                          {change.displayText}
+                        </span>
                         {getStatusBadge(change.status)}
                         <span className="text-xs text-muted-foreground">{change.location}</span>
                       </div>
@@ -399,7 +401,7 @@ export function HyperlinkPreview({
                           <button
                             onClick={() => onReject?.(change.id)}
                             aria-label="Reject change"
-                            className="p-1 hover:bg-red-500/10 rounded-md transition-colors"
+                            className="p-2 hover:bg-red-500/10 rounded-md transition-colors"
                           >
                             <XCircle className="w-4 h-4 text-red-500" />
                           </button>

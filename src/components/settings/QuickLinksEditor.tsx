@@ -93,7 +93,7 @@ export function QuickLinksEditor({
                 value={link.name}
                 onChange={(e) => updateRow(index, { name: e.target.value })}
                 placeholder="Display name"
-                className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             <div className="flex-1">
@@ -117,7 +117,7 @@ export function QuickLinksEditor({
                   "w-full px-3 py-2 rounded-md border bg-background focus:outline-none focus:ring-1",
                   errors?.[link.id]
                     ? "border-destructive focus:border-destructive focus:ring-destructive/20"
-                    : "border-input focus:border-primary focus:ring-primary/20"
+                    : "border-input focus:border-primary focus:ring-2 focus:ring-ring"
                 )}
               />
               {errors?.[link.id] && (

@@ -161,6 +161,13 @@ export class BlankLineManager {
             if (!para || !isParagraphBlank(para)) continue;
             if (para.isPreserved()) continue;
 
+            // Don't remove a blank that is the accept-time merge target for a
+            // tracked paragraph-mark deletion on the paragraph above it. Word
+            // would otherwise merge the marked paragraph across the cell
+            // boundary and collapse the cell to its first character.
+            const prev = paras[ci - 1];
+            if (prev instanceof Paragraph && prev.isParagraphMarkDeleted()) continue;
+
             const ctx = this.buildCellContext(doc, cell, ci, paras, table);
             const matchedRule = this.findMatchingRule(removalRules, ctx, "cell");
 
@@ -589,6 +596,13 @@ export class BlankLineManager {
 
           // Remove trailing blanks (no blank between last visual element and cell end)
           while (paras.length > 1 && isParagraphBlank(paras[paras.length - 1])) {
+            // Preserve the trailing blank when the paragraph above it carries a
+            // tracked paragraph-mark deletion. That blank is the merge target
+            // Word uses on "Accept All"; stripping it forces the merge across
+            // the cell boundary and collapses the cell to its first character.
+            const prev = paras[paras.length - 2];
+            if (prev instanceof Paragraph && prev.isParagraphMarkDeleted()) break;
+
             cell.removeParagraph(paras.length - 1);
             removed++;
             paras = cell.getParagraphs();

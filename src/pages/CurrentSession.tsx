@@ -116,7 +116,9 @@ export function CurrentSession() {
     if (prevDocCountRef.current !== null && currentCount > prevDocCountRef.current) {
       // Only scroll if the user is already viewing the document list
       const timerId = setTimeout(() => {
-        docListTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Instant jump, not smooth: a smooth scroll is cancelled mid-glide by
+        // the list re-render + row entry animations, landing short of the top.
+        docListTopRef.current?.scrollIntoView({ block: "start" });
       }, 350);
       prevDocCountRef.current = currentCount;
       return () => clearTimeout(timerId);
@@ -782,7 +784,7 @@ export function CurrentSession() {
 
                         {/* Queue position indicator */}
                         {doc.status === "pending" && isInQueue(doc.id) && (
-                          <span className="text-xs text-blue-500 font-medium flex items-center gap-1">
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
                             {currentDocumentId === doc.id ? (
                               <>
                                 <Loader2 className="w-3 h-3 animate-spin" />
@@ -795,11 +797,11 @@ export function CurrentSession() {
                         )}
 
                         {doc.status === "processing" && (
-                          <span className="text-xs text-blue-500 font-medium">Processing...</span>
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">Processing...</span>
                         )}
 
                         {doc.status === "completed" && (
-                          <span className="text-xs text-green-500 font-medium">Completed</span>
+                          <span className="text-xs text-green-600 dark:text-green-400 font-medium">Completed</span>
                         )}
 
                         {doc.status === "error" && (
@@ -1155,7 +1157,7 @@ export function CurrentSession() {
                     if (e.key === "Enter") handleSaveTitle();
                     if (e.key === "Escape") handleCancelEdit();
                   }}
-                  className="text-3xl font-bold bg-transparent border-b-2 border-primary outline-none px-1"
+                  className="text-3xl font-bold bg-transparent border-b-2 border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm px-1"
                   autoFocus
                 />
                 <button
@@ -1173,7 +1175,7 @@ export function CurrentSession() {
               </div>
             ) : (
               <>
-                <h1 className="text-3xl font-bold truncate">{session.name}</h1>
+                <h1 className="text-3xl font-bold truncate" title={session.name}>{session.name}</h1>
                 {session.status === "closed" && (
                   <span className="text-sm px-2 py-1 rounded bg-muted text-muted-foreground flex-shrink-0">
                     Closed

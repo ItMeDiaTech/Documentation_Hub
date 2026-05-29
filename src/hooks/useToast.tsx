@@ -11,7 +11,7 @@ export interface Toast {
 // Default duration: 3 seconds for quick, unobtrusive notifications
 // Error notifications get longer (6 seconds) so a screen reader has time to
 // announce the title plus a potentially long description before dismissal
-const DEFAULT_DURATION = 3000;
+const DEFAULT_DURATION = 5000;
 const ERROR_DURATION = 6000;
 
 export function useToast() {

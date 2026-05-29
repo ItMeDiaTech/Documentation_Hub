@@ -187,7 +187,7 @@ export function CommandPalette({
                 />
                 <button
                   onClick={() => onOpenChange(false)}
-                  className="p-1 rounded hover:bg-accent"
+                  className="p-2 rounded hover:bg-accent"
                   aria-label="Close"
                 >
                   <X className="w-4 h-4" />

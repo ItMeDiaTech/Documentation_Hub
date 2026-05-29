@@ -102,9 +102,9 @@ export function Documents() {
 
   const getStatusBadge = (status: Document["status"]) => {
     const styles = {
-      completed: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-      error: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-      pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+      completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+      error: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+      pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
       processing: "bg-primary/15 text-primary",
     };
 
@@ -267,9 +267,9 @@ export function Documents() {
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     {getStatusIcon(doc.status)}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{doc.name}</p>
+                      <p className="font-medium truncate" title={doc.name}>{doc.name}</p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span className="truncate">{doc.sessionName}</span>
+                        <span className="truncate" title={doc.sessionName}>{doc.sessionName}</span>
                         {doc.processedAt && (
                           <>
                             <span>•</span>

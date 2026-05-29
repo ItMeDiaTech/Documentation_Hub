@@ -537,51 +537,6 @@ ipcMain.handle("open-dev-tools", () => {
   }
 });
 
-// Open comparison window for document processing changes
-ipcMain.handle("open-comparison-window", async (event, data) => {
-  const { sessionId, documentId, comparisonData } = data;
-
-  // Create new window for comparison
-  const comparisonWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
-    title: "Document Processing Comparison",
-    webPreferences: REQUIRED_SECURITY_SETTINGS,
-    parent: mainWindow || undefined,
-    modal: false,
-    show: false,
-    backgroundColor: "#ffffff",
-  });
-
-  // Generate HTML content from comparison data
-  // NOTE: Dynamic import here is intentional for lazy-loading (used only when opening comparison windows)
-  // Rollup warning about "dynamically imported by main.ts but statically imported by WordDocumentProcessor.ts"
-  // is expected and acceptable - see docs/architecture/bundling-strategy.md
-  // Dynamic import keeps DocumentProcessingComparison and its transitive deps
-  // out of the main-process cold-start parse path. Do not convert to a static
-  // import at the top of this file.
-  const { documentProcessingComparison } =
-    await import("../src/services/document/DocumentProcessingComparison");
-  const htmlContent = documentProcessingComparison.generateHTMLReport(comparisonData);
-
-  // Load the HTML directly
-  comparisonWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-
-  // Show when ready
-  comparisonWindow.once("ready-to-show", () => {
-    comparisonWindow.show();
-  });
-
-  // Cleanup on close
-  comparisonWindow.on("closed", () => {
-    // Window cleanup handled automatically
-  });
-
-  return { success: true };
-});
-
 // Lazy singleton for WordDocumentProcessor. The processor pulls in DocXMLater,
 // p-limit, and the full processors/ tree (~thousands of lines parsed). Loading
 // it on the first processDocument IPC instead of at main-process cold start
@@ -2113,78 +2068,142 @@ ipcMain.handle(
         height,
       };
 
-      // Convert each DIP rect to physical screen pixels. `screen.dipToScreenRect`
-      // (Windows only) scales relative to the display nearest the rect, so it
-      // applies the SELECTED monitor's scaleFactor consistently to x/y/width/height
-      // AND anchors off that monitor's physical origin -- correct for non-primary
-      // monitors where `dipX * scaleFactor` would be wrong. On non-Windows it is a
-      // no-op identity and the values below are unused (no PowerShell path runs).
-      let leftRect = leftRectDip;
-      let rightRect = rightRectDip;
-      if (process.platform === "win32") {
-        try {
-          leftRect = screen.dipToScreenRect(null, leftRectDip);
-          rightRect = screen.dipToScreenRect(null, rightRectDip);
-        } catch (convErr) {
-          // Fallback when dipToScreenRect is unavailable. Convert the work-area
-          // origin via dipToScreenPoint (a separate API; resolves the correct
-          // physical origin for non-primary monitors, including negative coords)
-          // and scale only the in-monitor offset + size by scaleFactor. This is
-          // correct for non-primary monitors -- `dipX * scaleFactor` is not,
-          // because the DIP origin offset does not scale by one monitor's factor.
-          log.warn("[Display] dipToScreenRect failed, using dipToScreenPoint fallback:", convErr);
-          let physOrigin = { x: Math.round(x * scaleFactor), y: Math.round(y * scaleFactor) };
-          try {
-            physOrigin = screen.dipToScreenPoint({ x, y });
-          } catch (pointErr) {
-            log.warn(
-              "[Display] dipToScreenPoint also failed, using scaleFactor for origin:",
-              pointErr
-            );
-          }
-          const size = (v: number) => Math.round(v * scaleFactor);
-          // Offset of each half-rect within the work area (DIP), scaled to physical.
-          leftRect = {
-            x: physOrigin.x,
-            y: physOrigin.y,
-            width: size(leftRectDip.width),
-            height: size(leftRectDip.height),
-          };
-          rightRect = {
-            x: physOrigin.x + size(rightRectDip.x - x),
-            y: physOrigin.y,
-            width: size(rightRectDip.width),
-            height: size(rightRectDip.height),
-          };
-        }
-      }
-
       log.info("[Display] Opening comparison", {
         backupPath,
         processedPath,
         workAreaDip: { x, y, width, height },
         scaleFactor,
-        leftRectPhysical: leftRect,
-        rightRectPhysical: rightRect,
+        leftRectDip,
+        rightRectDip,
       });
 
-      // Open both documents - they will open in Word
-      const backupError = await shell.openPath(backupPath);
-      if (backupError) {
-        log.error("[Display] Failed to open backup:", backupError);
-        return { success: false, error: `Failed to open backup: ${backupError}` };
+      // H2: Word opens a file carrying a Mark-of-the-Web (Zone.Identifier ADS)
+      // in Protected View, whose title bar omits the filename -- title-substring
+      // matching then never finds the window. Strip the ADS from both copies
+      // before opening so Word loads them fully trusted with a normal title.
+      // Best-effort: a missing ADS, a locked file, or a non-NTFS volume all
+      // throw harmlessly here; openPath/launch still proceed.
+      if (process.platform === "win32") {
+        for (const p of [backupPath, processedPath]) {
+          try {
+            fs.unlinkSync(`${p}:Zone.Identifier`);
+            log.info("[Display] Stripped Mark-of-the-Web from", p);
+          } catch {
+            /* no ADS present, or volume does not support ADS -- ignore */
+          }
+        }
       }
 
-      // Small delay before opening second file to avoid conflicts
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // H2: open each document in its OWN new Word window via `WINWORD.EXE /n /q
+      // "<file>"` rather than shell.openPath. `/n` forces a new top-level window
+      // (so two docs are two positionable hwnds, not MDI tabs); `/q` suppresses
+      // the splash. This also lets us locate the window by the launched PID
+      // instead of by a fragile title substring. Falls back to shell.openPath if
+      // WINWORD.EXE cannot be resolved.
+      const { spawn, execFileSync } = await import("child_process");
 
-      const processedError = await shell.openPath(processedPath);
-      if (processedError) {
-        log.error("[Display] Failed to open processed file:", processedError);
-        return { success: false, error: `Failed to open processed file: ${processedError}` };
+      let backupPid: number | undefined;
+      let processedPid: number | undefined;
+
+      if (process.platform === "win32") {
+        // Resolve the absolute path to WINWORD.EXE. spawn() only searches
+        // PATH -- but Office registers WINWORD.EXE under the "App Paths"
+        // registry key instead of adding its install dir to PATH, so
+        // spawn("winword.exe") almost always fails with ENOENT. Query App
+        // Paths to get the real executable path.
+        const resolveWinwordPath = (): string | undefined => {
+          const keys = [
+            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\winword.exe",
+            "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\winword.exe",
+          ];
+          for (const key of keys) {
+            try {
+              const out = execFileSync("reg", ["query", key, "/ve"], {
+                encoding: "utf8",
+                stdio: ["ignore", "pipe", "ignore"],
+              });
+              const match = out.match(/REG_SZ\s+(.+\.exe)/i);
+              if (match) {
+                const exePath = match[1].trim();
+                if (fs.existsSync(exePath)) return exePath;
+              }
+            } catch {
+              /* key absent or reg unavailable -- try the next candidate */
+            }
+          }
+          return undefined;
+        };
+        const winwordPath = resolveWinwordPath();
+
+        // Spawn WINWORD.EXE directly (not via `cmd /c start`) so child.pid is
+        // Word's own PID -- the positioning script matches the window by that
+        // PID (H2). `/n` opens a new top-level window per file (two
+        // positionable hwnds, not MDI tabs); `/q` suppresses the splash.
+        // Returns undefined if WINWORD.EXE could not be resolved or the spawn
+        // fails -- the caller then falls back to the shell file association.
+        const spawnWordDirect = (file: string): number | undefined => {
+          if (!winwordPath) return undefined;
+          try {
+            const child = spawn(winwordPath, ["/n", "/q", file], {
+              detached: true,
+              stdio: "ignore",
+              windowsHide: false,
+            });
+            // spawn() reports a missing/locked executable asynchronously via
+            // the 'error' event, NOT as a synchronous throw -- the try/catch
+            // alone cannot catch it. Without an 'error' listener Node
+            // escalates ENOENT to an uncaught exception that crashes the
+            // main process. This listener lets the undefined-pid fallback
+            // below handle the failure gracefully.
+            child.on("error", (err) => {
+              log.error("[Display] winword.exe spawn failed:", err.message);
+            });
+            child.unref();
+            return child.pid;
+          } catch (err) {
+            log.error("[Display] winword.exe spawn threw:", err);
+            return undefined;
+          }
+        };
+
+        backupPid = spawnWordDirect(backupPath);
+        if (backupPid === undefined) {
+          // winword.exe not on PATH -- fall back to the shell file association.
+          // The positioning script then matches this window by title only.
+          const backupError = await shell.openPath(backupPath);
+          if (backupError) {
+            log.error("[Display] Failed to open backup:", backupError);
+            return { success: false, error: `Failed to open backup: ${backupError}` };
+          }
+        }
+
+        // Small delay before opening second file to avoid conflicts
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        processedPid = spawnWordDirect(processedPath);
+        if (processedPid === undefined) {
+          const processedError = await shell.openPath(processedPath);
+          if (processedError) {
+            log.error("[Display] Failed to open processed file:", processedError);
+            return { success: false, error: `Failed to open processed file: ${processedError}` };
+          }
+        }
+      } else {
+        // Non-Windows: no positioning path runs; just open with the OS handler.
+        const backupError = await shell.openPath(backupPath);
+        if (backupError) {
+          log.error("[Display] Failed to open backup:", backupError);
+          return { success: false, error: `Failed to open backup: ${backupError}` };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const processedError = await shell.openPath(processedPath);
+        if (processedError) {
+          log.error("[Display] Failed to open processed file:", processedError);
+          return { success: false, error: `Failed to open processed file: ${processedError}` };
+        }
       }
 
-      // On Windows, try to position the Word windows using PowerShell
+      // On Windows, position the Word windows using PowerShell
       if (process.platform === "win32") {
         // Brief delay before launching positioning script (retry loop handles Word startup)
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -2200,67 +2219,101 @@ ipcMain.handle(
         const backupBaseName = path.basename(backupPath, path.extname(backupPath));
         const processedBaseName = path.basename(processedPath, path.extname(processedPath));
 
-        log.info("[Display] Looking for Word windows with filenames:", {
+        log.info("[Display] Locating Word windows", {
           backup: backupFilename,
           backupBase: backupBaseName,
+          backupPid,
           processed: processedFilename,
           processedBase: processedBaseName,
+          processedPid,
         });
 
-        // PowerShell script to find and position Word windows BY FILENAME.
-        // The script receives the two target rectangles ALREADY in physical
-        // pixels (converted in the main process via screen.dipToScreenRect).
-        // It must not do any DPI scaling itself -- it simply applies the rects.
-        // Fixes applied:
-        //  - SW_RESTORE before SetWindowPos (maximized windows ignore positioning)
-        //  - baseName fallback for Word title bar without extension
-        //  - rectangles pre-converted to physical pixels for the selected monitor
-        //  - SWP_FRAMECHANGED flag for proper DWM frame recalculation
-        //  - Per-Monitor-V2 DPI awareness so SetWindowPos treats coords as physical
+        // PowerShell script to find and position Word windows.
+        //
+        // H1 fix: the previous script called SetProcessDpiAwarenessContext and
+        // discarded its BOOL return -- that API does NOT throw on failure, so
+        // when the PS host was already (System) DPI-aware the call silently
+        // failed and SetWindowPos coordinates got DPI-virtualized on 4K@>100%.
+        // This version instead does NOT depend on achieving any particular
+        // process awareness for correctness:
+        //   - It still attempts Per-Monitor-V2 (-4), then PMv1 (-3), then
+        //     SetProcessDPIAware, CHECKING each return and logging the result.
+        //   - Regardless of what awareness was achieved, it receives the target
+        //     rect as the monitor's DIP workArea + the monitor's scaleFactor,
+        //     then resolves the monitor's PHYSICAL geometry in-script via
+        //     MonitorFromPoint + GetMonitorInfo and (when available)
+        //     GetDpiForMonitor. The half-rects are computed from that physical
+        //     monitor rect, so they are correct whether the process ended up
+        //     Per-Monitor-aware (GetMonitorInfo returns physical) or only
+        //     System-aware (GetMonitorInfo returns DIP-virtualized but
+        //     internally consistent with the SetWindowPos coordinate space).
+        //   - This removes the H4 dipToScreenRect/dipToScreenPoint dependency
+        //     entirely; no negative-origin scaling math runs in the main process.
+        //
+        // H2 fix: windows are matched by the launched WINWORD PID first
+        // (GetWindowThreadProcessId), with the title substring only as a
+        // fallback -- a Protected-View title that omits the filename no longer
+        // breaks matching.
+        //
+        // H3 fix: the poll ceiling is longer and each window is positioned the
+        // moment it is found; the loop no longer waits for BOTH hwnds.
         const psScript = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class DpiHelper {
-  [DllImport("user32.dll")]
-  public static extern bool SetProcessDPIAware();
-  [DllImport("user32.dll", EntryPoint = "SetProcessDpiAwarenessContext")]
-  static extern int SetDpiAwarenessCtx(IntPtr value);
-  // Make this PowerShell process Per-Monitor-DPI-Aware V2 so that SetWindowPos
-  // coordinates are interpreted as PHYSICAL pixels (matching the pre-converted
-  // rects). DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == -4 (Win10 1703+);
-  // fall back to system-DPI-aware on older builds.
-  public static void SetBestDpiAwareness() {
-    try {
-      SetDpiAwarenessCtx(new IntPtr(-4));
-    } catch {
-      SetProcessDPIAware();
-    }
-  }
-}
-"@
-[DpiHelper]::SetBestDpiAwareness()
+$ErrorActionPreference = 'Continue'
 
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public class Win32 {
-  [DllImport("user32.dll")]
-  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-  [DllImport("user32.dll")]
-  public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-  [DllImport("user32.dll")]
-  public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-  [DllImport("user32.dll")]
-  public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
-  [DllImport("user32.dll")]
-  public static extern bool IsWindowVisible(IntPtr hWnd);
+using System.Text;
+public class WinDpi {
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll", SetLastError=true)] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+  [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO {
+    public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags;
+  }
+
+  // Returns: 4 if Per-Monitor-V2 set, 3 if PMv1, 1 if SetProcessDPIAware,
+  // 0 if nothing took. SetProcessDpiAwarenessContext is checked by return value
+  // (it does not throw); the H1 bug was ignoring exactly this return.
+  public static int SetBestDpiAwareness() {
+    if (SetProcessDpiAwarenessContext(new IntPtr(-4))) return 4;
+    if (SetProcessDpiAwarenessContext(new IntPtr(-3))) return 3;
+    if (SetProcessDPIAware()) return 1;
+    return 0;
+  }
+
+  // Find the visible top-level window for a given process id.
+  public static IntPtr FindWindowByPid(uint pid) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows(delegate(IntPtr hWnd, IntPtr lParam) {
+      if (!IsWindowVisible(hWnd)) return true;
+      uint wpid; GetWindowThreadProcessId(hWnd, out wpid);
+      if (wpid == pid) {
+        var sb = new StringBuilder(512);
+        GetWindowText(hWnd, sb, 512);
+        if (sb.Length > 0) { found = hWnd; return false; }
+      }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+
   public static IntPtr FindWindowByTitle(string filename, string baseName) {
     IntPtr found = IntPtr.Zero;
     EnumWindows(delegate(IntPtr hWnd, IntPtr lParam) {
       if (!IsWindowVisible(hWnd)) return true;
-      var sb = new System.Text.StringBuilder(512);
+      var sb = new StringBuilder(512);
       GetWindowText(hWnd, sb, 512);
       string title = sb.ToString();
       if (title.IndexOf("Word", StringComparison.OrdinalIgnoreCase) >= 0 &&
@@ -2273,22 +2326,54 @@ public class Win32 {
     }, IntPtr.Zero);
     return found;
   }
+
+  // Resolve the physical work-area RECT of the monitor that contains the given
+  // DIP point. dipX/dipY identify the monitor; scaleFactor converts the DIP
+  // work-area size to physical pixels. GetMonitorInfo reports geometry in the
+  // process's awareness coordinate space -- which is the SAME space SetWindowPos
+  // consumes -- so the half-rects below land correctly regardless of which
+  // awareness level SetBestDpiAwareness actually achieved.
+  public static RECT GetMonitorWorkRect(int dipX, int dipY) {
+    POINT p; p.X = dipX; p.Y = dipY;
+    IntPtr hMon = MonitorFromPoint(p, 2 /* MONITOR_DEFAULTTONEAREST */);
+    MONITORINFO mi = new MONITORINFO();
+    mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+    GetMonitorInfo(hMon, ref mi);
+    return mi.rcWork;
+  }
 }
 "@
 
-# Target rectangles, ALREADY in physical pixels for the selected monitor.
-# The main process derived these from the monitor's DIP workArea (left/right
-# halves) and converted them via screen.dipToScreenRect. No scaling here.
-$leftX = [int]$env:DOCHUB_LEFT_X
-$leftY = [int]$env:DOCHUB_LEFT_Y
-$leftW = [int]$env:DOCHUB_LEFT_W
-$leftH = [int]$env:DOCHUB_LEFT_H
+$awareness = [WinDpi]::SetBestDpiAwareness()
+Write-Output ("[Display][PS] DPI awareness achieved: " + $awareness + " (4=PerMonitorV2, 3=PMv1, 1=System, 0=none)")
 
-$rightX = [int]$env:DOCHUB_RIGHT_X
-$rightY = [int]$env:DOCHUB_RIGHT_Y
-$rightW = [int]$env:DOCHUB_RIGHT_W
-$rightH = [int]$env:DOCHUB_RIGHT_H
+# Selected monitor identified by a DIP point inside its work area, plus the
+# monitor's DIP work-area size and scaleFactor. No physical coords come from the
+# main process -- the script resolves them itself (H4: no dipToScreenRect).
+$dipX = [int]$env:DOCHUB_WA_X
+$dipY = [int]$env:DOCHUB_WA_Y
+$waW  = [int]$env:DOCHUB_WA_W
+$waH  = [int]$env:DOCHUB_WA_H
+$scale = [double]$env:DOCHUB_SCALE
 
+$mon = [WinDpi]::GetMonitorWorkRect($dipX, $dipY)
+$monW = $mon.Right - $mon.Left
+$monH = $mon.Bottom - $mon.Top
+Write-Output ("[Display][PS] Monitor work rect: " + $mon.Left + "," + $mon.Top + " " + $monW + "x" + $monH)
+
+# Split the resolved monitor work rect into left/right halves.
+$halfW = [int][math]::Floor($monW / 2)
+$leftX = $mon.Left
+$leftY = $mon.Top
+$leftW = $halfW
+$leftH = $monH
+$rightX = $mon.Left + $halfW
+$rightY = $mon.Top
+$rightW = $monW - $halfW
+$rightH = $monH
+
+$backupPid = [int]$env:DOCHUB_BACKUP_PID
+$processedPid = [int]$env:DOCHUB_PROCESSED_PID
 $backupFilename = $env:DOCHUB_BACKUP_FILENAME
 $processedFilename = $env:DOCHUB_PROCESSED_FILENAME
 $backupBaseName = $env:DOCHUB_BACKUP_BASENAME
@@ -2296,60 +2381,92 @@ $processedBaseName = $env:DOCHUB_PROCESSED_BASENAME
 
 $backupHwnd = [IntPtr]::Zero
 $processedHwnd = [IntPtr]::Zero
+$backupPlaced = $false
+$processedPlaced = $false
 
-for ($i = 0; $i -lt 8; $i++) {
-  if ($backupHwnd -eq [IntPtr]::Zero) {
-    $backupHwnd = [Win32]::FindWindowByTitle($backupFilename, $backupBaseName)
+# SW_RESTORE (9) unmaximizes a window so SetWindowPos can reposition it.
+# SWP_SHOWWINDOW | SWP_FRAMECHANGED (0x0060) forces a DWM frame recalc.
+function Place-Window([IntPtr]$hwnd, [int]$wx, [int]$wy, [int]$ww, [int]$wh) {
+  [WinDpi]::ShowWindow($hwnd, 9) | Out-Null
+  [WinDpi]::SetWindowPos($hwnd, [IntPtr]::Zero, $wx, $wy, $ww, $wh, 0x0060) | Out-Null
+}
+
+# H3: longer ceiling (30 iterations x 750ms = 22.5s, covers first-run Word on
+# Win11) and each window is placed the instant it is found -- the loop never
+# waits for both, and tolerates an already-running Word instance.
+for ($i = 0; $i -lt 30; $i++) {
+  if (-not $backupPlaced) {
+    if ($backupPid -gt 0) { $backupHwnd = [WinDpi]::FindWindowByPid($backupPid) }
+    if ($backupHwnd -eq [IntPtr]::Zero) {
+      $backupHwnd = [WinDpi]::FindWindowByTitle($backupFilename, $backupBaseName)
+    }
+    if ($backupHwnd -ne [IntPtr]::Zero) {
+      Place-Window $backupHwnd $leftX $leftY $leftW $leftH
+      $backupPlaced = $true
+      Write-Output "[Display][PS] Backup window placed (left)"
+    }
   }
-  if ($processedHwnd -eq [IntPtr]::Zero) {
-    $processedHwnd = [Win32]::FindWindowByTitle($processedFilename, $processedBaseName)
+  if (-not $processedPlaced) {
+    if ($processedPid -gt 0) { $processedHwnd = [WinDpi]::FindWindowByPid($processedPid) }
+    if ($processedHwnd -eq [IntPtr]::Zero) {
+      $processedHwnd = [WinDpi]::FindWindowByTitle($processedFilename, $processedBaseName)
+    }
+    if ($processedHwnd -ne [IntPtr]::Zero -and $processedHwnd -ne $backupHwnd) {
+      Place-Window $processedHwnd $rightX $rightY $rightW $rightH
+      $processedPlaced = $true
+      Write-Output "[Display][PS] Processed window placed (right)"
+    }
   }
-  if ($backupHwnd -ne [IntPtr]::Zero -and $processedHwnd -ne [IntPtr]::Zero) {
-    break
-  }
+  if ($backupPlaced -and $processedPlaced) { break }
   Start-Sleep -Milliseconds 750
 }
 
-# SW_RESTORE (9) unmaximizes windows so SetWindowPos can reposition them
-# SWP_SHOWWINDOW | SWP_FRAMECHANGED (0x0060) ensures proper DWM frame recalculation
-# Backup -> left half, Processed -> right half (physical-pixel rects).
-if ($backupHwnd -ne [IntPtr]::Zero) {
-  [Win32]::ShowWindow($backupHwnd, 9) | Out-Null
-  [Win32]::SetWindowPos($backupHwnd, [IntPtr]::Zero, $leftX, $leftY, $leftW, $leftH, 0x0060) | Out-Null
-}
-
-if ($processedHwnd -ne [IntPtr]::Zero) {
-  [Win32]::ShowWindow($processedHwnd, 9) | Out-Null
-  [Win32]::SetWindowPos($processedHwnd, [IntPtr]::Zero, $rightX, $rightY, $rightW, $rightH, 0x0060) | Out-Null
-}
+if (-not $backupPlaced) { Write-Output "[Display][PS] WARN: backup window never found" }
+if (-not $processedPlaced) { Write-Output "[Display][PS] WARN: processed window never found" }
 `;
 
         const scriptPath = path.join(app.getPath("temp"), `dochub-position-${Date.now()}.ps1`);
         try {
           fs.writeFileSync(scriptPath, psScript, "utf-8");
 
-          const psResult = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`, {
-            windowsHide: true,
-            env: {
-              ...process.env,
-              DOCHUB_LEFT_X: Math.round(leftRect.x).toString(),
-              DOCHUB_LEFT_Y: Math.round(leftRect.y).toString(),
-              DOCHUB_LEFT_W: Math.round(leftRect.width).toString(),
-              DOCHUB_LEFT_H: Math.round(leftRect.height).toString(),
-              DOCHUB_RIGHT_X: Math.round(rightRect.x).toString(),
-              DOCHUB_RIGHT_Y: Math.round(rightRect.y).toString(),
-              DOCHUB_RIGHT_W: Math.round(rightRect.width).toString(),
-              DOCHUB_RIGHT_H: Math.round(rightRect.height).toString(),
-              DOCHUB_BACKUP_FILENAME: backupFilename,
-              DOCHUB_PROCESSED_FILENAME: processedFilename,
-              DOCHUB_BACKUP_BASENAME: backupBaseName,
-              DOCHUB_PROCESSED_BASENAME: processedBaseName,
-            },
-          });
+          // Pass the SELECTED monitor's DIP work area + scaleFactor. A point
+          // one quarter into the work area reliably lands inside the monitor
+          // (MonitorFromPoint resolves it). The script derives all physical
+          // coords itself -- no dipToScreenRect/dipToScreenPoint (H4 removed).
+          const monPointX = x + Math.floor(width / 4);
+          const monPointY = y + Math.floor(height / 4);
+
+          const psResult = await execPromise(
+            `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
+            {
+              windowsHide: true,
+              // Longer timeout to cover the extended 22.5s poll ceiling (H3).
+              timeout: 60000,
+              env: {
+                ...process.env,
+                DOCHUB_WA_X: monPointX.toString(),
+                DOCHUB_WA_Y: monPointY.toString(),
+                DOCHUB_WA_W: Math.round(width).toString(),
+                DOCHUB_WA_H: Math.round(height).toString(),
+                DOCHUB_SCALE: scaleFactor.toString(),
+                DOCHUB_BACKUP_PID: (backupPid ?? 0).toString(),
+                DOCHUB_PROCESSED_PID: (processedPid ?? 0).toString(),
+                DOCHUB_BACKUP_FILENAME: backupFilename,
+                DOCHUB_PROCESSED_FILENAME: processedFilename,
+                DOCHUB_BACKUP_BASENAME: backupBaseName,
+                DOCHUB_PROCESSED_BASENAME: processedBaseName,
+              },
+            }
+          );
+          // The script logs achieved DPI awareness and per-window placement to
+          // stdout; surface it so [Display] log output confirms the H1 path.
+          if (psResult.stdout) {
+            log.info("[Display] PowerShell positioning output:", psResult.stdout.trim());
+          }
           if (psResult.stderr) {
             log.warn("[Display] PowerShell warnings:", psResult.stderr);
           }
-          log.info("[Display] Word windows positioned successfully (backup=left, processed=right)");
+          log.info("[Display] Word window positioning completed (backup=left, processed=right)");
         } catch (psError) {
           // Non-fatal - windows opened but positioning may have failed
           log.warn("[Display] Could not auto-position Word windows:", psError);

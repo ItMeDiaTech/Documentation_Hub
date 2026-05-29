@@ -33,7 +33,7 @@ const Toast = React.forwardRef<
       className={cn(
         "group pointer-events-auto relative flex w-full items-center gap-2 overflow-hidden rounded-md border py-2 px-3 shadow-sm transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-bottom-full",
         variant === "default" &&
-          "border-border/50 bg-background/95 backdrop-blur-sm text-foreground",
+          "border-border bg-background/95 backdrop-blur-sm text-foreground",
         variant === "destructive" &&
           "border-red-200 bg-red-50/95 backdrop-blur-sm text-red-800 dark:border-red-800/50 dark:bg-red-950/95 dark:text-red-200",
         variant === "success" &&
@@ -49,12 +49,12 @@ Toast.displayName = ToastPrimitives.Root.displayName;
 // Status icon component for variants
 const ToastIcon = ({ variant }: { variant?: "default" | "destructive" | "success" }) => {
   if (variant === "success") {
-    return <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />;
+    return <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />;
   }
   if (variant === "destructive") {
-    return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" />;
+    return <AlertCircle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />;
   }
-  return <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
+  return <Info className="h-4 w-4 shrink-0 text-muted-foreground" />;
 };
 
 const ToastAction = React.forwardRef<
@@ -79,13 +79,13 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "ml-auto shrink-0 rounded p-0.5 opacity-50 transition-opacity hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring",
+      "ml-auto shrink-0 rounded p-1.5 opacity-50 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring",
       className
     )}
     toast-close=""
     {...props}
   >
-    <X className="h-3 w-3" />
+    <X className="h-3.5 w-3.5" />
   </ToastPrimitives.Close>
 ));
 ToastClose.displayName = ToastPrimitives.Close.displayName;
@@ -96,7 +96,7 @@ const ToastTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Title
     ref={ref}
-    className={cn("text-xs font-medium leading-tight", className)}
+    className={cn("text-sm font-medium leading-tight", className)}
     {...props}
   />
 ));
@@ -108,7 +108,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Description
     ref={ref}
-    className={cn("text-[11px] opacity-75 leading-tight", className)}
+    className={cn("text-xs leading-tight", className)}
     {...props}
   />
 ));

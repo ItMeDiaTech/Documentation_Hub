@@ -189,7 +189,7 @@ export function DebugConsole() {
               <div className="w-px h-4 bg-border mx-1" />
               <button
                 onClick={copyLogs}
-                className="p-1 hover:bg-muted rounded transition-colors"
+                className="p-2 hover:bg-muted rounded transition-colors"
                 title="Copy logs"
               >
                 <Copy className="w-3.5 h-3.5" />
@@ -203,14 +203,14 @@ export function DebugConsole() {
               </button>
               <button
                 onClick={clearLogs}
-                className="p-1 hover:bg-muted rounded transition-colors"
+                className="p-2 hover:bg-muted rounded transition-colors"
                 title="Clear logs"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => setIsVisible(false)}
-                className="p-1 hover:bg-muted rounded transition-colors ml-2"
+                className="p-2 hover:bg-muted rounded transition-colors ml-2"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -252,20 +252,20 @@ export function DebugConsole() {
           {/* Footer */}
           <div className="px-4 py-2 border-t border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1 text-xs">
+              <label className="flex items-center gap-2 text-xs">
                 <input
                   type="checkbox"
                   checked={autoScroll}
                   onChange={(e) => setAutoScroll(e.target.checked)}
-                  className="w-3 h-3"
+                  className="w-4 h-4"
                 />
                 Auto-scroll
               </label>
             </div>
             <div className="text-xs text-muted-foreground">
-              Press <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Ctrl</kbd>+
-              <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Shift</kbd>+
-              <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">D</kbd> to toggle
+              Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl</kbd>+
+              <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Shift</kbd>+
+              <kbd className="px-1 py-0.5 bg-muted rounded text-xs">D</kbd> to toggle
             </div>
           </div>
         </motion.div>

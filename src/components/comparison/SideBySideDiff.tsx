@@ -129,14 +129,14 @@ function DiffLine({
         onClick={onClick}
       >
         {showLineNumbers && (
-          <div className="w-12 flex-shrink-0 px-2 py-1 text-xs text-muted-foreground/50 text-right border-r border-border/30 select-none">
+          <div className="w-12 flex-shrink-0 px-2 py-1 text-xs text-muted-foreground text-right border-r border-border/30 select-none">
             -
           </div>
         )}
         <div className="w-6 flex-shrink-0 flex items-center justify-center border-r border-border/30 select-none">
           {gutterIndicators[lineType]}
         </div>
-        <div className="flex-1 px-3 py-1 text-sm font-mono text-muted-foreground/50 italic">
+        <div className="flex-1 px-3 py-1 text-sm font-mono text-muted-foreground italic">
           {/* Empty space */}
         </div>
       </div>
@@ -349,7 +349,7 @@ export function SideBySideDiff({
             <button
               onClick={() => navigateToChange("prev")}
               disabled={currentChangeIndex === 0 || changedIndices.length === 0}
-              className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               title="Previous change"
             >
               <ChevronUp className="w-4 h-4" />
@@ -364,7 +364,7 @@ export function SideBySideDiff({
               disabled={
                 currentChangeIndex === changedIndices.length - 1 || changedIndices.length === 0
               }
-              className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               title="Next change"
             >
               <ChevronDown className="w-4 h-4" />

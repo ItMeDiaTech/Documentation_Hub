@@ -7,7 +7,7 @@
 
 import type { UnifiedChange } from "@/types/session";
 import { cn } from "@/utils/cn";
-import { FileText, User } from "lucide-react";
+import { FileText, Minus, Plus, User } from "lucide-react";
 
 interface ChangeItemProps {
   change: UnifiedChange;
@@ -272,6 +272,7 @@ function HyperlinkChangeView({ change }: HyperlinkChangeViewProps) {
               <div className="space-y-1 text-xs font-mono">
                 {change.urlBefore && (
                   <div className="flex items-start gap-2">
+                    <Minus className="shrink-0 w-3 h-3 text-red-600 dark:text-red-400" />
                     <span className="shrink-0 w-1 h-full bg-red-500 rounded-full" />
                     <span className="text-red-600 dark:text-red-400 line-through break-all">
                       {truncateUrl(change.urlBefore)}
@@ -280,6 +281,7 @@ function HyperlinkChangeView({ change }: HyperlinkChangeViewProps) {
                 )}
                 {change.urlAfter && (
                   <div className="flex items-start gap-2">
+                    <Plus className="shrink-0 w-3 h-3 text-green-600 dark:text-green-400" />
                     <span className="shrink-0 w-1 h-full bg-green-500 rounded-full" />
                     <span className="text-green-600 dark:text-green-400 break-all">
                       {truncateUrl(change.urlAfter)}
@@ -297,6 +299,7 @@ function HyperlinkChangeView({ change }: HyperlinkChangeViewProps) {
               <div className="space-y-1 text-xs font-mono">
                 {change.textBefore && (
                   <div className="flex items-start gap-2">
+                    <Minus className="shrink-0 w-3 h-3 text-red-600 dark:text-red-400" />
                     <span className="shrink-0 w-1 h-full bg-red-500 rounded-full" />
                     <span className="text-red-600 dark:text-red-400 line-through break-all">
                       {truncateText(change.textBefore, 80)}
@@ -305,6 +308,7 @@ function HyperlinkChangeView({ change }: HyperlinkChangeViewProps) {
                 )}
                 {change.textAfter && (
                   <div className="flex items-start gap-2">
+                    <Plus className="shrink-0 w-3 h-3 text-green-600 dark:text-green-400" />
                     <span className="shrink-0 w-1 h-full bg-green-500 rounded-full" />
                     <span className="text-green-600 dark:text-green-400 break-all">
                       {truncateText(change.textAfter, 80)}

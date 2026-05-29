@@ -171,7 +171,7 @@ export function Sessions() {
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => handleDeleteSession(session.id, e)}
-                      className="p-1 hover:bg-muted rounded"
+                      className="p-2 hover:bg-muted rounded"
                     >
                       <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
                     </button>

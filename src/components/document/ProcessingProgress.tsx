@@ -147,7 +147,9 @@ export function ProcessingProgress({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-lg">Processing Document</h3>
-            <p className="text-sm text-muted-foreground truncate max-w-md">{documentName}</p>
+            <p className="text-sm text-muted-foreground truncate max-w-md" title={documentName}>
+              {documentName}
+            </p>
           </div>
           {onCancel && (
             <button
@@ -210,7 +212,7 @@ export function ProcessingProgress({
                   {isActive && (
                     <motion.span
                       initial={{ opacity: 0 }}
-                      animate={{ opacity: [0.5, 1, 0.5] }}
+                      animate={{ opacity: [0.8, 1, 0.8] }}
                       transition={{ duration: 2, repeat: Infinity }}
                       className="text-xs text-primary px-2 py-0.5 bg-primary/10 rounded-full"
                     >
@@ -276,7 +278,7 @@ export function ProcessingProgress({
           )}
         </div>
         {statistics?.warnings !== undefined && statistics.warnings > 0 && (
-          <span className="text-yellow-500">
+          <span className="text-yellow-700 dark:text-yellow-400">
             {statistics.warnings} warning{statistics.warnings !== 1 ? "s" : ""}
           </span>
         )}

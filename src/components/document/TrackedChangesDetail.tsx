@@ -114,7 +114,12 @@ function ChangeGroup({
             <span className="text-xs text-muted-foreground">({group.items.length})</span>
           </div>
           {group.summary && (
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">{group.summary}</p>
+            <p
+              className="text-xs text-muted-foreground mt-0.5 truncate"
+              title={group.summary}
+            >
+              {group.summary}
+            </p>
           )}
         </div>
         {isExpanded ? (
@@ -168,8 +173,8 @@ function HyperlinkUpdatesView({ items }: { items: DocumentChange[] }) {
                 {/* Content ID - Always shown prominently at top for identification */}
                 {change.contentId && (
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-[10px]">Content ID:</span>
-                    <code className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] font-medium">
+                    <span className="text-muted-foreground text-xs">Content ID:</span>
+                    <code className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-xs font-medium">
                       {change.contentId}
                     </code>
                   </div>
@@ -177,14 +182,14 @@ function HyperlinkUpdatesView({ items }: { items: DocumentChange[] }) {
 
                 {/* What Changed section */}
                 <div className="space-y-1">
-                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     What Changed:
                   </span>
 
                   {/* URL change (if URL changed) */}
                   {change.urlBefore && change.urlAfter && (
                     <div className="space-y-0.5 ml-2">
-                      <span className="text-[10px] text-muted-foreground">URL:</span>
+                      <span className="text-xs text-muted-foreground">URL:</span>
                       <div className="flex items-start gap-2">
                         <span className="text-muted-foreground min-w-[45px]">Before:</span>
                         <code className="bg-red-500/10 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded break-all flex-1 line-through">
@@ -203,7 +208,7 @@ function HyperlinkUpdatesView({ items }: { items: DocumentChange[] }) {
                   {/* Text to Display change (if text changed) */}
                   {change.before && change.after && (
                     <div className="space-y-0.5 ml-2">
-                      <span className="text-[10px] text-muted-foreground">Text to Display:</span>
+                      <span className="text-xs text-muted-foreground">Text to Display:</span>
                       <div className="flex items-start gap-2">
                         <span className="text-muted-foreground min-w-[45px]">Before:</span>
                         <code className="bg-red-500/10 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded break-all flex-1 line-through">
@@ -256,7 +261,7 @@ function HyperlinkFailedView({ items }: { items: DocumentChange[] }) {
                   )}
                   <span
                     className={cn(
-                      "ml-2 text-[10px] px-1.5 py-0.5 rounded",
+                      "ml-2 text-xs px-1.5 py-0.5 rounded",
                       change.hyperlinkStatus === "expired"
                         ? "bg-orange-500/10 text-orange-600"
                         : "bg-red-500/10 text-red-600"
@@ -343,7 +348,7 @@ function DefaultChangesView({ items }: { items: DocumentChange[] }) {
           <div className="flex-1">
             <p className="font-medium">{change.description}</p>
             {change.nearestHeader2 && (
-              <p className="text-muted-foreground text-[10px] mt-0.5">
+              <p className="text-muted-foreground text-xs mt-0.5">
                 Under "{change.nearestHeader2}"
               </p>
             )}
@@ -364,7 +369,7 @@ function DefaultChangesView({ items }: { items: DocumentChange[] }) {
               </div>
             )}
             {change.count !== undefined && change.count > 0 && (
-              <p className="text-muted-foreground text-[10px] mt-0.5">
+              <p className="text-muted-foreground text-xs mt-0.5">
                 {change.count} occurrence{change.count !== 1 ? "s" : ""}
               </p>
             )}

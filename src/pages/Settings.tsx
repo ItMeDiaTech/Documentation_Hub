@@ -942,7 +942,7 @@ export function Settings() {
               <input
                 type="text"
                 placeholder="Search settings..."
-                className="w-full pl-10 pr-3 py-2 text-sm rounded-lg border border-border bg-background text-muted-foreground placeholder:text-muted-foreground/50 hover:border-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 transition-colors"
+                className="w-full pl-10 pr-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground hover:border-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
               />
             </div>
 
@@ -1235,7 +1235,7 @@ export function Settings() {
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-medium">Advanced: Custom Theme Colors</span>
-                      <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground uppercase tracking-wide">
+                      <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-muted text-muted-foreground uppercase tracking-wide">
                         Advanced
                       </span>
                     </div>
@@ -1328,7 +1328,7 @@ export function Settings() {
                               />
                             </button>
                             {item.showTextHint && (
-                              <p className="text-[10px] text-muted-foreground mt-1 text-center">
+                              <p className="text-xs text-muted-foreground mt-1 text-center">
                                 Text:{" "}
                                 {getContrastTextColor(item.color) === "#FFFFFF" ? "White" : "Black"}
                               </p>
@@ -1566,7 +1566,7 @@ export function Settings() {
                       id="font-family-select"
                       value={fontFamily}
                       onChange={(e) => setFontFamily(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="system-ui">System Default</option>
                       <option value="'Inter', sans-serif">Inter</option>
@@ -2332,7 +2332,7 @@ export function Settings() {
                           })
                         }
                         placeholder="https://www.example.com"
-                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
                       />
                       <p className="text-xs text-muted-foreground mt-2">
                         Bug reports will be sent to this API endpoint. Leave as default to use email
@@ -2355,7 +2355,7 @@ export function Settings() {
                           })
                         }
                         placeholder="https://www.example.com"
-                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
                       />
                       <p className="text-xs text-muted-foreground mt-2">
                         Feature suggestions will be sent to this API endpoint. Leave as default to
@@ -2596,7 +2596,7 @@ Submitted: ${new Date().toLocaleString()}
                         })
                       }
                       placeholder="https://company.sharepoint.com/sites/IT/Shared Documents/Dictionary.xlsx"
-                      className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                      className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Direct URL to the .xlsx dictionary file on SharePoint (Daily_Inventory sheet,

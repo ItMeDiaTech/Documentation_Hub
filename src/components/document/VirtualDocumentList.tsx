@@ -2,7 +2,15 @@ import { memo, useCallback, useMemo, CSSProperties } from "react";
 // @ts-expect-error react-window v2 types lag the runtime exports
 import { VariableSizeList as List } from "react-window";
 import { motion } from "framer-motion";
-import { FileText, CheckCircle, Clock, AlertCircle, ExternalLink, Download } from "lucide-react";
+import {
+  FileText,
+  CheckCircle,
+  Clock,
+  Loader2,
+  AlertCircle,
+  ExternalLink,
+  Download,
+} from "lucide-react";
 import { Document } from "@/types/session";
 import { cn } from "@/utils/cn";
 import { Button } from "../common/Button";
@@ -60,7 +68,7 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
       case "processing":
         return (
           <div className="animate-spin">
-            <Clock className="w-4 h-4 text-primary" />
+            <Loader2 className="w-4 h-4 text-primary" />
           </div>
         );
       case "completed":
@@ -91,7 +99,7 @@ const DocumentRow = memo(({ index, style, data }: DocumentRowProps) => {
         className={cn(
           "mx-2 p-3 rounded-lg border cursor-pointer transition-all",
           "hover:shadow-sm hover:border-primary/20",
-          isSelected && "border-primary bg-primary/5",
+          isSelected && "border-primary bg-primary/10 ring-1 ring-primary",
           !isSelected && "border-border bg-card"
         )}
       >

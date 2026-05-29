@@ -305,7 +305,7 @@ export const Sidebar = memo(function Sidebar() {
                   item.onClose?.();
                 }
               }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-background/20 pointer-events-none group-hover:pointer-events-auto"
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-background/20 pointer-events-none group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X className="w-3 h-3" />
             </div>
@@ -359,7 +359,7 @@ export const Sidebar = memo(function Sidebar() {
               </motion.div>
               <span className="font-semibold text-sm">DocHub</span>
               {appVersion && (
-                <span className="text-[10px] text-muted-foreground font-normal leading-none">
+                <span className="text-xs text-muted-foreground font-normal leading-none">
                   v{appVersion}
                 </span>
               )}
@@ -377,7 +377,7 @@ export const Sidebar = memo(function Sidebar() {
         )}
       </div>
 
-      <div className="mx-4 mb-3 h-px bg-border/50" />
+      <div className="mx-4 mb-3 h-px bg-border" />
 
       <nav className="flex-1 px-3 pb-3 overflow-y-auto">
         <div className="space-y-4">
@@ -385,12 +385,12 @@ export const Sidebar = memo(function Sidebar() {
             <div key={section.title || sectionIndex}>
               {section.title && !collapsed && (
                 <div className="px-3 mb-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {section.title}
                   </span>
                 </div>
               )}
-              {section.title && collapsed && <div className="mx-auto my-2 w-6 h-px bg-border/50" />}
+              {section.title && collapsed && <div className="mx-auto my-2 w-6 h-px bg-border" />}
               <div className="space-y-1">{section.items.map(renderNavItem)}</div>
             </div>
           ))}

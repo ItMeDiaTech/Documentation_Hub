@@ -222,7 +222,7 @@ function ChangeBadge({
           {change.content?.hyperlinkChange?.contentId && (
             <div className="mt-1 pt-1 border-t border-border">
               <span className="text-muted-foreground">Content ID:</span>{" "}
-              <code className="bg-primary/10 text-primary px-1 py-0.5 rounded text-[10px]">
+              <code className="bg-primary/10 text-primary px-1 py-0.5 rounded text-xs">
                 {change.content.hyperlinkChange.contentId}
               </code>
             </div>
@@ -232,11 +232,11 @@ function ChangeBadge({
             change.content?.hyperlinkChange?.urlAfter && (
               <div className="mt-1 pt-1 border-t border-border">
                 <div className="text-muted-foreground mb-0.5">URL:</div>
-                <div className="line-through text-red-500 break-all">
+                <div className="line-through text-red-600 dark:text-red-400 break-all">
                   {change.content.hyperlinkChange.urlBefore.slice(0, 60)}
                   {change.content.hyperlinkChange.urlBefore.length > 60 && "..."}
                 </div>
-                <div className="text-green-500 break-all">
+                <div className="text-green-600 dark:text-green-400 break-all">
                   {change.content.hyperlinkChange.urlAfter.slice(0, 60)}
                   {change.content.hyperlinkChange.urlAfter.length > 60 && "..."}
                 </div>
@@ -247,11 +247,11 @@ function ChangeBadge({
             change.content?.hyperlinkChange?.textAfter && (
               <div className="mt-1 pt-1 border-t border-border">
                 <div className="text-muted-foreground mb-0.5">Text to Display:</div>
-                <div className="line-through text-red-500">
+                <div className="line-through text-red-600 dark:text-red-400">
                   {change.content.hyperlinkChange.textBefore.slice(0, 50)}
                   {change.content.hyperlinkChange.textBefore.length > 50 && "..."}
                 </div>
-                <div className="text-green-500">
+                <div className="text-green-600 dark:text-green-400">
                   {change.content.hyperlinkChange.textAfter.slice(0, 50)}
                   {change.content.hyperlinkChange.textAfter.length > 50 && "..."}
                 </div>
@@ -260,20 +260,20 @@ function ChangeBadge({
           {change.propertyChange && (
             <div className="mt-1 pt-1 border-t border-border">
               <span className="text-muted-foreground">{change.propertyChange.property}:</span>{" "}
-              <span className="line-through text-red-500">
+              <span className="line-through text-red-600 dark:text-red-400">
                 {change.propertyChange.oldValue || "none"}
               </span>{" "}
-              <span className="text-green-500">{change.propertyChange.newValue || "none"}</span>
+              <span className="text-green-600 dark:text-green-400">{change.propertyChange.newValue || "none"}</span>
             </div>
           )}
           {/* Generic before/after (for non-hyperlink changes) */}
           {!change.content?.hyperlinkChange && change.content?.before && change.content?.after && (
             <div className="mt-1 pt-1 border-t border-border">
-              <div className="line-through text-red-500">
+              <div className="line-through text-red-600 dark:text-red-400">
                 {change.content.before.slice(0, 50)}
                 {change.content.before.length > 50 && "..."}
               </div>
-              <div className="text-green-500">
+              <div className="text-green-600 dark:text-green-400">
                 {change.content.after.slice(0, 50)}
                 {change.content.after.length > 50 && "..."}
               </div>
@@ -360,7 +360,7 @@ function ParagraphWithChanges({
         {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         <span>Paragraph {paragraphIndex + 1}</span>
         {hasMoveChanges && (
-          <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-[10px]">
+          <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-xs">
             has moves
           </span>
         )}

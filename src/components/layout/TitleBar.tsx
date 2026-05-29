@@ -105,7 +105,7 @@ export function TitleBar() {
                   onClick={handleToggleAlwaysOnTop}
                   className={cn(
                     "px-3 h-8 hover:bg-muted transition-colors",
-                    "focus:outline-none focus-visible:bg-muted",
+                    "focus:outline-none focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                     isAlwaysOnTop && "text-primary bg-primary/10"
                   )}
                   aria-label={isAlwaysOnTop ? "Unpin from top" : "Pin on top"}
@@ -117,7 +117,7 @@ export function TitleBar() {
                 onClick={handleMinimize}
                 className={cn(
                   "px-4 h-8 hover:bg-muted transition-colors",
-                  "focus:outline-none focus-visible:bg-muted"
+                  "focus:outline-none focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 )}
                 aria-label="Minimize"
               >
@@ -127,17 +127,17 @@ export function TitleBar() {
                 onClick={handleMaximize}
                 className={cn(
                   "px-4 h-8 hover:bg-muted transition-colors",
-                  "focus:outline-none focus-visible:bg-muted"
+                  "focus:outline-none focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 )}
                 aria-label={isMaximized ? "Restore" : "Maximize"}
               >
-                <Square className="w-2.5 h-2.5" />
+                <Square className="w-3 h-3" />
               </button>
               <button
                 onClick={handleClose}
                 className={cn(
                   "px-4 h-8 hover:bg-destructive hover:text-destructive-foreground transition-colors",
-                  "focus:outline-none focus-visible:bg-destructive focus-visible:text-destructive-foreground"
+                  "focus:outline-none focus-visible:bg-destructive focus-visible:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 )}
                 aria-label="Close"
               >

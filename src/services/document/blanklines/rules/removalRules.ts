@@ -5,13 +5,14 @@
  * of addition rules or preservation fallback.
  */
 
-import { Paragraph, Table, Run, isRun } from "docxmlater";
+import { Paragraph, Table } from "docxmlater";
 import type { BlankLineRule, RuleContext } from "./ruleTypes";
 import {
   isParagraphBlank,
   getEffectiveLeftIndent,
   hasNavigationHyperlink,
   isIndentedBoldColon,
+  startsWithBoldColon,
 } from "../helpers/paragraphChecks";
 import {
   isSmallImageParagraph,
@@ -196,19 +197,11 @@ export const boldColonToIndentedRule: BlankLineRule = {
     if (!(ctx.currentElement instanceof Paragraph)) return false;
     if (!isParagraphBlank(ctx.currentElement)) return false;
 
-    // Previous must be bold+colon with no indentation
+    // Previous must be bold+colon with no indentation. startsWithBoldColon
+    // skips a leading ImageRun, so image-led callouts ("⚠ Important
+    // information:") are recognized as bold-colon paragraphs too.
     if (!(ctx.prevElement instanceof Paragraph)) return false;
-
-    const prevContent = ctx.prevElement.getContent();
-    if (!prevContent || prevContent.length === 0) return false;
-
-    // Check for bold first run with colon
-    const firstRun = prevContent.find(isRun) as Run | undefined;
-    if (!firstRun) return false;
-    const formatting = firstRun.getFormatting();
-    if (!formatting.bold) return false;
-    const fullText = ctx.prevElement.getText();
-    if (!fullText || !fullText.substring(0, 55).includes(":")) return false;
+    if (!startsWithBoldColon(ctx.prevElement)) return false;
 
     // Must have no indentation
     const prevIndent = ctx.prevElement.getFormatting()?.indentation?.left;

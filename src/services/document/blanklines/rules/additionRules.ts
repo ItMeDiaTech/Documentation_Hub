@@ -156,6 +156,15 @@ function isBoldColonNoIndent(para: Paragraph): boolean {
 }
 
 /**
+ * Whether a paragraph begins an "Example:" / "Examples:" block. Such a block
+ * is a standalone illustration, not inline list commentary like "Note:" — so
+ * it keeps its blank line above even when it directly follows a list item.
+ */
+function startsWithExample(para: Paragraph): boolean {
+  return /^examples?\b/i.test(para.getText().trim());
+}
+
+/**
  * Check if the upcoming bold-colon paragraph (ctx.nextElement) is a continuation
  * of a list — i.e. it directly follows a list item, or it sits within a list
  * context (a list item before AND after it sharing the same numId).
@@ -282,7 +291,9 @@ export const aboveBoldColonNoIndentRule: BlankLineRule = {
     // a "Note:" after a numbered procedure step. It must stay tight against the
     // list, with no blank above it. Bold-colon paragraphs in plain body prose
     // (no list item before them) still receive their blank for separation.
-    if (boldColonFollowsListItem(ctx)) return false;
+    // EXCEPTION: an "Example:" block is a standalone illustration, not inline
+    // commentary — it keeps its blank line even after a list item.
+    if (boldColonFollowsListItem(ctx) && !startsWithExample(ctx.nextElement)) return false;
 
     // Inside the Related Documents section: suppress the blank above a
     // bold-colon entry (e.g. "Parent Document: ...") when the element above it
@@ -378,12 +389,15 @@ export const afterListItemsRule: BlankLineRule = {
       // If next is also a list item, don't add blank
       if (ctx.nextElement.getNumbering()) return false;
 
-      // Bold + colon paragraphs ("Note:", "Result:", "Example:") that directly
-      // follow a list item are inline commentary belonging to that list item.
-      // They stay tight against the list — no blank between the list item and
-      // the callout — regardless of the callout's own indentation/style. This
-      // mirrors the suppression in aboveBoldColonNoIndentRule.
-      if (startsWithBoldColon(ctx.nextElement)) return false;
+      // Bold + colon paragraphs ("Note:", "Result:") that directly follow a
+      // list item are inline commentary belonging to that list item. They stay
+      // tight against the list — no blank between the list item and the
+      // callout. This mirrors the suppression in aboveBoldColonNoIndentRule.
+      // An "Example:" block is the exception — a standalone illustration that
+      // keeps its blank line.
+      if (startsWithBoldColon(ctx.nextElement) && !startsWithExample(ctx.nextElement)) {
+        return false;
+      }
 
       // If next is a centered image, always add blank
       if (ctx.nextElement.getAlignment() === "center") {
@@ -468,6 +482,11 @@ export const belowSmallImageTextRule: BlankLineRule = {
     if (!(ctx.currentElement instanceof Paragraph)) return false;
     if (isParagraphBlank(ctx.currentElement)) return false;
     if (!isSmallImageTextCalloutParagraph(ctx.currentElement)) return false;
+
+    // A callout that ends in a bold colon ("⚠ Important information:") is
+    // INTRODUCING the list below it — the list sits tight against it, no
+    // blank. Only a standalone callout (e.g. "⚠ Do NOT …") gets a blank.
+    if (startsWithBoldColon(ctx.currentElement)) return false;
 
     // Only insert a blank when the next element is a list item.
     if (!(ctx.nextElement instanceof Paragraph)) return false;

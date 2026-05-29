@@ -144,7 +144,7 @@ Submitted: ${new Date().toLocaleString()}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Brief description of the issue"
-                    className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                    className="w-full px-3 py-2 rounded-md border border-input bg-background focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
                     autoFocus
                   />
                 </div>
@@ -159,7 +159,7 @@ Submitted: ${new Date().toLocaleString()}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Please provide details about the bug, steps to reproduce, and any error messages..."
                     rows={6}
-                    className="w-full px-3 py-2 rounded-md border border-input bg-background resize-none focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                    className="w-full px-3 py-2 rounded-md border border-input bg-background resize-none focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
 

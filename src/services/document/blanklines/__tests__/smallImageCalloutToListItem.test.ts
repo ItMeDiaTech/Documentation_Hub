@@ -369,6 +369,19 @@ describe("belowSmallImageTextRule", () => {
     };
     expect(belowSmallImageTextRule.matches(ctx)).toBe(false);
   });
+
+  it("does NOT match when the callout ends in a bold colon (it introduces the list)", () => {
+    // "⚠ Important information:" is a list intro — the list sits tight against
+    // it; only a standalone callout ("⚠ Do NOT …") gets a blank below it.
+    const ctx: RuleContext = {
+      doc: new (Document as any)(),
+      currentIndex: 0,
+      currentElement: makeCalloutPara(" Important information:"),
+      nextElement: makeListItem("RFI - With Clinical Info close option."),
+      scope: "cell",
+    };
+    expect(belowSmallImageTextRule.matches(ctx)).toBe(false);
+  });
 });
 
 describe("cell addition: blank below callout, above list item", () => {
@@ -404,6 +417,26 @@ describe("cell addition: blank below callout, above list item", () => {
     // The callout stays the last paragraph — no trailing blank after it.
     expect(isParagraphBlank(paras[paras.length - 1])).toBe(false);
     expect(paras[paras.length - 1].getText()).toContain("Do NOT");
+  });
+
+  it("does NOT insert a blank between a bold-colon callout and the list it introduces", () => {
+    const callout = makeCalloutPara(" Important information:");
+    const li1 = makeListItem("RFI - With Clinical Info close option.");
+    const li2 = makeListItem("When sending RFI - With Clinical Info.");
+    const cell = new (TableCell as any)([callout, li1, li2]);
+    const table = new (Table as any)([new MockRow([cell])]);
+    const doc = new (Document as any)({ bodyElements: [table], tables: [table] });
+
+    const manager = new BlankLineManager();
+    manager.processBlankLines(doc, { bodyBlanks: [], cellBlanks: [] } as any, {});
+
+    const paras = cell.getParagraphs();
+    const calloutIdx = paras.findIndex(
+      (p: any) => !isParagraphBlank(p) && p.getText().includes("Important information")
+    );
+    expect(calloutIdx).toBeGreaterThanOrEqual(0);
+    // The list item sits directly below the colon callout — no blank between.
+    expect(paras[calloutIdx + 1].getNumbering()).toBeTruthy();
   });
 
   it("full processBlankLines keeps the blank between callout and list item", () => {

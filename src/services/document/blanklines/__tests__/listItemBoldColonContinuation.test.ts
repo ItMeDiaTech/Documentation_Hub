@@ -193,6 +193,13 @@ describe("afterListItemsRule — bold-colon continuation contract", () => {
     const doc = makeDoc([listItem(), listItem("Next item")]);
     expect(afterListItemsRule.matches(ctxBody(doc, 0))).toBe(false);
   });
+
+  it("ADDS a blank when list item is followed by a zero-indent Example: block", () => {
+    // An "Example:" block is a standalone illustration, not inline commentary —
+    // it is separated from the preceding list item by a blank line.
+    const doc = makeDoc([listItem(), boldColonNoIndent("Example: State law requires ePA.")]);
+    expect(afterListItemsRule.matches(ctxBody(doc, 0))).toBe(true);
+  });
 });
 
 describe("aboveBoldColonNoIndentRule — list-continuation contract", () => {
@@ -215,6 +222,13 @@ describe("aboveBoldColonNoIndentRule — list-continuation contract", () => {
   it("does NOT fire for an indented bold-colon (isBoldColonNoIndent gates on zero indent)", () => {
     const doc = makeDoc([listItem(), boldColonIndented()]);
     expect(aboveBoldColonNoIndentRule.matches(ctxBody(doc, 0))).toBe(false);
+  });
+
+  it("ADDS a blank above a zero-indent Example: block even when prev is a list item", () => {
+    // "Example:" is the exception to the list-continuation suppression — a
+    // standalone illustration keeps its blank line above.
+    const doc = makeDoc([listItem(), boldColonNoIndent("Example: State law requires ePA.")]);
+    expect(aboveBoldColonNoIndentRule.matches(ctxBody(doc, 0))).toBe(true);
   });
 });
 

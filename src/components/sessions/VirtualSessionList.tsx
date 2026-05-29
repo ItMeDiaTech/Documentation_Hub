@@ -66,7 +66,7 @@ const SessionRow = memo(({ index, style, data }: SessionRowProps) => {
         className={cn(
           "mx-2 p-4 rounded-lg border cursor-pointer transition-all",
           "hover:shadow-md hover:border-primary/30",
-          isSelected && "border-primary bg-primary/5",
+          isSelected && "border-primary bg-primary/10 ring-1 ring-primary",
           !isSelected && "border-border bg-card"
         )}
       >

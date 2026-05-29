@@ -63,6 +63,7 @@ export function SegmentedControl<T extends string>({
             onClick={() => onValueChange(option.value)}
             className={cn(
               "relative flex items-center justify-center gap-2 rounded-md font-medium transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               buttonSizeStyles[size],
               isSelected ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             )}
@@ -70,13 +71,13 @@ export function SegmentedControl<T extends string>({
             {isSelected && (
               <motion.div
                 layoutId="segmented-indicator"
-                className="absolute inset-0 bg-background rounded-md shadow-sm border border-border/50"
+                className="absolute inset-0 bg-background rounded-md shadow-sm border border-border"
                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
               />
             )}
             <span className="relative flex items-center gap-2">
               {Icon && <Icon className={iconSizeStyles[size]} />}
-              <span>{option.label}</span>
+              <span className={cn(isSelected && "font-semibold")}>{option.label}</span>
             </span>
           </button>
         );

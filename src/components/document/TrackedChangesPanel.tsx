@@ -485,7 +485,7 @@ export function TrackedChangesPanel({
                     <button
                       onClick={handlePreviousChange}
                       disabled={currentChangeIndex === 0}
-                      className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-2 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Previous change (k)"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -496,7 +496,7 @@ export function TrackedChangesPanel({
                     <button
                       onClick={handleNextChange}
                       disabled={currentChangeIndex === allChanges.length - 1}
-                      className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-2 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Next change (j)"
                     >
                       <ChevronRight className="w-4 h-4" />
