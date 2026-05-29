@@ -57,9 +57,7 @@ jobs:
         run: npm run build
 
       - name: Build MSI
-        run: npx electron-builder --win msi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win msi --publish never
 
       - name: Generate latest.yml
         run: node scripts/generate-latest-yml.js
