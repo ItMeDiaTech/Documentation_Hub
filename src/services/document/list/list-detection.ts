@@ -153,6 +153,57 @@ export function detectTypedPrefix(text: string): {
 }
 
 /**
+ * Parse the ordinal value of a typed numbered prefix marker.
+ *
+ * Used to decide continue-vs-restart for typed numbered lists: a marker of 1
+ * (or a value that does not sequentially follow the previous item) indicates a
+ * fresh list, while a sequential value continues the prior one.
+ *
+ * Supports decimal ("2." → 2), single letters ("c." → 3), and lowercase/
+ * uppercase Roman numerals ("iv." → 4). Returns null when no ordinal can be
+ * parsed (e.g. bullet/dash/arrow prefixes).
+ */
+export function parseTypedMarkerValue(prefix: string | null): number | null {
+  if (!prefix) return null;
+  const m = prefix.match(/^\s*([0-9]+|[A-Za-z]+)/);
+  if (!m || !m[1]) return null;
+  const marker = m[1];
+
+  if (/^[0-9]+$/.test(marker)) {
+    const n = parseInt(marker, 10);
+    return Number.isNaN(n) ? null : n;
+  }
+
+  // Single alphabetic marker → letter ordinal (a/A = 1).
+  if (/^[A-Za-z]$/.test(marker)) {
+    return marker.toLowerCase().charCodeAt(0) - "a".charCodeAt(0) + 1;
+  }
+
+  // Multi-character alphabetic marker → Roman numeral.
+  const roman = marker.toUpperCase();
+  if (/^[IVXLCDM]+$/.test(roman)) {
+    const values: Record<string, number> = {
+      I: 1,
+      V: 5,
+      X: 10,
+      L: 50,
+      C: 100,
+      D: 500,
+      M: 1000,
+    };
+    let total = 0;
+    for (let i = 0; i < roman.length; i++) {
+      const cur = values[roman[i]!]!;
+      const next = i + 1 < roman.length ? values[roman[i + 1]!]! : 0;
+      total += cur < next ? -cur : cur;
+    }
+    return total;
+  }
+
+  return null;
+}
+
+/**
  * Get the left indentation from a paragraph in twips.
  */
 export function getParagraphIndentation(paragraph: Paragraph): number {

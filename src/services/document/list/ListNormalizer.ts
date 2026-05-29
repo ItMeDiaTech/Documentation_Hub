@@ -29,6 +29,7 @@ import {
   detectListType,
   getListCategoryFromFormat,
   inferLevelFromRelativeIndentation,
+  parseTypedMarkerValue,
 } from "./list-detection";
 
 // =============================================================================
@@ -838,23 +839,31 @@ export function normalizeListsInCell(
     return id;
   };
 
-  // Track numId per level - will be reset when parent level appears
-  const numIdByLevel = new Map<number, number>();
+  // Track numId per (level, segment) — segment encodes the ORIGINAL list
+  // identity so two originally-distinct numbered lists in the same cell stay
+  // distinct, while items that originally shared a list continue together.
+  // Caching purely per-level (the old behavior) forced unrelated lists into one
+  // continuous sequence. Deeper-level entries are still evicted when a shallower
+  // level reappears so a re-entered nesting starts a fresh sub-counter.
+  const numIdByLevelSegment = new Map<string, number>();
   let lastProcessedLevel = -1;
 
-  // Helper to get/create a numbered (decimal) numId for a level.
-  // Always numbered — category is decided per item by the caller.
-  const getNumberedNumId = (level: number): number => {
+  // Helper to get/create a numbered (decimal) numId for a level + segment.
+  // Always numbered — category is decided per item by the caller. `segment`
+  // identifies the source list (original numId for Word lists, a typed-segment
+  // token for typed prefixes); a new segment yields a fresh restarted numId.
+  const getNumberedNumId = (level: number, segment: string): number => {
     if (level < lastProcessedLevel) {
-      for (const existingLevel of numIdByLevel.keys()) {
-        if (existingLevel > level) {
-          numIdByLevel.delete(existingLevel);
+      for (const existingKey of numIdByLevelSegment.keys()) {
+        if (Number(existingKey.split("|", 1)[0]) > level) {
+          numIdByLevelSegment.delete(existingKey);
         }
       }
     }
     lastProcessedLevel = level;
 
-    if (!numIdByLevel.has(level)) {
+    const key = `${level}|${segment}`;
+    if (!numIdByLevelSegment.has(key)) {
       let numId = numberingManager.createNumberedList();
 
       // Apply user's indentation settings if provided
@@ -877,9 +886,9 @@ export function normalizeListsInCell(
       // from a previous cell's sequence
       numId = numberingManager.restartNumbering(numId);
 
-      numIdByLevel.set(level, numId);
+      numIdByLevelSegment.set(key, numId);
     }
-    return numIdByLevel.get(level)!;
+    return numIdByLevelSegment.get(key)!;
   };
 
   // Separate tracking for bullet numIds (used for trailing bullets in numbered-majority cells)
@@ -919,11 +928,15 @@ export function normalizeListsInCell(
     return bulletNumIdByLevel.get(level)!;
   };
 
-  // Track last typed format per level to detect numId boundary changes.
-  // null = last item was a Word list, string = typed prefix format (e.g., "decimal", "lowerLetter").
-  // When transitioning from Word list → typed prefix or changing typed format, the cached
-  // numId is cleared so the typed prefix starts a fresh numbered sequence.
-  const lastTypedFormatByLevel = new Map<number, string | null>();
+  // Typed-prefix numbered continuity tracking, per (level, format).
+  // For typed numbered lists we mirror the ORIGINAL document: a segment
+  // continues while its numbers run sequentially (prev + 1) and restarts only
+  // when the first detected number is 1 or the value does not follow the
+  // previous one. Bias is toward continuation — any sequential run stays one
+  // list. `segmentId` is bumped on each restart so getNumberedNumId hands out a
+  // fresh numId; `lastValue` holds the last parsed marker for the (level,format).
+  const typedNumberedState = new Map<string, { segmentId: number; lastValue: number | null }>();
+  let typedSegmentCounter = 0;
 
   // Process each paragraph
   for (let index = 0; index < analysis.paragraphs.length; index++) {
@@ -1024,15 +1037,6 @@ export function normalizeListsInCell(
         // Typed prefix: strip prefix and apply new formatting
         stripTypedPrefix(para, detection.typedPrefix);
 
-        // Check if we need a fresh numId for this typed prefix.
-        // New numId when: previous at this level was a Word list item (null)
-        // or a different typed format (e.g., decimal → lowerLetter).
-        const lastFormat = lastTypedFormatByLevel.get(targetLevel);
-        if (lastFormat === null || (lastFormat !== undefined && lastFormat !== detection.format)) {
-          numIdByLevel.delete(targetLevel);
-        }
-        lastTypedFormatByLevel.set(targetLevel, detection.format ?? "unknown");
-
         // Route by the typed prefix's own category. Bullet-like formats
         // (bullet, dash, arrow) go to a bullet numId; numeric formats
         // (decimal, lowerLetter, lowerRoman, etc.) go to a numbered numId.
@@ -1041,6 +1045,32 @@ export function normalizeListsInCell(
           detection.format === "bullet" ||
           detection.format === "dash" ||
           detection.format === "arrow";
+
+        // For typed NUMBERED prefixes, mirror the original document's
+        // continuation: continue the current segment while markers run
+        // sequentially (prev + 1) and restart only when the first detected
+        // value is 1 or the value does not follow the previous one. The
+        // continue-vs-restart decision keys on the parsed marker value, not on
+        // physical contiguity, so an interrupting prose paragraph between two
+        // sequential numbers keeps them in one list. Format is part of the
+        // state key so a decimal → lowerLetter switch at the same level starts
+        // a fresh sequence (replacing the old lastTypedFormatByLevel reset).
+        let typedSegment = "";
+        if (!isBulletTypedPrefix && !useMixedNumId) {
+          const stateKey = `${targetLevel}|${detection.format ?? "unknown"}`;
+          const value = parseTypedMarkerValue(detection.typedPrefix);
+          const prev = typedNumberedState.get(stateKey);
+          const restart =
+            !prev ||
+            value === null ||
+            value === 1 ||
+            prev.lastValue === null ||
+            value !== prev.lastValue + 1;
+          const segmentId = restart ? ++typedSegmentCounter : prev!.segmentId;
+          typedNumberedState.set(stateKey, { segmentId, lastValue: value });
+          typedSegment = `t${stateKey}#${segmentId}`;
+        }
+
         const typedNumId = useMixedNumId
           ? getMixedNumIdForGroup(
               groupInfo!.groupId,
@@ -1049,7 +1079,7 @@ export function normalizeListsInCell(
             )
           : isBulletTypedPrefix
             ? getBulletNumId(targetLevel)
-            : getNumberedNumId(targetLevel);
+            : getNumberedNumId(targetLevel, typedSegment);
         para.setNumbering(typedNumId, targetLevel);
         report.normalized++;
         report.details.push({
@@ -1061,7 +1091,14 @@ export function normalizeListsInCell(
         // Preserve the item's existing category. Cross-type conversion to a
         // "majority" is no longer performed — mixed bullet+numbered lists
         // within a single cell are allowed.
-        lastTypedFormatByLevel.set(targetLevel, null);
+        //
+        // For numbered Word items, key continuity on the ORIGINAL source numId
+        // (list-instance identity) rather than a blanket per-level cache: items
+        // that shared a source numId continue as one sequence; items from a
+        // distinct source numId stay a separate list. This mirrors the original
+        // document's continuation instead of collapsing every numbered item at
+        // a level into one run.
+        const wordSegment = `w${detection.numId ?? "x"}`;
         const numId = useMixedNumId
           ? getMixedNumIdForGroup(
               groupInfo!.groupId,
@@ -1070,7 +1107,7 @@ export function normalizeListsInCell(
             )
           : detection.category === "bullet"
             ? getBulletNumId(targetLevel)
-            : getNumberedNumId(targetLevel);
+            : getNumberedNumId(targetLevel, wordSegment);
         para.setNumbering(numId, targetLevel);
         report.normalized++;
         report.details.push({
