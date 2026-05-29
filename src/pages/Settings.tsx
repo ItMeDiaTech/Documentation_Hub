@@ -156,7 +156,6 @@ export function Settings() {
     updateFeedbackLinks,
     updateDocumentManagerLinks,
     updateSettings,
-    saveSettings,
   } = useUserSettings();
   const { sessions } = useSession();
   const { stats, resetAllStats } = useGlobalStats();
@@ -480,18 +479,19 @@ export function Settings() {
       }
     }
 
-    // Save to localStorage
-    const success = await saveSettings();
-    if (success) {
-      setSaveSuccess(true);
-      if (saveSuccessTimeoutRef.current) {
-        clearTimeout(saveSuccessTimeoutRef.current);
-      }
-      saveSuccessTimeoutRef.current = setTimeout(() => {
-        setSaveSuccess(false);
-        saveSuccessTimeoutRef.current = null;
-      }, 2000);
+    // The update* calls above each persist the full settings object to localStorage
+    // synchronously (inside their setState updater). Do NOT call saveSettings() here:
+    // it writes the `settings` React-state snapshot captured before these queued state
+    // updates apply, overwriting the freshly-saved values (e.g. Profile) with stale ones
+    // — which is what caused stale First/Last/Email to be sent to the Power Automate API.
+    setSaveSuccess(true);
+    if (saveSuccessTimeoutRef.current) {
+      clearTimeout(saveSuccessTimeoutRef.current);
     }
+    saveSuccessTimeoutRef.current = setTimeout(() => {
+      setSaveSuccess(false);
+      saveSuccessTimeoutRef.current = null;
+    }, 2000);
   };
 
   const handleCheckForUpdates = async () => {
