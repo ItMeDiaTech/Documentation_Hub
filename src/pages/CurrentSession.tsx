@@ -86,7 +86,7 @@ export function CurrentSession() {
   const isMountedRef = useRef(true);
   const dragCounterRef = useRef(0);
   const prevDocCountRef = useRef<number | null>(null);
-  const docListTopRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // STALE CLOSURE FIX: Track latest sessions for async operations
   // This ref always holds the current sessions value, even inside async callbacks
@@ -114,11 +114,12 @@ export function CurrentSession() {
     const currentCount = session?.documents.length ?? 0;
     // Skip initial mount — only scroll when count actively increases
     if (prevDocCountRef.current !== null && currentCount > prevDocCountRef.current) {
-      // Only scroll if the user is already viewing the document list
+      // Jump to the top of the window (the page scroll container), so the newly
+      // added document — sorted newest-first, at the top of the list — is shown
+      // from the top of the window rather than scrolling down to pin the list
+      // top to the viewport.
       const timerId = setTimeout(() => {
-        // Instant jump, not smooth: a smooth scroll is cancelled mid-glide by
-        // the list re-render + row entry animations, landing short of the top.
-        docListTopRef.current?.scrollIntoView({ block: "start" });
+        scrollContainerRef.current?.scrollTo({ top: 0 });
       }, 350);
       prevDocCountRef.current = currentCount;
       return () => clearTimeout(timerId);
@@ -650,7 +651,7 @@ export function CurrentSession() {
               <FileCheck className="w-8 h-8 text-green-500" />
               <div>
                 <p className="text-xs text-muted-foreground">Documents</p>
-                <p className="text-2xl font-bold">{session.stats.documentsProcessed}</p>
+                <p className="text-2xl font-bold">{session.documents.length}</p>
               </div>
             </div>
           </CardContent>
@@ -739,7 +740,6 @@ export function CurrentSession() {
               )}
 
               <div className="space-y-2">
-                <div ref={docListTopRef} />
                 <AnimatePresence>
                   {sortedDocuments.map((doc) => (
                     <motion.div
@@ -1228,7 +1228,7 @@ export function CurrentSession() {
       </div>
 
       {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-auto px-6 max-w-6xl mx-auto w-full">
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto px-6 max-w-6xl mx-auto w-full">
         <Card>
           <TabContainer
             tabs={tabs}
