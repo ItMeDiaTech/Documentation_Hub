@@ -4813,9 +4813,30 @@ export class WordDocumentProcessor {
    * sits between runs[i] and runs[i+1]), or undefined if no gaps found.
    */
   private detectContentGaps(runs: Run[], para: Paragraph): Set<number> | undefined {
-    // Quick exit: if no Revision instances in paragraph content, no gaps possible
     const content = para.getContent();
-    if (!content.some((item: ParagraphContent) => isRevision(item))) {
+
+    // A "visible boundary" is non-run content that getRuns() hides but that still
+    // renders between the surrounding runs — a hyperlink (complex field or element) or a
+    // tracked insertion/move. Whitespace dedup must NOT trim a run's trailing space
+    // across such a boundary, or "the <hyperlink>" collapses to "the<hyperlink>".
+    // Excludes w:del/w:moveFrom: deleted content is invisible (getBodyRuns strips its
+    // runs), so a deletion boundary is a genuine run adjacency.
+    const isVisibleBoundary = (item: ParagraphContent): boolean => {
+      if (isHyperlink(item)) return true;
+      if (item instanceof ComplexField && item.isHyperlinkField()) return true;
+      if (item instanceof PreservedElement) {
+        const et = item.getElementType();
+        return et === "w:hyperlink" || et === "w:ins" || et === "w:moveTo";
+      }
+      if (isRevision(item)) {
+        const t = item.getType();
+        return t === "insert" || t === "moveTo";
+      }
+      return false;
+    };
+
+    // Quick exit: if no visible boundary in paragraph content, no gaps possible
+    if (!content.some(isVisibleBoundary)) {
       return undefined;
     }
 
@@ -4847,9 +4868,9 @@ export class WordDocumentProcessor {
       if (ciA === undefined || ciB === undefined) continue;
       if (ciB - ciA <= 1) continue;
 
-      // Check if any content between ciA and ciB is a Revision
+      // Check if any content between ciA and ciB is a visible boundary
       for (let ci = ciA + 1; ci < ciB; ci++) {
-        if (isRevision(content[ci])) {
+        if (isVisibleBoundary(content[ci])) {
           if (!gapAfter) gapAfter = new Set();
           gapAfter.add(i);
           break;
