@@ -240,6 +240,33 @@ export function hasNavigationHyperlink(para: Paragraph): boolean {
 }
 
 /**
+ * Returns true when a paragraph's only meaningful content is hyperlink(s) — a standalone
+ * link line (whitespace-only runs are ignored). Used to keep consecutive hyperlink-only
+ * lines tight, so no blank line is inserted between e.g. a vertical nav list of links.
+ */
+export function isHyperlinkOnlyParagraph(para: Paragraph): boolean {
+  const content = para.getContent();
+  if (!content || content.length === 0) return false;
+  let sawHyperlink = false;
+  for (const item of content) {
+    if (item instanceof Hyperlink) {
+      sawHyperlink = true;
+      continue;
+    }
+    if (item instanceof Run) {
+      try {
+        if ((item.getText() || "").trim() === "") continue; // ignore whitespace-only runs
+      } catch {
+        /* treat as meaningful content */
+      }
+      return false;
+    }
+    return false; // image/field/shape/etc. -> not hyperlink-only
+  }
+  return sawHyperlink;
+}
+
+/**
  * Get the effective left indentation of a paragraph, resolving style-inherited
  * indentation when the paragraph has no direct indentation set.
  *

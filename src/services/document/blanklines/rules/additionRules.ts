@@ -16,6 +16,7 @@ import {
   startsWithBoldColon,
   getEffectiveLeftIndent,
   hasNavigationHyperlink,
+  isHyperlinkOnlyParagraph,
 } from "../helpers/paragraphChecks";
 import {
   getImageRunFromParagraph,
@@ -573,6 +574,10 @@ export const betweenBodyParagraphsRule: BlankLineRule = {
 
     // Skip navigation hyperlinks (handled by aboveTopOfDocHyperlinkRule)
     if (hasNavigationHyperlink(current) || hasNavigationHyperlink(next)) return false;
+
+    // Keep consecutive hyperlink-only lines tight — don't insert a blank between two
+    // standalone link lines (e.g. a vertical nav list of section links).
+    if (isHyperlinkOnlyParagraph(current) && isHyperlinkOnlyParagraph(next)) return false;
 
     // Skip bold+colon paragraphs (handled by their own rules)
     if (startsWithBoldColon(current) || startsWithBoldColon(next)) return false;
