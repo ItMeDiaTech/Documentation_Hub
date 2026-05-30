@@ -5,11 +5,24 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 5.12.2
-**docxmlater Framework Version:** ^11.0.4
+**Current App Version:** 6.1.3
+**docxmlater Framework Version:** ^11.0.10
 **Status:** Production Ready
 
 ---
+
+## [6.1.3] - 2026-05-30
+
+### Fixed
+
+- **Image borders now apply to images inside tracked insertions.** Images within tracked changes (`w:ins`) previously kept no border after processing; they are now bordered like the rest (docxmlater 11.0.10).
+- **Linked navigation entries are no longer dropped on processing.** Consecutive section links (e.g. "Financial" / "Other") were emptied when a document was loaded and saved, due to a complex-field hyperlink round-trip bug in the framework. Fixed in docxmlater 11.0.10.
+- **No blank line is inserted between consecutive hyperlink-only lines.** `betweenBodyParagraphsRule` now keeps a vertical list of standalone links (a section navigation menu) tight, instead of separating each entry with a blank line. Added `isHyperlinkOnlyParagraph` guard in `helpers/paragraphChecks.ts`.
+- **The space before a hyperlink is preserved.** `WordDocumentProcessor.detectContentGaps()` now treats a hyperlink or tracked-insertion (`w:ins`) boundary as a content gap, so the whitespace normalizer no longer removes the single space in front of a hyperlink (including hyperlinks inside tracked changes — e.g. "the Senior Team" no longer became "theSenior Team").
+
+### Changed
+
+- docxmlater dependency upgraded to `^11.0.10` (was `^11.0.7`). Includes the table-corruption-on-accept fix (11.0.8), tracked-insertion image border/size fix (11.0.9), and the chained complex-field hyperlink round-trip fix (11.0.10).
 
 ## [5.12.2] - 2026-05-14
 
