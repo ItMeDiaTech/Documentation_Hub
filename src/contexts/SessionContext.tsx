@@ -71,7 +71,7 @@ const createDefaultListBulletSettings = (): ListBulletSettings => ({
   indentationLevels: [
     { level: 0, symbolIndent: 0.25, textIndent: 0.5, bulletChar: "•", numberedFormat: "1." },
     { level: 1, symbolIndent: 0.75, textIndent: 1.0, bulletChar: "○", numberedFormat: "a." },
-    { level: 2, symbolIndent: 1.25, textIndent: 1.5, bulletChar: "•", numberedFormat: "i." },
+    { level: 2, symbolIndent: 1.25, textIndent: 1.5, bulletChar: "■", numberedFormat: "i." },
     { level: 3, symbolIndent: 1.75, textIndent: 2.0, bulletChar: "○", numberedFormat: "A." },
     { level: 4, symbolIndent: 2.25, textIndent: 2.5, bulletChar: "•", numberedFormat: "I." },
   ],

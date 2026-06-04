@@ -146,7 +146,7 @@ const lineSpacingOptions = [
 const defaultIndentationLevels: IndentationLevel[] = [
   { level: 0, symbolIndent: 0.25, textIndent: 0.5, bulletChar: "•", numberedFormat: "1." },
   { level: 1, symbolIndent: 0.75, textIndent: 1.0, bulletChar: "○", numberedFormat: "a." },
-  { level: 2, symbolIndent: 1.25, textIndent: 1.5, bulletChar: "•", numberedFormat: "i." },
+  { level: 2, symbolIndent: 1.25, textIndent: 1.5, bulletChar: "■", numberedFormat: "i." },
   { level: 3, symbolIndent: 1.75, textIndent: 2.0, bulletChar: "○", numberedFormat: "A." },
   { level: 4, symbolIndent: 2.25, textIndent: 2.5, bulletChar: "•", numberedFormat: "I." },
 ];
@@ -866,7 +866,7 @@ export const StylesEditor = memo(function StylesEditor({
                     textIndent: currentText,
                     bulletChar:
                       listBulletSettings.indentationLevels[i]?.bulletChar ||
-                      (i % 2 === 0 ? "•" : "○"),
+                      (i === 2 ? "■" : i % 2 === 0 ? "•" : "○"),
                     numberedFormat: numberedFormats[i],
                   });
                   currentSymbol = currentText + hangingIndent;
@@ -954,11 +954,11 @@ export const StylesEditor = memo(function StylesEditor({
                 <option value="■">■ Closed Square</option>
               </select>
             </div>
-            {/* Level 2 - Default: Closed */}
+            {/* Level 2 - Default: Closed Square */}
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Level 2</label>
               <select
-                value={listBulletSettings.indentationLevels[2]?.bulletChar || "•"}
+                value={listBulletSettings.indentationLevels[2]?.bulletChar || "■"}
                 onChange={(e) => {
                   const newLevels = [...listBulletSettings.indentationLevels];
                   newLevels[2] = { ...newLevels[2], bulletChar: e.target.value };
