@@ -20,7 +20,6 @@ import { logger } from "@/utils/logger";
 import { clearCustom } from "./helpers/clearCustom";
 import { isParagraphBlank } from "./helpers/paragraphChecks";
 import {
-  createBlankParagraph,
   insertBlankAtBodyIfSafe,
   addBlankToCellIfSafe,
 } from "./helpers/blankLineInsertion";
@@ -412,11 +411,16 @@ export class BlankLineManager {
         const removalMatch = this.findMatchingRemovalForPosition(doc, i, i + 1);
         if (removalMatch) continue;
 
-        // No rule matched and original had a blank - preserve it
-        const blankPara = createBlankParagraph(blankOpts);
-        doc.insertBodyElementAt(i + 1, blankPara);
-        preserved++;
-        i++; // Skip past inserted blank
+        // No rule matched and original had a blank - preserve it, unless the
+        // preceding element has a tracked paragraph-mark deletion. Inserting a
+        // blank into that merge slot makes the blank the deleted paragraph's
+        // render-time merge target and strips its alignment/style (e.g. a
+        // centered image renders left). insertBlankAtBodyIfSafe enforces this.
+        const outcome = insertBlankAtBodyIfSafe(doc, i + 1, blankOpts);
+        if (outcome === "added") {
+          preserved++;
+          i++; // Skip past inserted blank
+        }
       }
     }
 
@@ -477,11 +481,14 @@ export class BlankLineManager {
               );
               if (removalMatch) continue;
 
-              const blankPara = createBlankParagraph(blankOpts);
-              cell.addParagraphAt(ci + 1, blankPara);
-              preserved++;
-              ci++;
-              paras = cell.getParagraphs();
+              // Guard the merge slot of a tracked paragraph-mark deletion
+              // (mirrors the body-scope preservation guard above).
+              const outcome = addBlankToCellIfSafe(cell, ci + 1, blankOpts);
+              if (outcome === "added") {
+                preserved++;
+                ci++;
+                paras = cell.getParagraphs();
+              }
             }
           }
         }
