@@ -2784,7 +2784,7 @@ Submitted: ${new Date().toLocaleString()}
                         <p className="text-xs text-muted-foreground">
                           Backups are stored in a{" "}
                           <code className="bg-muted px-1 rounded">DocHub_Backups</code> folder in
-                          the same directory as the original document.
+                          your Downloads folder.
                         </p>
                       </div>
                     </div>

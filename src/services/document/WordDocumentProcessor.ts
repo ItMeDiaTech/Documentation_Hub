@@ -4261,15 +4261,15 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Create backup of document in DocHub_Backups subfolder
+   * Create backup of document in a DocHub_Backups subfolder of the user's Downloads folder
    */
   private async createBackup(filePath: string): Promise<string> {
-    const dir = path.dirname(filePath);
     const ext = path.extname(filePath);
     const base = path.basename(filePath, ext);
 
-    // Create DocHub_Backups folder if it doesn't exist
-    const backupDir = path.join(dir, "DocHub_Backups");
+    // Create the DocHub_Backups folder (inside Downloads) if it doesn't exist
+    const backupRoot = await this.resolveBackupRoot(filePath);
+    const backupDir = path.join(backupRoot, "DocHub_Backups");
     await fs.mkdir(backupDir, { recursive: true });
 
     // Count existing backups to determine next number
@@ -4281,6 +4281,28 @@ export class WordDocumentProcessor {
 
     await fs.copyFile(filePath, backupPath);
     return backupPath;
+  }
+
+  /**
+   * Resolve the directory that should contain the DocHub_Backups folder.
+   * Prefers the user's Downloads folder (resolved by the main process via
+   * app.getPath("downloads")); falls back to the document's own directory when
+   * Downloads can't be resolved (e.g. tests or browser-only mode).
+   */
+  private async resolveBackupRoot(filePath: string): Promise<string> {
+    try {
+      if (typeof window !== "undefined" && window.electronAPI?.getDownloadsPath) {
+        const downloads = await window.electronAPI.getDownloadsPath();
+        if (downloads) {
+          return downloads;
+        }
+      }
+    } catch (error) {
+      this.log.warn("Could not resolve Downloads folder for backup; using document directory", {
+        error,
+      });
+    }
+    return path.dirname(filePath);
   }
 
   /**
