@@ -5,11 +5,21 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 6.1.5
+**Current App Version:** 6.1.6
 **docxmlater Framework Version:** ^11.0.10
 **Status:** Production Ready
 
 ---
+
+## [6.1.6] - 2026-06-04
+
+### Fixed
+
+- **Auto-update now launches the installer reliably.** The downloaded MSI is launched through the OS shell (the same as double-clicking it) instead of via a detached `cmd.exe`, which could be blocked by policy or killed on exit on locked-down/managed machines (the 6.1.4 failure). The MSI's own finish action relaunches the app; DocHub closes once the installer is running so Windows Installer can replace the locked files.
+
+### Changed
+
+- On startup, stale downloaded installers (current or older versions) are removed from the updater cache to keep it tidy.
 
 ## [6.1.5] - 2026-06-04
 
