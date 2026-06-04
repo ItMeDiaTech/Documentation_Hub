@@ -649,8 +649,8 @@ Planned features for future releases:
 
 ---
 
-**Version:** 6.1.3
-**Last Updated:** May 2026
+**Version:** 6.1.4
+**Last Updated:** June 2026
 **Maintainer:** ItMeDiaTech
 
 ### Recent Major Updates

@@ -5,11 +5,23 @@ All notable changes to the Documentation Hub application are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Current App Version:** 6.1.3
+**Current App Version:** 6.1.4
 **docxmlater Framework Version:** ^11.0.10
 **Status:** Production Ready
 
 ---
+
+## [6.1.4] - 2026-06-04
+
+### Fixed
+
+- **Auto-update now installs the MSI correctly.** electron-updater 6.x ships no MSI updater; its default NSIS handler ran the downloaded MSI as a PE executable, which silently failed (the source of the "MSI error 2753" symptom). `CustomUpdater.quitAndInstall()` now installs the downloaded MSI the only way an MSI installs — `msiexec /i "<installer>" /passive /norestart` in a detached process — then relaunches the app itself. `autoInstallOnAppQuit` is disabled so electron-updater's install-on-quit path no longer collides with our `msiexec` call.
+- **Centered images no longer render left-aligned after processing.** When an image's paragraph carried a tracked paragraph-mark deletion, the blank-line normalizer's preservation fallback could insert a left-aligned blank into that paragraph's render-time merge slot; Word then merged the image into the blank and rendered it left. The preservation fallback now honors the deleted-mark merge-slot guard already used by every other blank-line insertion path (`BlankLineManager`).
+
+### Changed
+
+- **Document backups now go to your Downloads folder.** `createBackup()` writes the `DocHub_Backups` folder under the user's Downloads directory (resolved via `app.getPath("downloads")`), falling back to the document's own directory when Downloads can't be resolved (tests / browser-only mode). The Settings backup description was updated to match.
+- **List level 2 now defaults to a closed square (■) bullet** (was a closed bullet), in both the Styles UI and the backend session defaults. Applies to new sessions; existing sessions keep their saved bullet settings.
 
 ## [6.1.3] - 2026-05-30
 
