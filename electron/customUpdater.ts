@@ -2,7 +2,6 @@ import { autoUpdater, UpdateInfo } from "electron-updater";
 import { app, shell } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { spawn } from "node:child_process";
 import {
   PublicClientApplication,
   Configuration,
@@ -208,12 +207,18 @@ export class CustomUpdater {
    *
    * electron-updater 6.x has no MsiUpdater: on Windows the default `autoUpdater` is an
    * NsisUpdater whose doInstall() runs `spawn(installerPath, ["--updated", ...])` — it
-   * executes the installer as an NSIS `.exe`. An MSI is not a PE executable and ignores
-   * those flags, so autoUpdater.quitAndInstall() silently fails to install (the source of
-   * the "MSI error 2753" we used to hit). We build an MSI, so install it the only way an
-   * MSI installs — via msiexec — then relaunch the app ourselves.
+   * executes the installer as an NSIS `.exe`. An MSI is not a PE executable, so
+   * autoUpdater.quitAndInstall() silently fails (the old "MSI error 2753").
+   *
+   * We launch the MSI through the OS shell (the same as the user double-clicking it).
+   * This is far more reliable than spawning cmd.exe/msiexec ourselves: a spawned child
+   * can be blocked by policy or killed when this process exits (the failure mode hit on a
+   * locked-down corporate machine). A shell-launched installer is owned by Explorer, not by
+   * this process, so it survives our quit. The MSI's own `runAfterFinish` action relaunches
+   * the app once the install completes. We close DocHub right after launching so Windows
+   * Installer can replace the application's (now-unlocked) files.
    */
-  public quitAndInstall(): void {
+  public async quitAndInstall(): Promise<void> {
     log.info("Installing update and restarting...");
 
     // electron-updater downloads the MSI to its pending cache and exposes the full path.
@@ -231,35 +236,94 @@ export class CustomUpdater {
     // Remove listeners that might prevent quit
     app.removeAllListeners("window-all-closed");
 
-    const appExe = process.execPath;
+    // shell.openPath returns "" on success, or an error string on failure.
+    const launchError = await shell.openPath(installerPath);
+    if (launchError) {
+      log.error("Failed to launch MSI installer", { installerPath, launchError });
+      this.sendToWindow("update-error", {
+        message: `Could not start the installer automatically. Please run it manually: ${installerPath}`,
+      });
+      return;
+    }
 
-    // Run in a detached cmd so it survives this process exiting:
-    //   ping  -> ~2s grace period for this app to fully exit and release file locks
-    //   /passive  -> unattended install with a progress bar (per-user MSI => no UAC prompt)
-    //   /norestart -> never reboot the machine
-    //   start     -> relaunch the app once msiexec returns
-    const command =
-      `ping 127.0.0.1 -n 3 > nul & ` +
-      `msiexec /i "${installerPath}" /passive /norestart & ` +
-      `start "" "${appExe}"`;
+    log.info("MSI installer launched; quitting so it can replace files", { installerPath });
 
-    log.info(`Running MSI installer via msiexec: ${command}`);
-
-    const child = spawn("cmd.exe", ["/c", command], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    child.unref();
-
-    // Quit so msiexec can replace the now-unlocked application files.
+    // Close DocHub now that the installer is running. The MSI relaunches the app when done.
     app.quit();
+  }
+
+  /**
+   * Resolve electron-updater's pending download directory, replicating its own logic:
+   * `path.join(getAppCacheDir(), updaterCacheDirName ?? app.getName(), "pending")`.
+   * Windows-only (MSI builds); returns null if it can't be determined.
+   */
+  private getPendingInstallerDir(): string | null {
+    const base = process.env.LOCALAPPDATA;
+    if (!base) {
+      return null;
+    }
+    let dirName: string | undefined;
+    try {
+      const cfgPath = path.join(process.resourcesPath, "app-update.yml");
+      const cfg = yaml.load(fs.readFileSync(cfgPath, "utf-8")) as { updaterCacheDirName?: string };
+      dirName = cfg?.updaterCacheDirName;
+    } catch {
+      // Not packaged / file missing — fall back to the app name (electron-updater's default).
+    }
+    return path.join(base, dirName || app.getName(), "pending");
+  }
+
+  /**
+   * Remove downloaded installers for the current or older versions from the updater cache,
+   * keeping the folder clean. Runs on startup; failures are non-fatal and silent.
+   */
+  public async cleanupDownloadedInstallers(): Promise<void> {
+    try {
+      const pendingDir = this.getPendingInstallerDir();
+      if (!pendingDir) {
+        return;
+      }
+
+      let files: string[];
+      try {
+        files = await fs.promises.readdir(pendingDir);
+      } catch {
+        return; // No pending directory yet — nothing to clean.
+      }
+
+      const currentVersion = app.getVersion();
+      for (const file of files) {
+        const match = /^Documentation-Hub-(\d+\.\d+\.\d+)\.msi$/i.exec(file);
+        if (!match) {
+          continue;
+        }
+        // Delete same-or-older versions; keep anything strictly newer than what we run.
+        if (!this.isNewerVersion(match[1], currentVersion)) {
+          try {
+            await fs.promises.unlink(path.join(pendingDir, file));
+            log.info("Removed stale downloaded installer", {
+              file,
+              fileVersion: match[1],
+              currentVersion,
+            });
+          } catch (error) {
+            log.warn("Could not remove stale installer", { file, error });
+          }
+        }
+      }
+    } catch (error) {
+      log.warn("Installer cleanup failed", { error });
+    }
   }
 
   /**
    * Check for updates on startup
    */
   public async checkOnStartup(): Promise<void> {
+    // Tidy the updater cache: drop installers for the current/older versions left behind
+    // by previous updates. Fire-and-forget; never blocks or fails startup.
+    void this.cleanupDownloadedInstallers();
+
     if (this.shouldSkipUpdates()) {
       log.info("Skipping update check in development mode");
       return;

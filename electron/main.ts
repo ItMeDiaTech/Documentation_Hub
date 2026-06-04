@@ -1787,8 +1787,8 @@ class AutoUpdaterHandler {
     });
 
     // Install update and restart
-    ipcMain.handle("install-update", () => {
-      this.customUpdater.quitAndInstall();
+    ipcMain.handle("install-update", async () => {
+      await this.customUpdater.quitAndInstall();
     });
 
     // SharePoint Update Source IPC Handlers
