@@ -2,6 +2,7 @@ import { autoUpdater, UpdateInfo } from "electron-updater";
 import { app, shell } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import { spawn } from "node:child_process";
 import {
   PublicClientApplication,
   Configuration,
@@ -74,7 +75,10 @@ export class CustomUpdater {
   private setupAutoUpdater(): void {
     // Configure auto-updater
     autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
+    // We install MSIs ourselves via msiexec in quitAndInstall(). electron-updater's
+    // install-on-quit handler would otherwise spawn the MSI as an NSIS .exe on app quit
+    // (NsisUpdater.doInstall), which fails and can collide with our msiexec call.
+    autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.autoRunAppAfterInstall = true; // Auto-restart after silent install
     autoUpdater.disableDifferentialDownload = false; // Enable delta/blockmap updates
 
@@ -200,21 +204,56 @@ export class CustomUpdater {
   }
 
   /**
-   * Install update and restart
-   * Shows installer UI for reliable MSI installation on Windows
+   * Install the downloaded MSI and restart.
+   *
+   * electron-updater 6.x has no MsiUpdater: on Windows the default `autoUpdater` is an
+   * NsisUpdater whose doInstall() runs `spawn(installerPath, ["--updated", ...])` — it
+   * executes the installer as an NSIS `.exe`. An MSI is not a PE executable and ignores
+   * those flags, so autoUpdater.quitAndInstall() silently fails to install (the source of
+   * the "MSI error 2753" we used to hit). We build an MSI, so install it the only way an
+   * MSI installs — via msiexec — then relaunch the app ourselves.
    */
   public quitAndInstall(): void {
     log.info("Installing update and restarting...");
 
+    // electron-updater downloads the MSI to its pending cache and exposes the full path.
+    const installerPath = (autoUpdater as unknown as { installerPath: string | null })
+      .installerPath;
+
+    if (!installerPath || !fs.existsSync(installerPath)) {
+      log.error("Cannot install update: downloaded MSI not found", { installerPath });
+      this.sendToWindow("update-error", {
+        message: "Update installer not found. Please download the update again.",
+      });
+      return;
+    }
+
     // Remove listeners that might prevent quit
     app.removeAllListeners("window-all-closed");
 
-    // quitAndInstall(isSilent, isForceRunAfter)
-    // isSilent=false: Show installer UI (required for MSI on Windows)
-    // isForceRunAfter=false: Don't auto-launch after install (avoids MSI error 2753)
-    // Note: User will need to manually start the app after update completes
-    // This is more reliable than auto-launch which can fail with path issues
-    autoUpdater.quitAndInstall(false, false);
+    const appExe = process.execPath;
+
+    // Run in a detached cmd so it survives this process exiting:
+    //   ping  -> ~2s grace period for this app to fully exit and release file locks
+    //   /passive  -> unattended install with a progress bar (per-user MSI => no UAC prompt)
+    //   /norestart -> never reboot the machine
+    //   start     -> relaunch the app once msiexec returns
+    const command =
+      `ping 127.0.0.1 -n 3 > nul & ` +
+      `msiexec /i "${installerPath}" /passive /norestart & ` +
+      `start "" "${appExe}"`;
+
+    log.info(`Running MSI installer via msiexec: ${command}`);
+
+    const child = spawn("cmd.exe", ["/c", command], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+
+    // Quit so msiexec can replace the now-unlocked application files.
+    app.quit();
   }
 
   /**
