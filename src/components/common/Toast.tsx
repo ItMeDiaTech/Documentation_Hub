@@ -144,24 +144,50 @@ export function Toaster({ toasts, onDismiss }: ToasterProps) {
 
   return (
     <ToastProvider swipeDirection="right">
-      {visibleToasts.map((toast) => (
-        <Toast
-          key={toast.id}
-          variant={toast.variant}
-          duration={toast.duration}
-          // Errors interrupt (assertive); success/info wait their turn (polite).
-          type={toast.variant === "destructive" ? "foreground" : "background"}
-        >
-          <ToastIcon variant={toast.variant} />
-          <div className="flex-1 min-w-0">
-            <ToastTitle className="truncate">{toast.title}</ToastTitle>
-            {toast.description && (
-              <ToastDescription className="line-clamp-2">{toast.description}</ToastDescription>
-            )}
-          </div>
-          <ToastClose onClick={() => onDismiss(toast.id)} />
-        </Toast>
-      ))}
+      {visibleToasts.map((toast) => {
+        const handleActivate = toast.onClick
+          ? () => {
+              toast.onClick?.();
+              // Close the toast once the action (e.g. opening a dialog) fires.
+              onDismiss(toast.id);
+            }
+          : undefined;
+        return (
+          <Toast
+            key={toast.id}
+            variant={toast.variant}
+            duration={toast.duration}
+            // Errors interrupt (assertive); success/info wait their turn (polite).
+            type={toast.variant === "destructive" ? "foreground" : "background"}
+          >
+            <ToastIcon variant={toast.variant} />
+            {/* Click handler lives on the content div, NOT Toast.Root, so
+                Radix swipe-to-dismiss and the close button do not trigger it. */}
+            <div
+              className={cn("flex-1 min-w-0", handleActivate && "cursor-pointer")}
+              {...(handleActivate
+                ? {
+                    role: "button",
+                    tabIndex: 0,
+                    onClick: handleActivate,
+                    onKeyDown: (e: React.KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleActivate();
+                      }
+                    },
+                  }
+                : {})}
+            >
+              <ToastTitle className="truncate">{toast.title}</ToastTitle>
+              {toast.description && (
+                <ToastDescription className="line-clamp-2">{toast.description}</ToastDescription>
+              )}
+            </div>
+            <ToastClose onClick={() => onDismiss(toast.id)} />
+          </Toast>
+        );
+      })}
       <ToastViewport />
     </ToastProvider>
   );

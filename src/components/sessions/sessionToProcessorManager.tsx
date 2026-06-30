@@ -121,6 +121,7 @@ function mapEnabledOperationsToFlags(enabledOperations: string[]): Partial<WordP
   if (enabled.has("remove-paragraph-lines")) flags.removeParagraphLines = true;
   if (enabled.has("remove-headers-footers")) flags.removeHeadersFooters = true;
   if (enabled.has("add-document-warning")) flags.addDocumentWarning = true;
+  if (enabled.has("apply-header1-to-first-line")) flags.applyHeader1ToFirstLine = true;
   if (enabled.has("center-border-images")) flags.centerAndBorderImages = true;
 
   // ═══════════════════════════════════════════════════════════

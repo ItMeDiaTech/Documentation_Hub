@@ -45,6 +45,7 @@ const optionDescriptions: Record<string, string> = {
   "remove-paragraph-lines": "Makes spacing between paragraphs consistent",
   "remove-headers-footers": "Removes text from document headers and footers",
   "add-document-warning": "Adds a standard disclaimer notice if missing",
+  "apply-header1-to-first-line": "Applies the Heading 1 style to the first line of text in the document",
   "validate-header2-tables":
     "Formats 1x1 Heading 2 tables to ensure standardization across document",
 
@@ -128,6 +129,12 @@ export const defaultOptions: ProcessingOption[] = [
   {
     id: "add-document-warning",
     label: "Add Missing Disclaimer",
+    group: "structure",
+    enabled: true,
+  },
+  {
+    id: "apply-header1-to-first-line",
+    label: "Apply Header1 to First Line",
     group: "structure",
     enabled: true,
   },

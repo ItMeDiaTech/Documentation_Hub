@@ -14,6 +14,7 @@ import {
   TableUniformitySettings,
 } from "@/types/session";
 import { DocumentSnapshotService } from "@/services/document/DocumentSnapshotService";
+import { classifyProcessingError } from "@/utils/classifyProcessingError";
 import { requireElectronAPI } from "@/utils/electronGuard";
 import {
   deleteSession as deleteSessionFromDB,
@@ -490,6 +491,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               deleteSessionFromDB(s.id).catch((err) =>
                 log.error(`Failed to delete old session ${s.id}:`, err)
               );
+              // Also drop the session's pre-processing snapshots so the
+              // snapshot DB does not leak buffers for purged sessions.
+              DocumentSnapshotService.cleanupSessionSnapshots(s.id).catch((err) =>
+                log.error(`Failed to delete snapshots for old session ${s.id}:`, err)
+              );
             }
             return shouldKeep;
           }
@@ -503,6 +509,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (removedCount > 0) {
           log.info(`[Session] Cleaned up ${removedCount} old session(s) (>30 days)`);
         }
+
+        // Evict accumulated document snapshots on startup: age-expired ones
+        // (>7 days) and, if still over the 100MB cap, oldest-first. Non-fatal —
+        // the eviction path was previously never invoked, letting the snapshot
+        // DB grow without bound.
+        DocumentSnapshotService.cleanupOldSnapshots().catch((err) =>
+          log.error("[Session] Failed to clean up old document snapshots:", err)
+        );
+        DocumentSnapshotService.ensureStorageLimit().catch((err) =>
+          log.error("[Session] Failed to enforce snapshot storage limit:", err)
+        );
 
         // BACKFILL FIX: Ensure all loaded sessions have valid listBulletSettings
         // This repairs historical sessions that were created before list settings were added
@@ -920,6 +937,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Also remove individual session from localStorage if it exists
     localStorage.removeItem(`session_${id}`);
 
+    // Drop the session's pre-processing snapshots so their buffers don't leak.
+    // Non-fatal — snapshot-cleanup failure must not block session deletion.
+    DocumentSnapshotService.cleanupSessionSnapshots(id).catch((err) =>
+      log.error(`[Session] Failed to delete snapshots for session ${id}:`, err)
+    );
+
     // Log session deletion
     if (session) {
       log.info("[Session] Deleted:", {
@@ -1072,6 +1095,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       documents: session.documents.filter((d) => d.id !== documentId),
       lastModified: new Date(),
     }));
+
+    // Drop the document's pre-processing snapshot so its buffer doesn't leak.
+    DocumentSnapshotService.deleteSnapshot(sessionId, documentId).catch((err) =>
+      log.error(`[Session] Failed to delete snapshot for document ${documentId}:`, err)
+    );
   };
 
   // PERFORMANCE FIX: Wrap in useCallback to prevent child component re-renders
@@ -1316,6 +1344,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           centerAndBorderImages?: boolean;
           removeHeadersFooters?: boolean;
           addDocumentWarning?: boolean;
+          applyHeader1ToFirstLine?: boolean;
 
           // Lists & Tables Options
           listBulletSettings?: ListBulletSettings;
@@ -1490,6 +1519,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             ),
           addDocumentWarning:
             sessionToProcess.processingOptions?.enabledOperations?.includes("add-document-warning"),
+          applyHeader1ToFirstLine:
+            sessionToProcess.processingOptions?.enabledOperations?.includes(
+              "apply-header1-to-first-line"
+            ),
 
           // Lists & Tables Options (mapped from ProcessingOptions UI)
           // Map list-indentation checkbox to listBulletSettings.enabled
@@ -1769,21 +1802,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   processedAt: new Date(),
                   errors: result.errorMessages,
                   errorType: !result.success
-                    ? result.errorMessages?.some((msg) =>
-                        msg.toLowerCase().includes("close the file")
-                      )
-                      ? "file_locked"
-                      : result.errorMessages?.some((msg) =>
-                            msg.toLowerCase().includes("timeout")
-                          )
-                        ? "api_timeout"
-                        : result.errorMessages?.some(
-                              (msg) =>
-                                msg.toLowerCase().includes("compatibility_mode") ||
-                                msg.toLowerCase().includes("outdated functions")
-                            )
-                          ? "word_compatibility"
-                          : "general"
+                    ? classifyProcessingError(result.errorMessages)
                     : undefined,
                   // Store pre-existing revisions (from before DocHub processing)
                   previousRevisions: result.previousRevisions,
@@ -1792,8 +1811,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   processingResult: {
                     hyperlinksProcessed: result.processedHyperlinks,
                     hyperlinksModified: result.modifiedHyperlinks,
-                    contentIdsAppended:
-                      result.appendedContentIds || result.processedHyperlinks,
+                    contentIdsAppended: result.appendedContentIds ?? 0,
                     backupPath: result.backupPath,
                     duration: result.duration,
                     // Use the enhanced changes array from processor with full context
@@ -1880,18 +1898,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   ...d,
                   status: "error" as const,
                   errors: [error instanceof Error ? error.message : "Processing failed"],
-                  errorType:
-                    error instanceof Error &&
-                    error.message.toLowerCase().includes("close the file")
-                      ? "file_locked"
-                      : error instanceof Error &&
-                          error.message.toLowerCase().includes("timeout")
-                        ? "api_timeout"
-                        : error instanceof Error &&
-                            (error.message.toLowerCase().includes("compatibility_mode") ||
-                              error.message.toLowerCase().includes("outdated functions"))
-                          ? "word_compatibility"
-                          : "general",
+                  errorType: classifyProcessingError([
+                    error instanceof Error ? error.message : "Processing failed",
+                  ]),
                 }
               : d
           ),

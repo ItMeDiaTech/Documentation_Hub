@@ -1305,7 +1305,17 @@ ipcMain.handle(
 
       // Load document using docxmlater
       const { Document } = await import("docxmlater");
-      const doc = await Document.load(validatedPath);
+      // docxmlater 12 rejects large-uncompressed docs by default; disable the
+      // new uncompressed guards (0 = off) to preserve prior loadability for
+      // the user's own trusted documents.
+      const doc = await Document.load(validatedPath, {
+        sizeLimits: {
+          maxTotalUncompressedMB: 0,
+          maxEntryUncompressedMB: 0,
+          maxEntryCount: 0,
+          maxCompressionRatio: 0,
+        },
+      });
 
       try {
         // Extract paragraph text

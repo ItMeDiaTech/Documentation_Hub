@@ -15,10 +15,13 @@
  * survives processing.
  *
  * This helper closes that gap: for every TOC{n}-styled paragraph it
- *   1. clears the paragraph's leader tab-stops, and
+ *   1. clears the paragraph's leader tab-stops,
  *   2. truncates each entry run's content at the first non-text item
  *      (tab, page-number, or field char), dropping the trailing
- *      `<w:tab/>` + `PAGEREF` + cached page number.
+ *      `<w:tab/>` + `PAGEREF` + cached page number, and
+ *   3. forces 0pt spacing above/below directly on the paragraph — the TOC{n}
+ *      styles already declare `before:0/after:0`, but Word lets direct/Normal
+ *      formatting win, so we stamp it per-paragraph (as done for TopHyperlink).
  *
  * Heading text runs are left with their formatting intact (`setText` replaces
  * only the run content, not its `<w:rPr>`).
@@ -81,6 +84,11 @@ export function cleanTocEntries(doc: Document): TocCleanResult {
 
     // Drop the right-aligned dotted-leader tab stop on the entry paragraph.
     para.setTabs([]);
+
+    // Force zero spacing above/below the entry, overriding any inherited or
+    // direct spacing that survives the TOC{n} style.
+    para.setSpaceBefore(0);
+    para.setSpaceAfter(0);
     paragraphs++;
 
     for (const item of para.getContent()) {

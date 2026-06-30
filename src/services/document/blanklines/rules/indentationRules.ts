@@ -30,12 +30,51 @@ function inchesToTwips(inches: number): number {
 }
 
 /**
+ * A real Word list item — one that carries an active numbering definition
+ * (numId other than 0). Continuation alignment keys off these, so the small
+ * indent preserved below is only meaningful when the predecessor is one.
+ */
+function isRealWordListItem(para: Paragraph): boolean {
+  const numbering = para.getNumbering();
+  return !!(numbering && numbering.numId !== undefined && numbering.numId !== 0);
+}
+
+/**
+ * Nearest non-blank body paragraph before `index`. Stops (returns undefined)
+ * at a Table or any non-Paragraph element — continuation does not bridge those.
+ * Blank paragraphs are skipped so a removed/blank line between a list item and
+ * its continuation text does not break the association.
+ */
+function prevNonBlankBodyParagraph(doc: Document, index: number): Paragraph | undefined {
+  for (let j = index - 1; j >= 0; j--) {
+    const el = doc.getBodyElementAt(j);
+    if (!(el instanceof Paragraph)) return undefined;
+    if (isParagraphBlank(el)) continue;
+    return el;
+  }
+  return undefined;
+}
+
+/**
+ * Nearest non-blank paragraph before `index` within a single cell's paragraph
+ * array. Blanks are skipped; there is no Table boundary inside a cell.
+ */
+function prevNonBlankCellParagraph(paras: Paragraph[], index: number): Paragraph | undefined {
+  for (let j = index - 1; j >= 0; j--) {
+    const p = paras[j];
+    if (!p) continue;
+    if (isParagraphBlank(p)) continue;
+    return p;
+  }
+  return undefined;
+}
+
+/**
  * Check whether a paragraph is a list element (Word list or typed prefix).
  */
 function isListElement(para: Paragraph): boolean {
   // Real Word list item
-  const numbering = para.getNumbering();
-  if (numbering && numbering.numId !== undefined && numbering.numId !== 0) {
+  if (isRealWordListItem(para)) {
     return true;
   }
 
@@ -79,6 +118,13 @@ export function removeSmallIndents(doc: Document): number {
     // Skip list elements - their indentation is intentional
     if (isListElement(element)) continue;
 
+    // Skip continuation paragraphs: a small indent directly after a list item
+    // (across blanks) is the signal that the text belongs to that list. Zeroing
+    // it here would erase that signal before the alignment passes can lift the
+    // text to the list's text-indent column.
+    const prevBody = prevNonBlankBodyParagraph(doc, i);
+    if (prevBody && isRealWordListItem(prevBody)) continue;
+
     log.debug(
       `Removing small indent (${indent} twips / ${(indent / TWIPS_PER_INCH).toFixed(2)}") ` +
         `from body paragraph: "${element.getText()?.substring(0, 40)}..."`
@@ -104,6 +150,10 @@ export function removeSmallIndents(doc: Document): number {
 
           // Skip list elements
           if (isListElement(para)) continue;
+
+          // Skip continuation paragraphs after a list item (see body loop).
+          const prevCell = prevNonBlankCellParagraph(paras, ci);
+          if (prevCell && isRealWordListItem(prevCell)) continue;
 
           log.debug(
             `Removing small indent (${indent} twips / ${(indent / TWIPS_PER_INCH).toFixed(2)}") ` +
@@ -200,14 +250,16 @@ function decideTarget(
  * indented paragraph in the document body and inside each table cell.
  *
  * For each such paragraph N (indent > 0):
- *   Case A: immediate prev is a list item              → match list level's text indent
+ *   Case A: nearest non-blank prev is a real list item → match list level's text indent
  *   Case B: immediate prev is indented non-list        → match prev's left indent
  *   Case C: otherwise (blank, non-indented, Table, …)  → snap to level-0 text indent
  *                                                        (fallback 0.5" if not configured)
  *
- * Forward iteration ensures Case B observes Case C's normalization
- * from earlier iterations — three consecutive indented paragraphs all
- * settle on the same value via C → B → B.
+ * Blank lines are bridged ONLY for Case A (so a removed blank between a list
+ * item and its continuation still aligns to the list); Cases B and C still look
+ * at the immediate previous element. Forward iteration ensures Case B observes
+ * Case C's normalization from earlier iterations — three consecutive indented
+ * paragraphs all settle on the same value via C → B → B.
  *
  * Precondition: removeSmallIndents (also in this file) must have run
  * earlier in the pipeline so that any surviving indent > 0 is treated
@@ -230,8 +282,20 @@ export function applyIndentationRules(doc: Document, options: BlankLineProcessin
     const indent = element.getFormatting()?.indentation?.left;
     if (!indent || indent <= 0) continue;
 
-    const prev = i > 0 ? doc.getBodyElementAt(i - 1) : undefined;
-    const target = decideTarget(prev instanceof Paragraph ? prev : undefined, options, level0);
+    // Only bridge blank lines when the nearest non-blank predecessor is a real
+    // list item (Case A): a removed/blank line between a list item and its
+    // continuation text must not demote it to Case C (level-0). For every other
+    // shape keep immediate-prev semantics so the Case B / Case C cascade for
+    // non-list indented paragraphs is unchanged.
+    const lookback = prevNonBlankBodyParagraph(doc, i);
+    const immediatePrev = i > 0 ? doc.getBodyElementAt(i - 1) : undefined;
+    const prev =
+      lookback && isRealWordListItem(lookback)
+        ? lookback
+        : immediatePrev instanceof Paragraph
+          ? immediatePrev
+          : undefined;
+    const target = decideTarget(prev, options, level0);
 
     // Continuation paragraphs must be a flat block at `target` — no hanging
     // or first-line offset. Otherwise an inherited negative first-line indent
@@ -267,7 +331,10 @@ export function applyIndentationRules(doc: Document, options: BlankLineProcessin
           const indent = para.getFormatting()?.indentation?.left;
           if (!indent || indent <= 0) continue;
 
-          const prev = ci > 0 ? paras[ci - 1] : undefined;
+          // Bridge blanks only for a real-list predecessor (see body loop).
+          const lookback = prevNonBlankCellParagraph(paras, ci);
+          const immediatePrev = ci > 0 ? paras[ci - 1] : undefined;
+          const prev = lookback && isRealWordListItem(lookback) ? lookback : immediatePrev;
           const target = decideTarget(prev, options, level0);
 
           // See body loop for why we also flatten firstLine / hanging here.

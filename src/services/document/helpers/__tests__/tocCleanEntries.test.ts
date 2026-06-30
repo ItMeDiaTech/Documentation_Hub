@@ -44,10 +44,18 @@ function makeHyperlink(run: any) {
 function makeParagraph(style: string, content: any[]) {
   const para: any = {
     _tabs: [{ val: "right", leader: "dot", position: 9350 }],
+    _spaceBefore: 200,
+    _spaceAfter: 200,
     getStyle: () => style,
     getContent: () => content,
     setTabs(tabs: any[]) {
       para._tabs = tabs;
+    },
+    setSpaceBefore(v: number) {
+      para._spaceBefore = v;
+    },
+    setSpaceAfter(v: number) {
+      para._spaceAfter = v;
     },
   };
   return para;
@@ -81,6 +89,20 @@ describe("cleanTocEntries", () => {
     const para = makeParagraph("TOC2", [makeHyperlink(makeRun(fieldEntryContent("X")))]);
     cleanTocEntries(makeDoc([para]));
     expect(para._tabs).toEqual([]);
+  });
+
+  it("forces 0pt spacing above/below the entry paragraph", () => {
+    const para = makeParagraph("TOC2", [makeHyperlink(makeRun(fieldEntryContent("X")))]);
+    cleanTocEntries(makeDoc([para]));
+    expect(para._spaceBefore).toBe(0);
+    expect(para._spaceAfter).toBe(0);
+  });
+
+  it("leaves spacing on non-TOC paragraphs untouched", () => {
+    const para = makeParagraph("Normal", [makeHyperlink(makeRun(fieldEntryContent("X")))]);
+    cleanTocEntries(makeDoc([para]));
+    expect(para._spaceBefore).toBe(200);
+    expect(para._spaceAfter).toBe(200);
   });
 
   it("leaves a plain-text hyperlink entry untouched", () => {

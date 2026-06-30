@@ -8,12 +8,16 @@
  * These tests use the REAL docxmlater library (not mocked) to confirm
  * how tracked changes interact with hyperlink operations.
  *
- * KEY FINDINGS:
+ * KEY FINDINGS (docxmlater 12 — revision-aware hyperlink operations):
  * 1. defragmentHyperlinks() silently returns 0 when tracking is enabled
- * 2. Hyperlink.setText() does NOT create tracked changes — it silently overwrites
- * 3. Hyperlink.setFormatting() does NOT create w:rPrChange — it silently overwrites
- * 4. Manual Revision.createDeletion/createInsertion + para.replaceContent() DOES work
- * 5. The manual revision approach survives save/load cycle with correct XML
+ * 2. Hyperlink.setText() IS revision-aware: with tracking on it creates and
+ *    registers a w:del/w:ins pair and detaches the old hyperlink into the deletion
+ * 3. Hyperlink.setUrl() is revision-aware the same way (del = old URL, ins = new URL)
+ * 4. Hyperlink.setFormatting() creates a w:rPrChange property-change revision
+ * 5. Because setText/setUrl already create + register the revisions, the former
+ *    manual createDeletion/createInsertion + para.replaceContent() dance is
+ *    obsolete — replaceContent() returns false once setText/setUrl has moved the
+ *    hyperlink into a Revision
  */
 
 import { Document, Hyperlink, Paragraph, Revision, Run } from "docxmlater";
@@ -72,28 +76,30 @@ describe("Hyperlink Tracked Changes — Verification", () => {
   // ──────────────────────────────────────────────
   // Test 2: hyperlink.setText() does NOT create tracked changes
   // ──────────────────────────────────────────────
-  describe("Test 2 — setText() does NOT create tracked changes", () => {
-    it("should silently overwrite text without creating revisions (even with tracking + _parentParagraph)", () => {
+  describe("Test 2 — setText() creates tracked changes when tracking is on", () => {
+    it("should create a del/ins revision pair (docxmlater 12 revision-aware setText)", () => {
       const { doc, para, link } = createDocWithHyperlink("https://example.com", "Original Text");
 
-      // Verify _parentParagraph is set
+      // Verify _parentParagraph is set (required for revision-aware setText)
       expect(link._getParentParagraph()).toBeDefined();
 
       doc.enableTrackChanges(trackOpts);
 
-      // setText silently overwrites — does NOT create del/ins revisions
+      // setText is revision-aware: it replaces the hyperlink with a del/ins pair
       link.setText("New Text");
 
       const content = para.getContent();
+      const revisions = content.filter((item) => item instanceof Revision) as Revision[];
 
-      // Only 1 item: the same Hyperlink, no Revision elements added
-      expect(content.length).toBe(1);
-      expect(content[0]).toBeInstanceOf(Hyperlink);
-      expect((content[0] as Hyperlink).getText()).toBe("New Text");
+      expect(revisions.length).toBe(2);
+      expect(revisions.filter((r) => r.getType() === "delete").length).toBe(1);
+      expect(revisions.filter((r) => r.getType() === "insert").length).toBe(1);
 
-      // No revisions created
-      const revisions = content.filter((item) => item instanceof Revision);
-      expect(revisions.length).toBe(0);
+      // Deletion carries the old text, insertion carries the new text
+      const del = revisions.find((r) => r.getType() === "delete")!;
+      const ins = revisions.find((r) => r.getType() === "insert")!;
+      expect(del.getHyperlinks()[0].getText()).toBe("Original Text");
+      expect(ins.getHyperlinks()[0].getText()).toBe("New Text");
 
       doc.dispose();
     });
@@ -115,8 +121,8 @@ describe("Hyperlink Tracked Changes — Verification", () => {
   // ──────────────────────────────────────────────
   // Test 4: Parsed document hyperlinks — setText still does NOT track
   // ──────────────────────────────────────────────
-  describe("Test 4 — Parsed document hyperlinks: setText still does not track", () => {
-    it("should NOT create tracked changes for setText on loaded document hyperlinks", async () => {
+  describe("Test 4 — Parsed document hyperlinks: setText tracks too", () => {
+    it("should create tracked changes for setText on loaded document hyperlinks", async () => {
       // Create and save a doc with a hyperlink
       const { doc: origDoc } = createDocWithHyperlink("https://example.com", "Loaded Link");
       const buffer = await origDoc.toBuffer();
@@ -137,12 +143,13 @@ describe("Hyperlink Tracked Changes — Verification", () => {
 
       hyperlink.setText("Modified Link");
 
-      // setText still does NOT create revisions, even for loaded docs
+      // docxmlater 12.0.1 binds hyperlink runs to tracking even on loaded docs,
+      // so setText creates a del/ins pair here as well.
       const content = paragraph.getContent();
       const revisions = content.filter((item) => item instanceof Revision);
-      expect(revisions.length).toBe(0);
+      expect(revisions.length).toBe(2);
 
-      // Text was silently overwritten
+      // The (now-inserted) hyperlink reports the new text
       expect(hyperlink.getText()).toBe("Modified Link");
 
       doc.dispose();
@@ -152,8 +159,8 @@ describe("Hyperlink Tracked Changes — Verification", () => {
   // ──────────────────────────────────────────────
   // Test 5: setFormatting() does NOT create w:rPrChange
   // ──────────────────────────────────────────────
-  describe("Test 5 — setFormatting() with tracking", () => {
-    it("should NOT create property change revision when formatting changes with tracking", () => {
+  describe("Test 5 — setFormatting() with tracking creates a property-change revision", () => {
+    it("should create a property change revision when formatting changes with tracking", () => {
       const { doc, link } = createDocWithHyperlink("https://example.com", "Formatted Link");
 
       link.setFormatting({
@@ -176,14 +183,14 @@ describe("Hyperlink Tracked Changes — Verification", () => {
         italic: false,
       });
 
-      // setFormatting does NOT create w:rPrChange
+      // docxmlater 12: setFormatting records a w:rPrChange property-change revision
       const run = link.getRun();
-      expect(run.hasPropertyChangeRevision()).toBe(false);
+      expect(run.hasPropertyChangeRevision()).toBe(true);
 
       doc.dispose();
     });
 
-    it("should NOT produce w:rPrChange in saved XML", async () => {
+    it("should produce w:rPrChange in saved XML", async () => {
       const { doc, link } = createDocWithHyperlink("https://example.com", "XML Check");
 
       link.setFormatting({ font: "Arial", size: 10, color: "FF0000" });
@@ -203,8 +210,8 @@ describe("Hyperlink Tracked Changes — Verification", () => {
       const zip = new AdmZip(buffer);
       const xml = zip.readAsText("word/document.xml");
 
-      // No w:rPrChange in the output XML
-      expect(xml).not.toContain("w:rPrChange");
+      // The property change is recorded as w:rPrChange in the output XML
+      expect(xml).toContain("w:rPrChange");
 
       doc.dispose();
     });
@@ -213,25 +220,15 @@ describe("Hyperlink Tracked Changes — Verification", () => {
   // ──────────────────────────────────────────────
   // Test 6: URL tracked changes via manual revision creation
   // ──────────────────────────────────────────────
-  describe("Test 6 — URL tracked changes via manual revision creation", () => {
+  describe("Test 6 — URL tracked changes via revision-aware setUrl()", () => {
     it("should create del/ins revision pair in paragraph content", () => {
       const { doc, para, link } = createDocWithHyperlink("https://old-url.com", "Link Text");
 
       doc.enableTrackChanges(trackOpts);
 
-      // Clone to preserve old state
-      const oldHyperlink = link.clone();
-
-      // Update URL on the original
+      // docxmlater 12: setUrl() is revision-aware and creates the del/ins pair
+      // itself — no manual clone/createDeletion/createInsertion/replaceContent.
       link.setUrl("https://new-url.com");
-
-      // Create revision pair
-      const deletion = Revision.createDeletion("TestAuthor", [oldHyperlink]);
-      const insertion = Revision.createInsertion("TestAuthor", [link]);
-
-      // Replace the hyperlink in paragraph with revisions
-      const replaced = para.replaceContent(link, [deletion, insertion]);
-      expect(replaced).toBe(true);
 
       // Paragraph now contains 2 Revision elements
       const content = para.getContent();
@@ -258,21 +255,11 @@ describe("Hyperlink Tracked Changes — Verification", () => {
     });
 
     it("should produce valid XML with w:del and w:ins elements after save", async () => {
-      const { doc, para, link } = createDocWithHyperlink("https://old-url.com", "Link");
+      const { doc, link } = createDocWithHyperlink("https://old-url.com", "Link");
 
       doc.enableTrackChanges(trackOpts);
 
-      const oldHyperlink = link.clone();
       link.setUrl("https://new-url.com");
-
-      const deletion = Revision.createDeletion("TestAuthor", [oldHyperlink]);
-      const insertion = Revision.createInsertion("TestAuthor", [link]);
-      para.replaceContent(link, [deletion, insertion]);
-
-      // Register revisions with the document
-      const rm = doc.getRevisionManager();
-      rm.register(deletion);
-      rm.register(insertion);
 
       const buffer = await doc.toBuffer();
       const zip = new AdmZip(buffer);
@@ -291,22 +278,13 @@ describe("Hyperlink Tracked Changes — Verification", () => {
   // ──────────────────────────────────────────────
   // Test 7: End-to-end — manual revisions survive save/load cycle
   // ──────────────────────────────────────────────
-  describe("Test 7 — End-to-end: manual revisions persist through save/load", () => {
+  describe("Test 7 — End-to-end: revision-aware setUrl persists through save", () => {
     it("should have URL tracked changes visible in saved XML", async () => {
-      const { doc, para, link } = createDocWithHyperlink("https://old.com", "Link");
+      const { doc, link } = createDocWithHyperlink("https://old.com", "Link");
 
       doc.enableTrackChanges(trackOpts);
 
-      const oldLink = link.clone();
       link.setUrl("https://new.com");
-
-      const deletion = Revision.createDeletion("TestAuthor", [oldLink]);
-      const insertion = Revision.createInsertion("TestAuthor", [link]);
-      para.replaceContent(link, [deletion, insertion]);
-
-      const rm = doc.getRevisionManager();
-      rm.register(deletion);
-      rm.register(insertion);
 
       const buffer = await doc.toBuffer();
       const zip = new AdmZip(buffer);
@@ -324,20 +302,11 @@ describe("Hyperlink Tracked Changes — Verification", () => {
       // This test confirms that tracked changes are correctly written
       // to the DOCX ZIP during the first save — which is all we need
       // since WordDocumentProcessor processes and saves once.
-      const { doc, para, link } = createDocWithHyperlink("https://old.com", "Click Here");
+      const { doc, link } = createDocWithHyperlink("https://old.com", "Click Here");
 
       doc.enableTrackChanges(trackOpts);
 
-      const oldLink = link.clone();
       link.setUrl("https://new.com");
-
-      const deletion = Revision.createDeletion("TestAuthor", [oldLink]);
-      const insertion = Revision.createInsertion("TestAuthor", [link]);
-      para.replaceContent(link, [deletion, insertion]);
-
-      const rm = doc.getRevisionManager();
-      rm.register(deletion);
-      rm.register(insertion);
 
       // Save to buffer and verify XML directly
       const buffer = await doc.toBuffer();
@@ -376,8 +345,10 @@ describe("Hyperlink Tracked Changes — Text/URL Helper Pattern", () => {
   }
 
   /**
-   * Simulate the setHyperlinkTextTracked helper pattern:
-   * clone → setText → Revision.createDeletion/createInsertion → replaceContent → register
+   * Mirrors the production WordDocumentProcessor.setHyperlinkTextTracked helper
+   * under docxmlater 12: Hyperlink.setText() is revision-aware, so it creates and
+   * registers the w:del/w:ins pair internally when tracking is enabled. The
+   * doc/paragraph/author params are retained for call-site parity.
    */
   function setHyperlinkTextTracked(
     doc: Document,
@@ -386,21 +357,11 @@ describe("Hyperlink Tracked Changes — Text/URL Helper Pattern", () => {
     newText: string,
     author: string
   ): boolean {
-    if (!doc.isTrackChangesEnabled()) {
-      hyperlink.setText(newText);
-      return true;
-    }
-    const oldHyperlink = hyperlink.clone();
+    void doc;
+    void paragraph;
+    void author;
     hyperlink.setText(newText);
-    const deletion = Revision.createDeletion(author, [oldHyperlink]);
-    const insertion = Revision.createInsertion(author, [hyperlink]);
-    const replaced = paragraph.replaceContent(hyperlink, [deletion, insertion]);
-    if (replaced) {
-      const rm = doc.getRevisionManager();
-      rm.register(deletion);
-      rm.register(insertion);
-    }
-    return replaced;
+    return true;
   }
 
   function setHyperlinkUrlTracked(
@@ -410,21 +371,11 @@ describe("Hyperlink Tracked Changes — Text/URL Helper Pattern", () => {
     newUrl: string,
     author: string
   ): boolean {
-    if (!doc.isTrackChangesEnabled()) {
-      hyperlink.setUrl(newUrl);
-      return true;
-    }
-    const oldHyperlink = hyperlink.clone();
+    void doc;
+    void paragraph;
+    void author;
     hyperlink.setUrl(newUrl);
-    const deletion = Revision.createDeletion(author, [oldHyperlink]);
-    const insertion = Revision.createInsertion(author, [hyperlink]);
-    const replaced = paragraph.replaceContent(hyperlink, [deletion, insertion]);
-    if (replaced) {
-      const rm = doc.getRevisionManager();
-      rm.register(deletion);
-      rm.register(insertion);
-    }
-    return replaced;
+    return true;
   }
 
   // ──────────────────────────────────────────────

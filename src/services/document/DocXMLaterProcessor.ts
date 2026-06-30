@@ -7,6 +7,22 @@ import { logger } from "@/utils/logger";
 const log = logger.namespace("DocXMLater");
 
 /**
+ * docxmlater 12 added default uncompressed-size guards to Document.load*()
+ * (300MB total / 150MB per entry / 2000 entries / 200:1 ratio) that reject any
+ * archive expanding beyond them with ResourceLimitError. DocHub processes the
+ * user's own trusted .docx files, and docxmlater 11 enforced no uncompressed
+ * cap, so a large document that loaded before could now fail. Disable the new
+ * uncompressed checks (0 = off) to preserve prior loadability; the pre-existing
+ * compressed-size cap (maxSizeMB) is left at its default.
+ */
+export const DOC_LOAD_SIZE_LIMITS = {
+  maxTotalUncompressedMB: 0,
+  maxEntryUncompressedMB: 0,
+  maxEntryCount: 0,
+  maxCompressionRatio: 0,
+} as const;
+
+/**
  * Represents a hyperlink extracted from a document paragraph.
  * Supports both w:hyperlink elements (Hyperlink) and HYPERLINK field codes (ComplexField).
  */
@@ -128,7 +144,10 @@ export class DocXMLaterProcessor {
     log.debug("Loading document from file", { filePath });
     try {
       // Use framework defaults to ensure no corruption
-      const doc = await Document.load(filePath, { strictParsing: false });
+      const doc = await Document.load(filePath, {
+        strictParsing: false,
+        sizeLimits: DOC_LOAD_SIZE_LIMITS,
+      });
       log.info("Document loaded successfully", { filePath });
       return {
         success: true,
@@ -186,7 +205,9 @@ export class DocXMLaterProcessor {
     log.debug("Loading document from buffer", { bufferSize: buffer.length });
     try {
       // Use framework defaults to ensure no corruption
-      const doc = await Document.loadFromBuffer(buffer);
+      const doc = await Document.loadFromBuffer(buffer, {
+        sizeLimits: DOC_LOAD_SIZE_LIMITS,
+      });
       log.info("Document loaded from buffer successfully", { bufferSize: buffer.length });
       return {
         success: true,
@@ -267,6 +288,7 @@ export class DocXMLaterProcessor {
         strictParsing: false,
         acceptRevisions: acceptRevisions, // NEW: Uses in-memory acceptance if true
         revisionHandling: acceptRevisions ? undefined : "preserve", // Preserve if not accepting
+        sizeLimits: DOC_LOAD_SIZE_LIMITS,
       });
 
       // Enable track changes for subsequent modifications

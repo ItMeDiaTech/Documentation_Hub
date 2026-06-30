@@ -82,6 +82,9 @@ export default [
       // General rules
       "no-unused-vars": "off", // Using TypeScript's no-unused-vars instead
       "no-undef": "off", // TypeScript handles this
+      // Allow intentional Unicode whitespace inside regex literals (e.g. the
+      // LEADING_SPACES_RE in helpers/whitespace.ts matches NBSP/en-space/etc.)
+      "no-irregular-whitespace": ["error", { skipRegExps: true }],
     },
     settings: {
       react: {

@@ -102,7 +102,7 @@ jest.mock("@/services/document/list", () => ({
 }));
 
 import { Paragraph, Table } from "docxmlater";
-import { applyIndentationRules } from "../rules/indentationRules";
+import { applyIndentationRules, removeSmallIndents } from "../rules/indentationRules";
 
 function makeDoc(bodyEls: any[], tables: any[] = []) {
   return {
@@ -153,6 +153,30 @@ describe("applyIndentationRules — Case A (prev is list item)", () => {
     // getTextIndentForLevel returns null → falls through to Case C → 0.5" fallback.
     expect(indented.getFormatting().indentation.left).toBe(Math.round(0.5 * TWIPS_PER_INCH));
   });
+
+  it("bridges a blank line between a list item and the continuation (Case A)", () => {
+    const listPara = new Paragraph({ numbering: { numId: 5, level: 1 }, text: "L1 item" });
+    const blank = new Paragraph({ text: "" });
+    const indented = new Paragraph({ indentLeft: 9999, text: "Continuation" });
+    const doc = makeDoc([listPara, blank, indented]);
+    applyIndentationRules(doc, listSettings as any);
+    // Blank no longer demotes to level-0; resolves to the level-1 text indent.
+    expect(indented.getFormatting().indentation.left).toBe(Math.round(0.75 * TWIPS_PER_INCH));
+  });
+
+  it("only bridges a blank for a real-list predecessor, not a non-list one", () => {
+    // L(level 1, 0.75") -> A continuation (0.75") -> blank -> B.
+    // B's nearest non-blank prev is A (non-list), so the blank is NOT bridged:
+    // B falls to Case C (level-0), it does NOT inherit A's 0.75".
+    const listPara = new Paragraph({ numbering: { numId: 5, level: 1 }, text: "L1 item" });
+    const a = new Paragraph({ indentLeft: 9999, text: "Continuation A" });
+    const blank = new Paragraph({ text: "" });
+    const b = new Paragraph({ indentLeft: 9999, text: "Paragraph B" });
+    const doc = makeDoc([listPara, a, blank, b]);
+    applyIndentationRules(doc, listSettings as any);
+    expect(a.getFormatting().indentation.left).toBe(Math.round(0.75 * TWIPS_PER_INCH));
+    expect(b.getFormatting().indentation.left).toBe(Math.round(0.5 * TWIPS_PER_INCH));
+  });
 });
 
 describe("applyIndentationRules — Case B (prev is indented non-list)", () => {
@@ -188,9 +212,10 @@ describe("applyIndentationRules — Case C (no list, no indented prev)", () => {
     expect(lone.getFormatting().indentation.left).toBe(Math.round(0.5 * TWIPS_PER_INCH));
   });
 
-  it("snaps indented paragraph after a blank to level-0 (blanks do not bridge)", () => {
+  it("snaps indented paragraph to level-0 when the nearest non-blank prev is a non-list, non-indented paragraph", () => {
     const blank = new Paragraph({ text: "" }); // blank
     const indented = new Paragraph({ indentLeft: 9999, text: "Body" });
+    // Nearest non-blank before `indented` is the non-indented intro → Case C.
     const doc = makeDoc([new Paragraph({ text: "intro" }), blank, indented]);
     applyIndentationRules(doc, listSettings as any);
     expect(indented.getFormatting().indentation.left).toBe(Math.round(0.5 * TWIPS_PER_INCH));
@@ -222,6 +247,45 @@ describe("applyIndentationRules — skip list items themselves", () => {
     const doc = makeDoc([listPara]);
     applyIndentationRules(doc, listSettings as any);
     expect(listPara.getFormatting().indentation.left).toBe(5000);
+  });
+});
+
+describe("removeSmallIndents — preserve list continuations", () => {
+  const SMALL = 144; // 0.1" < 0.25" threshold
+
+  it("preserves a small indent directly after a list item (continuation signal)", () => {
+    const listPara = new Paragraph({ numbering: { numId: 5, level: 0 }, text: "Item" });
+    const cont = new Paragraph({ indentLeft: SMALL, text: "Continuation" });
+    const doc = makeDoc([listPara, cont]);
+    removeSmallIndents(doc);
+    expect(cont.getFormatting().indentation.left).toBe(SMALL);
+  });
+
+  it("preserves a small indent after a list item across a blank line", () => {
+    const listPara = new Paragraph({ numbering: { numId: 5, level: 0 }, text: "Item" });
+    const blank = new Paragraph({ text: "" });
+    const cont = new Paragraph({ indentLeft: SMALL, text: "Continuation" });
+    const doc = makeDoc([listPara, blank, cont]);
+    removeSmallIndents(doc);
+    expect(cont.getFormatting().indentation.left).toBe(SMALL);
+  });
+
+  it("still zeroes a small indent when the prev is not a list item", () => {
+    const intro = new Paragraph({ text: "intro" });
+    const small = new Paragraph({ indentLeft: SMALL, text: "Body" });
+    const doc = makeDoc([intro, small]);
+    removeSmallIndents(doc);
+    expect(small.getFormatting().indentation.left).toBe(0);
+  });
+
+  it("preserves a small indent after a list item inside a table cell", () => {
+    const listPara = new Paragraph({ numbering: { numId: 5, level: 0 }, text: "Item" });
+    const cont = new Paragraph({ indentLeft: SMALL, text: "Continuation" });
+    const cell = makeCell([listPara, cont]);
+    const table = new Table([{ getCells: () => [cell] }]);
+    const doc = makeDoc([table], [table]);
+    removeSmallIndents(doc);
+    expect(cont.getFormatting().indentation.left).toBe(SMALL);
   });
 });
 

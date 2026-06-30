@@ -215,10 +215,15 @@ describe("WordDocumentProcessor", () => {
       // Show actual errors in assertion diff if processing fails
       expect(result.errorMessages).toEqual([]);
       expect(result.success).toBe(true);
-      expect(Document.loadFromBuffer).toHaveBeenCalledWith(expect.any(Buffer), {
-        strictParsing: false,
-        revisionHandling: "preserve",
-      });
+      expect(Document.loadFromBuffer).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expect.objectContaining({
+          strictParsing: false,
+          revisionHandling: "preserve",
+          // docxmlater 12 opt-out of the new uncompressed-size guards
+          sizeLimits: expect.objectContaining({ maxTotalUncompressedMB: 0 }),
+        })
+      );
       expect(fs.stat).toHaveBeenCalledWith(filePath);
     });
 

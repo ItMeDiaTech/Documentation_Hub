@@ -69,7 +69,11 @@ import pLimit from "p-limit";
 import * as path from "path";
 import { hyperlinkService } from "../HyperlinkService";
 import type { HyperlinkApiResponse } from "@/types/hyperlink";
-import { DocXMLaterProcessor, type ExtractedHyperlink } from "./DocXMLaterProcessor";
+import {
+  DocXMLaterProcessor,
+  DOC_LOAD_SIZE_LIMITS,
+  type ExtractedHyperlink,
+} from "./DocXMLaterProcessor";
 import { blankLineManager, removeSmallIndents } from "./blanklines";
 import { normalizeRunWhitespace } from "./helpers/whitespace";
 import { cropEmbeddedImageBorders, collectParagraphImages } from "./helpers/ImageBorderCropper";
@@ -211,6 +215,7 @@ export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   centerAndBorderImages?: boolean; // center-border-images: Center and apply 2pt borders to all images larger than 50x50px
   removeHeadersFooters?: boolean; // remove-headers-footers: Remove all headers and footers from document
   addDocumentWarning?: boolean; // add-document-warning: Add standardized warning at end of document
+  applyHeader1ToFirstLine?: boolean; // apply-header1-to-first-line: Apply the Heading 1 style to the first line of text
 
   styles?: Array<{
     // Session styles to apply when assignStyles is true
@@ -907,6 +912,7 @@ export class WordDocumentProcessor {
       doc = await Document.loadFromBuffer(vmlNormalized.buffer, {
         strictParsing: false,
         revisionHandling: "preserve", // Always preserve to capture pre-existing changes
+        sizeLimits: DOC_LOAD_SIZE_LIMITS,
       });
       this.log.debug("Document loaded successfully");
 
@@ -2120,6 +2126,21 @@ export class WordDocumentProcessor {
           this.log.info(
             `Set Heading 2 style on ${heading2Updated} paragraphs in 1x1 tables (before style application)`
           );
+        }
+      }
+
+      // Apply Heading 1 to the first line of text (user-togglable). Runs BEFORE
+      // style application so the heading inherits the configured Heading 1
+      // formatting, and before TOC building so the title is excluded from the TOC.
+      if (options.applyHeader1ToFirstLine) {
+        this.log.debug("=== APPLYING HEADING 1 TO FIRST LINE ===");
+        const appliedText = this.applyHeading1ToFirstLine(doc);
+        if (appliedText) {
+          result.changes?.push({
+            type: "structure",
+            category: "structure",
+            description: `Applied Heading 1 style to first line: "${appliedText}"`,
+          });
         }
       }
 
@@ -4459,8 +4480,17 @@ export class WordDocumentProcessor {
 
   /**
    * Update hyperlink text with tracked change support.
-   * When tracking is enabled, creates w:del/w:ins revision pair so the
-   * text change appears in Word's Review pane.
+   *
+   * docxmlater 12: `Hyperlink.setText()` is revision-aware. When track changes
+   * is enabled and the hyperlink is bound to its paragraph, setText() itself
+   * clones the original, creates and registers the w:del/w:ins revision pair,
+   * and detaches the old hyperlink into the deletion; when tracking is off it
+   * overwrites in place. The former manual
+   * clone + Revision.createDeletion/createInsertion + paragraph.replaceContent
+   * dance now double-tracks and fails — after setText() moves the hyperlink into
+   * a Revision, replaceContent() can no longer find it and returns false. So we
+   * delegate to setText(). The `paragraph`/`author` params are retained for
+   * call-site compatibility; the library uses the document's tracking context.
    */
   private setHyperlinkTextTracked(
     doc: Document,
@@ -4469,35 +4499,20 @@ export class WordDocumentProcessor {
     newText: string,
     author: string
   ): boolean {
-    if (!doc.isTrackChangesEnabled()) {
-      hyperlink.setText(newText);
-      return true;
-    }
-
-    const oldHyperlink = hyperlink.clone();
+    void doc;
+    void paragraph;
+    void author;
     hyperlink.setText(newText);
-
-    const deletion = Revision.createDeletion(author, [oldHyperlink]);
-    const insertion = Revision.createInsertion(author, [hyperlink]);
-    const replaced = paragraph.replaceContent(hyperlink, [deletion, insertion]);
-
-    if (replaced) {
-      const rm = doc.getRevisionManager();
-      rm.register(deletion);
-      rm.register(insertion);
-    } else {
-      this.log.warn(
-        "Could not create tracked change for hyperlink text update, text updated without tracking"
-      );
-    }
-
-    return replaced;
+    return true;
   }
 
   /**
    * Update hyperlink URL with tracked change support.
-   * When tracking is enabled, creates w:del/w:ins revision pair so the
-   * URL change appears in Word's Review pane.
+   *
+   * docxmlater 12: `Hyperlink.setUrl()` is revision-aware (see
+   * {@link setHyperlinkTextTracked}) — with tracking enabled it creates and
+   * registers the w:del/w:ins pair internally, so the prior manual revision
+   * dance is delegated to setUrl().
    */
   private setHyperlinkUrlTracked(
     doc: Document,
@@ -4506,29 +4521,11 @@ export class WordDocumentProcessor {
     newUrl: string,
     author: string
   ): boolean {
-    if (!doc.isTrackChangesEnabled()) {
-      hyperlink.setUrl(newUrl);
-      return true;
-    }
-
-    const oldHyperlink = hyperlink.clone();
+    void doc;
+    void paragraph;
+    void author;
     hyperlink.setUrl(newUrl);
-
-    const deletion = Revision.createDeletion(author, [oldHyperlink]);
-    const insertion = Revision.createInsertion(author, [hyperlink]);
-    const replaced = paragraph.replaceContent(hyperlink, [deletion, insertion]);
-
-    if (replaced) {
-      const rm = doc.getRevisionManager();
-      rm.register(deletion);
-      rm.register(insertion);
-    } else {
-      this.log.warn(
-        "Could not create tracked change for hyperlink URL update, URL updated without tracking"
-      );
-    }
-
-    return replaced;
+    return true;
   }
 
   /**
@@ -7850,8 +7847,8 @@ export class WordDocumentProcessor {
       const para = element;
       const numbering = para.getNumbering();
 
-      // If this is a list item, update activeContext
-      if (numbering) {
+      // A real (marked) list item updates the active context.
+      if (numbering && numbering.numId !== 0) {
         const level = numbering.level ?? 0;
         const actualIndent = this.getListTextIndent(doc, numbering.numId, level);
         const textIndentTwips =
@@ -7871,16 +7868,22 @@ export class WordDocumentProcessor {
       // No active list context — nothing to continue from
       if (!activeContext) continue;
 
-      // Check if this paragraph has existing indentation (continuation candidate)
-      const formatting = para.getFormatting();
-      const existingLeftIndent = formatting.indentation?.left || 0;
-      if (existingLeftIndent === 0) continue;
-
       // Blank paragraphs don't reset context but shouldn't be indented
       const text = para.getText().trim();
       if (text.length === 0) continue;
 
-      // Apply the active list context's textIndent
+      // Realign continuation text to the active list's text column, but ONLY
+      // when it is already indented — that existing indent is what marks the
+      // line as belonging to the list; a flush-left line is left untouched. This
+      // covers both ordinary continuation text and a list item that lost its
+      // marker (numbering suppressed / numId 0, or a ListParagraph-styled line
+      // with no numbering — these fall through the marked-list branch above).
+      const formatting = para.getFormatting();
+      const existingLeftIndent = formatting.indentation?.left || 0;
+      if (existingLeftIndent === 0) continue;
+
+      // Apply the active list context's textIndent. Do NOT update activeContext —
+      // the last *marked* list item remains the alignment reference.
       para.setLeftIndent(activeContext.textIndentTwips);
       para.setHangingIndent(0);
       para.setFirstLineIndent(0);
@@ -11530,22 +11533,26 @@ export class WordDocumentProcessor {
           continue;
         }
 
-        // Check if there's already a "Top of" link between the previous header table and this one.
-        // Uses the pre-scanned positions to avoid being blocked by content tables in between.
+        // Only skip insertion when an existing "Top of" link sits within 3 lines
+        // immediately above this header table. A link used mid-section (further
+        // than 3 lines above) no longer suppresses the above-table insert — that
+        // case previously left header tables without a Top of Document link.
         let shouldInsert = true;
 
-        // Find the previous header table's position (section boundary)
+        // Find the previous header table's position — used as a hard floor so we
+        // never treat a link belonging to the prior section as a duplicate.
         let prevHeaderTablePos = 0;
         if (i > 0) {
           const prevTable = tablesWithHeader2[i - 1].table;
           prevHeaderTablePos = tablePositions.get(prevTable) ?? 0;
         }
 
-        // Check if any existing top link falls between previous header table and this one
+        // Check if any existing top link falls within the 3 lines above this table
+        const lookbackStart = Math.max(prevHeaderTablePos + 1, tablePosition - 3);
         for (const linkPos of existingTopLinkPositions) {
-          if (linkPos > prevHeaderTablePos && linkPos < tablePosition) {
+          if (linkPos >= lookbackStart && linkPos < tablePosition) {
             this.log.debug(
-              `Existing Top link at position ${linkPos} found between tables (${prevHeaderTablePos}-${tablePosition}), skipping insert`
+              `Existing Top link at position ${linkPos} found within 3 lines above table (window ${lookbackStart}-${tablePosition}), skipping insert`
             );
             shouldInsert = false;
             break;
@@ -11656,6 +11663,62 @@ export class WordDocumentProcessor {
   // ═══════════════════════════════════════════════════════════
   // End Processing Options Method Implementations
   // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Apply the Heading 1 style to the first line of text in the document.
+   *
+   * Targets the first body-level paragraph containing non-whitespace text
+   * (skipping leading blank paragraphs and any leading tables — note a document
+   * that opens with a leading table promotes the first body paragraph after it).
+   * Ensures a Heading 1 style definition exists, assigns it, and sets outline
+   * level 0 so Word treats the line as a real heading. Run before style
+   * application so the line then inherits the user's configured Heading 1
+   * formatting, and before buildProperTOC — which rewrites the TOC field range to
+   * `\o "2-N"` and is what actually excludes this Heading 1 from the TOC.
+   *
+   * @returns the styled heading text, or null when the body has no text line.
+   */
+  private applyHeading1ToFirstLine(doc: Document): string | null {
+    // Ensure a Heading 1 style DEFINITION exists so the assignment is valid Word
+    // XML even when custom-style application is skipped. hasStyle()/getStyle()
+    // both return truthy for Word's latent built-in Heading1, so they can't tell
+    // a serialized definition from a latent one — inspect the raw styles XML
+    // instead. When nothing defines Heading1, add ONLY the built-in Heading1
+    // definition via addStyle(). Do NOT use applyStyles({heading1:{}}) here: that
+    // fans out over the whole body and re-stamps every Normal/ListParagraph run
+    // WITHOUT preserve flags, permanently recoloring white (FFFFFF) fonts and
+    // dropping centered alignment before the later preserving pass can protect
+    // them. addStyle() only registers the definition; it touches no runs.
+    const stylesXml = doc.getStylesXml();
+    const heading1Defined = /w:styleId="Heading1"/.test(stylesXml);
+    if (!heading1Defined) {
+      try {
+        doc.addStyle(Style.createHeadingStyle(1));
+        this.log.debug("Materialized built-in Heading1 style definition for first-line application");
+      } catch (error) {
+        this.log.warn(
+          `Could not ensure Heading1 style: ${error instanceof Error ? error.message : "Unknown error"}`
+        );
+      }
+    }
+
+    for (const element of doc.getBodyElements()) {
+      // Skip leading tables / non-paragraph elements.
+      if (!(element instanceof Paragraph)) continue;
+
+      // Skip leading blank paragraphs — target the first line that has text.
+      const text = element.getText()?.trim() ?? "";
+      if (text.length === 0) continue;
+
+      element.setStyle("Heading1");
+      element.setOutlineLevel(0);
+      this.log.info(`Applied Heading 1 to first line of text: "${text.substring(0, 60)}"`);
+      return text;
+    }
+
+    this.log.debug("applyHeading1ToFirstLine: no text paragraph found in document body");
+    return null;
+  }
 
   /**
    * Add or update document warning at the end of the document

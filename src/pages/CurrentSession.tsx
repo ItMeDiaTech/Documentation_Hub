@@ -158,16 +158,31 @@ export function CurrentSession() {
       const processedDoc = freshSession?.documents.find((d) => d.id === docId);
 
       if (success && processedDoc?.status === "completed") {
-        toast({
-          title: "Done",
-          description: processedDoc.name,
-          variant: "success",
-        });
+        const completedDoc = processedDoc;
+        if ((completedDoc.errors?.length ?? 0) > 0) {
+          // Completed but with non-fatal warnings — don't bury them under a
+          // green "Done"; surface a neutral, clickable toast that opens details.
+          toast({
+            title: "Completed with warnings",
+            description: `${completedDoc.errors![0]} — Click for details`,
+            variant: "default",
+            onClick: () => setErrorDialogDoc(completedDoc),
+          });
+        } else {
+          toast({
+            title: "Done",
+            description: completedDoc.name,
+            variant: "success",
+          });
+        }
       } else if (processedDoc?.status === "error") {
+        const errorDoc = processedDoc;
         toast({
           title: "Processing failed",
-          description: processedDoc.errors?.[0] || "Document error",
+          description: `${errorDoc.errors?.[0] || "Document error"} — Click for details`,
           variant: "destructive",
+          // Clicking the toast opens the same dialog as the inline error button.
+          onClick: () => setErrorDialogDoc(errorDoc),
         });
       }
     },
@@ -800,9 +815,23 @@ export function CurrentSession() {
                           <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">Processing...</span>
                         )}
 
-                        {doc.status === "completed" && (
-                          <span className="text-xs text-green-600 dark:text-green-400 font-medium">Completed</span>
-                        )}
+                        {doc.status === "completed" &&
+                          ((doc.errors?.length ?? 0) > 0 ? (
+                            // Non-fatal issues (e.g. partial URL updates) leave the
+                            // document "completed" but still carry errors. Surface
+                            // them instead of hiding behind a plain "Completed".
+                            <button
+                              onClick={() => setErrorDialogDoc(doc)}
+                              className="text-xs text-amber-600 dark:text-amber-400 font-medium hover:text-amber-700 hover:underline cursor-pointer"
+                              title="Completed with warnings — click to view details"
+                            >
+                              Completed with warnings
+                            </button>
+                          ) : (
+                            <span className="text-xs text-green-600 dark:text-green-400 font-medium">
+                              Completed
+                            </span>
+                          ))}
 
                         {doc.status === "error" && (
                           <>
