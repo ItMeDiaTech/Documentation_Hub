@@ -34,15 +34,13 @@ jest.mock("../../src/utils/logger", () => ({
   },
 }));
 
-// TODO: quarantined under Task 12. Re-enable once the fs/promises mock is
-// reworked — `(fsPromises.mkdir as jest.Mock) = jest.fn()` fails under Node
-// 22 because the named export is a getter-only property. Migrate to
-// `jest.spyOn(fsPromises, "mkdir").mockResolvedValue(undefined)`.
-// See docs/superpowers/plans/2026-05-14-review-action-and-style-defaults.md
-describe.skip("BackupService.listBackups prefix collision", () => {
+describe("BackupService.listBackups prefix collision", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (fsPromises.mkdir as jest.Mock) = jest.fn().mockResolvedValue(undefined);
+    // node:fs/promises named exports are getter-only under Node 22, so reassign
+    // the property reference fails. The jest.mock auto-mock already makes mkdir
+    // a jest.fn(); just configure its resolved value instead of reassigning.
+    (fsPromises.mkdir as jest.Mock).mockResolvedValue(undefined);
   });
 
   it("does not return Report_v2 backups when listing Report backups", async () => {

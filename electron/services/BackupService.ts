@@ -143,12 +143,24 @@ export class BackupService {
     try {
       const files = await fs.readdir(this.backupDir);
       const documentName = path.basename(documentPath, path.extname(documentPath));
+      const extension = path.extname(documentPath);
+      // Match the EXACT backup grammar `{name}_{timestamp}_{hash8}{ext}` (see
+      // createBackup: timestamp = ISO with `:`/`.` replaced by `-`, hash = 8 hex
+      // chars). A bare `startsWith(documentName + "_")` prefix check still leaks
+      // sibling documents — "Report" would match "Report_v2_...". Because
+      // cleanupOldBackups deletes from this list by count/age, that collision
+      // can prematurely delete another document's backups. Anchoring on the full
+      // grammar isolates each document's backups (and excludes `.meta` sidecars).
+      const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const backupPattern = new RegExp(
+        `^${escapeRegExp(documentName)}_\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}-\\d{3}Z_[0-9a-f]{8}${escapeRegExp(
+          extension
+        )}$`
+      );
       const backups: BackupInfo[] = [];
 
       for (const file of files) {
-        // Match exact document name followed by underscore (backup format: {name}_{timestamp}_{hash}.ext)
-        // Using documentName + "_" prevents "Report" from matching "Report_v2" backups
-        if (file.startsWith(documentName + "_") && !file.endsWith(".meta")) {
+        if (backupPattern.test(file)) {
           const filePath = path.join(this.backupDir, file);
           const stats = await fs.stat(filePath);
           const metadata = await this.getBackupMetadata(filePath);

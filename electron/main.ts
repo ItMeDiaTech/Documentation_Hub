@@ -569,9 +569,13 @@ class HyperlinkIPCHandler {
   private setupHandlers(): void {
     // Single document processing
     ipcMain.handle("hyperlink:process-document", async (event, request) => {
+      // Hoisted so the finally can remove the queue entry on every path — the
+      // catch previously returned without deleting, leaking the controller for
+      // any failed/timed-out run.
+      let safePath: string | undefined;
       try {
         // Validate file path
-        const safePath = await this.validateFilePath(request.filePath);
+        safePath = await this.validateFilePath(request.filePath);
 
         // Process document with timeout
         const controller = new AbortController();
@@ -584,7 +588,6 @@ class HyperlinkIPCHandler {
           480000 // 8 minute timeout
         );
 
-        this.processingQueue.delete(safePath);
         return result;
       } catch (error) {
         return {
@@ -602,6 +605,8 @@ class HyperlinkIPCHandler {
           validationIssues: [],
           duration: 0,
         } as HyperlinkProcessingResult;
+      } finally {
+        if (safePath) this.processingQueue.delete(safePath);
       }
     });
 
@@ -1074,19 +1079,27 @@ class HyperlinkIPCHandler {
     signal: AbortSignal,
     timeoutMs: number
   ): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error(`Operation timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
 
-        signal.addEventListener("abort", () => {
-          clearTimeout(timeout);
-          reject(new Error("Operation was cancelled"));
-        });
-      }),
-    ]);
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error(`Operation timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      onAbort = () => reject(new Error("Operation was cancelled"));
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      // Always release the timer and abort listener — on the success path the
+      // 8-minute timer (and the closure holding the signal) previously leaked
+      // until it fired.
+      if (timeout) clearTimeout(timeout);
+      if (onAbort) signal.removeEventListener("abort", onAbort);
+    }
   }
 }
 
@@ -2587,10 +2600,25 @@ ipcMain.handle(
     const AdmZip = require("adm-zip");
     const zip = new AdmZip();
     zip.addLocalFolder(validatedFolder);
-    const zipPath = path.join(app.getPath("downloads"), zipName);
+
+    // Sanitize zipName to a bare filename so it cannot traverse out of Downloads
+    // (path.basename strips any directory components and '..'); enforce .zip.
+    const downloadsDir = app.getPath("downloads");
+    let safeZipName = path.basename(zipName);
+    if (!safeZipName.toLowerCase().endsWith(".zip")) safeZipName += ".zip";
+    const zipPath = path.join(downloadsDir, safeZipName);
     zip.writeZip(zipPath);
-    // Clean up the folder after zipping
-    await fsPromises.rm(validatedFolder, { recursive: true, force: true });
+
+    // Clean up the folder after zipping — but only when it is inside Downloads,
+    // so a wrong/injected path can never trigger a recursive delete of an
+    // arbitrary directory tree.
+    const resolvedFolder = path.resolve(validatedFolder);
+    const resolvedDownloads = path.resolve(downloadsDir);
+    if (resolvedFolder.startsWith(resolvedDownloads + path.sep)) {
+      await fsPromises.rm(validatedFolder, { recursive: true, force: true });
+    } else {
+      log.warn(`Skipped report-folder cleanup outside Downloads: ${validatedFolder}`);
+    }
     log.info(`Created report zip: ${zipPath}`);
     return zipPath;
   }
