@@ -261,7 +261,11 @@ describe("WordDocumentProcessor - Integration Tests", () => {
 
       expect(result.success).toBe(true);
       expect(hyperlinkService.processHyperlinksWithApi).toHaveBeenCalled();
-      expect(result.appendedContentIds).toBeGreaterThanOrEqual(0);
+      // The returned contentId matches two of the document's hyperlinks (by
+      // Content_ID and by Document_ID), so both get an ID appended and the
+      // dedicated counter must reflect that (guards the stat against reverting
+      // to always-zero).
+      expect(result.appendedContentIds).toBeGreaterThan(0);
 
       // The API path records each processed hyperlink for the UI.
       expect(result.processedLinks).toBeInstanceOf(Array);

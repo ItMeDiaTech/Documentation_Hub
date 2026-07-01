@@ -1581,6 +1581,11 @@ export class WordDocumentProcessor {
                       newTextValue = newText;
                       textChanged = true;
                       result.updatedDisplayTexts = (result.updatedDisplayTexts || 0) + 1;
+                      // An append is also a display-text change (counted above);
+                      // additionally give it its own tally so the "Content IDs
+                      // Appended" stat (SessionContext) reflects reality instead
+                      // of always reading 0.
+                      result.appendedContentIds = (result.appendedContentIds || 0) + 1;
                       modifications.push("Content ID appended");
 
                       this.log.debug(
