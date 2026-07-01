@@ -382,6 +382,28 @@ describe("belowSmallImageTextRule", () => {
     };
     expect(belowSmallImageTextRule.matches(ctx)).toBe(false);
   });
+
+  it("does NOT match a split-run bold-colon callout that introduces the list", () => {
+    // "⚠ If <b>ePA systems are down</b>:" / "⚠ <b>Read Below:</b>" — the label
+    // leads with a non-bold connector, so startsWithBoldColon (which inspects
+    // only the FIRST run) misses it. The trailing-colon guard must still
+    // suppress the blank so the list sits tight against its intro.
+    const callout = new (Paragraph as any)({
+      content: [
+        new (ImageRun as any)(25, 22),
+        new (Run as any)(" If ", { bold: false }),
+        new (Run as any)("ePA systems are down:", { bold: true }),
+      ],
+    });
+    const ctx: RuleContext = {
+      doc: new (Document as any)(),
+      currentIndex: 0,
+      currentElement: callout,
+      nextElement: makeListItem("Open PA in CAS."),
+      scope: "cell",
+    };
+    expect(belowSmallImageTextRule.matches(ctx)).toBe(false);
+  });
 });
 
 describe("cell addition: blank below callout, above list item", () => {

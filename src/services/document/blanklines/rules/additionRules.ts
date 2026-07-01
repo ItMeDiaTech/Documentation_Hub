@@ -492,6 +492,13 @@ export const belowSmallImageTextRule: BlankLineRule = {
     // blank. Only a standalone callout (e.g. "⚠ Do NOT …") gets a blank.
     if (startsWithBoldColon(ctx.currentElement)) return false;
 
+    // startsWithBoldColon only inspects the FIRST text run, so it misses
+    // list-intro callouts that lead with a non-bold connector before the bold
+    // label ("⚠ If <b>ePA systems are down</b>:", "⚠ <b>Read Below:</b>").
+    // Any callout whose text ends in a colon and is followed by a list is a
+    // list header and must sit tight. (trim() also strips a trailing nbsp.)
+    if (ctx.currentElement.getText().trim().endsWith(":")) return false;
+
     // Only insert a blank when the next element is a list item.
     if (!(ctx.nextElement instanceof Paragraph)) return false;
     return !!ctx.nextElement.getNumbering();
