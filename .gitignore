@@ -256,6 +256,8 @@ compare-*
 # Local data and config
 config/
 data/
+# ...but src/data holds committed source (e.g. the What's New changelog)
+!src/data/
 /Test_Code - Copy (9) - Copy
 /docs/api/HYPERLINK_URL_PROCESSING.md
 /.cline
@@ -364,3 +366,85 @@ AI_Test.md
 
 # Document regression test that needs an external fixture file
 src/services/document/__tests__/wontprocess.test.ts
+# === ensure_repo: secrets — never commit (do not delete this line) ===
+.env
+.env.*
+*.env
+.envrc
+*.pem
+*.key
+*.keystore
+*.jks
+*.pfx
+*.p12
+*.der
+id_rsa*
+id_ed25519*
+id_dsa*
+*.ppk
+.netrc
+.npmrc
+.pypirc
+.dockercfg
+credentials
+credentials.json
+.credentials.json
+client_secret*.json
+service-account*.json
+*-service-account*.json
+*serviceaccount*.json
+gcp-*.json
+secrets.*
+*.secret
+*.secrets
+*secret*.yaml
+*secret*.yml
+.aws/
+.ssh/
+.gnupg/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# === ensure_repo: common build / cache / editor artifacts ===
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+coverage.xml
+htmlcov/
+# node / js / ts
+node_modules/
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+.pnpm-store/
+# rust / go / java
+target/
+bin/
+*.class
+# logs / temp / os / editor
+*.log
+*.tmp
+*.swp
+*.bak
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+# claude-code local
+.claude/.verify_tries
+.claude/settings.local.json

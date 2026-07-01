@@ -17,6 +17,13 @@ import { getSharePointSyncService } from "./services/SharePointSyncService";
 let mainWindow: BrowserWindow | null = null;
 const isDev = !app.isPackaged;
 
+// Defense-in-depth for the Dev Env tools: the dev:http-request / dev:run-command
+// handlers are registered at startup, but stay inert until the renderer syncs the
+// persisted Development-mode setting here. Defaults off, so the powerful handlers
+// do nothing for the normal (toggle-off) case — the off state is enforced at the
+// IPC boundary, not just by hiding the UI. See src/pages/DevEnv.tsx.
+let devToolsEnabled = false;
+
 // Create namespaced logger for main process
 const log = logger.namespace("Main");
 
@@ -535,6 +542,41 @@ ipcMain.handle("open-dev-tools", () => {
   if (mainWindow) {
     mainWindow.webContents.openDevTools();
   }
+});
+
+// ============================================================================
+// Dev Env (Development mode) — generic HTTP request + PowerShell command runner.
+// These are developer-only tools. The UI is gated behind a default-off setting;
+// the handlers themselves only act on input the local user provides, validate
+// it (http(s) URL, bounded timeouts, capped output), and are lazily imported so
+// they never touch cold start. See src/pages/DevEnv.tsx.
+// ============================================================================
+ipcMain.handle("dev:set-enabled", (_event, enabled: unknown) => {
+  devToolsEnabled = enabled === true;
+  return devToolsEnabled;
+});
+
+ipcMain.handle("dev:http-request", async (_event, input) => {
+  if (!devToolsEnabled) {
+    return { ok: false, durationMs: 0, error: "Development mode is disabled" };
+  }
+  const { runDevHttpRequest } = await import("./services/DevToolsService");
+  return runDevHttpRequest(input);
+});
+
+ipcMain.handle("dev:run-command", async (_event, input) => {
+  if (!devToolsEnabled) {
+    return {
+      ok: false,
+      code: null,
+      stdout: "",
+      stderr: "",
+      durationMs: 0,
+      error: "Development mode is disabled",
+    };
+  }
+  const { runDevCommand } = await import("./services/DevToolsService");
+  return runDevCommand(input);
 });
 
 // Lazy singleton for WordDocumentProcessor. The processor pulls in DocXMLater,

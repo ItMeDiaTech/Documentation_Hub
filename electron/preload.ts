@@ -223,6 +223,20 @@ const electronAPI = {
       ipcRenderer.invoke("display:open-comparison", { backupPath, processedPath, display }),
   },
 
+  // Dev Env (Development mode) tools
+  dev: {
+    setEnabled: (enabled: boolean) => ipcRenderer.invoke("dev:set-enabled", enabled),
+    httpRequest: (input: {
+      method: string;
+      url: string;
+      headers?: Record<string, string>;
+      body?: string;
+      timeoutMs?: number;
+    }) => ipcRenderer.invoke("dev:http-request", input),
+    runCommand: (input: { command: string; cwd?: string; timeoutMs?: number }) =>
+      ipcRenderer.invoke("dev:run-command", input),
+  },
+
   // Auto-updater
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
   downloadUpdate: () => ipcRenderer.invoke("download-update"),

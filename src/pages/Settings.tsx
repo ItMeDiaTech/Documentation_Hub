@@ -52,6 +52,7 @@ import {
   Type,
   User,
   Wifi,
+  Wrench,
   Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -118,6 +119,17 @@ const settingsSections = [
       },
     ],
   },
+  {
+    group: "Development",
+    items: [
+      {
+        id: "development",
+        label: "Development",
+        icon: Wrench,
+        description: "Developer-only tools",
+      },
+    ],
+  },
 ];
 
 export function Settings() {
@@ -153,6 +165,7 @@ export function Settings() {
     updateLocalDictionary,
     updateBackupSettings,
     updateDisplaySettings,
+    updateDevEnvSettings,
     updateFeedbackLinks,
     updateDocumentManagerLinks,
     updateSettings,
@@ -2038,6 +2051,43 @@ export function Settings() {
                       />
                     </button>
                   </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <label htmlFor="whats-new" className="text-sm font-medium">
+                        Show &quot;What&apos;s New&quot; after updating
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Display a summary of changes the first time you open the app after it updates
+                      </p>
+                    </div>
+                    <button
+                      id="whats-new"
+                      role="switch"
+                      aria-checked={updateSettingsForm.showWhatsNewAfterUpdate}
+                      onClick={() =>
+                        setUpdateSettingsForm({
+                          ...updateSettingsForm,
+                          showWhatsNewAfterUpdate: !updateSettingsForm.showWhatsNewAfterUpdate,
+                        })
+                      }
+                      className={cn(
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2",
+                        updateSettingsForm.showWhatsNewAfterUpdate
+                          ? "bg-primary border-primary toggle-checked"
+                          : "bg-input border-border"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          updateSettingsForm.showWhatsNewAfterUpdate
+                            ? "translate-x-6"
+                            : "translate-x-1"
+                        )}
+                      />
+                    </button>
+                  </div>
                 </div>
 
                 {/* SharePoint Update Source */}
@@ -2199,6 +2249,58 @@ export function Settings() {
                     Save Settings
                   </Button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "development" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Development</h2>
+                <p className="text-muted-foreground mt-1">Developer-only tools</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1 pr-4">
+                    <label htmlFor="dev-mode" className="text-sm font-medium">
+                      Development mode
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      This is only used for active development and should not be turned on for daily
+                      use. There are no benefits to having the toggle on.
+                    </p>
+                  </div>
+                  <button
+                    id="dev-mode"
+                    role="switch"
+                    aria-checked={settings.devEnv.enabled}
+                    onClick={() => updateDevEnvSettings({ enabled: !settings.devEnv.enabled })}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors border-2",
+                      settings.devEnv.enabled
+                        ? "bg-primary border-primary toggle-checked"
+                        : "bg-input border-border"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                        settings.devEnv.enabled ? "translate-x-6" : "translate-x-1"
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {settings.devEnv.enabled && (
+                  <div className="rounded-lg border border-border bg-muted/20 p-4">
+                    <p className="text-sm">
+                      Development mode is on. A{" "}
+                      <span className="font-medium">Dev Env</span> section is now available in the
+                      left navigation.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}

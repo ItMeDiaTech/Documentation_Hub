@@ -13,6 +13,7 @@ import {
   Mail,
   MessageSquare,
   FolderKanban,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -225,12 +226,21 @@ export const Sidebar = memo(function Sidebar() {
 
     sections.push({ title: "Quick Links", items: quickLinkItems });
 
+    // Dev Env section — only visible when Development mode is enabled in Settings.
+    if (settings.devEnv.enabled) {
+      sections.push({
+        title: "Dev Env",
+        items: [{ id: "dev-env", label: "Dev Env", icon: Wrench, path: "/dev-env" }],
+      });
+    }
+
     return sections;
   }, [
     activeSessions,
     closeSession,
     settings.feedbackLinks,
     settings.documentManagerLinks,
+    settings.devEnv.enabled,
     navigate,
     openQuickLink,
   ]);

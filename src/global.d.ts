@@ -206,6 +206,34 @@ export type ElectronAPI = {
     ) => Promise<{ success: boolean; error?: string }>;
   };
 
+  // Dev Env (Development mode) tools
+  dev: {
+    setEnabled: (enabled: boolean) => Promise<boolean>;
+    httpRequest: (input: {
+      method: string;
+      url: string;
+      headers?: Record<string, string>;
+      body?: string;
+      timeoutMs?: number;
+    }) => Promise<{
+      ok: boolean;
+      status?: number;
+      statusText?: string;
+      headers?: Record<string, string>;
+      body?: string;
+      durationMs: number;
+      error?: string;
+    }>;
+    runCommand: (input: { command: string; cwd?: string; timeoutMs?: number }) => Promise<{
+      ok: boolean;
+      code: number | null;
+      stdout: string;
+      stderr: string;
+      durationMs: number;
+      error?: string;
+    }>;
+  };
+
   // Auto-updater
   checkForUpdates: () => Promise<any>;
   downloadUpdate: () => Promise<void>;

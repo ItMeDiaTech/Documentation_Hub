@@ -11,12 +11,14 @@ import { KeyboardShortcutsModal } from "@/components/navigation/KeyboardShortcut
 import { TooltipProvider } from "@/components/common/Tooltip";
 import { BugReportButton } from "@/components/common/BugReportButton";
 import { UpdateNotification } from "@/components/common/UpdateNotification";
+import { WhatsNew } from "@/components/common/WhatsNew";
 import { DebugConsole } from "@/components/common/DebugConsole";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { ContextErrorFallback } from "@/components/common/ErrorFallback";
 import { SplashScreen } from "@/components/common/SplashScreen";
 import { useState, lazy, Suspense, useEffect, useCallback } from "react";
 import { useGlobalStats } from "@/contexts/GlobalStatsContext";
+import { useUserSettings } from "@/contexts/UserSettingsContext";
 import { useNavigate } from "react-router-dom";
 
 // Lazy load pages for code splitting and faster initial load
@@ -30,6 +32,7 @@ const Documents = lazy(() => import("@/pages/Documents").then((m) => ({ default:
 const Analytics = lazy(() => import("@/pages/Analytics").then((m) => ({ default: m.Analytics })));
 const Reporting = lazy(() => import("@/pages/Reporting").then((m) => ({ default: m.Reporting })));
 const Search = lazy(() => import("@/pages/Search").then((m) => ({ default: m.Search })));
+const DevEnv = lazy(() => import("@/pages/DevEnv").then((m) => ({ default: m.DevEnv })));
 
 // Loading fallback component
 function PageLoader() {
@@ -58,8 +61,15 @@ function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const { isLoading } = useGlobalStats();
+  const { settings } = useUserSettings();
   const [isInitialized, setIsInitialized] = useState(false);
   const navigate = useNavigate();
+
+  // Keep the main process in sync with the persisted Development-mode toggle, so
+  // the powerful dev IPC handlers stay gated off unless the user turned them on.
+  useEffect(() => {
+    window.electronAPI?.dev?.setEnabled(settings.devEnv.enabled).catch(() => {});
+  }, [settings.devEnv.enabled]);
 
   // Global keyboard shortcuts
   const handleKeyDown = useCallback(
@@ -154,6 +164,8 @@ function Layout() {
 
       <UpdateNotification />
 
+      <WhatsNew />
+
       <DebugConsole />
     </div>
   );
@@ -175,6 +187,7 @@ const router = createHashRouter(
         { path: "search", element: <Search /> },
         { path: "profile", element: <EmptyPage title="Profile" /> },
         { path: "settings", element: <Settings /> },
+        { path: "dev-env", element: <DevEnv /> },
       ],
     },
   ]

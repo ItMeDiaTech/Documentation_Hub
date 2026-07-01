@@ -186,6 +186,48 @@ export interface DictionaryAPI {
 }
 
 /**
+ * Dev Env (Development mode) tools
+ */
+export interface DevHttpRequestInput {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+  timeoutMs?: number;
+}
+
+export interface DevHttpResponse {
+  ok: boolean;
+  status?: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  durationMs: number;
+  error?: string;
+}
+
+export interface DevCommandInput {
+  command: string;
+  cwd?: string;
+  timeoutMs?: number;
+}
+
+export interface DevCommandResult {
+  ok: boolean;
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  error?: string;
+}
+
+export interface DevToolsAPI {
+  setEnabled: (enabled: boolean) => Promise<boolean>;
+  httpRequest: (input: DevHttpRequestInput) => Promise<DevHttpResponse>;
+  runCommand: (input: DevCommandInput) => Promise<DevCommandResult>;
+}
+
+/**
  * Main Electron API interface
  * This type defines all methods exposed to the renderer via contextBridge.
  */
@@ -293,6 +335,9 @@ export interface ElectronAPI {
 
   // Display/Monitor operations
   display: DisplayAPI;
+
+  // Dev Env (Development mode) tools
+  dev: DevToolsAPI;
 
   // Auto-updater
   checkForUpdates: () => Promise<void>;

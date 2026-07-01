@@ -7,7 +7,7 @@ import {
   useCallback,
   useMemo,
 } from "react";
-import { UserSettings, QuickLink, defaultUserSettings } from "@/types/settings";
+import { UserSettings, QuickLink, DevEnvPatch, defaultUserSettings } from "@/types/settings";
 import { logger } from "@/utils/logger";
 import { safeJsonParse, safeJsonStringify } from "@/utils/safeJsonParse";
 
@@ -35,6 +35,7 @@ interface UserSettingsContextType {
   updateLocalDictionary: (updates: Partial<UserSettings["localDictionary"]>) => void;
   updateBackupSettings: (updates: Partial<UserSettings["backupSettings"]>) => void;
   updateDisplaySettings: (updates: Partial<UserSettings["displaySettings"]>) => void;
+  updateDevEnvSettings: (updates: DevEnvPatch) => void;
   updateFeedbackLinks: (links: UserSettings["feedbackLinks"]) => void;
   updateDocumentManagerLinks: (links: UserSettings["documentManagerLinks"]) => void;
   saveSettings: () => Promise<boolean>;
@@ -76,6 +77,13 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         displaySettings: { ...defaultUserSettings.displaySettings, ...parsed.displaySettings },
         feedbackLinks: withQuickLinkIds(parsed.feedbackLinks),
         documentManagerLinks: withQuickLinkIds(parsed.documentManagerLinks),
+        devEnv: {
+          ...defaultUserSettings.devEnv,
+          ...parsed.devEnv,
+          http: { ...defaultUserSettings.devEnv.http, ...parsed.devEnv?.http },
+          terminal: { ...defaultUserSettings.devEnv.terminal, ...parsed.devEnv?.terminal },
+          mcpTunnel: { ...defaultUserSettings.devEnv.mcpTunnel, ...parsed.devEnv?.mcpTunnel },
+        },
       });
     } finally {
       setIsLoading(false);
@@ -269,6 +277,33 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const updateDevEnvSettings = useCallback((updates: DevEnvPatch) => {
+    setSettings((prev) => {
+      // Merge each nested sub-object leaf-wise against `prev` so a caller passing
+      // only the changed field can't clobber a sibling field updated concurrently.
+      const devEnv = { ...prev.devEnv };
+      if (updates.enabled !== undefined) devEnv.enabled = updates.enabled;
+      if (updates.http) devEnv.http = { ...prev.devEnv.http, ...updates.http };
+      if (updates.terminal) devEnv.terminal = { ...prev.devEnv.terminal, ...updates.terminal };
+      if (updates.mcpTunnel) devEnv.mcpTunnel = { ...prev.devEnv.mcpTunnel, ...updates.mcpTunnel };
+      const newSettings = { ...prev, devEnv };
+      // Auto-save dev-env settings to localStorage so entered fields persist
+      const jsonString = safeJsonStringify(
+        newSettings,
+        undefined,
+        "UserSettings.updateDevEnvSettings"
+      );
+      if (jsonString) {
+        try {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (error) {
+          // Silent fail - logged elsewhere
+        }
+      }
+      return newSettings;
+    });
+  }, []);
+
   const updateFeedbackLinks = useCallback((links: UserSettings["feedbackLinks"]) => {
     setSettings((prev) => {
       const newSettings = { ...prev, feedbackLinks: links };
@@ -335,6 +370,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       updateLocalDictionary,
       updateBackupSettings,
       updateDisplaySettings,
+      updateDevEnvSettings,
       updateFeedbackLinks,
       updateDocumentManagerLinks,
       saveSettings,
@@ -352,6 +388,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       updateLocalDictionary,
       updateBackupSettings,
       updateDisplaySettings,
+      updateDevEnvSettings,
       updateFeedbackLinks,
       updateDocumentManagerLinks,
       saveSettings,
