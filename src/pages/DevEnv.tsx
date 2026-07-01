@@ -5,14 +5,14 @@ import { useUserSettings } from "@/contexts/UserSettingsContext";
 import { cn } from "@/utils/cn";
 import { HttpRequestWorkbench } from "@/components/dev/HttpRequestWorkbench";
 import { TerminalPanel } from "@/components/dev/TerminalPanel";
-import { McpTunnelForm } from "@/components/dev/McpTunnelForm";
+import { McpServersEditor } from "@/components/dev/McpServersEditor";
 
 type DevTab = "http" | "terminal" | "mcp";
 
 const TABS: { id: DevTab; label: string; icon: typeof Globe }[] = [
   { id: "http", label: "Nuxeo HTTP", icon: Globe },
   { id: "terminal", label: "Terminal", icon: TerminalSquare },
-  { id: "mcp", label: "MCP Tunnel", icon: Cable },
+  { id: "mcp", label: "MCP", icon: Cable },
 ];
 
 /**
@@ -82,7 +82,7 @@ export function DevEnv() {
       <div className="rounded-lg border border-border bg-background/50 p-5">
         {tab === "http" && <HttpRequestWorkbench />}
         {tab === "terminal" && <TerminalPanel />}
-        {tab === "mcp" && <McpTunnelForm />}
+        {tab === "mcp" && <McpServersEditor />}
       </div>
     </div>
   );

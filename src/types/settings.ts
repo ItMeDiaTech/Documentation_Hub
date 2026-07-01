@@ -77,8 +77,8 @@ export interface QuickLink {
  * developer-only toolbox — an HTTP request workbench for the Nuxeo document
  * store, a command runner, and an MCP-tunnel config form. Every field here is
  * persisted so the developer's inputs survive a restart. Secrets (`authSecret`,
- * `mcpTunnel.authToken`) are entered through masked inputs; clearing the field
- * clears the stored value.
+ * each MCP server's `authToken`) are entered through masked inputs; clearing the
+ * field clears the stored value.
  */
 export type DevAuthType = "none" | "basic" | "token" | "bearer";
 export type DevHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -114,10 +114,28 @@ export interface DevTerminalSettings {
   lastCommand: string;
 }
 
-export interface DevMcpTunnelSettings {
+export type DevMcpTransport = "stdio" | "sse" | "http";
+
+/**
+ * One configured MCP server. Modeled on a standard MCP client config: the
+ * `transport` decides which fields apply — `stdio` uses command/args/env/cwd,
+ * while the remote transports (`sse`/`http`) use url/headers/authToken. Stored
+ * only; establishing the connection is out of scope for now (framework only).
+ */
+export interface DevMcpServer {
+  id: string;
   name: string;
+  enabled: boolean;
+  transport: DevMcpTransport;
+  // stdio transport
+  command: string;
+  /** Command arguments, one per line. */
+  args: string;
+  env: DevKeyValue[];
+  cwd: string;
+  // remote (sse / http) transport
   url: string;
-  transport: string;
+  headers: DevKeyValue[];
   /** Auth token — masked in the UI. */
   authToken: string;
   notes: string;
@@ -127,7 +145,7 @@ export interface DevEnvSettings {
   enabled: boolean;
   http: DevHttpSettings;
   terminal: DevTerminalSettings;
-  mcpTunnel: DevMcpTunnelSettings;
+  mcpServers: DevMcpServer[];
 }
 
 /**
@@ -139,7 +157,7 @@ export interface DevEnvPatch {
   enabled?: boolean;
   http?: Partial<DevHttpSettings>;
   terminal?: Partial<DevTerminalSettings>;
-  mcpTunnel?: Partial<DevMcpTunnelSettings>;
+  mcpServers?: DevMcpServer[];
 }
 
 export interface UserSettings {
@@ -219,12 +237,6 @@ export const defaultUserSettings: UserSettings = {
       cwd: "",
       lastCommand: "",
     },
-    mcpTunnel: {
-      name: "",
-      url: "",
-      transport: "sse",
-      authToken: "",
-      notes: "",
-    },
+    mcpServers: [],
   },
 };

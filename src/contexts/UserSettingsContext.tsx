@@ -10,6 +10,7 @@ import {
 import { UserSettings, QuickLink, DevEnvPatch, defaultUserSettings } from "@/types/settings";
 import { logger } from "@/utils/logger";
 import { safeJsonParse, safeJsonStringify } from "@/utils/safeJsonParse";
+import { migrateMcpServers } from "@/utils/mcpServers";
 
 /**
  * Backfill a stable `id` on quick links persisted before `id` existed.
@@ -82,7 +83,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
           ...parsed.devEnv,
           http: { ...defaultUserSettings.devEnv.http, ...parsed.devEnv?.http },
           terminal: { ...defaultUserSettings.devEnv.terminal, ...parsed.devEnv?.terminal },
-          mcpTunnel: { ...defaultUserSettings.devEnv.mcpTunnel, ...parsed.devEnv?.mcpTunnel },
+          mcpServers: migrateMcpServers(parsed.devEnv),
         },
       });
     } finally {
@@ -285,7 +286,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       if (updates.enabled !== undefined) devEnv.enabled = updates.enabled;
       if (updates.http) devEnv.http = { ...prev.devEnv.http, ...updates.http };
       if (updates.terminal) devEnv.terminal = { ...prev.devEnv.terminal, ...updates.terminal };
-      if (updates.mcpTunnel) devEnv.mcpTunnel = { ...prev.devEnv.mcpTunnel, ...updates.mcpTunnel };
+      if (updates.mcpServers) devEnv.mcpServers = updates.mcpServers;
       const newSettings = { ...prev, devEnv };
       // Auto-save dev-env settings to localStorage so entered fields persist
       const jsonString = safeJsonStringify(
