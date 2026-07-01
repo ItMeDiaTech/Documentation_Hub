@@ -7167,6 +7167,14 @@ export class WordDocumentProcessor {
     const manualCount = await this.assignStylesToDocument(doc, styles, preserveRedFont);
     this.log.debug(`Manual style assignment applied to ${manualCount} additional paragraphs`);
 
+    // The standard style set makes Heading 3 bold (intended for real headings).
+    // But Heading 3 is frequently reused as BODY text inside table cells (e.g. the
+    // first column of an "If.../Then..." table). Those cells must not inherit the
+    // heading's bold. Emit an explicit non-bold override on such cell runs; real,
+    // non-table headings keep their bold. (Font/color are direct run properties on
+    // these cells, so they are unaffected either way.)
+    this.neutralizeHeadingBoldInTableCells(doc);
+
     // Return results - use framework results if available, otherwise construct from styles
     const appliedStyles = frameworkResults || {
       heading1: styles.some((s) => s.id === "header1"),
@@ -7178,6 +7186,39 @@ export class WordDocumentProcessor {
 
     this.log.debug(`Style application completed: ${JSON.stringify(appliedStyles)}`);
     return appliedStyles;
+  }
+
+  /**
+   * Remove INHERITED bold from Heading 3 paragraphs that live inside table cells.
+   *
+   * The standardized Heading 3 style is bold (correct for real section headings),
+   * but the style is frequently reused as body text inside table cells — e.g. the
+   * first column of an "If.../Then..." table — where the author did not intend
+   * bold. This emits an explicit `bold=false` override on those cell runs so they
+   * render non-bold, while leaving real (non-table) headings and any run that
+   * carries its OWN direct bold untouched. Hyperlink-styled runs are skipped
+   * because setBold() can drop their color/underline (docxmlater gotcha).
+   */
+  private neutralizeHeadingBoldInTableCells(doc: Document): void {
+    let cleared = 0;
+    for (const table of doc.getAllTables()) {
+      for (const row of table.getRows()) {
+        for (const cell of row.getCells()) {
+          for (const para of cell.getParagraphs()) {
+            if (para.getStyle() !== "Heading3") continue;
+            for (const run of para.getRuns()) {
+              if (run.isHyperlinkStyled()) continue;
+              if (run.getFormatting().bold === true) continue; // keep intentional direct bold
+              run.setBold(false);
+              cleared++;
+            }
+          }
+        }
+      }
+    }
+    if (cleared > 0) {
+      this.log.debug(`Neutralized inherited Heading 3 bold on ${cleared} table-cell run(s)`);
+    }
   }
 
   /**
