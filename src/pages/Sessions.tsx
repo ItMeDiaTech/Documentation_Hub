@@ -4,6 +4,7 @@ import { Input } from "@/components/common/Input";
 import { SessionManager } from "@/components/sessions/SessionManager";
 import { useSession } from "@/contexts/SessionContext";
 import { useToast } from "@/hooks/useToast";
+import { Toaster } from "@/components/common/Toast";
 import { cn } from "@/utils/cn";
 import { motion } from "framer-motion";
 import { Calendar, Clock, FileText, FolderOpen, Grid, List, Plus, Trash2 } from "lucide-react";
@@ -34,7 +35,7 @@ const itemVariants = {
 export function Sessions() {
   const navigate = useNavigate();
   const { sessions, loadSession, deleteSession } = useSession();
-  const { toast } = useToast();
+  const { toasts, toast, dismiss } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [showSessionManager, setShowSessionManager] = useState(false);
@@ -291,6 +292,10 @@ export function Sessions() {
           onSessionLoaded={handleSessionCreated}
         />
       )}
+
+      {/* Render this page's toasts (e.g. delete-failure) — useToast state is
+          per-component, so without a Toaster mounted here they never surfaced. */}
+      <Toaster toasts={toasts} onDismiss={dismiss} />
     </motion.div>
   );
 }

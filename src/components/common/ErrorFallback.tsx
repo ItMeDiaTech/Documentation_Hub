@@ -17,6 +17,8 @@ interface ErrorFallbackProps {
 }
 
 export function ErrorFallback({ error, errorInfo, onReset }: ErrorFallbackProps) {
+  const [reported, setReported] = React.useState(false);
+
   const handleReload = () => {
     window.location.reload();
   };
@@ -28,16 +30,25 @@ export function ErrorFallback({ error, errorInfo, onReset }: ErrorFallbackProps)
     window.location.reload();
   };
 
-  const handleReportBug = () => {
-    // In production, this could open a bug report dialog or navigate to a support page
-    const errorDetails = {
-      error: error?.toString(),
-      stack: error?.stack,
-      componentStack: errorInfo?.componentStack,
-    };
+  const handleReportBug = async () => {
+    // The app tree has crashed, so contexts/dialogs are unreliable here. Copy
+    // the full error details to the clipboard so the user can paste them into a
+    // bug report, and confirm visibly.
+    const errorDetails = [
+      `Error: ${error?.toString() ?? "Unknown error"}`,
+      error?.stack ? `\nStack:\n${error.stack}` : "",
+      errorInfo?.componentStack ? `\nComponent stack:\n${errorInfo.componentStack}` : "",
+    ].join("");
 
     logger.debug("Bug Report Details:", errorDetails);
-    // You could integrate with your bug tracking system here
+
+    try {
+      await navigator.clipboard.writeText(errorDetails);
+      setReported(true);
+      setTimeout(() => setReported(false), 3000);
+    } catch (copyError) {
+      logger.error("Failed to copy error details to clipboard:", copyError);
+    }
   };
 
   return (
@@ -103,7 +114,7 @@ export function ErrorFallback({ error, errorInfo, onReset }: ErrorFallbackProps)
 
             <Button onClick={handleReportBug} variant="outline" className="w-full">
               <Bug className="mr-2 h-4 w-4" />
-              Report Issue
+              {reported ? "Copied — paste into your report" : "Report Issue"}
             </Button>
           </div>
         </div>
