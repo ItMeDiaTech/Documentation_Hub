@@ -10,7 +10,9 @@
  * After processing, the guard must have stopped the "above" blank from
  * landing between item 1 and item 2 (which would corrupt the merge target
  * for item 1's paragraph-mark deletion). The "below" blank between item 2
- * and item 3 is unaffected and may still be inserted.
+ * and item 3 must ALSO be suppressed: item 2's image is tracked-DELETED, so it
+ * collapses on accept and must not trigger surrounding blank lines (otherwise an
+ * untracked, permanent blank is left behind once the deletion is accepted).
  */
 /* globals describe, it, expect */
 import { readFileSync } from "node:fs";
@@ -18,6 +20,10 @@ import { resolve } from "node:path";
 import { Document, Paragraph } from "docxmlater";
 import { BlankLineManager } from "../BlankLineManager";
 import { captureBlankLineSnapshot } from "../helpers/blankLineSnapshot";
+import {
+  getImageRunFromParagraph,
+  getVisibleImageRunFromParagraph,
+} from "../helpers/imageChecks";
 
 const FIXTURE = resolve(
   __dirname,
@@ -73,6 +79,33 @@ describe("paragraph-mark-deletion guard — integration", () => {
     // paragraph remains between item 1 and the "24/7 Clients" item.
     const cliIdx = findBodyIndex(doc, (p) => p.getText().includes("24/7 Clients"));
     expect(cliIdx).toBeGreaterThan(newItem1Idx);
+
+    doc.dispose();
+  });
+
+  it("does not insert a blank BELOW a bullet whose only content is a tracked-deleted image", async () => {
+    const buf = readFileSync(FIXTURE);
+    const doc = await Document.loadFromBuffer(buf, { revisionHandling: "preserve" });
+
+    const snapshot = captureBlankLineSnapshot(doc);
+    new BlankLineManager().processBlankLines(doc, snapshot, {});
+
+    // The "24/7 Clients" item immediately follows the tracked-deleted-image
+    // bullet. Its predecessor must still be that image bullet — NOT a Normal
+    // blank — proving no "below" blank was inserted after the deleted image.
+    const cliIdx = findBodyIndex(doc, (p) => p.getText().includes("24/7 Clients"));
+    expect(cliIdx).toBeGreaterThan(0);
+    const before = doc.getBodyElementAt(cliIdx - 1);
+    expect(before).toBeInstanceOf(Paragraph);
+    const imgPara = before as Paragraph;
+    // Still a list item (has numbering), and has no visible text — i.e. the
+    // image bullet, not an inserted Normal blank paragraph.
+    expect(imgPara.getNumbering()).not.toBeNull();
+    expect(imgPara.getText().trim()).toBe("");
+    // It genuinely holds a tracked-DELETED image: the lenient lookup finds the
+    // image, the deletion-aware lookup does not.
+    expect(getImageRunFromParagraph(imgPara)).not.toBeNull();
+    expect(getVisibleImageRunFromParagraph(imgPara)).toBeNull();
 
     doc.dispose();
   });

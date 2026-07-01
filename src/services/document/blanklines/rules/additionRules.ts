@@ -20,6 +20,7 @@ import {
 } from "../helpers/paragraphChecks";
 import {
   getImageRunFromParagraph,
+  getVisibleImageRunFromParagraph,
   isImageSmall,
   isSmallImageParagraph,
   isSmallImageTextCalloutParagraph,
@@ -436,7 +437,9 @@ export const aboveAndBelowLargeImagesRule: BlankLineRule = {
     if (!(ctx.currentElement instanceof Paragraph)) return false;
     if (isParagraphBlank(ctx.currentElement)) return false;
 
-    const imageRun = getImageRunFromParagraph(ctx.currentElement);
+    // Use the deletion-aware lookup: a tracked-DELETED image collapses on accept,
+    // so it must not trigger surrounding blank lines (would leave a permanent gap).
+    const imageRun = getVisibleImageRunFromParagraph(ctx.currentElement);
     if (!imageRun) return false;
 
     const image = imageRun.getImageElement();

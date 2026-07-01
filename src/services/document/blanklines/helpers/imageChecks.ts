@@ -74,3 +74,32 @@ export function getImageRunFromParagraph(para: Paragraph): ImageRun | null {
   }
   return null;
 }
+
+/**
+ * Like {@link getImageRunFromParagraph}, but IGNORES images that live inside a
+ * tracked DELETION (`<w:del>`). Such an image is struck through and vanishes
+ * when the deletion is accepted, so it must not drive blank-line spacing: adding
+ * a blank above/below a to-be-removed image leaves a permanent, untracked blank
+ * line once the deletion collapses. Inserted/untracked images are still returned.
+ *
+ * Use this at blank-line ADDITION decision points; removal logic keeps using the
+ * lenient {@link getImageRunFromParagraph}.
+ */
+export function getVisibleImageRunFromParagraph(para: Paragraph): ImageRun | null {
+  const content = para.getContent();
+  for (const item of content) {
+    if (item instanceof ImageRun) {
+      return item;
+    }
+    if (item instanceof Revision) {
+      // A deleted image collapses on accept — treat it as not present.
+      if (item.getType() === "delete") continue;
+      for (const revContent of item.getContent()) {
+        if (revContent instanceof ImageRun) {
+          return revContent;
+        }
+      }
+    }
+  }
+  return null;
+}

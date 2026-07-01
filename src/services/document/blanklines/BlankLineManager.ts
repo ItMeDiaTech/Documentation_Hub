@@ -23,7 +23,7 @@ import {
   insertBlankAtBodyIfSafe,
   addBlankToCellIfSafe,
 } from "./helpers/blankLineInsertion";
-import { getImageRunFromParagraph, isImageSmall } from "./helpers/imageChecks";
+import { getVisibleImageRunFromParagraph, isImageSmall } from "./helpers/imageChecks";
 import type { BlankLineSnapshot } from "./helpers/blankLineSnapshot";
 import { wasOriginallyBlankAtBody, wasOriginallyBlankInCell } from "./helpers/blankLineSnapshot";
 import { removalRules } from "./rules/removalRules";
@@ -271,7 +271,7 @@ export class BlankLineManager {
 
       // Special: large images need blank ABOVE as well
       if (element instanceof Paragraph && !isParagraphBlank(element)) {
-        const imageRun = getImageRunFromParagraph(element);
+        const imageRun = getVisibleImageRunFromParagraph(element);
         if (imageRun) {
           const image = imageRun.getImageElement();
           if (!isImageSmall(image) && originalIndex > 0) {
@@ -330,7 +330,7 @@ export class BlankLineManager {
             // "above" blank must be inserted explicitly here (mirrors the
             // body-scope handling in applyAdditionRulesBody).
             if (ci > 0 && para instanceof Paragraph && !isParagraphBlank(para)) {
-              const imageRun = getImageRunFromParagraph(para);
+              const imageRun = getVisibleImageRunFromParagraph(para);
               if (imageRun && !isImageSmall(imageRun.getImageElement())) {
                 const prevPara = paras[ci - 1];
                 if (!(prevPara instanceof Paragraph && isParagraphBlank(prevPara))) {
