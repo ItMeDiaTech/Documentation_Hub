@@ -56,9 +56,12 @@ export function computeOrphanBodyListShifts(
   type RunItem = { index: number; numId: number; level: number };
   let currentRun: RunItem[] = [];
   let currentNumId: number | null = null;
-  // Level of the last list item before the current run — used to detect
-  // intentional nesting across numId boundaries.
+  // Level and numId of the last list item before the current run — used to
+  // detect intentional nesting across numId boundaries. The numId matters: a
+  // SAME-numId orphan list split by an intervening line is one list and must
+  // shift equally, whereas a DIFFERENT-numId deeper list is intentional nesting.
   let previousListLevel: number | null = null;
+  let previousListNumId: number | null = null;
   let blankGapCount = 0;
 
   const flushRun = () => {
@@ -73,7 +76,12 @@ export function computeOrphanBodyListShifts(
       const runNumId = currentRun[0]!.numId;
       const listGlobalMin = globalMinByNumId.get(runNumId) ?? minLevel;
       const isOrphanList = listGlobalMin > 0;
-      const intentionalNesting = previousListLevel !== null && previousListLevel < minLevel;
+      // Intentional nesting only across a numId boundary — a same-numId run
+      // (the rest of one orphan list interrupted by a line) is not nesting.
+      const intentionalNesting =
+        previousListLevel !== null &&
+        previousListLevel < minLevel &&
+        previousListNumId !== runNumId;
 
       if (isOrphanList && !intentionalNesting) {
         for (const item of currentRun) {
@@ -86,6 +94,7 @@ export function computeOrphanBodyListShifts(
     }
 
     previousListLevel = currentRun[currentRun.length - 1]!.level;
+    previousListNumId = currentRun[0]!.numId;
     blankGapCount = 0;
     currentRun = [];
     currentNumId = null;
@@ -94,19 +103,28 @@ export function computeOrphanBodyListShifts(
   for (let i = 0; i < events.length; i++) {
     const ev = events[i]!;
 
-    if (ev.kind === "break" || ev.kind === "text") {
+    if (ev.kind === "break") {
+      // Hard boundary (non-paragraph element, or a protected HLP/row-number
+      // item): always clear the cross-numId nesting context.
       flushRun();
       previousListLevel = null;
+      previousListNumId = null;
       blankGapCount = 0;
       continue;
     }
 
-    if (ev.kind === "blank") {
+    if (ev.kind === "blank" || ev.kind === "text") {
       flushRun();
       blankGapCount++;
-      // A single blank line between list runs is tolerated; two or more
-      // signal a real separation and clear the cross-numId nesting context.
-      if (blankGapCount > 1) previousListLevel = null;
+      // A single intervening line — a blank OR one explanatory prose paragraph
+      // (e.g. "Complete the following sub-steps:") — between list runs is
+      // tolerated, so a sub-list immediately after it is still recognized as
+      // intentional cross-numId nesting and not flattened to level 0. Two or
+      // more intervening lines signal a real separation and clear the context.
+      if (blankGapCount > 1) {
+        previousListLevel = null;
+        previousListNumId = null;
+      }
       continue;
     }
 

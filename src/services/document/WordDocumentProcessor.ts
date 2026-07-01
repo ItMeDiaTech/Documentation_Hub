@@ -36,6 +36,9 @@ import {
   normalizeOrphanListLevelsInTable,
   stripTypedPrefix,
   detectTypedPrefix,
+  parseTypedMarkerValue,
+  disambiguateRomanMarker,
+  getLevelFromFormat,
   detectListType,
   getParagraphIndentation,
   createMixedListNumId,
@@ -62,7 +65,10 @@ import type {
 } from "@/types/session";
 import { MemoryMonitor } from "@/utils/MemoryMonitor";
 import { logger, startTimer, debugModes, isDebugEnabled } from "@/utils/logger";
-import { sanitizeHyperlinkText } from "@/utils/textSanitizer";
+import {
+  sanitizeHyperlinkText,
+  removeEmEnVariants as normalizeEmEnVariants,
+} from "@/utils/textSanitizer";
 import { extractLookupIds } from "@/utils/urlPatterns";
 import { promises as fs } from "fs";
 import pLimit from "p-limit";
@@ -1307,18 +1313,31 @@ export class WordDocumentProcessor {
                   // Phase 4: Display Text Rules
                   // Update display text using docxmlater API if updateTitles enabled
                   if (options.operations?.updateTitles) {
-                    let newText = apiResult.title?.trim() || hyperlinkInfo.displayText;
+                    // Normalize em/en dashes + special spaces in the API title
+                    // when that cleanup is enabled, so the live update path
+                    // matches the rest of the document (the document-wide pass
+                    // runs before hyperlink processing and never sees freshly
+                    // applied API titles).
+                    let apiTitle = apiResult.title?.trim();
+                    if (apiTitle && options.removeEmEnVariants) {
+                      apiTitle = normalizeEmEnVariants(apiTitle);
+                    }
+                    let newText = apiTitle || hyperlinkInfo.displayText;
 
                     // Extract content ID digits: prefer apiResult.contentId, fall back to title text
                     let last6: string | null = null;
                     if (apiResult.contentId) {
                       const m = apiResult.contentId.match(/(\d+)$/);
-                      if (m) last6 = m[1].padStart(6, "0").slice(-6);
+                      // Pad short IDs to 6 digits, but never truncate a longer
+                      // tail — slice(-6) silently corrupted out-of-spec 7+ digit IDs.
+                      if (m) last6 = m[1].length <= 6 ? m[1].padStart(6, "0") : m[1];
                     }
                     if (!last6) {
                       // Fallback: extract digits from the title text itself (handles empty contentId)
                       const m = newText.match(/\((?:[A-Za-z0-9]+-)*(\d{4,6})\)\s*$/);
-                      if (m) last6 = m[1].padStart(6, "0").slice(-6);
+                      // Pad short IDs to 6 digits, but never truncate a longer
+                      // tail — slice(-6) silently corrupted out-of-spec 7+ digit IDs.
+                      if (m) last6 = m[1].length <= 6 ? m[1].padStart(6, "0") : m[1];
                     }
 
                     // Only strip+re-append when we have a content ID to work with
@@ -1517,7 +1536,11 @@ export class WordDocumentProcessor {
                     // Keep original display text but append Content ID (last 6 digits)
                     const contentIdMatchFix = apiResult.contentId.match(/(\d+)$/);
                     if (!contentIdMatchFix) continue;
-                    const last6 = contentIdMatchFix[1].padStart(6, "0").slice(-6);
+                    // Pad short IDs to 6 digits, but never truncate a longer tail.
+                    const last6 =
+                      contentIdMatchFix[1].length <= 6
+                        ? contentIdMatchFix[1].padStart(6, "0")
+                        : contentIdMatchFix[1];
 
                     // Check for trailing punctuation before appending
                     const trailingPunct = /[.,]$/.test(hyperlinkInfo.displayText)
@@ -8213,7 +8236,12 @@ export class WordDocumentProcessor {
         // Phase 1: Internal variation — per-group relative approach (360tw/level)
         for (const { para, numbering, effectiveIndent } of itemsWithIndent) {
           const relativeIndent = effectiveIndent - minIndent;
-          const inferredLevel = Math.floor(relativeIndent / 360);
+          // Clamp to the 0-8 range Word/docxmlater support — a deeply (manually)
+          // indented item could otherwise compute ilvl 9+ and reference a level
+          // with no <w:lvl> definition (no marker/indent). Matches the clamp in
+          // list-detection.ts inferLevelFromRelativeIndentation and the rest of
+          // this file's level assignments.
+          const inferredLevel = Math.min(8, Math.floor(relativeIndent / 360));
 
           if (isDebugEnabled(debugModes.LIST_PROCESSING)) {
             const numDefIndent = this.getListTextIndent(doc, numbering.numId, numbering.level);
@@ -8540,44 +8568,64 @@ export class WordDocumentProcessor {
       }
     }
 
-    // Process body paragraphs — group by numId (body-only, not table cells)
-    const bodyParagraphs: Paragraph[] = [];
+    // Process body paragraphs — partition into CONTIGUOUS runs, then collapse
+    // gaps per run. Grouping by numId across the WHOLE document let two SEPARATE
+    // body lists that happen to share one numId mask each other's gaps: List A
+    // {0,1} + List B {0,2} pooled to {0,1,2}, which looks gap-free and left B's
+    // item stranded at the skipped level 2. A run is broken by a non-paragraph
+    // element, a real (non-blank) prose paragraph, a protected HLP/row-number
+    // item, or a numId change. Blank paragraphs do NOT break a run — they are
+    // intra-list spacing, not a list boundary.
+    type BodyRunItem = {
+      para: Paragraph;
+      numbering: NonNullable<ReturnType<Paragraph["getNumbering"]>>;
+    };
+    let currentRun: BodyRunItem[] = [];
+    let currentRunNumId: number | null = null;
+
+    const flushBodyRun = () => {
+      if (currentRun.length >= 2) {
+        normalized += this.collapseLevelGapsInGroup(currentRun);
+      }
+      currentRun = [];
+      currentRunNumId = null;
+    };
+
     for (const el of doc.getBodyElements()) {
-      if (el instanceof Paragraph) bodyParagraphs.push(el);
-    }
-    const bodyGroups = new Map<
-      number,
-      Array<{
-        para: Paragraph;
-        numbering: NonNullable<ReturnType<Paragraph["getNumbering"]>>;
-      }>
-    >();
-
-    for (const para of bodyParagraphs) {
-      const numbering = para.getNumbering();
-      if (!numbering) continue;
-
-      // Skip HLP and row-number protected items
+      if (!(el instanceof Paragraph)) {
+        flushBodyRun();
+        continue;
+      }
+      const numbering = el.getNumbering();
+      if (!numbering) {
+        // A real prose paragraph separates two lists; a blank does not.
+        const text = el.getText();
+        if (text && text.trim().length > 0) flushBodyRun();
+        continue;
+      }
+      // Protected HLP / row-number items are boundaries and never collapsed.
+      let isProtected = false;
       try {
         const instance = manager.getInstance(numbering.numId);
         if (instance) {
-          if (this._hlpAbstractNumIds.has(instance.getAbstractNumId())) continue;
-          if (this._rowNumberAbstractNumIds.has(instance.getAbstractNumId())) continue;
+          const absId = instance.getAbstractNumId();
+          isProtected =
+            this._hlpAbstractNumIds.has(absId) || this._rowNumberAbstractNumIds.has(absId);
         }
       } catch {
-        /* proceed */
+        /* proceed as unprotected */
       }
-
-      if (!bodyGroups.has(numbering.numId)) {
-        bodyGroups.set(numbering.numId, []);
+      if (isProtected) {
+        flushBodyRun();
+        continue;
       }
-      bodyGroups.get(numbering.numId)!.push({ para, numbering });
+      if (currentRunNumId !== null && numbering.numId !== currentRunNumId) {
+        flushBodyRun();
+      }
+      currentRunNumId = numbering.numId;
+      currentRun.push({ para: el, numbering });
     }
-
-    for (const [, items] of bodyGroups) {
-      if (items.length < 2) continue;
-      normalized += this.collapseLevelGapsInGroup(items);
-    }
+    flushBodyRun();
 
     return normalized;
   }
@@ -8708,7 +8756,10 @@ export class WordDocumentProcessor {
 
     for (let index = 0; index < totalLevelsNeeded; index++) {
       const configLevel = settings.indentationLevels[index];
-      const bullet = bullets[index] || bullets[0] || "\u2022";
+      // For levels deeper than the configured pattern, CYCLE the pattern rather
+      // than always reusing level 0's glyph, so deep levels stay visually
+      // distinguishable (matching how indentation is extrapolated below).
+      const bullet = bullets[index % bullets.length] || bullets[0] || "\u2022";
 
       // Use configured settings if available, otherwise extrapolate from last configured level
       // Each additional level adds 0.25 inches of indentation
@@ -8785,9 +8836,10 @@ export class WordDocumentProcessor {
         for (let levelIndex = 0; levelIndex < 9; levelIndex++) {
           const level = abstractNum.getLevel(levelIndex);
           if (level && level.getFormat() === "bullet") {
-            // Use configured symbol for this level if available, otherwise use level 0's symbol
-            // This ensures deep bullet levels don't show squares even if not explicitly configured
-            const newSymbol = bullets[levelIndex] || bullets[0] || "\u2022";
+            // Use the configured symbol for this level; for levels deeper than
+            // the configured pattern, CYCLE the pattern (rather than always
+            // reusing level 0's glyph) so deep levels stay distinguishable.
+            const newSymbol = bullets[levelIndex % bullets.length] || bullets[0] || "\u2022";
 
             // Get font-specific character and font for this bullet type
             const mapping = getBulletMapping(newSymbol);
@@ -9117,6 +9169,40 @@ export class WordDocumentProcessor {
       );
     }
 
+    // H1: a PRE-EXISTING numbered-LEAD list with a bullet SUB-level (e.g. a
+    // decimal level 0 with a Wingdings filled-square level 2) is NOT in
+    // _mixedListAbstractNumIds, so standardizeNumberedListPrefixes clobbered its
+    // bullet-level font to Verdana too, rendering the glyph as a .notdef box.
+    // Repair the bullet font on every non-protected numbered-lead abstract that
+    // has a bullet sub-level. Only bullet levels are touched (numbered levels
+    // keep their standardized font).
+    const bulletSubLevelAbstracts = new Set<number>();
+    const h1Manager = doc.getNumberingManager();
+    for (const abstractNum of h1Manager.getAllAbstractNumberings()) {
+      const absId = abstractNum.getAbstractNumId();
+      if (this._mixedListAbstractNumIds.has(absId)) continue; // already repaired above
+      if (this._hlpAbstractNumIds.has(absId) || this._rowNumberAbstractNumIds.has(absId)) {
+        continue;
+      }
+      const level0 = abstractNum.getLevel(0);
+      if (!level0 || level0.getFormat() === "bullet") continue; // numbered-lead only
+      for (let i = 1; i < 9; i++) {
+        const lvl = abstractNum.getLevel(i);
+        if (lvl && lvl.getFormat() === "bullet") {
+          bulletSubLevelAbstracts.add(absId);
+          break;
+        }
+      }
+    }
+    if (bulletSubLevelAbstracts.size > 0) {
+      const subRestored = restampMixedListBulletFonts(doc, bulletSubLevelAbstracts);
+      if (subRestored > 0) {
+        this.log.debug(
+          `Restored bullet font on ${subRestored} numbered-lead abstract(s) with bullet sub-levels (H1)`
+        );
+      }
+    }
+
     // NEW: Also convert numbering FORMATS (e.g., lowerLetter -> decimal) based on UI settings
     // This ensures existing lists adopt the user's configured numbering format
     let formatsConverted = 0;
@@ -9148,8 +9234,17 @@ export class WordDocumentProcessor {
           // Get the UI-configured settings for this level
           const configLevel = settings.indentationLevels[levelIndex];
 
-          // Apply format conversion if configured
-          if (configLevel?.numberedFormat) {
+          // A legal / hierarchical multi-level template (e.g. "%1.%2" -> 1.1,
+          // "%1.%2.%3" -> 1.1.1) carries more than one "%n" placeholder.
+          // Flattening it to the UI's flat single-token format ("%2.", "a.")
+          // would destroy the hierarchical numbering, so leave such levels'
+          // format and text template intact (indentation below is still
+          // applied). (audit M7)
+          const lvlText = level.getProperties().text ?? "";
+          const isMultiTokenTemplate = (lvlText.match(/%\d/g) ?? []).length >= 2;
+
+          // Apply format conversion if configured (skip multi-token legal levels)
+          if (configLevel?.numberedFormat && !isMultiTokenTemplate) {
             const newFormat = this.parseNumberedFormat(configLevel.numberedFormat);
             const currentFormat = level.getFormat();
 
@@ -9560,9 +9655,12 @@ export class WordDocumentProcessor {
                 }
 
                 if (numId !== undefined) {
-                  // Remove the prefix from text
-                  const newText = text.replace(pattern.regex, "");
-                  para.setText(newText);
+                  // Strip ONLY the prefix from the leading run(s). para.setText()
+                  // would overwrite the paragraph's whole content array, dropping
+                  // any hyperlinks, images, or inline-formatted runs in the cell
+                  // body. stripTypedPrefix edits only Run text and leaves other
+                  // content intact.
+                  stripTypedPrefix(para, match[0]);
 
                   // Apply numbering
                   para.setNumbering(numId, level);
@@ -9848,6 +9946,21 @@ export class WordDocumentProcessor {
       let seqType: "bullet" | "numbered" | null = null;
       let seqLevel: number | null = null;
       let seqWasSubordinated: boolean | null = null;
+      // Level-0 numbered continuation tracker. A typed decimal marker whose value
+      // sequentially follows the previous level-0 numbered list (e.g. "3." after
+      // "1.", "2.") CONTINUES that list rather than restarting at 1 — even across
+      // an intervening prose paragraph. Scoped strictly to level-0, decimal,
+      // non-subordinated items: the visible number is a reliable signal of the
+      // author's intent (a "3." means continue, a "1." means a new list). Unlike
+      // seqNumId, this survives prose gaps; it is reset only on a heading or a
+      // real Word list item (hard context boundaries).
+      let level0NumberedNumId: number | null = null;
+      let level0NumberedLastValue: number | null = null;
+      // Previous converted item's marker as a letter ordinal (a=1…z=26) when it
+      // was a single letter, else null. Used to disambiguate a lone Roman-glyph
+      // marker (i/v/x) from a genuine letter run (…h, i, j…). Reset wherever the
+      // typed sequence resets.
+      let prevSingleLetterValue: number | null = null;
 
       for (const para of paragraphs) {
         const paraGroupInfo = groupInfoByPara.get(para);
@@ -9916,6 +10029,10 @@ export class WordDocumentProcessor {
           seqType = null;
           seqLevel = null;
           seqWasSubordinated = null;
+          // A real Word list breaks the typed-decimal continuation chain.
+          level0NumberedNumId = null;
+          level0NumberedLastValue = null;
+          prevSingleLetterValue = null;
           continue;
         }
 
@@ -9939,6 +10056,11 @@ export class WordDocumentProcessor {
           seqType = null;
           seqLevel = null;
           seqWasSubordinated = null;
+          // A heading is a hard section boundary — a new numbered list after it
+          // restarts even if its first marker happens to continue the sequence.
+          level0NumberedNumId = null;
+          level0NumberedLastValue = null;
+          prevSingleLetterValue = null;
           continue;
         }
 
@@ -9957,6 +10079,8 @@ export class WordDocumentProcessor {
           seqType = null;
           seqLevel = null;
           seqWasSubordinated = null;
+          // Prose interrupts a letter run, so a following lone i/v/x is Roman.
+          prevSingleLetterValue = null;
           continue;
         }
 
@@ -10001,9 +10125,21 @@ export class WordDocumentProcessor {
             targetType = typedIsBullet ? "bullet" : "numbered";
             targetLevel = 0;
           } else {
-            // Same category, no extra indent → same level as parent
+            // Same category, no extra indent. Normally the same level as the
+            // parent — but if the typed FORMAT implies a deeper tier than the
+            // parent (e.g. a numbered parent "1." followed by FLUSH-LEFT letter
+            // sub-items "a.", "b."), use the format as the nesting signal so the
+            // sub-items become a real level+1 letter list instead of flattening
+            // into the parent's decimal list and losing both the tier and the
+            // a/b lettering (audit M2). Mirrors the cell-path format-vs-indent
+            // reconciliation in ListNormalizer.
             targetType = typedIsBullet ? "bullet" : "numbered";
-            targetLevel = parentListContext.level;
+            const formatLevel = detection.format ? getLevelFromFormat(detection.format) : 0;
+            if (!typedIsBullet && formatLevel > parentListContext.level) {
+              targetLevel = Math.min(parentListContext.level + 1, 8);
+            } else {
+              targetLevel = parentListContext.level;
+            }
           }
         } else {
           // No context: native type at level 0
@@ -10016,7 +10152,22 @@ export class WordDocumentProcessor {
         // mixed-list numId and use level 0 (lead) or level 1 (subordinated).
         // Otherwise reuse a sequence numId for consecutive same-type/level
         // typed-prefix conversions.
-        const detectedFormat = detection.format; // e.g., 'upperLetter', 'lowerLetter', 'lowerRoman', 'decimal'
+        // Disambiguate a lone Roman-glyph marker (i/v/x) from a genuine letter
+        // run using the previous single-letter marker (see disambiguateRomanMarker).
+        const detectedFormat = disambiguateRomanMarker(
+          detection.format,
+          detection.prefix,
+          prevSingleLetterValue
+        ); // 'upperLetter' | 'lowerLetter' | 'lowerRoman' | 'decimal' | ...
+        // Level-0 numbered continuation (H2/H3): only a non-subordinated, level-0,
+        // decimal item participates — its visible marker value decides whether
+        // this continues the previous level-0 numbered list or starts a new one.
+        const isLevel0Decimal =
+          targetType === "numbered" &&
+          targetLevel === 0 &&
+          !wasSubordinated &&
+          detectedFormat === "decimal";
+        const markerValue = isLevel0Decimal ? parseTypedMarkerValue(detection.prefix) : null;
         let numId: number;
         if (paraGroupInfo && paraGroupInfo.isMixed) {
           numId = getMixedNumIdForGroup(
@@ -10044,12 +10195,38 @@ export class WordDocumentProcessor {
           seqType = null;
           seqLevel = null;
           seqWasSubordinated = null;
+          // Mixed-group routing breaks the typed-decimal continuation chain.
+          level0NumberedNumId = null;
+          level0NumberedLastValue = null;
         } else if (
+          isLevel0Decimal &&
+          level0NumberedNumId !== null &&
+          level0NumberedLastValue !== null &&
+          markerValue !== null &&
+          markerValue === level0NumberedLastValue + 1
+        ) {
+          // CONTINUATION: the marker sequentially follows the previous level-0
+          // numbered list, so reuse its numId WITHOUT restarting — even across an
+          // intervening prose paragraph (where seqNumId was cleared).
+          numId = level0NumberedNumId;
+          level0NumberedLastValue = markerValue;
+          seqNumId = numId;
+          seqType = targetType;
+          seqLevel = targetLevel;
+          seqWasSubordinated = wasSubordinated;
+        } else if (
+          !isLevel0Decimal &&
           seqType === targetType &&
           seqLevel === targetLevel &&
           seqWasSubordinated === wasSubordinated &&
           seqNumId !== null
         ) {
+          // Level-0 decimal items never reach here: their continue-vs-new
+          // decision is governed purely by the visible marker value (the
+          // continuation branch above, or a fresh list below), so two adjacent
+          // "1.,2." lists don't silently merge into "1..4". Other items (bullets,
+          // letter/roman sub-items) still reuse the sequence numId for
+          // consecutive conversions.
           numId = seqNumId;
         } else {
           if (targetType === "bullet") {
@@ -10137,6 +10314,12 @@ export class WordDocumentProcessor {
           seqType = targetType;
           seqLevel = targetLevel;
           seqWasSubordinated = wasSubordinated;
+          // Record this fresh level-0 numbered list so a later sequential marker
+          // (e.g. "3." after a prose gap) can continue it instead of restarting.
+          if (isLevel0Decimal) {
+            level0NumberedNumId = numId;
+            level0NumberedLastValue = markerValue ?? 1;
+          }
         }
 
         // 7. Strip prefix and apply numbering
@@ -10173,6 +10356,17 @@ export class WordDocumentProcessor {
         }
         gapSinceLastList = 0;
         linesSinceLastListItem = 0;
+        // Track this item's marker for the next item's Roman/letter
+        // disambiguation: a single-letter marker keeps a letter run alive
+        // (so a following i/v/x continues it); anything else breaks it.
+        if (detectedFormat === "lowerLetter") {
+          const lm = detection.prefix?.match(/^\s*([a-z])[.)]/);
+          prevSingleLetterValue = lm?.[1]
+            ? lm[1].charCodeAt(0) - "a".charCodeAt(0) + 1
+            : null;
+        } else {
+          prevSingleLetterValue = null;
+        }
       }
 
       return localConverted;

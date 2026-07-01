@@ -67,6 +67,18 @@ describe("computeOrphanBodyListShifts", () => {
     expect(shifts.get(3)).toBe(0);
   });
 
+  it("tolerates a single prose line between a parent list and a nested sub-list (M4)", () => {
+    // One explanatory text paragraph (e.g. "Complete the following:") does not
+    // clear the cross-numId nesting context, so numId 20 stays at level 1.
+    const shifts = computeOrphanBodyListShifts([list(10, 0), text, list(20, 1)]);
+    expect(shifts.size).toBe(0);
+  });
+
+  it("treats a cross-numId sub-list after two or more prose lines as an orphan", () => {
+    const shifts = computeOrphanBodyListShifts([list(10, 0), text, text, list(20, 1)]);
+    expect(shifts.get(3)).toBe(0);
+  });
+
   it("treats a structural break as a hard boundary but still shifts a same-numId orphan", () => {
     const shifts = computeOrphanBodyListShifts([list(5, 1), brk, list(5, 2)]);
     // numId 5 body-wide min is 1 → both runs shift by 1.

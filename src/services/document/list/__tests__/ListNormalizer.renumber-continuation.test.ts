@@ -187,4 +187,61 @@ describe("ListNormalizer numbered continuation", () => {
     expect(byText("Sub item A").getNumbering()!.level).toBe(1);
     expect(byText("Sub item B").getNumbering()!.level).toBe(1);
   });
+
+  it("(e) a numbered list flowing down a column stays ONE continuous list (M6)", () => {
+    // A steps column: one Word numbered item per cell, all sharing one source
+    // numId. Per-cell restart would render 1,1,1; the shared restart keeps it
+    // continuous (1,2,3) by giving every cell the same restarted instance.
+    const doc = Document.create();
+    const mgr = doc.getNumberingManager();
+    const numId = mgr.createNumberedList();
+    const table = doc.createTable(3, 1);
+    const rows = table.getRows();
+    for (let r = 0; r < 3; r++) {
+      const p = Paragraph.create(`Step ${r + 1}`);
+      p.setNumbering(numId, 0);
+      rows[r]!.getCells()[0]!.addParagraph(p);
+    }
+
+    const normalizer = new ListNormalizer(mgr);
+    normalizer.normalizeAllTables([table], { indentationLevels: [] });
+
+    const stepNumId = (r: number) =>
+      rows[r]!
+        .getCells()[0]!
+        .getParagraphs()
+        .find((p) => p.getText().startsWith("Step"))!
+        .getNumbering()!.numId;
+
+    const first = stepNumId(0);
+    expect(first).toBeDefined();
+    // All three cells share ONE numId -> continuous numbering, not 1,1,1.
+    expect(stepNumId(1)).toBe(first);
+    expect(stepNumId(2)).toBe(first);
+  });
+
+  it("(f) two single-item lists with DIFFERENT numIds in one column stay distinct", () => {
+    // Distinct source numIds must not be merged by the column heuristic.
+    const doc = Document.create();
+    const mgr = doc.getNumberingManager();
+    const listA = mgr.createNumberedList();
+    const listB = mgr.createNumberedList();
+    const table = doc.createTable(2, 1);
+    const rows = table.getRows();
+    const pA = Paragraph.create("Alpha");
+    pA.setNumbering(listA, 0);
+    rows[0]!.getCells()[0]!.addParagraph(pA);
+    const pB = Paragraph.create("Beta");
+    pB.setNumbering(listB, 0);
+    rows[1]!.getCells()[0]!.addParagraph(pB);
+
+    const normalizer = new ListNormalizer(mgr);
+    normalizer.normalizeAllTables([table], { indentationLevels: [] });
+
+    const idA = rows[0]!.getCells()[0]!.getParagraphs().find((p) => p.getText() === "Alpha")!
+      .getNumbering()!.numId;
+    const idB = rows[1]!.getCells()[0]!.getParagraphs().find((p) => p.getText() === "Beta")!
+      .getNumbering()!.numId;
+    expect(idB).not.toBe(idA);
+  });
 });

@@ -109,6 +109,7 @@ type MixedLevelSpec = {
 // after that framework call to restore Symbol/Courier-New on bullet levels.
 const FILLED = WORD_NATIVE_BULLETS.FILLED_BULLET; // { char: '', font: 'Symbol' }
 const OPEN = WORD_NATIVE_BULLETS.OPEN_CIRCLE;     // { char: 'o', font: 'Courier New' }
+const SQUARE = WORD_NATIVE_BULLETS.FILLED_SQUARE; // Wingdings filled square
 
 // Mixed-list pattern is DYNAMIC and BIDIRECTIONAL, built per-group from:
 //   • lead: the category at level 0 ("bullet" or "numbered")
@@ -225,6 +226,9 @@ export function restampMixedListBulletFonts(
         changed = true;
       } else if (txt === OPEN.char) {
         lvl.setFont(OPEN.font);
+        changed = true;
+      } else if (txt === SQUARE.char) {
+        lvl.setFont(SQUARE.font);
         changed = true;
       }
     }
@@ -522,7 +526,11 @@ export function stripTypedPrefix(paragraph: Paragraph, prefix: string): void {
 export function normalizeListsInCell(
   cell: TableCell,
   options: ListNormalizationOptions,
-  numberingManager: NumberingManager
+  numberingManager: NumberingManager,
+  // Source numId -> ONE shared restarted instance for numbered lists that flow
+  // down a column as a single item per cell (computed in normalizeListsInTable).
+  // Such lists must CONTINUE (1,2,3) across cells, not restart to 1 per cell.
+  sharedRestartMap?: ReadonlyMap<number, number>
 ): ListNormalizationReport {
   const analysis = analyzeCellLists(cell, numberingManager);
   const majorityCategory = analysis.majorityCategory;
@@ -587,15 +595,22 @@ export function normalizeListsInCell(
           const para = item.paragraph as Paragraph;
           const numbering = para.getNumbering();
           if (numbering) {
-            if (!restartedNumIds.has(numbering.numId)) {
-              restartedNumIds.set(
-                numbering.numId,
-                numberingManager.restartNumbering(numbering.numId)
-              );
+            const shared = sharedRestartMap?.get(numbering.numId);
+            if (shared !== undefined) {
+              // Column-spanning numbered list: reuse the ONE shared restarted
+              // instance so it continues 1,2,3 down the column instead of
+              // restarting to 1 in every cell.
+              para.setNumbering(shared, numbering.level);
+            } else {
+              if (!restartedNumIds.has(numbering.numId)) {
+                restartedNumIds.set(
+                  numbering.numId,
+                  numberingManager.restartNumbering(numbering.numId)
+                );
+              }
+              const newNumId = restartedNumIds.get(numbering.numId)!;
+              para.setNumbering(newNumId, numbering.level);
             }
-
-            const newNumId = restartedNumIds.get(numbering.numId)!;
-            para.setNumbering(newNumId, numbering.level);
           }
         }
       }
@@ -1149,9 +1164,49 @@ export function normalizeListsInTable(
     details: [],
   };
 
+  // Pre-scan: find NUMBERED source numIds that flow down the table as ONE list
+  // item per cell across multiple cells (a column-spanning numbered list, e.g. a
+  // steps column "1. Open", "2. Click", ... one per cell). Those must continue
+  // 1,2,3 across cells, so allocate ONE shared restarted instance up front;
+  // without it, normalizeListsInCell restarts the numbering in every cell and
+  // the column renders 1,1,1 (audit M6). Bullets are excluded (no 1,2,3 to keep).
+  const itemsPerCellByNumId = new Map<number, Map<TableCell, number>>();
   for (const row of table.getRows()) {
     for (const cell of row.getCells()) {
-      const cellReport = normalizeListsInCell(cell, options, numberingManager);
+      for (const para of cell.getParagraphs()) {
+        const numbering = para.getNumbering();
+        if (!numbering || numbering.numId === 0) continue;
+        let perCell = itemsPerCellByNumId.get(numbering.numId);
+        if (!perCell) {
+          perCell = new Map<TableCell, number>();
+          itemsPerCellByNumId.set(numbering.numId, perCell);
+        }
+        perCell.set(cell, (perCell.get(cell) ?? 0) + 1);
+      }
+    }
+  }
+  const sharedRestartMap = new Map<number, number>();
+  for (const [numId, perCell] of itemsPerCellByNumId) {
+    if (perCell.size < 2) continue; // must span >= 2 cells
+    let everySingle = true;
+    for (const count of perCell.values()) {
+      if (count !== 1) {
+        everySingle = false; // a cell with 2+ items is a per-cell list, not a column
+        break;
+      }
+    }
+    if (!everySingle) continue;
+    const inst = numberingManager.getInstance(numId);
+    const lvl0 = inst
+      ? numberingManager.getAbstractNumbering(inst.getAbstractNumId())?.getLevel(0)
+      : undefined;
+    if (!lvl0 || lvl0.getFormat() === "bullet") continue; // numbered lists only
+    sharedRestartMap.set(numId, numberingManager.restartNumbering(numId));
+  }
+
+  for (const row of table.getRows()) {
+    for (const cell of row.getCells()) {
+      const cellReport = normalizeListsInCell(cell, options, numberingManager, sharedRestartMap);
 
       aggregateReport.normalized += cellReport.normalized;
       aggregateReport.skipped += cellReport.skipped;

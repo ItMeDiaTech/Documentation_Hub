@@ -26,6 +26,8 @@ export {
   inferLevelFromIndentation,
   inferLevelFromRelativeIndentation,
   detectTypedPrefix,
+  parseTypedMarkerValue,
+  disambiguateRomanMarker,
   getParagraphIndentation,
   detectListType,
   validateListSequence,

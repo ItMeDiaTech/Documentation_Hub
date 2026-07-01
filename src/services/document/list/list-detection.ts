@@ -203,6 +203,40 @@ export function parseTypedMarkerValue(prefix: string | null): number | null {
   return null;
 }
 
+/** Single letters that are also Roman-numeral glyphs. */
+const ROMAN_GLYPH_LETTERS = new Set(["i", "v", "x", "l", "c", "d", "m"]);
+
+/**
+ * Disambiguate a single Roman-glyph marker (i/v/x/...) that the context-free
+ * detector classified as `lowerLetter`, using the previous list item's marker.
+ *
+ * A lone or leading "i."/"v."/"x." is far more likely a Roman list (i, ii, iii…)
+ * than a letter list (letter lists start at "a"). But mid-sequence — e.g. "…h.,
+ * i., j." — the "i" genuinely continues the letters. So treat the marker as Roman
+ * UNLESS it sequentially follows the previous single-letter marker (h→i, u→v, w→x).
+ *
+ * @param format detected format from detectTypedPrefix
+ * @param prefix the matched marker prefix (e.g. "i. ")
+ * @param prevSingleLetterValue previous item's marker as a letter ordinal
+ *        (a=1…z=26) when it was a single letter, else null
+ * @returns the (possibly corrected) format
+ */
+export function disambiguateRomanMarker(
+  format: NumberFormat | BulletFormat | null,
+  prefix: string | null,
+  prevSingleLetterValue: number | null
+): NumberFormat | BulletFormat | null {
+  if (format !== "lowerLetter" || !prefix) return format;
+  const m = prefix.match(/^\s*([a-z])[.)]/);
+  if (!m || !m[1] || !ROMAN_GLYPH_LETTERS.has(m[1])) return format;
+
+  const letterValue = m[1].charCodeAt(0) - "a".charCodeAt(0) + 1;
+  if (prevSingleLetterValue !== null && letterValue === prevSingleLetterValue + 1) {
+    return "lowerLetter"; // continues a letter run (…h, i, j…)
+  }
+  return "lowerRoman";
+}
+
 /**
  * Get the left indentation from a paragraph in twips.
  */
