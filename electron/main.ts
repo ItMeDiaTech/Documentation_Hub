@@ -624,8 +624,18 @@ class HyperlinkIPCHandler {
         this.processingQueue.set(safePath, controller);
 
         this.processor ??= await getProcessor();
+        // Inject the Downloads path here: the processor runs in the main process
+        // where `window`/`electronAPI` is unavailable, so it can't resolve
+        // Downloads itself. Backups target Downloads and fall back to the
+        // document's own folder if that can't be used.
+        let downloadsPath: string | undefined;
+        try {
+          downloadsPath = app.getPath("downloads");
+        } catch {
+          downloadsPath = undefined;
+        }
         const result = await this.processWithTimeout(
-          this.processor.processDocument(safePath, request.options),
+          this.processor.processDocument(safePath, { ...(request.options || {}), downloadsPath }),
           controller.signal,
           480000 // 8 minute timeout
         );

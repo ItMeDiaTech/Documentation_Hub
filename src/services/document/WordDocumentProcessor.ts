@@ -193,6 +193,12 @@ const EXTENDED_TYPED_PREFIX_PATTERNS: readonly ExtendedTypedPrefixPattern[] = [
 
 export interface WordProcessingOptions extends HyperlinkProcessingOptions {
   createBackup?: boolean;
+  /**
+   * Absolute path to the user's Downloads folder. Injected by the main process
+   * (where `window`/`electronAPI` is unavailable) so backups can target
+   * Downloads; the renderer resolves it via IPC instead.
+   */
+  downloadsPath?: string;
   validateBeforeProcessing?: boolean;
   streamLargeFiles?: boolean;
   maxFileSizeMB?: number;
@@ -889,7 +895,7 @@ export class WordDocumentProcessor {
       // Create backup (skip when explicitly disabled, e.g., batch processing)
       this.log.debug("=== BACKUP CREATION ===");
       if (options.createBackup !== false) {
-        const backupPath = await this.createBackup(filePath);
+        const backupPath = await this.createBackup(filePath, options);
         result.backupPath = backupPath;
         backupCreated = true;
         this.log.info(`Backup created: ${backupPath}`);
@@ -4310,48 +4316,82 @@ export class WordDocumentProcessor {
   }
 
   /**
-   * Create backup of document in a DocHub_Backups subfolder of the user's Downloads folder
+   * Create a backup of the document in a DocHub_Backups folder. Prefers the
+   * user's Downloads folder; if creating that folder or copying the file there
+   * fails (permissions, folder redirection, disk, etc.), it falls back to a
+   * DocHub_Backups folder beside the document being processed, so a backup is
+   * always produced.
    */
-  private async createBackup(filePath: string): Promise<string> {
+  private async createBackup(
+    filePath: string,
+    options: WordProcessingOptions = {}
+  ): Promise<string> {
     const ext = path.extname(filePath);
     const base = path.basename(filePath, ext);
 
-    // Create the DocHub_Backups folder (inside Downloads) if it doesn't exist
-    const backupRoot = await this.resolveBackupRoot(filePath);
-    const backupDir = path.join(backupRoot, "DocHub_Backups");
-    await fs.mkdir(backupDir, { recursive: true });
+    const roots = await this.resolveBackupRoots(filePath, options);
 
-    // Count existing backups to determine next number
-    const existingCount = await this.getExistingBackupCount(backupDir, base, ext);
-    const nextNumber = existingCount + 1;
+    let lastError: unknown;
+    for (const root of roots) {
+      try {
+        const backupDir = path.join(root, "DocHub_Backups");
+        await fs.mkdir(backupDir, { recursive: true });
 
-    // New format: filename_Backup_#.docx
-    const backupPath = path.join(backupDir, `${base}_Backup_${nextNumber}${ext}`);
+        // Count existing backups to determine next number
+        const existingCount = await this.getExistingBackupCount(backupDir, base, ext);
+        const nextNumber = existingCount + 1;
 
-    await fs.copyFile(filePath, backupPath);
-    return backupPath;
+        // New format: filename_Backup_#.docx
+        const backupPath = path.join(backupDir, `${base}_Backup_${nextNumber}${ext}`);
+        await fs.copyFile(filePath, backupPath);
+        return backupPath;
+      } catch (error) {
+        lastError = error;
+        this.log.warn("Backup attempt failed; trying next location if available", { root, error });
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Failed to create backup in any location");
   }
 
   /**
-   * Resolve the directory that should contain the DocHub_Backups folder.
-   * Prefers the user's Downloads folder (resolved by the main process via
-   * app.getPath("downloads")); falls back to the document's own directory when
-   * Downloads can't be resolved (e.g. tests or browser-only mode).
+   * Ordered list of directories to try as the parent of the DocHub_Backups
+   * folder: the user's Downloads folder first (when resolvable), then the
+   * document's own directory as a guaranteed fallback.
    */
-  private async resolveBackupRoot(filePath: string): Promise<string> {
+  private async resolveBackupRoots(
+    filePath: string,
+    options: WordProcessingOptions
+  ): Promise<string[]> {
+    const roots: string[] = [];
+    const downloads = await this.resolveDownloadsPath(options);
+    if (downloads) roots.push(downloads);
+
+    const documentDir = path.dirname(filePath);
+    if (!roots.includes(documentDir)) roots.push(documentDir);
+
+    return roots;
+  }
+
+  /**
+   * Resolve the user's Downloads folder. In the main process the path is
+   * injected via `options.downloadsPath` (window/electronAPI is unavailable
+   * there); in the renderer it's resolved over IPC. Returns undefined when it
+   * can't be determined (e.g. tests or browser-only mode).
+   */
+  private async resolveDownloadsPath(options: WordProcessingOptions): Promise<string | undefined> {
+    if (options.downloadsPath) return options.downloadsPath;
     try {
       if (typeof window !== "undefined" && window.electronAPI?.getDownloadsPath) {
         const downloads = await window.electronAPI.getDownloadsPath();
-        if (downloads) {
-          return downloads;
-        }
+        if (downloads) return downloads;
       }
     } catch (error) {
-      this.log.warn("Could not resolve Downloads folder for backup; using document directory", {
-        error,
-      });
+      this.log.warn("Could not resolve Downloads folder for backup", { error });
     }
-    return path.dirname(filePath);
+    return undefined;
   }
 
   /**

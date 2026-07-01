@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "6.1.12",
+    date: "2026-07-01",
+    areas: ["Backups"],
+    highlights: [
+      "Document backups now reliably save to a “DocHub_Backups” folder in your Downloads folder.",
+      "If that folder can’t be created, the backup is saved next to the document being processed instead, so you always get a backup.",
+    ],
+  },
+  {
     version: "6.1.11",
     date: "2026-07-01",
     areas: ["Blank line spacing", "Fonts and headings", "Tables", "Images", "Tracked changes"],
@@ -105,16 +114,6 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Numbered lists more closely mirror the original document’s numbering.",
       "Your latest saved profile is used when looking up hyperlinks.",
       "Adding documents to a session scrolls back to the top and shows the total count.",
-    ],
-  },
-  {
-    version: "5.12.2",
-    date: "2026-05-14",
-    areas: ["Fonts and spacing", "Tables", "Lists and numbering", "Hyperlinks"],
-    highlights: [
-      "Standard paragraphs and Heading 2 now use consistent, professional spacing by default.",
-      "Table text keeps its link colors and underlines when fonts and sizes are adjusted.",
-      "Various spacing, list, and formatting touch-ups make processed documents look more predictable.",
     ],
   },
 ];

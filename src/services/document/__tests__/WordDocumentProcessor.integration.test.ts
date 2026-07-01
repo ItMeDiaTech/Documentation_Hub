@@ -168,6 +168,61 @@ describe("WordDocumentProcessor - Integration Tests", () => {
       jest.restoreAllMocks();
     });
 
+    it("uses the main-process-injected downloadsPath when window is unavailable", async () => {
+      // In the packaged app the processor runs in the main process (no window);
+      // the Downloads path is injected via options instead.
+      delete (window as unknown as { electronAPI?: unknown }).electronAPI;
+      const downloadsDir = path.join(path.sep, "main", "downloads");
+
+      const mkdirSpy = jest.spyOn(fs, "mkdir").mockResolvedValue(undefined);
+      const copyFileSpy = jest.spyOn(fs, "copyFile").mockResolvedValue(undefined);
+      jest.spyOn(fs, "readdir").mockResolvedValue([] as never);
+
+      const src = path.join(path.sep, "docs", "Report.docx");
+      const backupPath = await (
+        processor as unknown as {
+          createBackup: (p: string, o?: { downloadsPath?: string }) => Promise<string>;
+        }
+      ).createBackup(src, { downloadsPath: downloadsDir });
+
+      const expectedDir = path.join(downloadsDir, "DocHub_Backups");
+      expect(mkdirSpy).toHaveBeenCalledWith(expectedDir, { recursive: true });
+      expect(backupPath).toBe(path.join(expectedDir, "Report_Backup_1.docx"));
+      expect(copyFileSpy).toHaveBeenCalledWith(src, backupPath);
+
+      jest.restoreAllMocks();
+    });
+
+    it("falls back to the document's folder when the Downloads backup fails", async () => {
+      delete (window as unknown as { electronAPI?: unknown }).electronAPI;
+      const downloadsDir = path.join(path.sep, "blocked", "downloads");
+      const src = path.join(path.sep, "docs", "Report.docx");
+      const documentDir = path.dirname(src);
+
+      const mkdirSpy = jest.spyOn(fs, "mkdir").mockImplementation((async (dir: string) => {
+        if (String(dir).startsWith(downloadsDir)) throw new Error("EACCES");
+        return undefined;
+      }) as never);
+      const copyFileSpy = jest.spyOn(fs, "copyFile").mockResolvedValue(undefined);
+      jest.spyOn(fs, "readdir").mockResolvedValue([] as never);
+
+      const backupPath = await (
+        processor as unknown as {
+          createBackup: (p: string, o?: { downloadsPath?: string }) => Promise<string>;
+        }
+      ).createBackup(src, { downloadsPath: downloadsDir });
+
+      const fallbackDir = path.join(documentDir, "DocHub_Backups");
+      expect(mkdirSpy).toHaveBeenCalledWith(path.join(downloadsDir, "DocHub_Backups"), {
+        recursive: true,
+      });
+      expect(mkdirSpy).toHaveBeenCalledWith(fallbackDir, { recursive: true });
+      expect(backupPath).toBe(path.join(fallbackDir, "Report_Backup_1.docx"));
+      expect(copyFileSpy).toHaveBeenCalledWith(src, backupPath);
+
+      jest.restoreAllMocks();
+    });
+
     it("should handle file not found errors", async () => {
       const result = await processor.processDocument("/nonexistent/path/fake.docx");
 
