@@ -16,6 +16,7 @@ import { Document } from "docxmlater";
 import { promises as fs } from "fs";
 import * as path from "path";
 import { hyperlinkService } from "../../HyperlinkService";
+import { createTestFixtures } from "./create-fixtures";
 
 // Mock ONLY external dependencies, NOT docxmlater
 jest.mock("../../HyperlinkService");
@@ -61,6 +62,13 @@ const fixturesDir = path.join(__dirname, "fixtures");
 
 describe("WordDocumentProcessor - Integration Tests", () => {
   let processor: WordDocumentProcessor;
+
+  // The .docx fixtures are deterministic build artifacts, not committed to git.
+  // Regenerate them from source before the suite so it runs identically locally
+  // and in CI (where the pre-generated files are absent).
+  beforeAll(async () => {
+    await createTestFixtures({ quiet: true });
+  }, 60000);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -223,68 +231,95 @@ describe("WordDocumentProcessor - Integration Tests", () => {
   });
 
   describe("Content ID Appending", () => {
-    it("should append content ID to theSource URLs", async () => {
+    // Content-ID resolution is API-driven: the PowerAutomate flow returns the
+    // canonical content ID for each Lookup_ID found in the document's URLs.
+    // These tests drive that real pipeline against real .docx fixtures with the
+    // API mocked (the file already mocks HyperlinkService).
+    const API_ENDPOINT = "https://api.example.com/flow";
+
+    it("processes theSource hyperlinks through the PowerAutomate API when fixContentIds is enabled", async () => {
+      const filePath = path.join(fixturesDir, "theSource.docx");
+
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue({
+        success: true,
+        body: {
+          results: [
+            {
+              contentId: "TSRC-ABC-123456",
+              documentId: "abc-123-def",
+              title: "Doc Title",
+              status: "active",
+            },
+          ],
+        },
+      });
+
+      const result = await processor.processDocument(filePath, {
+        apiEndpoint: API_ENDPOINT,
+        operations: { fixContentIds: true },
+      });
+
+      expect(result.success).toBe(true);
+      expect(hyperlinkService.processHyperlinksWithApi).toHaveBeenCalled();
+      expect(result.appendedContentIds).toBeGreaterThanOrEqual(0);
+
+      // The API path records each processed hyperlink for the UI.
+      expect(result.processedLinks).toBeInstanceOf(Array);
+      expect(result.processedLinks.length).toBeGreaterThan(0);
+      for (const link of result.processedLinks) {
+        expect(link).toHaveProperty("id");
+        expect(link).toHaveProperty("url");
+        expect(link).toHaveProperty("status");
+      }
+    });
+
+    it("completes successfully when the API returns no matching results", async () => {
+      const filePath = path.join(fixturesDir, "theSource-with-ids.docx");
+
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue({
+        success: true,
+        body: { results: [] },
+      });
+
+      const result = await processor.processDocument(filePath, {
+        apiEndpoint: API_ENDPOINT,
+        operations: { fixContentIds: true },
+      });
+
+      // No matches -> nothing appended, but processing still succeeds.
+      expect(result.success).toBe(true);
+      expect(result.appendedContentIds).toBe(0);
+    });
+
+    it("handles edge-case theSource URLs gracefully", async () => {
+      const filePath = path.join(fixturesDir, "theSource-malformed.docx");
+
+      (hyperlinkService.processHyperlinksWithApi as ReturnType<typeof jest.fn>).mockResolvedValue({
+        success: true,
+        body: { results: [] },
+      });
+
+      const result = await processor.processDocument(filePath, {
+        apiEndpoint: API_ENDPOINT,
+        operations: { fixContentIds: true },
+      });
+
+      // Malformed / URL-encoded edge cases must not crash the pipeline.
+      expect(result.success).toBe(true);
+      expect(result.errorMessages).toEqual([]);
+    });
+
+    it("fails clearly when content-ID operations are enabled without an API endpoint", async () => {
       const filePath = path.join(fixturesDir, "theSource.docx");
 
       const result = await processor.processDocument(filePath, {
         operations: { fixContentIds: true },
-        contentId: "#test-content",
+        // No apiEndpoint: content-ID resolution has no source, so the processor
+        // must refuse rather than save a document with unresolved links.
       });
 
-      expect(result.success).toBe(true);
-
-      // Should have modified some URLs
-      if (result.appendedContentIds !== undefined) {
-        expect(result.appendedContentIds).toBeGreaterThanOrEqual(0);
-      }
-
-      // Check processedLinks for modifications
-      const modifiedLinks = result.processedLinks.filter(
-        (l) => l.status === "processed" && l.after
-      );
-
-      // If content IDs were appended, verify they contain the ID
-      if (result.appendedContentIds && result.appendedContentIds > 0) {
-        expect(modifiedLinks.length).toBeGreaterThan(0);
-
-        for (const link of modifiedLinks) {
-          if (link.after && link.after.includes("thesource")) {
-            expect(link.after).toContain("#test-content");
-          }
-        }
-      }
-    });
-
-    it("should skip URLs that already have content IDs", async () => {
-      const filePath = path.join(fixturesDir, "theSource-with-ids.docx");
-
-      const result = await processor.processDocument(filePath, {
-        operations: { fixContentIds: true },
-        contentId: "#test-content",
-      });
-
-      expect(result.success).toBe(true);
-
-      // These URLs already have content IDs, should be skipped
-      expect(result.skippedHyperlinks).toBeGreaterThanOrEqual(0);
-
-      // Should NOT append to URLs that already have IDs
-      if (result.appendedContentIds !== undefined) {
-        expect(result.appendedContentIds).toBe(0);
-      }
-    });
-
-    it("should handle edge case URLs gracefully", async () => {
-      const filePath = path.join(fixturesDir, "theSource-malformed.docx");
-
-      const result = await processor.processDocument(filePath, {
-        operations: { fixContentIds: true },
-        contentId: "#test",
-      });
-
-      // Should not crash on edge cases
-      expect(result.success).toBe(true);
-      expect(result.errorMessages).not.toContain(/crash|exception/i);
+      expect(result.success).toBe(false);
+      expect(result.errorMessages[0]).toContain("API endpoint not configured");
     });
   });
 
@@ -305,19 +340,11 @@ describe("WordDocumentProcessor - Integration Tests", () => {
 
       expect(result.success).toBe(true);
 
-      // Check if replacements were attempted
-      if (result.updatedUrls !== undefined) {
-        expect(result.updatedUrls).toBeGreaterThanOrEqual(0);
-      }
-
-      // Check processedLinks for URL modifications
-      const urlReplacements = result.processedLinks.filter(
-        (l) => l.before && l.after && l.before !== l.after && l.after.includes("new-example.com")
-      );
-
-      if (result.updatedUrls && result.updatedUrls > 0) {
-        expect(urlReplacements.length).toBeGreaterThan(0);
-      }
+      // hyperlinks.docx contains two URLs matching "example.com"
+      // (http://example.com and mailto:test@example.com). Custom replacements
+      // are reported via updatedUrls; processedLinks is reserved for the
+      // API-driven path, so it is intentionally not populated here.
+      expect(result.updatedUrls).toBeGreaterThan(0);
     });
 
     it("should apply custom text replacements", async () => {

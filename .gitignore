@@ -190,7 +190,8 @@ docs/hooks/
 *~
 
 # Test utilities and fixtures (development only)
-src/services/document/__tests__/create-fixtures.ts
+# NOTE: create-fixtures.ts is committed — the integration suite imports it to
+# regenerate its fixtures in beforeAll (see WordDocumentProcessor.integration.test.ts).
 src/services/document/__tests__/diagnose-fixtures.cjs
 src/services/document/__tests__/generate-fixtures.cjs
 src/services/document/__tests__/test-processor.cjs
